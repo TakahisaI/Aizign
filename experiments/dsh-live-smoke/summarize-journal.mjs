@@ -14,7 +14,9 @@ if (!state) {
   process.exit(2);
 }
 
-const lines = readFileSync(join(state, 'workflow.jsonl'), 'utf8').split('\n').filter((line) => line.length > 0);
+const lines = readFileSync(join(state, 'workflow.jsonl'), 'utf8')
+  .split('\n')
+  .filter((line) => line.length > 0);
 const records = lines.map((line) => JSON.parse(line));
 if (json) {
   process.stdout.write(
