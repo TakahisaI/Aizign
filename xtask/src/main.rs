@@ -6,6 +6,7 @@
 
 mod audit;
 mod conformance;
+mod npm_check;
 mod report;
 mod rust_check;
 mod shell;
@@ -17,8 +18,9 @@ const USAGE: &str = "\
 usage: cargo xtask <command>
 
 commands:
-  check          run every pull-request gate (rust-check, conformance, public-audit, git diff --check)
+  check          run every pull-request gate (rust-check, npm-check, conformance, public-audit, whitespace)
   rust-check     cargo fmt / clippy / test / doc / deny
+  npm-check      npm ci + npm run check (lint, build, typecheck, test, pack) for the TypeScript workspace
   conformance    validate the language-neutral fixtures under spec/conformance
   public-audit   dependency boundaries, forbidden imports, secrets and private paths,
                  closed package exports, entry documents, documentation links
@@ -33,6 +35,7 @@ fn main() -> ExitCode {
     let outcome = match args.first().map(String::as_str) {
         Some("check") => check(&root),
         Some("rust-check") => rust_check::run(&root),
+        Some("npm-check") => npm_check::run(&root),
         Some("conformance") => conformance::run(&root),
         Some("public-audit") => audit::run(&root),
         Some("whitespace") => whitespace(&root),
@@ -55,6 +58,7 @@ fn main() -> ExitCode {
 /// Runs every gate a pull request must pass, in the order CI runs them.
 fn check(root: &Path) -> Result<(), String> {
     rust_check::run(root)?;
+    npm_check::run(root)?;
     conformance::run(root)?;
     audit::run(root)?;
     whitespace(root)?;

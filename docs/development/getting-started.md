@@ -36,6 +36,7 @@ cargo xtask check
 | 段階 | 内容 |
 |---|---|
 | `rust-check` | `cargo fmt --all --check`、`cargo clippy --workspace --all-targets --all-features -- -D warnings`、`cargo test --workspace`、`cargo doc --workspace --no-deps`（warning deny）、`cargo deny check` |
+| `npm-check` | `npm ci` + `npm run check`（Biome、build、typecheck、`node --test`、pack inspection）。packageがなければskip |
 | `conformance` | `spec/conformance/` のfixtureを検査 |
 | `public-audit` | 依存境界、`aizu-core` の禁止import、secret / private pathの検査、closed `exports`、entry document、文書link |
 | `whitespace` | tracked tree全体に対する `git diff --check`（trailing whitespace、final newline） |
@@ -44,6 +45,7 @@ cargo xtask check
 
 ```sh
 cargo xtask rust-check
+cargo xtask npm-check
 cargo xtask conformance
 cargo xtask public-audit
 cargo xtask whitespace
@@ -61,9 +63,18 @@ cat spec/protocol/v1/examples/workflow-signal-submit.request.json | ./target/deb
 
 ## TypeScript workspace
 
-現時点ではTypeScript packageはまだありません。root `package.json` は `private: true` のworkspace rootで、
-`packages/*` と `adapters/*` をworkspaceとして宣言しています。最初のpackageが入ったときに
-`npm ci` と `npm run check` を `cargo xtask check` に組み込みます。
+root `package.json` は `private: true` のnpm workspace rootで、`packages/*` と `adapters/*` をworkspaceとして宣言しています。
+`cargo xtask check` は `npm ci` と `npm run check`（Biome lint、build、typecheck、`node --test`、`npm pack --dry-run`）も実行します。
+
+```sh
+npm ci
+npm run check            # 全package
+npm test -w @aizu/protocol
+```
+
+- Node / npmは `.node-version` と `packageManager` に固定。`.npmrc` の `engine-strict=true` で不一致を拒否します
+- testは `node --test` で `.ts` を直接実行します（Nodeのtype stripping）。そのため `enum` や parameter property は使いません（`erasableSyntaxOnly`）
+- package間はworkspace symlinkで解決され、`exports` が `lib/` を指すので、依存先のpackageを先にbuildします（root `npm run build` が順序を固定）
 
 ## 通常の検査で起動しないもの
 

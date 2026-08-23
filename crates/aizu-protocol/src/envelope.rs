@@ -117,7 +117,11 @@ struct Probe {
 struct ResponseEnvelope {
     protocol: String,
     version: u64,
+    /// Present on every response (possibly `null`), never omitted.
+    #[serde(deserialize_with = "required_nullable")]
     request_id: Option<String>,
+    /// Present on every response (possibly `null`), never omitted.
+    #[serde(deserialize_with = "required_nullable")]
     kind: Option<String>,
     ok: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -131,6 +135,16 @@ struct ResponseEnvelope {
 struct ErrorDto {
     code: String,
     message: String,
+}
+
+/// `Option<T>` fields are implicitly optional in serde; this makes the key
+/// mandatory while still accepting `null`.
+fn required_nullable<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
 }
 
 fn valid_request_id(value: &str) -> bool {
@@ -360,6 +374,12 @@ pub fn decode_response(frame: &[u8]) -> Result<Response, ProtocolError> {
             }
         },
         (false, None, Some(error)) => {
+            if aizu_core::ShortErrorCode::new(&error.code).is_err() {
+                return Err(ProtocolError::new(
+                    codes::INVALID_ENVELOPE,
+                    "error.code must match ^[A-Z][A-Z0-9_]{0,63}$",
+                ));
+            }
             ResponseBody::Error(ProtocolError::new(&error.code, error.message))
         }
         _ => {

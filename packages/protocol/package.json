@@ -1,0 +1,33 @@
+{
+  "name": "@aizu/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aizu Protocol v1 for TypeScript: closed NDJSON envelope codec, hello compatibility, and the core-client contract",
+  "license": "Apache-2.0 OR MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TakahisaI/Aizu.git",
+    "directory": "packages/protocol"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24.19.0 <25"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test \"src/**/*.test.ts\"",
+    "build": "rm -rf lib && tsc -p tsconfig.build.json",
+    "pack:check": "npm pack --dry-run --json > /dev/null"
+  }
+}
