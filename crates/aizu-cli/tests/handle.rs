@@ -217,6 +217,52 @@ fn stdin_must_carry_exactly_one_frame() {
     ));
 }
 
+/// Pads a frame with trailing spaces (inside the frame, before its newline)
+/// to exactly `MAX_REQUEST_BYTES`, the largest size the protocol accepts.
+fn frame_at_size_bound(event_id: &str, request_id: &str) -> String {
+    let frame = submit_frame(event_id, request_id);
+    let body = frame.trim_end_matches('\n');
+    assert!(body.len() < MAX_REQUEST_BYTES);
+    format!("{body}{}\n", " ".repeat(MAX_REQUEST_BYTES - body.len()))
+}
+
+#[test]
+fn trailing_content_is_still_rejected_at_the_frame_size_bound() {
+    // Regression for the fail-open boundary (#34): with the frame at exactly
+    // MAX_REQUEST_BYTES, a bounded reader saw only one byte after the newline,
+    // so one whitespace byte could hide a second frame beyond the bound.
+    let dir = TempDir::new();
+    let hidden = format!(
+        "{} {}",
+        frame_at_size_bound("evt-bound", "req-bound"),
+        submit_frame("evt-hidden", "req-hidden")
+    );
+    let ResponseBody::Error(error) = one_frame(&run_handle(&dir.state(), &hidden)).body else {
+        panic!("error")
+    };
+    assert_eq!(error.code().as_str(), codes::INVALID_ENVELOPE);
+    assert!(
+        !dir.state().join(JOURNAL_FILE_NAME).exists(),
+        "nothing is appended for a rejected stdin"
+    );
+
+    let garbage = format!(
+        "{}   trailing prose\n",
+        frame_at_size_bound("evt-bound", "req-bound")
+    );
+    let ResponseBody::Error(error) = one_frame(&run_handle(&dir.state(), &garbage)).body else {
+        panic!("error")
+    };
+    assert_eq!(error.code().as_str(), codes::INVALID_ENVELOPE);
+
+    // A frame at exactly the bound is still valid on its own.
+    let exact = frame_at_size_bound("evt-bound", "req-bound");
+    assert!(matches!(
+        one_frame(&run_handle(&dir.state(), &exact)).body,
+        ResponseBody::WorkflowSignal(_)
+    ));
+}
+
 #[test]
 fn journal_problems_are_reported_as_journal_codes() {
     let dir = TempDir::new();

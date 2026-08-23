@@ -111,20 +111,31 @@ enum Stdin {
     Extra,
 }
 
-/// Reads stdin up to the protocol bound (plus one byte to detect overflow).
-/// Exactly one frame is allowed: the first line, followed by nothing but
-/// whitespace. Anything else is not a request.
+/// Reads stdin: the first line, bounded by the protocol limit (plus one byte
+/// to detect overflow), then the rest of the stream to EOF. Exactly one frame
+/// is allowed; anything but whitespace after the first newline is not a
+/// request. The trailing scan is unbounded on purpose: bounding it would let
+/// a second frame hide beyond the bound when the first frame is exactly at
+/// the size limit, and a stdin that never closes is already covered by the
+/// handler watchdog.
 fn read_stdin() -> io::Result<Stdin> {
     let stdin = io::stdin();
-    let mut reader = stdin.lock().take(MAX_REQUEST_BYTES as u64 + 2);
+    let mut reader = stdin.lock();
     let mut frame = Vec::new();
-    reader.read_until(b'\n', &mut frame)?;
+    (&mut reader)
+        .take(MAX_REQUEST_BYTES as u64 + 2)
+        .read_until(b'\n', &mut frame)?;
     if frame.last() == Some(&b'\n') {
         frame.pop();
-        let mut rest = Vec::new();
-        reader.read_to_end(&mut rest)?;
-        if rest.iter().any(|byte| !byte.is_ascii_whitespace()) {
-            return Ok(Stdin::Extra);
+        let mut rest = [0_u8; 4096];
+        loop {
+            let read = reader.read(&mut rest)?;
+            if read == 0 {
+                break;
+            }
+            if rest[..read].iter().any(|byte| !byte.is_ascii_whitespace()) {
+                return Ok(Stdin::Extra);
+            }
         }
     }
     Ok(Stdin::Frame(frame))
