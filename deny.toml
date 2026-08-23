@@ -1,0 +1,29 @@
+# cargo-deny configuration. Checked by `cargo xtask rust-check` and CI.
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = []
+
+[licenses]
+version = 2
+# Grow this list only when a dependency needs it (new runtime dependencies
+# require an ADR; see CONTRIBUTING.md).
+allow = [
+  "Apache-2.0",
+  "MIT",
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+deny = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

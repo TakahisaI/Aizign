@@ -1,0 +1,5 @@
+# Pinned on purpose: toolchain updates go through a dedicated PR (ADR-0008).
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
