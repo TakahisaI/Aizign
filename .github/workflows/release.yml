@@ -1,6 +1,10 @@
 name: Release
 
 # Tag `vX.Y.Z` on main -> full gate -> GitHub Release with generated notes.
+# The tagged commit must be the current default-branch tip (fail closed), so a
+# tag on an old or side-branch commit cannot release a tree the readiness
+# review never saw (#33). Version lockstep across every crate and package is
+# enforced by `cargo xtask public-audit` inside the gate.
 # No artifacts are attached and nothing is published to a registry (ADR-0008).
 # This is the only workflow with write permission, and only for releases.
 
@@ -32,6 +36,20 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Verify the tag is the default-branch tip
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "${DEFAULT_BRANCH}"
+          tip="$(git rev-parse "origin/${DEFAULT_BRANCH}")"
+          tagged="$(git rev-parse HEAD)"
+          if [[ "${tagged}" != "${tip}" ]]; then
+            echo "::error::tag ${GITHUB_REF_NAME} points at ${tagged}, but ${DEFAULT_BRANCH} is at ${tip}; releases bind only to the reviewed tip (docs/development/releasing.md)"
+            exit 1
+          fi
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
 
       - name: Verify the tag matches the workspace version
         shell: bash
