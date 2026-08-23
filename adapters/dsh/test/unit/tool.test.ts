@@ -1,0 +1,167 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { assertMetadataOnly } from '@aizu/adapter-testkit';
+import type { CoreClient, SubmitOutcome, WorkflowSignalSubmitPayload } from '@aizu/protocol';
+import { HarnessError } from '@deepseek-ai/dsh-llm';
+import type { ToolRunContext } from '@deepseek-ai/dsh-tools';
+import type { SignalBinding } from '../../src/config.ts';
+import {
+  adapterCodes,
+  createSubmitWorkflowSignalTool,
+  decodeArgs,
+  requestIdFor,
+  TOOL_NAME,
+  toolParameters,
+  toPayload,
+  toToolResult,
+} from '../../src/mapping/tool.ts';
+
+const binding: SignalBinding = {
+  eventId: 'evt-fixed',
+  expected: {
+    workflowId: 'wf-1',
+    assignmentId: 'as-review',
+    role: 'review',
+    artifactRevision: 'rev-a',
+  },
+};
+
+function stubClient(outcome: SubmitOutcome): CoreClient & { calls: WorkflowSignalSubmitPayload[] } {
+  const calls: WorkflowSignalSubmitPayload[] = [];
+  return {
+    calls,
+    async hello() {
+      throw new Error('not used');
+    },
+    async submitWorkflowSignal(_requestId, payload) {
+      calls.push(payload);
+      return outcome;
+    },
+  };
+}
+
+const exec = {
+  callId: 'call/abc 123',
+  signal: new AbortController().signal,
+} as unknown as ToolRunContext;
+
+test('the tool schema exposes no identity fields', () => {
+  const schema = toolParameters('review') as {
+    properties: Record<string, unknown>;
+    additionalProperties: boolean;
+  };
+  assert.deepEqual(Object.keys(schema.properties).sort(), [
+    'artifactRef',
+    'findingCount',
+    'kind',
+    'shortErrorCode',
+  ]);
+  assert.equal(schema.additionalProperties, false);
+  const kinds = (schema.properties.kind as { enum: string[] }).enum;
+  assert.deepEqual(kinds, ['review_passed', 'review_findings', 'blocked']);
+});
+
+test('arguments are decoded closed and bound to the configured identity', () => {
+  const payload = toPayload(
+    binding,
+    decodeArgs({ kind: 'review_findings', findingCount: 2 }, 'review'),
+  );
+  assert.equal(payload.signal.eventId, 'evt-fixed');
+  assert.equal(payload.signal.workflowId, 'wf-1');
+  assert.equal(payload.signal.role, 'review');
+  assert.equal(payload.signal.findingCount, 2);
+  assert.deepEqual(payload.expected, binding.expected);
+  assertMetadataOnly(payload);
+
+  assert.throws(
+    () => decodeArgs({ kind: 'review_passed', eventId: 'evt-mine' }, 'review'),
+    (error: unknown) => {
+      return (
+        error instanceof HarnessError &&
+        error.code === 'INVALID_SIGNAL' &&
+        /eventId/.test(error.message)
+      );
+    },
+  );
+  assert.throws(
+    () => decodeArgs({ kind: 'implementation_ready' }, 'review'),
+    (error: unknown) => {
+      return error instanceof HarnessError && error.code === 'INVALID_SIGNAL';
+    },
+  );
+  assert.throws(() => decodeArgs('not an object', 'review'), HarnessError);
+});
+
+test('core rules are applied before any process is spawned', () => {
+  // review_passed with a non-zero finding count is rejected by the same rule the core uses.
+  assert.throws(
+    () => toPayload(binding, { kind: 'review_passed', findingCount: 3 }),
+    (error: unknown) => {
+      return error instanceof HarnessError && error.code === 'INVALID_SIGNAL';
+    },
+  );
+  assert.throws(
+    () => toPayload(binding, { kind: 'blocked' }),
+    (error: unknown) => {
+      return error instanceof HarnessError && error.code === 'INVALID_SIGNAL';
+    },
+  );
+});
+
+test('request ids derive from the call id within the identifier pattern', () => {
+  assert.equal(requestIdFor('call/abc 123'), 'req-call-abc-123');
+  assert.equal(requestIdFor('---'), 'req-call');
+  assert.ok(requestIdFor('x'.repeat(500)).length <= 128);
+});
+
+test('outcomes map to the canonical value or a harness error; unknown is never retried', async () => {
+  assert.deepEqual(toToolResult({ kind: 'accepted', eventId: 'evt-fixed' }), {
+    disposition: 'accepted',
+    eventId: 'evt-fixed',
+  });
+  assert.deepEqual(toToolResult({ kind: 'duplicate', eventId: 'evt-fixed' }), {
+    disposition: 'duplicate',
+    eventId: 'evt-fixed',
+  });
+  assert.throws(
+    () => toToolResult({ kind: 'rejected', code: 'EVENT_CONFLICT', message: 'm' }),
+    (error: unknown) => {
+      return error instanceof HarnessError && error.code === 'EVENT_CONFLICT';
+    },
+  );
+
+  const client = stubClient({ kind: 'unknown', reason: 'timeout', detail: 'no response' });
+  const tool = createSubmitWorkflowSignalTool(client, binding);
+  assert.equal(tool.name, TOOL_NAME);
+  await assert.rejects(
+    tool.execute({ kind: 'review_passed', findingCount: 0 }, exec),
+    (error: unknown) => {
+      return error instanceof HarnessError && error.code === adapterCodes.OUTCOME_UNKNOWN;
+    },
+  );
+  assert.equal(client.calls.length, 1, 'exactly one submission; no retry on unknown');
+  assertMetadataOnly(client.calls[0]);
+  assert.ok(
+    !JSON.stringify(client.calls[0]).includes('call/abc'),
+    'harness call ids never reach the payload',
+  );
+});
+
+test('the tool renders and presents only metadata', () => {
+  const tool = createSubmitWorkflowSignalTool(
+    stubClient({ kind: 'accepted', eventId: 'evt-fixed' }),
+    binding,
+  );
+  const value = { disposition: 'accepted', eventId: 'evt-fixed' };
+  assert.deepEqual(tool.output.render({ kind: 'review_passed' }, value), [
+    { type: 'text', text: JSON.stringify(value) },
+  ]);
+  assert.deepEqual(
+    tool.output.presentationMeta?.({ kind: 'review_passed', findingCount: 0 }, value),
+    {
+      tool: TOOL_NAME,
+      kind: 'review_passed',
+      result: value,
+    },
+  );
+});

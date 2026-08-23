@@ -1,0 +1,6 @@
+# Installed inert. An operator enables the plugin with a local patch that
+# supplies one exact assignment; that patch lives outside this repository.
+- insert:
+    - id: aizu-workflow-signal
+      name: "@aizu/adapter-dsh"
+      disabled: true

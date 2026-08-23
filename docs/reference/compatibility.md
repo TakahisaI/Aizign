@@ -34,4 +34,4 @@ Node.jsは `24.19.0`（LTS）、npmは `12.0.2` に固定しています。DSH a
 
 | Harness | Adapter | Supported version | Status |
 |---|---|---|---|
-| DSH | `@aizu/adapter-dsh` | 未定（exact versionで固定予定） | 未作成 |
+| DSH | `@aizu/adapter-dsh` | `0.1.1-rc.2`（`@deepseek-ai/cordis` 4.0.1、`schemastery` 3.18.1） | preflight + scope-bound tool + core client（fake harnessで検証。live smokeは未実施） |

@@ -59,7 +59,7 @@ source中に次が現れたら `public-audit` が失敗します。
 |---|---|---|
 | `@aizu/protocol` | なし | なし（validatorは自前。`node:` 組み込みも使わない） |
 | `@aizu/adapter-testkit` | `@aizu/protocol` | なし（`node:child_process` / `node:fs` / `node:assert` の組み込みのみ） |
-| `@aizu/adapter-<harness>` | `@aizu/protocol`、`@aizu/adapter-testkit`（devのみ） | そのharnessのSDK（exact version固定） |
+| `@aizu/adapter-<harness>` | `@aizu/protocol`、`@aizu/adapter-testkit`（devのみ） | そのharnessのSDK（exact version、peer + dev。ADR-0010） |
 
 - package間はworkspace依存だけを使い、相対pathで別packageのsourceをimportしない
 - 開発toolchain（`typescript`、`@biomejs/biome`、`@types/node`）はroot `package.json` にexact versionで置き、各packageには置かない

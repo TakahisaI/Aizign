@@ -57,6 +57,16 @@ protocol fixtureが入った後は、`spec/protocol/v1/` が wire上のcodeの�
 | `EFFECT_NOT_CLAIMED` | claimなしにeffect resultが報告された | reserved |
 | `EFFECT_OUTCOME_UNKNOWN` | effectの結果が確定できない。自動再送しない | reserved |
 
+## Harness-facing（adapterが投げる）
+
+protocolのcodeではなく、adapterがharnessへ返す `HarnessError.code`。各adapterのREADMEが正本で、ここは索引。
+
+| Code | 意味 | Adapter |
+|---|---|---|
+| `AIZU_UNAVAILABLE` | preflightでbinaryに到達できない | `@aizu/adapter-dsh` |
+| `AIZU_INCOMPATIBLE` | protocol version / capabilityが合わない | `@aizu/adapter-dsh` |
+| `AIZU_OUTCOME_UNKNOWN` | 提出の結果が不明。再送しない | `@aizu/adapter-dsh` |
+
 ## 追加の手順
 
 1. この表に `reserved` で追加する

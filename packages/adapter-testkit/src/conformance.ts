@@ -154,6 +154,17 @@ export async function runFaultScenarios(
     assert.equal(hang.kind, 'unknown');
     if (hang.kind === 'unknown') assert.equal(hang.reason, 'timeout');
 
+    // cancellation: the caller's abort kills the process; the outcome is unknown.
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 100);
+    const aborted = await make('fault-abort', { AIZU_FAKE_FAULT: 'hang' }).submitWorkflowSignal(
+      'req-abort',
+      samplePayload('evt-abort'),
+      { signal: controller.signal },
+    );
+    assert.equal(aborted.kind, 'unknown');
+    if (aborted.kind === 'unknown') assert.equal(aborted.reason, 'aborted');
+
     const missing = factory({
       command: join(root, 'no-such-binary'),
       stateDir: join(root, 'missing'),

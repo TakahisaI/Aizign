@@ -19,3 +19,4 @@
 | [0007](0007-use-metadata-only-control-journals.md) | Use metadata-only control journals | Accepted |
 | [0008](0008-use-lockstep-artifact-versions-before-1-0.md) | Use lockstep artifact versions before 1.0 | Accepted |
 | [0009](0009-serialization-dependencies-for-the-protocol-crate.md) | Serialization dependencies for the protocol crate | Accepted |
+| [0010](0010-harness-sdk-dependencies-and-node-policy.md) | Harness SDK dependencies and the Node support policy | Accepted |

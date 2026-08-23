@@ -1,8 +1,6 @@
 /**
- * A reference `CoreClient`: spawn the binary, write one frame, read one
- * frame, and classify everything else as an unknown outcome. Adapters own
- * their core client; this one exists to validate the conformance runner
- * and as a starting point.
+ * This adapter's `CoreClient`: spawn `aizu`, write one frame, read one
+ * frame, classify everything else as unknown. No retries anywhere.
  */
 
 import { spawn } from 'node:child_process';
@@ -28,33 +26,35 @@ function unknown(reason: UnknownOutcome['reason'], detail: string): Exchange {
   return { kind: 'unknown', outcome: { kind: 'unknown', reason, detail } };
 }
 
-export class ReferenceOneShotClient implements CoreClient {
+function reportedUnknown(code: string, message: string): UnknownOutcome {
+  return { kind: 'unknown', reason: 'reported_unknown', detail: `${code}: ${message}` };
+}
+
+export class OneShotCoreClient implements CoreClient {
   readonly #config: CoreClientConfig;
 
   constructor(config: CoreClientConfig) {
     this.#config = config;
   }
 
-  async hello(requestId: string, options: CallOptions = {}): Promise<HelloOutcome> {
+  async hello(_requestId: string, options: CallOptions = {}): Promise<HelloOutcome> {
     const exchange = await this.#exchange(['hello'], undefined, options.signal);
     if (exchange.kind === 'unknown') return exchange.outcome;
     const { body } = exchange.response;
-    if (body.type === 'hello') return { kind: 'ok', info: body.info };
-    if (body.type === 'error') {
-      if (isUnknownOutcomeCode(body.error.code)) {
+    switch (body.type) {
+      case 'hello':
+        return { kind: 'ok', info: body.info };
+      case 'error':
+        return isUnknownOutcomeCode(body.error.code)
+          ? reportedUnknown(body.error.code, body.error.message)
+          : { kind: 'error', code: body.error.code, message: body.error.message };
+      default:
         return {
           kind: 'unknown',
-          reason: 'reported_unknown',
-          detail: `${body.error.code}: ${body.error.message}`,
+          reason: 'undecodable_response',
+          detail: 'hello answered with a non-hello body',
         };
-      }
-      return { kind: 'error', code: body.error.code, message: body.error.message };
     }
-    return {
-      kind: 'unknown',
-      reason: 'undecodable_response',
-      detail: `unexpected body for ${requestId}`,
-    };
   }
 
   async submitWorkflowSignal(
@@ -70,24 +70,20 @@ export class ReferenceOneShotClient implements CoreClient {
     );
     if (exchange.kind === 'unknown') return exchange.outcome;
     const { body } = exchange.response;
-    if (body.type === 'workflow.signal') {
-      return { kind: body.result.disposition, eventId: body.result.eventId };
-    }
-    if (body.type === 'error') {
-      if (isUnknownOutcomeCode(body.error.code)) {
+    switch (body.type) {
+      case 'workflow.signal':
+        return { kind: body.result.disposition, eventId: body.result.eventId };
+      case 'error':
+        return isUnknownOutcomeCode(body.error.code)
+          ? reportedUnknown(body.error.code, body.error.message)
+          : { kind: 'rejected', code: body.error.code, message: body.error.message };
+      default:
         return {
           kind: 'unknown',
-          reason: 'reported_unknown',
-          detail: `${body.error.code}: ${body.error.message}`,
+          reason: 'undecodable_response',
+          detail: 'submit answered with a non-signal body',
         };
-      }
-      return { kind: 'rejected', code: body.error.code, message: body.error.message };
     }
-    return {
-      kind: 'unknown',
-      reason: 'undecodable_response',
-      detail: 'response body does not match the request',
-    };
   }
 
   #exchange(
@@ -103,6 +99,7 @@ export class ReferenceOneShotClient implements CoreClient {
       }
       let settled = false;
       let timer: NodeJS.Timeout | undefined;
+      let child: ReturnType<typeof spawn> | undefined;
       const onAbort = () => {
         child?.kill('SIGKILL');
         settle(unknown('aborted', 'cancelled while waiting; the core may have appended'));
@@ -115,9 +112,10 @@ export class ReferenceOneShotClient implements CoreClient {
         resolve(exchange);
       };
 
-      let child: ReturnType<typeof spawn> | undefined;
       try {
         child = spawn(command, [...args, ...subcommand], {
+          // Only PATH and the configured variables: the core never needs the
+          // harness process environment, and credentials must not leak in.
           env: { PATH: process.env.PATH ?? '', ...env },
           stdio: ['pipe', 'pipe', 'pipe'],
         });
@@ -126,8 +124,8 @@ export class ReferenceOneShotClient implements CoreClient {
         return;
       }
       signal?.addEventListener('abort', onAbort, { once: true });
-      const stdout: Buffer[] = [];
       const spawned = child;
+      const stdout: Buffer[] = [];
       spawned.stdout?.on('data', (chunk: Buffer) => stdout.push(chunk));
       spawned.stderr?.on('data', () => undefined);
       spawned.on('error', (error) => settle(unknown('spawn_failed', error.message)));
@@ -138,8 +136,7 @@ export class ReferenceOneShotClient implements CoreClient {
       }, timeoutMs);
 
       spawned.on('close', (code) => {
-        const output = Buffer.concat(stdout).toString('utf8');
-        const line = output.split('\n', 1)[0] ?? '';
+        const line = Buffer.concat(stdout).toString('utf8').split('\n', 1)[0] ?? '';
         if (line.length === 0) {
           settle(unknown('no_response', `process exited with ${String(code)} without a frame`));
           return;

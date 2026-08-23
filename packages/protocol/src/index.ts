@@ -7,6 +7,7 @@
  */
 
 export {
+  type CallOptions,
   type CoreClient,
   type CoreClientConfig,
   type HelloOutcome,

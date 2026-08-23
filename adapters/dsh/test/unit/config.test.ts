@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { type Config, ConfigError, validateConfig } from '../../src/config.ts';
+
+const base: Config = {
+  binary: '/opt/aizu/bin/aizu',
+  stateDir: '/var/lib/aizu/state',
+  eventId: 'evt-1',
+  workflowId: 'wf-1',
+  assignmentId: 'as-impl',
+  role: 'implementation',
+  artifactRevision: 'rev-a',
+};
+
+test('valid configuration binds identity and defaults the timeout', () => {
+  const config = validateConfig(base);
+  assert.equal(config.timeoutMs, 15_000);
+  assert.deepEqual(config.binding, {
+    eventId: 'evt-1',
+    expected: {
+      workflowId: 'wf-1',
+      assignmentId: 'as-impl',
+      role: 'implementation',
+      artifactRevision: 'rev-a',
+    },
+  });
+});
+
+test('identifiers, paths, role, and timeout are validated', () => {
+  assert.throws(() => validateConfig({ ...base, eventId: 'bad id' }), ConfigError);
+  assert.throws(() => validateConfig({ ...base, workflowId: '' }), ConfigError);
+  assert.throws(() => validateConfig({ ...base, binary: '  ' }), ConfigError);
+  assert.throws(() => validateConfig({ ...base, role: 'operator' as 'review' }), ConfigError);
+  assert.throws(() => validateConfig({ ...base, timeoutMs: 0 }), ConfigError);
+  assert.throws(() => validateConfig({ ...base, timeoutMs: 1.5 }), ConfigError);
+});
