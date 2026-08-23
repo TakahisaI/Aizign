@@ -17,12 +17,21 @@ export const name = 'aizu-workflow-signal';
 export const inject = ['tools'];
 export type { AdapterConfig, Config as PluginConfig, SignalBinding } from './config.ts';
 export { OneShotCoreClient } from './core-client/one-shot-client.ts';
+export {
+  type EvidenceSource,
+  readSignalEvidence,
+  type SessionEventLike,
+  type SignalEvidence,
+  type SignalResultMeta,
+} from './evidence/cold-read.ts';
+export { bindingDigest, canonicalJson, payloadDigest } from './evidence/digest.ts';
 export { preflight } from './lifecycle/preflight.ts';
 export {
   adapterCodes,
   createSubmitWorkflowSignalTool,
   decodeArgs,
   kindsForRole,
+  presentationMetaFor,
   requestIdFor,
   type SignalArgs,
   TOOL_NAME,

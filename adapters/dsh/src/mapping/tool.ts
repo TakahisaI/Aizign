@@ -19,6 +19,7 @@ import {
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import type { JsonSchemaNode, ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools';
 import { bindingPayload, type SignalBinding } from '../config.ts';
+import { bindingDigest, payloadDigest } from '../evidence/digest.ts';
 
 export const TOOL_NAME = 'submit_workflow_signal';
 
@@ -152,6 +153,43 @@ export function toToolResult(outcome: SubmitOutcome): {
   }
 }
 
+/**
+ * Presentation metadata recorded in the durable `tool/result`: identity and
+ * digests only, so a cold read of the session log can be checked against the
+ * plugin configuration (see `evidence/cold-read.ts`). Must be total and pure.
+ */
+export interface SignalPresentationMeta {
+  tool: string;
+  eventId: string;
+  disposition: 'accepted' | 'duplicate' | null;
+  bindingDigest: string;
+  payloadDigest: string;
+}
+
+export function presentationMetaFor(
+  binding: SignalBinding,
+  args: unknown,
+  value: unknown,
+): SignalPresentationMeta {
+  const disposition =
+    isPlainObject(value) && (value.disposition === 'accepted' || value.disposition === 'duplicate')
+      ? value.disposition
+      : null;
+  let digest = '';
+  try {
+    digest = payloadDigest(toPayload(binding, decodeArgs(args, binding.expected.role)).signal);
+  } catch {
+    // Unreachable for a successful result; keep the callback total.
+  }
+  return {
+    tool: TOOL_NAME,
+    eventId: binding.eventId,
+    disposition,
+    bindingDigest: bindingDigest(binding),
+    payloadDigest: digest,
+  };
+}
+
 /** Builds the registered tool. */
 export function createSubmitWorkflowSignalTool(
   client: CoreClient,
@@ -166,11 +204,7 @@ export function createSubmitWorkflowSignalTool(
     output: {
       schema: TOOL_OUTPUT,
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
-      presentationMeta: (args, value) => ({
-        tool: TOOL_NAME,
-        kind: isPlainObject(args) && typeof args.kind === 'string' ? args.kind : null,
-        result: value,
-      }),
+      presentationMeta: (args, value) => ({ ...presentationMetaFor(binding, args, value) }),
     },
     async execute(args: unknown, exec: ToolRunContext) {
       const payload = toPayload(binding, decodeArgs(args, role));

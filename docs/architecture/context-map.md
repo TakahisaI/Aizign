@@ -68,7 +68,7 @@ adapter内の配置:
 |---|---|
 | `src/core-client/` | `aizu` binaryの起動、envelope送受信、`hello` |
 | `src/mapping/` | native event / harness型 ↔ protocol DTO |
-| `src/evidence/` | harness persistenceからのcold read、binding digest |
+| `src/evidence/` | harness persistenceからのcold read（`tool/call` + `tool/result` 対）、binding / payload digest |
 | `src/lifecycle/` | connect / interrupt / release / reconcile |
 | `test/unit/`、`test/conformance/` | fake harness、fake core processでの検査 |
 
