@@ -24,11 +24,12 @@
 
 engineはuse caseとportを持ちます。contextの切り方はcoreと揃えます。
 
-| 要素 | 内容 |
-|---|---|
-| Use case | `handle_workflow_signal` など。journal load → core → append → claim → report |
-| Port | `Journal`（append / load）、`Clock`（bounded timestamp）、`EffectSink`（effect intentの配送） |
-| 所有 | portはengineが定義。storeとcliが実装 |
+| 要素 | 内容 | 状態 |
+|---|---|---|
+| Use case | `handle_workflow_signal` など。journal load → core → append → claim → report | 後続 |
+| Port | `Journal`（append / load、`JournalEntry`、`JournalError`） | 実装済み |
+| Port | `Clock`（bounded timestamp）、`EffectSink`（effect intentの配送） | 後続 |
+| 所有 | portはengineが定義。store、testkit、cliが実装 | — |
 
 ## Protocol (`crates/aizu-protocol`, `packages/protocol`)
 
@@ -42,7 +43,8 @@ engineはuse caseとportを持ちます。contextの切り方はcoreと揃えま
 
 | 要素 | 内容 |
 |---|---|
-| Record | schema version付きのclosed record。metadata-only |
+| Record | schema version付きのclosed record。metadata-only。`workflow.signal.accepted` |
+| Store | `JsonlJournal`（owner-only、advisory lock、bounded cold read、fsync append）、`aizu-testkit::MemoryJournal` |
 | 正本 | `spec/journal/v1/` |
 
 ## Adapter (`adapters/<harness>/`)

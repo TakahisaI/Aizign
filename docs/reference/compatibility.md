@@ -6,7 +6,7 @@
 |---|---|---|
 | Aizu package version | `0.1.0`（未release） | 全artifact lockstep。`Cargo.toml`、各 `package.json` |
 | Protocol version | `1`（`aizu-protocol` が実装。`hello` と `workflow.signal.submit`） | `spec/protocol/v1/`。envelopeの `version` |
-| Journal schema version | `1`（未実装） | `spec/journal/v1/`。recordの `schemaVersion` |
+| Journal schema version | `1`（`aizu-store-jsonl` が実装） | `spec/journal/v1/`。recordの `schemaVersion` |
 
 adapterはpackage versionの完全一致ではなく、`hello` で得たprotocol versionとcapabilityで互換性を判定します
 （[ADR-0003](../adr/0003-use-a-versioned-ndjson-process-boundary.md)、[ADR-0008](../adr/0008-use-lockstep-artifact-versions-before-1-0.md)）。

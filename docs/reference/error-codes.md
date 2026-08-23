@@ -38,13 +38,16 @@ protocol fixtureが入った後は、`spec/protocol/v1/` が wire上のcodeの�
 
 ## Journal
 
+`aizu-engine` の `JournalError::code()`。formatの意味は [spec/journal/v1](../../spec/journal/v1/README.md)。
+
 | Code | 意味 | Status |
 |---|---|---|
-| `JOURNAL_CORRUPT` | journalをclosed schemaで読めない | reserved |
-| `JOURNAL_SCHEMA_UNSUPPORTED` | journal schema versionをこのbinaryが扱えない | reserved |
-| `JOURNAL_LOCKED` | 別writerがownershipを持っている | reserved |
-| `JOURNAL_OUTCOME_UNKNOWN` | appendの結果が確定できない。自動再送しない | reserved |
-| `JOURNAL_BOUND_EXCEEDED` | cold readのboundを超えた | reserved |
+| `JOURNAL_UNAVAILABLE` | journalを開けない（directory / fileの権限、作成失敗）。何もappendされていない | implemented（`aizu-engine`、`aizu-store-jsonl`） |
+| `JOURNAL_CORRUPT` | journalをclosed schemaで読めない（未知field、`null`、欠番、途中で切れたrecord、不正なsignal） | implemented（同上） |
+| `JOURNAL_SCHEMA_UNSUPPORTED` | journal schema versionをこのbinaryが扱えない | implemented（同上） |
+| `JOURNAL_LOCKED` | 別writerがownershipを持っている | implemented（同上） |
+| `JOURNAL_OUTCOME_UNKNOWN` | appendの結果が確定できない（`write` / `fsync` 失敗）。自動再送しない | implemented（同上） |
+| `JOURNAL_BOUND_EXCEEDED` | cold readのboundを超えた | implemented（同上） |
 
 ## Effect
 

@@ -15,44 +15,59 @@ use crate::shell;
 
 struct CrateRule {
     name: &'static str,
-    /// Workspace crates this crate may depend on (normal or dev).
+    /// Workspace crates this crate may depend on at runtime.
     workspace: &'static [&'static str],
+    /// Workspace crates this crate may additionally depend on in tests.
+    dev_workspace: &'static [&'static str],
     /// External crates this crate may depend on (normal or dev).
     external: &'static [&'static str],
-    /// Whether the harness-neutral source rules apply to `src/`.
-    neutral_source: bool,
+    /// Whether harness and provider names are banned from `src/`.
+    harness_neutral: bool,
+    /// Whether `src/` must stay free of I/O, clock, scheduling, and async:
+    /// true for crates inside the functional core, false for the shell.
+    shell_free: bool,
 }
 
 const RULES: &[CrateRule] = &[
     CrateRule {
         name: "aizu-core",
         workspace: &[],
+        dev_workspace: &[],
         external: &[],
-        neutral_source: true,
+        harness_neutral: true,
+        shell_free: true,
     },
     CrateRule {
         name: "aizu-engine",
         workspace: &["aizu-core"],
+        dev_workspace: &["aizu-testkit"],
         external: &[],
-        neutral_source: true,
+        harness_neutral: true,
+        shell_free: true,
     },
     CrateRule {
         name: "aizu-protocol",
         workspace: &["aizu-core"],
+        dev_workspace: &["aizu-testkit"],
         external: &["serde", "serde_json"],
-        neutral_source: true,
+        harness_neutral: true,
+        shell_free: true,
     },
     CrateRule {
         name: "aizu-store-jsonl",
         workspace: &["aizu-core", "aizu-engine"],
+        dev_workspace: &["aizu-testkit"],
         external: &["serde", "serde_json"],
-        neutral_source: true,
+        harness_neutral: true,
+        shell_free: false,
     },
     CrateRule {
         name: "aizu-testkit",
         workspace: &["aizu-core", "aizu-engine", "aizu-protocol"],
+        dev_workspace: &[],
         external: &["serde_json"],
-        neutral_source: true,
+        harness_neutral: true,
+        shell_free: false,
     },
     CrateRule {
         name: "aizu-cli",
@@ -63,21 +78,25 @@ const RULES: &[CrateRule] = &[
             "aizu-store-jsonl",
             "aizu-testkit",
         ],
+        dev_workspace: &["aizu-testkit"],
         external: &["serde_json"],
-        neutral_source: true,
+        harness_neutral: true,
+        shell_free: false,
     },
     CrateRule {
         name: "xtask",
         workspace: &[],
+        dev_workspace: &[],
         external: &["serde_json"],
-        neutral_source: false,
+        harness_neutral: false,
+        shell_free: false,
     },
 ];
 
-/// Source patterns that must not appear in crates that own no I/O, clock,
-/// async runtime, or serialization. `aizu-core` is additionally `no_std`,
-/// which makes most of these impossible to compile; the scan still runs so
-/// the other crates get the same rule.
+/// Source patterns that must not appear in shell-free crates (core,
+/// engine, protocol). `aizu-core` is additionally `no_std`, which makes
+/// most of these impossible to compile; the scan still runs so the other
+/// crates get the same rule.
 const FORBIDDEN_PATHS: &[(&str, &str)] = &[
     ("std::fs", "filesystem access belongs to the shell"),
     ("std::process", "process control belongs to the shell"),
@@ -158,7 +177,7 @@ pub(crate) fn run(root: &Path, tracked: &[PathBuf]) -> Result<(), String> {
         check_publish_disabled(name, package, &mut findings);
         check_declared_dependencies(rule, package, &workspace_names, &mut findings);
 
-        if rule.neutral_source {
+        if rule.harness_neutral || rule.shell_free {
             let manifest = package["manifest_path"].as_str().unwrap_or_default();
             let crate_dir = Path::new(manifest).parent().unwrap_or(Path::new("."));
             check_sources(root, crate_dir, rule, tracked, &mut findings)?;
@@ -194,6 +213,7 @@ fn check_declared_dependencies(
         let kind = dependency["kind"].as_str().unwrap_or("normal");
         let allowed = if workspace_names.contains(dep_name) {
             rule.workspace.contains(&dep_name)
+                || (kind == "dev" && rule.dev_workspace.contains(&dep_name))
         } else {
             rule.external.contains(&dep_name)
         };
@@ -232,12 +252,14 @@ fn check_sources(
             let is_comment = line.trim_start().starts_with("//");
             let words = words(line);
 
-            for (token, reason) in NAME_TOKENS {
-                if words.iter().any(|word| word == token) {
-                    findings.push(format!("{location}: `{token}` — {reason}"));
+            if rule.harness_neutral {
+                for (token, reason) in NAME_TOKENS {
+                    if words.iter().any(|word| word == token) {
+                        findings.push(format!("{location}: `{token}` — {reason}"));
+                    }
                 }
             }
-            if is_comment {
+            if is_comment || !rule.shell_free {
                 continue;
             }
             for (pattern, reason) in FORBIDDEN_PATHS {
