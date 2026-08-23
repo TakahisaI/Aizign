@@ -1,0 +1,1 @@
+{"protocol":"aizu","version":1,"requestId":"r","kind":"workflow.signal.submit","ok":true,"payload":{"disposition":"accepted","eventId":"bad id"}}

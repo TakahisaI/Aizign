@@ -2,99 +2,177 @@
 //! `spec/conformance`.
 //!
 //! Fixtures are shared by the Rust and TypeScript protocol implementations,
-//! so this command only checks what is true regardless of language:
-//!
-//! - `spec/conformance/valid/**` holds JSON documents that every decoder
-//!   must accept;
-//! - `spec/conformance/invalid/**` holds inputs that every decoder must
-//!   reject (they may be malformed on purpose, so only their presence and
-//!   naming are checked here).
-//!
-//! Running the fixtures through the actual decoders is the job of the
-//! protocol crates and packages; they read the same files.
+//! so this command only checks what is true regardless of language: the
+//! directory layout, that every invalid frame has an expectation file with
+//! a well-formed code, and that valid frames are JSON. Running the frames
+//! through the actual decoders is the job of the protocol crates and
+//! packages; they read the same files.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::report::{self, Findings};
 
 const FIXTURE_ROOT: &str = "spec/conformance";
+const DIRECTIONS: [&str; 2] = ["request", "response"];
 
 pub(crate) fn run(root: &Path) -> Result<(), String> {
     report::stage("conformance fixtures");
     let fixture_root = root.join(FIXTURE_ROOT);
     if !fixture_root.is_dir() {
-        println!(
-            "{FIXTURE_ROOT}/ does not exist yet; no fixtures to validate \
-             (added by the language-neutral conformance fixtures issue)"
-        );
-        return Ok(());
+        return Err(format!("{FIXTURE_ROOT}/ is missing"));
     }
 
     let mut findings = Findings::default();
-    let valid = collect(&fixture_root.join("valid"), &mut findings)?;
-    let invalid = collect(&fixture_root.join("invalid"), &mut findings)?;
+    let mut valid_count = 0;
+    let mut invalid_count = 0;
 
-    for path in &valid {
-        let bytes = fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
-        if let Err(error) = serde_json::from_slice::<serde_json::Value>(&bytes) {
-            findings.push(format!(
-                "{}: valid fixture is not JSON: {error}",
-                relative(root, path)
-            ));
-        }
+    for direction in DIRECTIONS {
+        valid_count += check_valid(&fixture_root.join("valid").join(direction), &mut findings)?;
+        invalid_count += check_invalid(
+            &fixture_root.join("invalid").join(direction),
+            direction == "request",
+            &mut findings,
+        )?;
     }
 
-    println!(
-        "{} valid, {} invalid fixture(s)",
-        valid.len(),
-        invalid.len()
-    );
-    if valid.is_empty() && invalid.is_empty() {
-        findings.push(format!("{FIXTURE_ROOT}/ exists but contains no fixtures"));
-    }
+    println!("{valid_count} valid, {invalid_count} invalid fixture(s)");
     findings.finish("conformance")
 }
 
-fn collect(dir: &Path, findings: &mut Findings) -> Result<Vec<PathBuf>, String> {
-    let mut files = Vec::new();
-    if !dir.is_dir() {
-        findings.push(format!("missing fixture directory {}", dir.display()));
-        return Ok(files);
-    }
-    walk(dir, &mut files)?;
+fn check_valid(dir: &Path, findings: &mut Findings) -> Result<usize, String> {
+    let files = list(dir, findings)?;
     for path in &files {
-        let is_json = path
+        let name = display(path);
+        if path
             .extension()
-            .is_some_and(|extension| extension == "json");
-        if !is_json {
+            .is_none_or(|extension| extension != "frame")
+        {
+            findings.push(format!("{name}: valid fixtures are `.frame` files"));
+            continue;
+        }
+        let bytes = fs::read(path).map_err(|error| format!("{name}: {error}"))?;
+        if serde_json::from_slice::<serde_json::Value>(&bytes).is_err() {
+            findings.push(format!("{name}: valid frames must be JSON"));
+        }
+        if bytes.ends_with(b"\n") {
             findings.push(format!(
-                "{}: fixtures must use the .json extension",
-                path.display()
+                "{name}: frames are stored without a trailing newline"
             ));
         }
     }
-    files.sort();
-    Ok(files)
+    Ok(files.len())
 }
 
-fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
-    let entries = fs::read_dir(dir).map_err(|error| format!("{}: {error}", dir.display()))?;
-    for entry in entries {
-        let entry = entry.map_err(|error| format!("{}: {error}", dir.display()))?;
-        let path = entry.path();
-        if path.is_dir() {
-            walk(&path, out)?;
+fn check_invalid(dir: &Path, is_request: bool, findings: &mut Findings) -> Result<usize, String> {
+    let files = list(dir, findings)?;
+    let mut frames: BTreeMap<String, PathBuf> = BTreeMap::new();
+    let mut expects: BTreeMap<String, PathBuf> = BTreeMap::new();
+    for path in files {
+        let file_name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if let Some(stem) = file_name.strip_suffix(".expect.json") {
+            expects.insert(stem.to_owned(), path);
+        } else if let Some(stem) = file_name.strip_suffix(".frame") {
+            frames.insert(stem.to_owned(), path);
         } else {
-            out.push(path);
+            findings.push(format!(
+                "{}: invalid fixtures are `.frame` + `.expect.json` pairs",
+                display(&path)
+            ));
+        }
+    }
+
+    for stem in frames.keys() {
+        if !expects.contains_key(stem) {
+            findings.push(format!(
+                "{}/{stem}.frame: missing {stem}.expect.json",
+                display(dir)
+            ));
+        }
+    }
+    for (stem, path) in &expects {
+        if !frames.contains_key(stem) {
+            findings.push(format!("{}: missing {stem}.frame", display(path)));
+        }
+        check_expectation(path, is_request, findings)?;
+    }
+    Ok(frames.len())
+}
+
+fn check_expectation(path: &Path, is_request: bool, findings: &mut Findings) -> Result<(), String> {
+    let name = display(path);
+    let bytes = fs::read(path).map_err(|error| format!("{name}: {error}"))?;
+    let value: serde_json::Value = match serde_json::from_slice(&bytes) {
+        Ok(value) => value,
+        Err(error) => {
+            findings.push(format!("{name}: not JSON: {error}"));
+            return Ok(());
+        }
+    };
+    let Some(object) = value.as_object() else {
+        findings.push(format!("{name}: expectation must be an object"));
+        return Ok(());
+    };
+
+    let allowed: &[&str] = if is_request {
+        &["code", "requestId", "kind"]
+    } else {
+        &["code"]
+    };
+    for key in object.keys() {
+        if !allowed.contains(&key.as_str()) {
+            findings.push(format!("{name}: unexpected key `{key}`"));
+        }
+    }
+    match object.get("code").and_then(serde_json::Value::as_str) {
+        Some(code) if is_short_code(code) => {}
+        _ => findings.push(format!(
+            "{name}: `code` must match ^[A-Z][A-Z0-9_]{{0,63}}$"
+        )),
+    }
+    if is_request {
+        for key in ["requestId", "kind"] {
+            match object.get(key) {
+                Some(serde_json::Value::String(_) | serde_json::Value::Null) => {}
+                _ => findings.push(format!("{name}: `{key}` must be a string or null")),
+            }
         }
     }
     Ok(())
 }
 
-fn relative(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root)
-        .unwrap_or(path)
-        .display()
-        .to_string()
+fn is_short_code(code: &str) -> bool {
+    let mut bytes = code.bytes();
+    bytes.next().is_some_and(|first| first.is_ascii_uppercase())
+        && code.len() <= 64
+        && bytes.all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
+}
+
+fn list(dir: &Path, findings: &mut Findings) -> Result<Vec<PathBuf>, String> {
+    if !dir.is_dir() {
+        findings.push(format!("missing fixture directory {}", display(dir)));
+        return Ok(Vec::new());
+    }
+    let mut files: Vec<PathBuf> = fs::read_dir(dir)
+        .map_err(|error| format!("{}: {error}", display(dir)))?
+        .map(|entry| entry.map(|entry| entry.path()))
+        .collect::<Result<_, _>>()
+        .map_err(|error| format!("{}: {error}", display(dir)))?;
+    files.retain(|path| path.is_file());
+    files.sort();
+    if files.is_empty() {
+        findings.push(format!("{}: no fixtures", display(dir)));
+    }
+    Ok(files)
+}
+
+fn display(path: &Path) -> String {
+    let rendered = path.display().to_string();
+    rendered
+        .find(FIXTURE_ROOT)
+        .map_or(rendered.clone(), |index| rendered[index..].to_owned())
 }
