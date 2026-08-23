@@ -22,6 +22,9 @@ pub mod codes {
     pub const CAPABILITY_UNSUPPORTED: &str = "CAPABILITY_UNSUPPORTED";
     /// An unclassified failure; details go to stderr, never to the wire.
     pub const INTERNAL: &str = "INTERNAL";
+    /// Processing exceeded the time bound. Any append in flight has an
+    /// unknown outcome; the caller must reconcile, not retry.
+    pub const HANDLER_TIMEOUT: &str = "HANDLER_TIMEOUT";
     /// The expected assignment has a well-formed shape but invalid values.
     pub const INVALID_EXPECTATION: &str = "INVALID_EXPECTATION";
 }
@@ -91,6 +94,7 @@ mod tests {
             codes::REQUEST_TOO_LARGE,
             codes::CAPABILITY_UNSUPPORTED,
             codes::INTERNAL,
+            codes::HANDLER_TIMEOUT,
             codes::INVALID_EXPECTATION,
         ] {
             assert_eq!(ProtocolError::new(code, "m").code().as_str(), code);

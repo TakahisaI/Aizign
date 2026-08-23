@@ -18,7 +18,8 @@ protocol fixtureが入った後は、`spec/protocol/v1/` が wire上のcodeの�
 | `INVALID_PAYLOAD` | payloadがkindのclosed schemaに合わない（欠落、型違い、未知field、`null`） | implemented（`aizu-protocol`） |
 | `REQUEST_TOO_LARGE` | request sizeがboundを超えた | implemented（`aizu-protocol`） |
 | `CAPABILITY_UNSUPPORTED` | 要求された操作をこのbinaryまたはadapterが提供しない | reserved（定数のみ） |
-| `INTERNAL` | 分類できない内部error。詳細はstderr | reserved（定数のみ） |
+| `INTERNAL` | 分類できない内部error。詳細はstderr | implemented（`aizu-cli`: clock失敗） |
+| `HANDLER_TIMEOUT` | 処理が時間boundを超えた。進行中のappendの結果は不明。再送せずreconcileする | implemented（`aizu-cli`） |
 
 ## Workflow
 

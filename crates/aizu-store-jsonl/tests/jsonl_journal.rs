@@ -4,40 +4,11 @@
 use std::fs::{self, OpenOptions};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use aizu_core::workflow::{Command, Decision, WorkflowEvent, WorkflowState, decide};
 use aizu_engine::{Journal, JournalError, MAX_JOURNAL_ENTRIES};
 use aizu_store_jsonl::{JOURNAL_FILE_NAME, JOURNAL_SCHEMA_VERSION, JsonlJournal, LOCK_FILE_NAME};
-use aizu_testkit::{journal_contract, signals};
-
-static COUNTER: AtomicU64 = AtomicU64::new(0);
-
-/// A fresh, unique directory that is removed on drop.
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        let unique = format!(
-            "aizu-jsonl-{}-{}",
-            std::process::id(),
-            COUNTER.fetch_add(1, Ordering::Relaxed)
-        );
-        let path = std::env::temp_dir().join(unique);
-        fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-
-    fn state(&self) -> PathBuf {
-        self.0.join("state")
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
+use aizu_testkit::{TempDir, journal_contract, signals};
 
 fn journal_file(state: &Path) -> PathBuf {
     state.join(JOURNAL_FILE_NAME)

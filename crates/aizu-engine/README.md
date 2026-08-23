@@ -18,15 +18,29 @@ Application engine around `aizu-core`: use cases, and the ports the shell must s
 | Port | 実装 | 状態 |
 |---|---|---|
 | `Journal` | `aizu-store-jsonl::JsonlJournal`、`aizu-testkit::MemoryJournal` | 実装済み |
-| `Clock` | `aizu-cli`、`aizu-testkit` | 後続（`aizu handle`） |
-| `EffectSink` | `aizu-cli` | 後続 |
+| `Clock` | `aizu-cli`（system clock）、`aizu-testkit::FixedClock` | 実装済み |
+| `EffectSink` | `aizu-cli` | 後続（最初のeffect intentとともに） |
 
 ## Layout
 
 ```text
 src/
 ├── lib.rs       意図した型だけを公開
-└── journal.rs   Journal trait、JournalEntry、JournalError（stable code付き）、MAX_JOURNAL_ENTRIES
+├── journal.rs   Journal trait、JournalEntry、JournalError（stable code付き）、MAX_JOURNAL_ENTRIES
+├── clock.rs     Clock trait、ClockError
+└── handle.rs    handle_workflow_signal、SignalOutcome、HandleError
+tests/
+└── handle_workflow_signal.rs   accepted / duplicate / rejected / journal失敗 / ACK喪失 / corrupt / clock失敗
 ```
 
-use case（`handle_workflow_signal`）はMilestone `v0.1 — Foundation` の `aizu handle` Issueで追加します。
+## Use case: `handle_workflow_signal`
+
+```text
+journal.load() → WorkflowState::replay → decide
+  Accepted  → clock.now() → journal.append → SignalOutcome::Accepted { entry }
+  Duplicate → SignalOutcome::Duplicate（appendしない）
+  Rejected  → HandleError::Rejected（appendしない）
+```
+
+- `JournalError::OutcomeUnknown` は `HandleError::Journal` としてそのまま返す。engineは再送しない
+- replayの不整合（同一 `event_id` の再適用）は `HandleError::Replay` → code `JOURNAL_CORRUPT`

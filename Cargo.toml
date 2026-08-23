@@ -14,6 +14,8 @@ publish = false
 [workspace.dependencies]
 aizu-core = { path = "crates/aizu-core", version = "0.1.0" }
 aizu-engine = { path = "crates/aizu-engine", version = "0.1.0" }
+aizu-protocol = { path = "crates/aizu-protocol", version = "0.1.0" }
+aizu-store-jsonl = { path = "crates/aizu-store-jsonl", version = "0.1.0" }
 aizu-testkit = { path = "crates/aizu-testkit", version = "0.1.0" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.143"
