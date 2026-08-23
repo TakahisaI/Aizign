@@ -61,20 +61,31 @@ export function assertMetadataOnly(value: unknown, path = '$'): void {
   }
 }
 
-/**
- * Runs every scenario. Throws (via `node:assert`) on the first violation.
- */
-export async function runCoreClientConformance(
-  factory: CoreClientFactory,
-  options: ConformanceOptions = {},
-): Promise<void> {
-  const root = mkdtempSync(join(tmpdir(), 'aizu-adapter-conformance-'));
-  try {
-    const fake = fakeCoreCommand();
-    const make = (name: string, env: Record<string, string> = {}, timeoutMs = 10_000) =>
-      factory({ ...fake, env, stateDir: join(root, name), timeoutMs });
+/** How to reach a core: the fake, or a real `aizu` binary. */
+export interface CoreCommand {
+  readonly command: string;
+  readonly args?: readonly string[];
+}
 
-    // hello: version and capabilities, never the package version.
+/**
+ * The scenarios every core must pass, fake or real: handshake, then
+ * accepted → duplicate → conflict across separate processes, then an
+ * expectation mismatch. Throws (via `node:assert`) on the first violation.
+ */
+export async function runCoreScenarios(
+  factory: CoreClientFactory,
+  core: CoreCommand,
+): Promise<void> {
+  const root = mkdtempSync(join(tmpdir(), 'aizu-core-scenarios-'));
+  try {
+    const make = (name: string) =>
+      factory({
+        command: core.command,
+        args: core.args ?? [],
+        stateDir: join(root, name),
+        timeoutMs: 10_000,
+      });
+
     const hello = await make('hello').hello('req-hello');
     assert.equal(hello.kind, 'ok', `hello: ${JSON.stringify(hello)}`);
     if (hello.kind === 'ok') {
@@ -82,7 +93,6 @@ export async function runCoreClientConformance(
       assert.ok(hello.info.capabilities.includes(CAPABILITY_WORKFLOW_SIGNAL_SUBMIT));
     }
 
-    // accepted -> duplicate -> conflict, across separate processes.
     const client = make('signals');
     const first = await client.submitWorkflowSignal('req-1', samplePayload('evt-1'));
     assert.deepEqual(first, { kind: 'accepted', eventId: 'evt-1' });
@@ -96,7 +106,6 @@ export async function runCoreClientConformance(
     assert.equal(conflict.kind, 'rejected');
     if (conflict.kind === 'rejected') assert.equal(conflict.code, 'EVENT_CONFLICT');
 
-    // expectation mismatch is a rejection with a stable code.
     const mismatched = samplePayload('evt-2');
     const mismatch = await client.submitWorkflowSignal('req-4', {
       expected: { ...mismatched.expected, artifactRevision: 'rev-b' },
@@ -104,8 +113,25 @@ export async function runCoreClientConformance(
     });
     assert.equal(mismatch.kind, 'rejected');
     if (mismatch.kind === 'rejected') assert.equal(mismatch.code, 'REVISION_MISMATCH');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
 
-    // unknown outcomes: never success, never failure, never a retry.
+/**
+ * The unknown-outcome scenarios, which need the fake core's fault
+ * injection: never success, never failure, never a retry.
+ */
+export async function runFaultScenarios(
+  factory: CoreClientFactory,
+  options: ConformanceOptions = {},
+): Promise<void> {
+  const root = mkdtempSync(join(tmpdir(), 'aizu-fault-scenarios-'));
+  try {
+    const fake = fakeCoreCommand();
+    const make = (name: string, env: Record<string, string>, timeoutMs = 10_000) =>
+      factory({ ...fake, env, stateDir: join(root, name), timeoutMs });
+
     const scenarios: Array<[string, string, string]> = [
       ['no-response', 'no_response', 'process exits without a frame'],
       ['garbage', 'undecodable_response', 'stdout is not a frame'],
@@ -128,7 +154,6 @@ export async function runCoreClientConformance(
     assert.equal(hang.kind, 'unknown');
     if (hang.kind === 'unknown') assert.equal(hang.reason, 'timeout');
 
-    // a missing binary is also unknown, not a crash.
     const missing = factory({
       command: join(root, 'no-such-binary'),
       stateDir: join(root, 'missing'),
@@ -143,4 +168,15 @@ export async function runCoreClientConformance(
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+}
+
+/**
+ * Everything an adapter's core client must satisfy, against the fake core.
+ */
+export async function runCoreClientConformance(
+  factory: CoreClientFactory,
+  options: ConformanceOptions = {},
+): Promise<void> {
+  await runCoreScenarios(factory, fakeCoreCommand());
+  await runFaultScenarios(factory, options);
 }

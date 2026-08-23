@@ -25,7 +25,8 @@ npm test -w @aizu/protocol     # package単位
 ## 検査の境界
 
 - 通常のtestはfake harnessとfake core processで完結する。実harness、browser、providerを起動しない
-- core CIはNodeやDSHがなくても単独で成功する
+- core CI（`Rust` job）はNodeやDSHがなくても単独で成功する
+- `TypeScript` jobは実 `aizu` binaryをbuildし、TypeScript client → binary → JSONL journal の往復を `@aizu/adapter-testkit` の `runCoreScenarios` で検査する
 - live smokeは `workflow_dispatch` またはlocal opt-inだけ。成否を通常releaseのrequired checkにしない
 
 ## 何をtestするか
