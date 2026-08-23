@@ -11,6 +11,7 @@ publish.workspace = true
 [dependencies]
 aizu-core.workspace = true
 aizu-engine.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

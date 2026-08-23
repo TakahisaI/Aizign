@@ -62,7 +62,8 @@ Aizuは、harness（LLM agentを動かす実行環境）から来る **structure
 | `crates/aizu-cli` | `aizu hello`、`aizu handle --state <dir>`: one-shot process、watchdog、stderr log |
 | `xtask` | `cargo xtask check / conformance / public-audit` |
 | `docs/`、`.github/` | governance、ADR、architecture、CI |
-| `packages/`、`adapters/`、`spec/conformance/` | 未作成。最初の実装とともに追加 |
+| `spec/conformance/` | language-neutral fixture（valid 13、invalid 45）。`cargo xtask conformance` + Rust test |
+| `packages/`、`adapters/` | 未作成。最初の実装とともに追加 |
 
 ## 関連
 

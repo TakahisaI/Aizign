@@ -38,5 +38,11 @@ Aizuのtestは「成功件数」だけでなく **守る境界を一度壊して
 
 ## Fixture
 
-protocol fixtureは `spec/conformance/` に置き、`cargo xtask conformance` が検査します。
+protocol fixtureは [`spec/conformance/`](../../spec/conformance/README.md) に置きます。
+
+- `valid/{request,response}/<name>.frame` — 受理すべきframe。decode → encodeでJSONとして等しいこと
+- `invalid/{request,response}/<name>.frame` + `<name>.expect.json` — 拒否すべきframeと、期待するcode（requestは復元されるべき `requestId` / `kind` も）
+- `cargo xtask conformance` が構造を検査し、`crates/aizu-protocol/tests/conformance.rs` がRust decoderで全件を通す。loaderは `aizu_testkit::conformance`
+- 新しい拒否経路を実装したら、fixtureも同じPRで追加する
+
 fixtureはnon-confidentialな架空の値だけを使い、実際のpath、ID、本文を含めません。

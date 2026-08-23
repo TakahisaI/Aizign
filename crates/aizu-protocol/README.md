@@ -26,7 +26,8 @@ src/
 └── workflow_signal.rs  workflow.signal.submit のDTO（private）と変換、SignalResult / Disposition
 tests/
 ├── examples.rs         spec/protocol/v1/examples の全fileをdecode → encodeで往復
-└── closed_decoder.rs   size、envelope、version、kind、payloadの各拒否経路とcode
+├── closed_decoder.rs   size、envelope、version、kind、payloadの各拒否経路とcode
+└── conformance.rs      spec/conformance の全fixture（TypeScript実装と同じfile）
 ```
 
 ## Decode の段階

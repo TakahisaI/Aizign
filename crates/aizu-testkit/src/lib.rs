@@ -8,6 +8,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod conformance;
 mod fixed_clock;
 pub mod journal_contract;
 mod memory_journal;
