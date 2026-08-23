@@ -6,18 +6,25 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const state = process.argv[2];
+const args = process.argv.slice(2);
+const json = args.includes('--json');
+const state = args.find((arg) => !arg.startsWith('--'));
 if (!state) {
-  process.stderr.write('usage: summarize-journal.mjs <state-dir>\n');
+  process.stderr.write('usage: summarize-journal.mjs [--json] <state-dir>\n');
   process.exit(2);
 }
 
 const lines = readFileSync(join(state, 'workflow.jsonl'), 'utf8').split('\n').filter((line) => line.length > 0);
-process.stdout.write(`${lines.length} record(s)\n`);
-for (const line of lines) {
-  const record = JSON.parse(line);
-  const { seq, kind, signal } = record;
+const records = lines.map((line) => JSON.parse(line));
+if (json) {
   process.stdout.write(
-    `${String(seq).padStart(4)}  ${kind}  ${signal.kind}  workflow=${signal.workflowId} assignment=${signal.assignmentId} role=${signal.role} revision=${signal.artifactRevision} event=${signal.eventId}\n`,
+    `${JSON.stringify({ records: records.length, kinds: records.map((record) => record.signal.kind) })}\n`,
   );
+} else {
+  process.stdout.write(`${records.length} record(s)\n`);
+  for (const { seq, kind, signal } of records) {
+    process.stdout.write(
+      `${String(seq).padStart(4)}  ${kind}  ${signal.kind}  workflow=${signal.workflowId} assignment=${signal.assignmentId} role=${signal.role} revision=${signal.artifactRevision} event=${signal.eventId}\n`,
+    );
+  }
 }

@@ -28,6 +28,8 @@
 - [ ] clean cloneからの再現性
 - [ ] version compatibility文書
 - [ ] `@aizu` npm scopeの確保
+- [ ] 実装者以外（別maintainer、または別harness・別model）による静的review。最低限: protocol schemaとRust / TypeScript decoderの差分、adapterからprotocolへ越境するfield、response correlation、unbounded input / output / cold read、`unknown` からの暗黙retry、journalとharness evidenceのauthority重複、README / ADR / Issue / 実装の不一致
+- [ ] live smokeを実装者以外が固定commit SHAと公開文書だけで再現
 
 ## 手順（GitHub Release）
 

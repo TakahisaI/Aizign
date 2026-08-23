@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aizu.dev/experiments/dsh-live-smoke/result.schema.json",
+  "title": "DSH live smoke result (metadata only)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["commit", "date", "versions", "executor", "steps", "journal", "verdict"],
+  "properties": {
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+    "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dsh", "firefox", "aizu"],
+      "properties": {
+        "dsh": { "type": "string" },
+        "firefox": { "type": "string" },
+        "aizu": { "type": "string" }
+      }
+    },
+    "executor": { "type": "string", "description": "Harness and model that ran the smoke; no account identifiers." },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["step", "expected", "observed"],
+        "properties": {
+          "step": { "type": "string" },
+          "expected": { "type": "string", "pattern": "^(accepted|duplicate|[A-Z][A-Z0-9_]{0,63})$" },
+          "observed": { "type": "string", "pattern": "^(accepted|duplicate|unknown|[A-Z][A-Z0-9_]{0,63})$" },
+          "note": { "type": "string", "maxLength": 200 }
+        }
+      }
+    },
+    "journal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["records", "kinds"],
+      "properties": {
+        "records": { "type": "integer", "minimum": 0 },
+        "kinds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["implementation_ready", "review_findings", "review_passed", "repair_submitted", "blocked"]
+          }
+        }
+      }
+    },
+    "verdict": { "type": "string", "enum": ["pass", "fail", "blocked"] }
+  }
+}
