@@ -8,15 +8,17 @@ protocol fixtureが入った後は、`spec/protocol/v1/` が wire上のcodeの�
 
 ## Protocol
 
+`aizu-protocol` の `codes::*`。wire上の意味は [spec/protocol/v1](../../spec/protocol/v1/README.md#error-codes)。
+
 | Code | 意味 | Status |
 |---|---|---|
-| `PROTOCOL_VERSION_UNSUPPORTED` | envelopeの `version` をこのbinaryが扱えない | reserved |
-| `INVALID_ENVELOPE` | envelopeがclosed schemaに合わない（欠落、型違い、未知field） | reserved |
-| `UNKNOWN_KIND` | `kind` が未登録 | reserved |
-| `INVALID_PAYLOAD` | payloadがkindのclosed schemaに合わない | reserved |
-| `REQUEST_TOO_LARGE` | request sizeがboundを超えた | reserved |
-| `CAPABILITY_UNSUPPORTED` | 要求された操作をこのbinaryまたはadapterが提供しない | reserved |
-| `INTERNAL` | 分類できない内部error。詳細はstderr | reserved |
+| `PROTOCOL_VERSION_UNSUPPORTED` | envelopeの `version` をこのbinaryが扱えない | implemented（`aizu-protocol`） |
+| `INVALID_ENVELOPE` | envelopeがclosed schemaに合わない（JSONでない、`protocol` 違い、欠落、型違い、未知field、`requestId` 不正） | implemented（`aizu-protocol`） |
+| `UNKNOWN_KIND` | `kind` が未登録 | implemented（`aizu-protocol`） |
+| `INVALID_PAYLOAD` | payloadがkindのclosed schemaに合わない（欠落、型違い、未知field、`null`） | implemented（`aizu-protocol`） |
+| `REQUEST_TOO_LARGE` | request sizeがboundを超えた | implemented（`aizu-protocol`） |
+| `CAPABILITY_UNSUPPORTED` | 要求された操作をこのbinaryまたはadapterが提供しない | reserved（定数のみ） |
+| `INTERNAL` | 分類できない内部error。詳細はstderr | reserved（定数のみ） |
 
 ## Workflow
 
@@ -25,7 +27,7 @@ protocol fixtureが入った後は、`spec/protocol/v1/` が wire上のcodeの�
 | Code | 意味 | Status |
 |---|---|---|
 | `INVALID_SIGNAL` | signalがkindごとの制約（role、`findingCount`、`artifactRef`、`shortErrorCode`）に合わない | implemented（`aizu-core`） |
-| `INVALID_EXPECTATION` | expected assignmentがclosed schemaに合わない。coreでは型により表現不能なため、protocol境界で返す | reserved（protocol） |
+| `INVALID_EXPECTATION` | `expected` の形は正しいが値が不正（識別子の文字種や長さ）。coreでは型により表現不能なため、protocol境界で返す | implemented（`aizu-protocol`） |
 | `WORKFLOW_MISMATCH` | `workflowId` が期待と異なる | implemented（`aizu-core`） |
 | `ASSIGNMENT_MISMATCH` | `assignmentId` が期待と異なる | implemented（`aizu-core`） |
 | `ROLE_MISMATCH` | `role` が期待と異なる | implemented（`aizu-core`） |

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aizu.dev/spec/protocol/v1/workflow-signal-submit.response.schema.json",
+  "title": "workflow.signal.submit success payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["disposition", "eventId"],
+  "properties": {
+    "disposition": { "type": "string", "enum": ["accepted", "duplicate"] },
+    "eventId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" }
+  }
+}

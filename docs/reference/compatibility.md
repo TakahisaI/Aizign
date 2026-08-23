@@ -5,7 +5,7 @@
 | Version | 現在 | 管理 |
 |---|---|---|
 | Aizu package version | `0.1.0`（未release） | 全artifact lockstep。`Cargo.toml`、各 `package.json` |
-| Protocol version | `1`（未実装） | `spec/protocol/v1/`。envelopeの `version` |
+| Protocol version | `1`（`aizu-protocol` が実装。`hello` と `workflow.signal.submit`） | `spec/protocol/v1/`。envelopeの `version` |
 | Journal schema version | `1`（未実装） | `spec/journal/v1/`。recordの `schemaVersion` |
 
 adapterはpackage versionの完全一致ではなく、`hello` で得たprotocol versionとcapabilityで互換性を判定します
