@@ -56,9 +56,12 @@ Aizuは、harness（LLM agentを動かす実行環境）から来る **structure
 |---|---|
 | `crates/aizu-core` | `identity` と `workflow` context（signal、command、event、state、decision、error）。`execution` 以降は後続 |
 | `crates/aizu-protocol`、`spec/protocol/v1/` | Protocol v1: envelope、`hello`、`workflow.signal.submit`、closed decoder、schemaとexample |
+| `crates/aizu-engine` | `Journal` port（`JournalEntry`、`JournalError`）。use caseは後続 |
+| `crates/aizu-store-jsonl`、`spec/journal/v1/` | JSONL journal: owner-only、lock、bounded cold read、fsync append、closed record |
+| `crates/aizu-testkit` | `MemoryJournal`（fault injection）、journal contract、signal helper |
 | `xtask` | `cargo xtask check / conformance / public-audit` |
 | `docs/`、`.github/` | governance、ADR、architecture、CI |
-| `crates/aizu-engine`、`crates/aizu-store-jsonl`、`crates/aizu-cli`、`packages/`、`adapters/`、`spec/journal/`、`spec/conformance/` | 未作成。最初の実装とともに追加 |
+| `crates/aizu-cli`、`packages/`、`adapters/`、`spec/conformance/` | 未作成。最初の実装とともに追加 |
 
 ## 関連
 
