@@ -22,7 +22,7 @@
 - [ ] Rust / TypeScript conformance
 - [ ] metadata-only journal
 - [ ] fake harnessによるend-to-end round trip
-- [ ] DSH adapterのopt-in smoke
+- [ ] DSH adapterのopt-in smoke（`experiments/dsh-live-smoke/`。手順はoperator側）
 - [ ] package contents inspection（`cargo package --list`、`npm pack --dry-run`）
 - [ ] SECURITY、LICENSE、CONTRIBUTING
 - [ ] clean cloneからの再現性

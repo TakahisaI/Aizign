@@ -82,7 +82,7 @@ npm test -w @aizu/protocol
 - harnessのlive process、browser
 - network（registry以外）
 
-live smokeは `experiments/` 配下のopt-in手順だけで実行します（現時点では未作成）。
+live smokeは `experiments/` 配下の再現可能なscriptと、operatorのlocalな手順書で実行します（[experiments/README.md](../../experiments/README.md)）。
 
 ## 次に読むもの
 
