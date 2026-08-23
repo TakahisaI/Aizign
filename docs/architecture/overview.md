@@ -62,7 +62,7 @@ Aizuは、harness（LLM agentを動かす実行環境）から来る **structure
 | `crates/aizu-cli` | `aizu hello`、`aizu handle --state <dir>`: one-shot process、watchdog、stderr log |
 | `xtask` | `cargo xtask check / conformance / public-audit` |
 | `docs/`、`.github/` | governance、ADR、architecture、CI |
-| `spec/conformance/` | language-neutral fixture（valid 13、invalid 45）。`cargo xtask conformance` + Rust test |
+| `spec/conformance/` | language-neutral fixture（件数はtreeが正。`cargo xtask conformance` が構造を検証し、Rust / TS testが全fixtureをdecoderへ通す） |
 | `packages/protocol` | `@aizu/protocol`: TypeScript codec（同じfixtureを通す）、`checkCompatibility`、`CoreClient` 契約 |
 | `packages/adapter-testkit` | `@aizu/adapter-testkit`: fake core、conformance runner、reference client |
 | `experiments/dsh-live-smoke` | opt-in live smokeのpatch生成とjournal要約（手順はoperator側） |

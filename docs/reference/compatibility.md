@@ -34,4 +34,4 @@ Node.jsは `24.19.0`（LTS）、npmは `12.0.2` に固定しています。DSH a
 
 | Harness | Adapter | Supported version | Status |
 |---|---|---|---|
-| DSH | `@aizu/adapter-dsh` | `0.1.1-rc.2`（`@deepseek-ai/cordis` 4.0.1、`schemastery` 3.18.1） | preflight + scope-bound tool + core client（fake harnessで検証。live smokeは未実施） |
+| DSH | `@aizu/adapter-dsh` | `0.1.1-rc.2`（`@deepseek-ai/cordis` 4.0.1、`schemastery` 3.18.1） | preflight + scope-bound tool + core client。fake harnessに加え、第三者（別harness・別model）によるDSH × Firefoxのlive smokeがpass（2026-08-23、commit `fd0e208`、[Issue #11](https://github.com/TakahisaI/Aizu/issues/11)） |
