@@ -6,8 +6,8 @@
 | 読む | 内容 |
 |---|---|
 | `spec/protocol/v1/` | wire contract。envelope、kind、schema、example |
-| `packages/protocol/` | `@aizu/protocol`。envelopeの型、validator、`hello` |
-| `packages/adapter-testkit/` | fake core process、conformance runner |
+| `packages/protocol/` | `@aizu/protocol`。envelope codec、`checkCompatibility`、`CoreClient` / `SubmitOutcome` / `UnknownOutcome` の契約型 |
+| `packages/adapter-testkit/` | fake core process、`runCoreClientConformance`、`ReferenceOneShotClient`（参照実装）、`assertMetadataOnly` |
 | この文書 | 契約と境界 |
 | `adapters/<your-harness>/` | 自分の実装 |
 
@@ -63,5 +63,6 @@ adapters/<harness>/
 
 1. Issue（template: Adapter proposal）で、harness、capabilities、データ境界、live smokeの方法を合意する
 2. `docs/architecture/dependency-rules.md` の表にpackageを追加する
-3. `packages/adapter-testkit` のconformanceを通す
-4. `docs/reference/compatibility.md` にサポートするharness versionを追記する
+3. `CoreClient` を実装し、`test/conformance/` で `runCoreClientConformance` を通す（unknownの全経路を含む）
+4. harness native event → `WorkflowSignalSubmitPayload` のmappingを書き、`assertMetadataOnly` でharness IDや本文が混入しないことを検査する
+5. `docs/reference/compatibility.md` にサポートするharness versionを追記する

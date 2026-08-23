@@ -57,11 +57,12 @@ source中に次が現れたら `public-audit` が失敗します。
 
 | Package | 依存してよいworkspace package | 外部依存 |
 |---|---|---|
-| `@aizu/protocol` | なし | なし（生成codeとvalidatorは自前） |
-| `@aizu/adapter-testkit` | `@aizu/protocol` | test runnerに必要な最小限 |
+| `@aizu/protocol` | なし | なし（validatorは自前。`node:` 組み込みも使わない） |
+| `@aizu/adapter-testkit` | `@aizu/protocol` | なし（`node:child_process` / `node:fs` / `node:assert` の組み込みのみ） |
 | `@aizu/adapter-<harness>` | `@aizu/protocol`、`@aizu/adapter-testkit`（devのみ） | そのharnessのSDK（exact version固定） |
 
 - package間はworkspace依存だけを使い、相対pathで別packageのsourceをimportしない
+- 開発toolchain（`typescript`、`@biomejs/biome`、`@types/node`）はroot `package.json` にexact versionで置き、各packageには置かない
 - `exports` mapはclosed。`./*` のようなwildcardを許さない
 - adapterから `aizu-core` / `aizu-engine` の型を参照しない。契約は `@aizu/protocol` だけ
 

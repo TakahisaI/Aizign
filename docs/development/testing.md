@@ -6,8 +6,8 @@
 |---|---|
 | Rust unit test | 対象moduleの `#[cfg(test)] mod tests` |
 | Rust cross-module test | crateの `tests/` |
-| TypeScript unit test | 対象sourceに近接（`src/**/*.test.ts`） |
-| adapter conformance | `adapters/<harness>/test/conformance/` |
+| TypeScript unit test | 対象sourceに近接（`src/**/*.test.ts`、`node --test`） |
+| adapter conformance | `adapters/<harness>/test/conformance/`（`@aizu/adapter-testkit` の `runCoreClientConformance`） |
 | protocol fixture | `spec/conformance/valid/`、`spec/conformance/invalid/`（repository共通。RustとTypeScriptの両方が同じfileを読む） |
 
 rootに巨大なtest directoryを作りません。
@@ -15,9 +15,11 @@ rootに巨大なtest directoryを作りません。
 ## 実行
 
 ```sh
-cargo xtask check          # PR前の全検査
-cargo test --workspace     # Rustだけ
-cargo test -p aizu-core    # crate単位
+cargo xtask check              # PR前の全検査（Rust + TypeScript）
+cargo test --workspace         # Rustだけ
+cargo test -p aizu-core        # crate単位
+npm run check                  # TypeScriptだけ
+npm test -w @aizu/protocol     # package単位
 ```
 
 ## 検査の境界
@@ -42,7 +44,7 @@ protocol fixtureは [`spec/conformance/`](../../spec/conformance/README.md) に�
 
 - `valid/{request,response}/<name>.frame` — 受理すべきframe。decode → encodeでJSONとして等しいこと
 - `invalid/{request,response}/<name>.frame` + `<name>.expect.json` — 拒否すべきframeと、期待するcode（requestは復元されるべき `requestId` / `kind` も）
-- `cargo xtask conformance` が構造を検査し、`crates/aizu-protocol/tests/conformance.rs` がRust decoderで全件を通す。loaderは `aizu_testkit::conformance`
+- `cargo xtask conformance` が構造を検査し、`crates/aizu-protocol/tests/conformance.rs`（Rust）と `packages/protocol/src/conformance.test.ts`（TypeScript）が同じfileで全件を通す
 - 新しい拒否経路を実装したら、fixtureも同じPRで追加する
 
 fixtureはnon-confidentialな架空の値だけを使い、実際のpath、ID、本文を含めません。

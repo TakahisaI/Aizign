@@ -25,6 +25,7 @@ adapterはpackage versionの完全一致ではなく、`hello` で得たprotocol
 | Rust | `rust-toolchain.toml`、`Cargo.toml` の `rust-version` |
 | Node.js | `.node-version`、`package.json` の `engines` / `devEngines` |
 | npm | `package.json` の `packageManager` |
+| TypeScript / Biome / @types/node | root `package.json` の `devDependencies`（exact）と `package-lock.json` |
 | GitHub Actions | commit SHAで固定 |
 
 Node.jsは `24.19.0`（LTS）、npmは `12.0.2` に固定しています。DSH adapterが入る時点で、harness SDKの要求に合わせて再評価します（専用PR）。

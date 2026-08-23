@@ -29,6 +29,17 @@
     }
   },
   "scripts": {
-    "check": "echo \"no TypeScript packages yet; checks are added with the first package\" && exit 0"
+    "check": "npm run lint && npm run build && npm run typecheck && npm run test && npm run pack:check",
+    "lint": "biome ci .",
+    "format": "biome check --write .",
+    "build": "npm run build -w @aizu/protocol && npm run build -w @aizu/adapter-testkit",
+    "typecheck": "npm run typecheck --workspaces",
+    "test": "npm run test --workspaces",
+    "pack:check": "npm run pack:check --workspaces"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.10",
+    "@types/node": "24.13.3",
+    "typescript": "5.9.3"
   }
 }
