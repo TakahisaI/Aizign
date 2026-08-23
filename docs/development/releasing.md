@@ -31,11 +31,22 @@
 
 ## 手順（GitHub Release）
 
-1. version bumpのPRを出す（全artifactを同じversionへ。`Cargo.toml`、各 `package.json`、`docs/reference/compatibility.md`）
-2. mainへmerge後、tag `v0.x.y` を作る
-3. GitHub Releaseを作り、protocol version、journal schema version、互換性の変更を記載する
+1. version bumpのPRを出す（全artifactを同じversionへ。`Cargo.toml` の `workspace.package.version`、root と各 `package.json`、`Cargo.lock` / `package-lock.json`、`docs/reference/compatibility.md`）
+2. mainへmerge後、mainのcommitに tag `vX.Y.Z` を打ってpushする（ruleset上、tagはPRなしで作れる）
 
-release workflowの自動化は `v0.1` readiness reviewのIssueで追加します。
+   ```sh
+   git tag -a v0.1.0 -m "Aizu v0.1.0" && git push origin v0.1.0
+   ```
+
+3. `.github/workflows/release.yml` が、tagとworkspace versionの一致を検証 → `cargo xtask check`（Rust + TypeScript + conformance + public-audit）→ GitHub Releaseを作成する（generated notes。artifactなし、registry publishなし）
+4. Releaseの本文にprotocol version、journal schema version、互換性の変更を追記する
+
+`release.yml` は `contents: write` を持つ唯一のworkflowで、release jobだけがその権限を使います。
+
+## Package contents
+
+- Rust: `cargo package --list --workspace` を `cargo xtask rust-check` が実行する。crateのtestはrepositoryの `spec/` を読むので、packageされたcrate単体ではtestできない（libraryのbuildには影響しない）
+- TypeScript: `npm pack --dry-run` を各packageの `pack:check` が実行する（`files` は `lib` とREADMEだけ）
 
 ## Toolchainの更新
 

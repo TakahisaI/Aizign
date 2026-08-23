@@ -43,5 +43,20 @@ pub(crate) fn run(root: &Path) -> Result<(), String> {
     }
     shell::run(root, "cargo", &["deny", "check"])?;
 
+    // Package contents inspection: every crate must package cleanly even
+    // though registry publication stays disabled (release gate, ADR-0008).
+    report::stage("cargo package --list");
+    shell::run(
+        root,
+        "cargo",
+        &[
+            "package",
+            "--list",
+            "--workspace",
+            "--allow-dirty",
+            "--quiet",
+        ],
+    )?;
+
     Ok(())
 }
