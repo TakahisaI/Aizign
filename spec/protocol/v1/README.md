@@ -55,7 +55,9 @@ structured workflow signalを、shellがbindされている `expected` assignmen
 | `INVALID_PAYLOAD` | payloadの形がkindのschemaに合わない（欠落、型違い、未知field、`null`） |
 | `INVALID_EXPECTATION` | `expected` の値が不正（識別子の文字種や長さ） |
 | `INVALID_SIGNAL` ほかworkflow code | `signal` の値や制約、expectationとの不一致、conflict |
+| `JOURNAL_*` | journalを開けない・読めない・書けない。`JOURNAL_OUTCOME_UNKNOWN` は再送しない |
 | `CAPABILITY_UNSUPPORTED` | kindは既知だがこのbinaryでは無効（v1では未使用） |
+| `HANDLER_TIMEOUT` | 処理が時間bound（10秒）を超えた。進行中のappendの結果は不明。`requestId` / `kind` は `null` |
 | `INTERNAL` | 分類不能。詳細はstderr |
 
 登録簿は [docs/reference/error-codes.md](../../../docs/reference/error-codes.md)。

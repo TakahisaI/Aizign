@@ -49,6 +49,16 @@ cargo xtask public-audit
 cargo xtask whitespace
 ```
 
+## binaryを動かす
+
+```sh
+cargo build -p aizu-cli
+./target/debug/aizu hello
+cat spec/protocol/v1/examples/workflow-signal-submit.request.json | ./target/debug/aizu handle --state ./.aizu-state
+```
+
+2回目は別processでも `duplicate` が返ります（journalが正本）。`.aizu-state/` はgitignore済みです。
+
 ## TypeScript workspace
 
 現時点ではTypeScript packageはまだありません。root `package.json` は `private: true` のworkspace rootで、

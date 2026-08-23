@@ -8,8 +8,12 @@
 
 #![forbid(unsafe_code)]
 
+mod fixed_clock;
 pub mod journal_contract;
 mod memory_journal;
 pub mod signals;
+mod temp_dir;
 
+pub use fixed_clock::FixedClock;
 pub use memory_journal::MemoryJournal;
+pub use temp_dir::TempDir;

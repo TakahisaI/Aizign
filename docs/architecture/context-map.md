@@ -26,9 +26,9 @@ engineはuse caseとportを持ちます。contextの切り方はcoreと揃えま
 
 | 要素 | 内容 | 状態 |
 |---|---|---|
-| Use case | `handle_workflow_signal` など。journal load → core → append → claim → report | 後続 |
-| Port | `Journal`（append / load、`JournalEntry`、`JournalError`） | 実装済み |
-| Port | `Clock`（bounded timestamp）、`EffectSink`（effect intentの配送） | 後続 |
+| Use case | `handle_workflow_signal`: journal load → replay → core → append → outcome | 実装済み |
+| Port | `Journal`（append / load、`JournalEntry`、`JournalError`）、`Clock`（bounded timestamp） | 実装済み |
+| Port | `EffectSink`（effect intentの配送） | 後続 |
 | 所有 | portはengineが定義。store、testkit、cliが実装 | — |
 
 ## Protocol (`crates/aizu-protocol`, `packages/protocol`)

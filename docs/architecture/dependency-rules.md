@@ -70,7 +70,7 @@ source中に次が現れたら `public-audit` が失敗します。
 | Port | 定義する側 | 実装する側 | 状態 |
 |---|---|---|---|
 | `Journal` | `aizu-engine` | `aizu-store-jsonl`、`aizu-testkit`（`MemoryJournal`） | 実装済み |
-| `Clock` | `aizu-engine` | `aizu-cli`、`aizu-testkit`（fixed） | 後続（`aizu handle`） |
+| `Clock` | `aizu-engine` | `aizu-cli`（system）、`aizu-testkit`（`FixedClock`） | 実装済み |
 | `EffectSink` | `aizu-engine` | `aizu-cli`（protocol responseとして返す） | 後続 |
 | Harness adapter contract | `@aizu/protocol` / `spec/protocol` | 各adapter |
 

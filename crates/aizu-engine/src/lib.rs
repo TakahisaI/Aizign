@@ -7,6 +7,10 @@
 
 #![forbid(unsafe_code)]
 
+mod clock;
+mod handle;
 mod journal;
 
+pub use clock::{Clock, ClockError};
+pub use handle::{HandleError, SignalOutcome, handle_workflow_signal};
 pub use journal::{Journal, JournalEntry, JournalError, MAX_JOURNAL_ENTRIES};
