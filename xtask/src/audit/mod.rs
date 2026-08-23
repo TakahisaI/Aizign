@@ -10,6 +10,7 @@
 mod dependencies;
 mod entry_docs;
 mod links;
+mod lockstep;
 mod packages;
 mod secrets;
 
@@ -24,10 +25,11 @@ pub(crate) fn run(root: &Path) -> Result<(), String> {
     let tracked = shell::tracked_files(root)?;
     let mut failures = Vec::new();
 
-    let audits: [(&str, Audit); 5] = [
+    let audits: [(&str, Audit); 6] = [
         ("dependency boundaries", dependencies::run),
         ("secrets and private paths", secrets::run),
         ("package manifests", packages::run),
+        ("version lockstep", lockstep::run),
         ("entry documents", entry_docs::run),
         ("documentation links", links::run),
     ];

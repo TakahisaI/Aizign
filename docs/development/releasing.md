@@ -2,7 +2,8 @@
 
 ## Versioning
 
-- すべてのpublishable artifactは同一のAizu versionにそろえる（lockstep、[ADR-0008](../adr/0008-use-lockstep-artifact-versions-before-1-0.md)）
+- すべてのpublishable artifactは同一のAizu versionにそろえる（lockstep、[ADR-0008](../adr/0008-use-lockstep-artifact-versions-before-1-0.md)）。
+  lockstepは `cargo xtask public-audit` の version lockstep 検査が enforce する（crateは `version.workspace = true`、`workspace.dependencies` の内部pin、全 `package.json` のversionと `@aizu/*` 依存のexact pin）
 - wire protocol versionとjournal schema versionは独立した整数
 - `0.x` の間は最新minorだけをsupport
 
@@ -34,13 +35,14 @@
 ## 手順（GitHub Release）
 
 1. version bumpのPRを出す（全artifactを同じversionへ。`Cargo.toml` の `workspace.package.version`、root と各 `package.json`、`Cargo.lock` / `package-lock.json`、`docs/reference/compatibility.md`）
-2. mainへmerge後、mainのcommitに tag `vX.Y.Z` を打ってpushする（ruleset上、tagはPRなしで作れる）
+2. mainへmerge後、**mainのtip**に tag `vX.Y.Z` を打ってpushする（ruleset上、tagはPRなしで作れる）。
+   release gateはtagged SHAとdefault branchのtipの一致をfail closedで検証するので、古いcommitや別branchへのtagはreleaseにならない（reviewが見ていないtreeをreleaseしないため）。tagとpushの間にmainが進んだ場合は、新しいtipをre-reviewしてからtagを打ち直す
 
    ```sh
    git tag -a v0.1.0 -m "Aizu v0.1.0" && git push origin v0.1.0
    ```
 
-3. `.github/workflows/release.yml` が、tagとworkspace versionの一致を検証 → `cargo xtask check`（Rust + TypeScript + conformance + public-audit）→ GitHub Releaseを作成する（generated notes。artifactなし、registry publishなし）
+3. `.github/workflows/release.yml` が、tagged SHA = main tip とtag = workspace versionを検証 → `cargo xtask check`（Rust + TypeScript + conformance + public-audit）→ GitHub Releaseを作成する（generated notes。artifactなし、registry publishなし）
 4. Releaseの本文にprotocol version、journal schema version、互換性の変更を追記する
 
 `release.yml` は `contents: write` を持つ唯一のworkflowで、release jobだけがその権限を使います。
