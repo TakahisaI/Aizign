@@ -19,6 +19,7 @@ control journalのdurable format。**metadata-only、append-only**（ADR-0007）
 | `signal` | object | 受理されたstructured signal（closed。protocol v1の `signal` と同じ形だが別schemaとして所有） |
 
 - すべてclosed schema（`additionalProperties: false`）。未知fieldは `JOURNAL_CORRUPT`
+- `signal` の条件規則（kindとroleの対応、`findingCount` / `artifactRef` / `shortErrorCode` の必須・禁止）は [`record.schema.json`](schemas/record.schema.json) がprotocol v1のrequest schemaと同じ形で持つ。**schemaとruntime decoder（`aizu-store-jsonl`）の受理集合は同一**で、exampleをschemaに通すgate（`@aizu/protocol` のschema test）がCIで検証する
 - optional fieldは省略する。`null` は `JOURNAL_CORRUPT`
 - 本文、credential、harness ID（`prompt`、`output`、`reasoning`、`token`、`sessionId`、`threadId` など）にあたるfieldは存在しない。record schemaがclosedなので、そのようなfieldを持つrecordは読み込めない
 

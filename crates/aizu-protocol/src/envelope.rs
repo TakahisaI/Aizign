@@ -374,9 +374,12 @@ pub fn decode_response(frame: &[u8]) -> Result<Response, ProtocolError> {
     let body = match (envelope.ok, envelope.payload, envelope.error) {
         (true, Some(payload), None) => match envelope.kind.as_deref() {
             Some(KIND_HELLO) => {
-                ResponseBody::Hello(serde_json::from_value(payload).map_err(|error| {
+                let info: crate::HelloInfo = serde_json::from_value(payload).map_err(|error| {
                     ProtocolError::new(codes::INVALID_PAYLOAD, error.to_string())
-                })?)
+                })?;
+                info.validate()
+                    .map_err(|message| ProtocolError::new(codes::INVALID_PAYLOAD, message))?;
+                ResponseBody::Hello(info)
             }
             Some(KIND_WORKFLOW_SIGNAL_SUBMIT) => {
                 ResponseBody::WorkflowSignal(workflow_signal::decode_result(payload)?)

@@ -119,9 +119,9 @@ fn check_expectation(path: &Path, is_request: bool, findings: &mut Findings) -> 
     };
 
     let allowed: &[&str] = if is_request {
-        &["code", "requestId", "kind"]
+        &["code", "requestId", "kind", "schema"]
     } else {
-        &["code"]
+        &["code", "schema"]
     };
     for key in object.keys() {
         if !allowed.contains(&key.as_str()) {
@@ -133,6 +133,15 @@ fn check_expectation(path: &Path, is_request: bool, findings: &mut Findings) -> 
         _ => findings.push(format!(
             "{name}: `code` must match ^[A-Z][A-Z0-9_]{{0,63}}$"
         )),
+    }
+    if !object
+        .get("schema")
+        .is_some_and(serde_json::Value::is_boolean)
+    {
+        findings.push(format!(
+            "{name}: `schema` must state whether the frame validates against the JSON Schema \
+             (true only where the schema cannot express the rule, e.g. the size bound)"
+        ));
     }
     if is_request {
         for key in ["requestId", "kind"] {

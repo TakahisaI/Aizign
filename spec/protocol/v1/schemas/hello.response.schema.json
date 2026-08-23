@@ -4,22 +4,47 @@
   "title": "hello response payload",
   "type": "object",
   "additionalProperties": false,
-  "required": ["protocolVersion", "journalSchemaVersion", "capabilities", "package"],
+  "required": [
+    "protocolVersion",
+    "journalSchemaVersion",
+    "capabilities",
+    "package"
+  ],
   "properties": {
-    "protocolVersion": { "type": "integer", "minimum": 1 },
-    "journalSchemaVersion": { "type": "integer", "minimum": 1 },
+    "protocolVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4294967295
+    },
+    "journalSchemaVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4294967295
+    },
     "capabilities": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "type": "string", "enum": ["workflow.signal.submit"] }
+      "description": "Request kinds beyond `hello`. Open for future versions; v1 defines exactly `workflow.signal.submit`. Compatibility is decided by checkCompatibility, not by decoding.",
+      "items": {
+        "type": "string",
+        "maxLength": 128,
+        "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)*$"
+      }
     },
     "package": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "version"],
+      "required": [
+        "name",
+        "version"
+      ],
       "properties": {
-        "name": { "type": "string" },
-        "version": { "type": "string" }
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
       }
     }
   }

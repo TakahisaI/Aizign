@@ -4,30 +4,247 @@
   "title": "Aizu journal record v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "seq", "at", "kind", "signal"],
+  "required": [
+    "schemaVersion",
+    "seq",
+    "at",
+    "kind",
+    "signal"
+  ],
   "properties": {
-    "schemaVersion": { "const": 1 },
-    "seq": { "type": "integer", "minimum": 1 },
-    "at": { "type": "integer", "minimum": 1577836800, "maximum": 4102444800 },
-    "kind": { "type": "string", "enum": ["workflow.signal.accepted"] },
+    "schemaVersion": {
+      "const": 1
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "at": {
+      "type": "integer",
+      "minimum": 1577836800,
+      "maximum": 4102444800
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "workflow.signal.accepted"
+      ]
+    },
     "signal": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["eventId", "workflowId", "assignmentId", "role", "artifactRevision", "kind"],
+      "required": [
+        "eventId",
+        "workflowId",
+        "assignmentId",
+        "role",
+        "artifactRevision",
+        "kind"
+      ],
       "properties": {
-        "eventId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
-        "workflowId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
-        "assignmentId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
-        "role": { "type": "string", "enum": ["implementation", "review"] },
-        "artifactRevision": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "eventId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "workflowId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "assignmentId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "implementation",
+            "review"
+          ]
+        },
+        "artifactRevision": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
         "kind": {
           "type": "string",
-          "enum": ["implementation_ready", "review_findings", "review_passed", "repair_submitted", "blocked"]
+          "enum": [
+            "implementation_ready",
+            "review_findings",
+            "review_passed",
+            "repair_submitted",
+            "blocked"
+          ]
         },
-        "findingCount": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
-        "artifactRef": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$" },
-        "shortErrorCode": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$" }
-      }
+        "findingCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "artifactRef": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+        },
+        "shortErrorCode": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "implementation_ready"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "role": {
+                "const": "implementation"
+              }
+            },
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "findingCount"
+                  ]
+                },
+                {
+                  "required": [
+                    "artifactRef"
+                  ]
+                },
+                {
+                  "required": [
+                    "shortErrorCode"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "review_findings"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "role": {
+                "const": "review"
+              },
+              "findingCount": {
+                "minimum": 1
+              }
+            },
+            "required": [
+              "findingCount"
+            ],
+            "not": {
+              "required": [
+                "shortErrorCode"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "review_passed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "role": {
+                "const": "review"
+              },
+              "findingCount": {
+                "const": 0
+              }
+            },
+            "required": [
+              "findingCount"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "artifactRef"
+                  ]
+                },
+                {
+                  "required": [
+                    "shortErrorCode"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "repair_submitted"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "role": {
+                "const": "implementation"
+              },
+              "findingCount": {
+                "minimum": 1
+              }
+            },
+            "required": [
+              "findingCount",
+              "artifactRef"
+            ],
+            "not": {
+              "required": [
+                "shortErrorCode"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "blocked"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "shortErrorCode"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "findingCount"
+                  ]
+                },
+                {
+                  "required": [
+                    "artifactRef"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
     }
   }
 }

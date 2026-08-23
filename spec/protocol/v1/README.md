@@ -25,6 +25,7 @@ adapter ──(request frame)──▶ aizu handle --state <dir> ──(response
 | `error` | — | `ok: false` のときだけ。`{ "code", "message" }` |
 
 - すべてclosed schema（`additionalProperties: false`）。未知fieldは `INVALID_ENVELOPE` / `INVALID_PAYLOAD`
+- **受理集合はJSON Schemaが正**: [`schemas/`](schemas/) とRust / TS decoderは同じ集合を受理する。唯一の例外はframeのsize bound（schemaでは表現できず、decoderだけが `REQUEST_TOO_LARGE` / `INVALID_ENVELOPE` にする）。一致は `spec/conformance` の全fixture（`.expect.json` の `schema` 判定）とexampleをschemaに通すgate（`@aizu/protocol` のschema test）がCIで検証する
 - optional fieldは **省略** する。`null` は許可しない
 - `message` は人向けの説明で、request本文を含めない。機械判定は `code` だけで行う
 - 互換性はpackage versionではなく `version` と `hello` の `capabilities` で判定する
@@ -39,6 +40,9 @@ adapter ──(request frame)──▶ aizu handle --state <dir> ──(response
 ### `hello`
 
 versionとcapabilityの事前確認。stateを要求しない。
+
+- `protocolVersion` / `journalSchemaVersion` は `1..=4294967295`
+- capabilityは `^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*$`（128 bytes以下）、重複なし。**一覧はopen**: 未知のcapabilityもdecodeは通り、互換判定（`checkCompatibility`）が拒否を決める。v1が定義するのは `workflow.signal.submit` だけ
 
 ### `workflow.signal.submit`
 
