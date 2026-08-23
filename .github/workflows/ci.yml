@@ -82,11 +82,24 @@ jobs:
           node --version
           npm --version
 
+      - name: Install the pinned Rust toolchain (for the real-binary round trip)
+        run: |
+          rustup toolchain install
+          rustup show
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Build the aizu binary
+        run: cargo build --quiet -p aizu-cli
+
       - name: Install
         run: npm ci --no-audit --no-fund
 
-      - name: Lint, build, typecheck, test, pack
+      - name: Lint, build, typecheck, test, pack (with the real binary)
         run: npm run check
+        env:
+          AIZU_BINARY: ${{ github.workspace }}/target/debug/aizu
 
   repository:
     name: Repository

@@ -7,8 +7,11 @@ export {
   assertMetadataOnly,
   type ConformanceOptions,
   type CoreClientFactory,
+  type CoreCommand,
   FORBIDDEN_KEYS,
   runCoreClientConformance,
+  runCoreScenarios,
+  runFaultScenarios,
   samplePayload,
 } from './conformance.ts';
 export { fakeCoreCommand } from './fake-core-path.ts';
