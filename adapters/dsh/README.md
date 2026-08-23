@@ -36,21 +36,28 @@ cordis.patch.yml                   bundle時にdisabledで挿入。operatorのpa
 
 ## 設定
 
+このpackageは `dsh.bundle.patch` を宣言しているので、`dsh plugin --profile <name> add …` で入れるとDSHのbundle層に加わり、
+[`cordis.patch.yml`](cordis.patch.yml) が entry `aizu-workflow-signal` を **`disabled: true` で挿入**します。
+operatorのpatchはその entry を **id で上書き**して有効化します（同じidを `insert` で再挿入すると loader が `duplicate loader entry id` で起動しません）。
+
 ```yaml
-# operator patch (op/ 側。repositoryには置かない)
-- insert:
-    - id: aizu-workflow-signal
-      name: "@aizu/adapter-dsh"
-      config:
-        binary: /path/to/aizu
-        stateDir: /path/to/runtime/aizu-state
-        timeoutMs: 15000
-        eventId: evt-0001
-        workflowId: wf-example
-        assignmentId: as-implementation
-        role: implementation
-        artifactRevision: rev-c0ffee
+# operator patch (op/ 側。repositoryには置かない)。--patch で渡すか、profileの cordis.patch.yml に置く
+- id: aizu-workflow-signal
+  name: "@aizu/adapter-dsh"   # bundle層の entry と一致しないと patch は skip される
+  disabled: false
+  config:
+    binary: /path/to/aizu
+    stateDir: /path/to/runtime/aizu-state   # 無ければ aizu が 0700 で作る。既存なら 0700 であること
+    timeoutMs: 15000
+    eventId: evt-0001
+    workflowId: wf-example
+    assignmentId: as-implementation
+    role: implementation
+    artifactRevision: rev-c0ffee
 ```
+
+`dsh --profile <name> --patch <file> --dump-config` で、合成後の tree に `aizu-workflow-signal` が `disabled: false` と上記 `config` で現れることを確認できます。
+[`experiments/dsh-live-smoke/make-patch.mjs`](../../experiments/dsh-live-smoke/make-patch.mjs) はこの形を生成します。
 
 ## Evidence
 

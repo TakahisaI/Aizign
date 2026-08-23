@@ -5,6 +5,7 @@
     "includes": [
       "packages/**",
       "adapters/**",
+      "experiments/**",
       "*.json",
       "!**/lib",
       "!**/node_modules",

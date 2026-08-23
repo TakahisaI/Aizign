@@ -26,7 +26,29 @@
 - Firefox（Chromium系は対象外）
 - `cargo build -p aizu-cli` 済みの `aizu` binary
 - `npm ci && npm run build` 済みのworkspace（adapterは `lib/` から読み込まれる）
+- `stateDir` は **存在しなければ `aizu` が `0700` で作る**（親directoryは必要）。先に作るなら `mkdir -m 0700`。
+  `0700` でない既存directoryは、最初のtool callで `JOURNAL_UNAVAILABLE`（`state directory must be owner-only (mode 0700)`）になる（preflightの `aizu hello` はjournalを開かないので、そこでは検出されない）
 - 架空のnon-confidentialなassignmentだけを使う
+
+## DSH profile
+
+`dsh web` は固定の `web` profileのaliasで、`--profile` を受け付けません（`takes none of parent --profile`）。
+adapterを入れたprofileでWeb UIを使うには、**専用のprofile**を作り、`@deepseek-ai/dsh-web-app` とadapterの両方をそのprofileに入れます。
+どちらも `dsh.bundle` を宣言しているので、`dsh plugin … add` で入れると `dsh.profile.bundles` に自動で加わります。
+
+```sh
+# profile名と path はoperatorが決める。adapterは workspace の adapters/dsh を link する（npm pack した tarball でもよい）
+dsh plugin --profile <name> add @deepseek-ai/dsh-web-app@0.1.1-rc.2 'link:/abs/path/to/adapters/dsh'
+
+# 合成後の tree を確認: aizu-workflow-signal が disabled: false と config 付きで現れる
+dsh --profile <name> --patch /abs/path/outside/repo/aizu-live.patch.yml --dump-config
+
+# 起動（launcher の flag が先、以降は web app の引数）
+dsh --profile <name> --patch /abs/path/outside/repo/aizu-live.patch.yml
+```
+
+adapterの [`cordis.patch.yml`](../../adapters/dsh/cordis.patch.yml) はbundle層で entry `aizu-workflow-signal` を `disabled: true` で挿入します。
+operator patch（`make-patch.mjs` の出力）はその entry を **id で上書き**します。同じidを `insert` で再挿入すると `duplicate loader entry id` で起動しません。
 
 ## 観察すること
 
@@ -35,9 +57,21 @@
 | `{"kind":"implementation_ready"}` | `{"disposition":"accepted","eventId":...}` |
 | 同じ引数をもう一度 | `disposition: duplicate` |
 | `{"kind":"blocked","shortErrorCode":"CHANGED"}`（同じeventId） | error `EVENT_CONFLICT` |
+| identityを引数に入れる（例 `{"kind":"implementation_ready","eventId":"…"}`） | error `INVALID_SIGNAL`（adapterの `decodeArgs` が **spawn前** に拒否。coreは起動せず、journalは変わらない） |
 | DSHを通常停止 → 再起動 → 同じ引数 | `disposition: duplicate`（journalが正本） |
 
+`INVALID_SIGNAL` の行は「agentがidentityを知らない」ことの確認です。tool schemaにidentityは無いので、modelがschema違反を避けて呼ばない場合は、
+`observed` に `NOT_CALLED` と書き、`note` に状況を残してください。roleに無い `kind`（implementationで `review_passed` など）も同じ経路で `INVALID_SIGNAL` になります。
+
 完了をsessionの消失、idle、通知、browserの表示から推測しないこと。
+
+## DSH 0.1.1-rc.2 で観測された注意点
+
+初回の第三者実行（2026-08-23）で、Aizuの契約ではないがoperatorが躓いた点です。DSH側の挙動なので、versionが変われば再確認してください。
+
+- **approval policy `ask`**: 承認に応えられる状態（browser pageを開いたまま）でturnを実行すること。応答者が居ないとtool callは `interrupted` になり、UIのerror文言からは原因が分からない
+- **model選択**: 「Select model」→「Model」行→一覧の2段階。1段階目には現在のmodelしか出ない
+- `dsh web` はcustom profileでは使えない（上記「DSH profile」）
 
 ## 記録してよいもの
 
@@ -61,6 +95,7 @@
     { "step": "submit implementation_ready", "expected": "accepted", "observed": "accepted" },
     { "step": "resubmit", "expected": "duplicate", "observed": "duplicate" },
     { "step": "conflicting blocked", "expected": "EVENT_CONFLICT", "observed": "EVENT_CONFLICT" },
+    { "step": "identity in tool args", "expected": "INVALID_SIGNAL", "observed": "INVALID_SIGNAL" },
     { "step": "restart and resubmit", "expected": "duplicate", "observed": "duplicate" }
   ],
   "journal": { "records": 1, "kinds": ["implementation_ready"] },
@@ -68,10 +103,12 @@
 }
 ```
 
+実行結果はIssueにコメントとして残します（初回: [#11](https://github.com/TakahisaI/Aizu/issues/11)、verdict `pass`。文書不足の起票: [#29](https://github.com/TakahisaI/Aizu/issues/29)）。
+
 ## Scripts
 
 ```sh
-# operator patch を生成（stdout）。値はすべてoperatorが与える
+# operator patch を生成（stdout）。値はすべてoperatorが与える。bundle層の entry を id で上書きする形で出る
 node experiments/dsh-live-smoke/make-patch.mjs \
   --binary /abs/path/to/aizu --state /abs/path/to/state \
   --event-id evt-live-1 --workflow-id wf-live --assignment-id as-live --role implementation --revision rev-live-1 \
@@ -83,3 +120,4 @@ node experiments/dsh-live-smoke/summarize-journal.mjs --json /abs/path/to/state
 ```
 
 adapterのplugin configは [`adapters/dsh/README.md`](../../adapters/dsh/README.md#設定) を参照してください。
+scriptの回帰testは `npm run test:experiments`（root の `npm test` に含まれる）で走ります。

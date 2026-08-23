@@ -18,7 +18,10 @@
         "aizu": { "type": "string" }
       }
     },
-    "executor": { "type": "string", "description": "Harness and model that ran the smoke; no account identifiers." },
+    "executor": {
+      "type": "string",
+      "description": "Harness and model that ran the smoke; no account identifiers."
+    },
     "steps": {
       "type": "array",
       "minItems": 1,
@@ -28,8 +31,14 @@
         "required": ["step", "expected", "observed"],
         "properties": {
           "step": { "type": "string" },
-          "expected": { "type": "string", "pattern": "^(accepted|duplicate|[A-Z][A-Z0-9_]{0,63})$" },
-          "observed": { "type": "string", "pattern": "^(accepted|duplicate|unknown|[A-Z][A-Z0-9_]{0,63})$" },
+          "expected": {
+            "type": "string",
+            "pattern": "^(accepted|duplicate|[A-Z][A-Z0-9_]{0,63})$"
+          },
+          "observed": {
+            "type": "string",
+            "pattern": "^(accepted|duplicate|unknown|[A-Z][A-Z0-9_]{0,63})$"
+          },
           "note": { "type": "string", "maxLength": 200 }
         }
       }
@@ -44,7 +53,13 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["implementation_ready", "review_findings", "review_passed", "repair_submitted", "blocked"]
+            "enum": [
+              "implementation_ready",
+              "review_findings",
+              "review_passed",
+              "repair_submitted",
+              "blocked"
+            ]
           }
         }
       }
