@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aizu.dev/spec/protocol/v1/hello.response.schema.json",
+  "title": "hello response payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolVersion", "journalSchemaVersion", "capabilities", "package"],
+  "properties": {
+    "protocolVersion": { "type": "integer", "minimum": 1 },
+    "journalSchemaVersion": { "type": "integer", "minimum": 1 },
+    "capabilities": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "enum": ["workflow.signal.submit"] }
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aizu.dev/spec/protocol/v1/response-envelope.schema.json",
+  "title": "Aizu Protocol v1 response envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol", "version", "requestId", "kind", "ok"],
+  "properties": {
+    "protocol": { "const": "aizu" },
+    "version": { "const": 1 },
+    "requestId": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+    "kind": { "type": ["string", "null"] },
+    "ok": { "type": "boolean" },
+    "payload": { "type": "object" },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$" },
+        "message": { "type": "string" }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "properties": { "ok": { "const": true }, "kind": { "type": "string" } },
+      "required": ["payload"],
+      "not": { "required": ["error"] }
+    },
+    {
+      "properties": { "ok": { "const": false } },
+      "required": ["error"],
+      "not": { "required": ["payload"] }
+    }
+  ],
+  "allOf": [
+    {
+      "if": { "properties": { "ok": { "const": true }, "kind": { "const": "hello" } } },
+      "then": { "properties": { "payload": { "$ref": "hello.response.schema.json" } } }
+    },
+    {
+      "if": { "properties": { "ok": { "const": true }, "kind": { "const": "workflow.signal.submit" } } },
+      "then": { "properties": { "payload": { "$ref": "workflow-signal-submit.response.schema.json" } } }
+    }
+  ]
+}

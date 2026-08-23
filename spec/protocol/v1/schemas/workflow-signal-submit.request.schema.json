@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aizu.dev/spec/protocol/v1/workflow-signal-submit.request.schema.json",
+  "title": "workflow.signal.submit request payload",
+  "$defs": {
+    "identifier": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+    "artifactRef": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$" },
+    "shortErrorCode": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$" },
+    "role": { "type": "string", "enum": ["implementation", "review"] }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["expected", "signal"],
+  "properties": {
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflowId", "assignmentId", "role", "artifactRevision"],
+      "properties": {
+        "workflowId": { "$ref": "#/$defs/identifier" },
+        "assignmentId": { "$ref": "#/$defs/identifier" },
+        "role": { "$ref": "#/$defs/role" },
+        "artifactRevision": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "signal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId", "workflowId", "assignmentId", "role", "artifactRevision", "kind"],
+      "properties": {
+        "eventId": { "$ref": "#/$defs/identifier" },
+        "workflowId": { "$ref": "#/$defs/identifier" },
+        "assignmentId": { "$ref": "#/$defs/identifier" },
+        "role": { "$ref": "#/$defs/role" },
+        "artifactRevision": { "$ref": "#/$defs/identifier" },
+        "kind": {
+          "type": "string",
+          "enum": ["implementation_ready", "review_findings", "review_passed", "repair_submitted", "blocked"]
+        },
+        "findingCount": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "artifactRef": { "$ref": "#/$defs/artifactRef" },
+        "shortErrorCode": { "$ref": "#/$defs/shortErrorCode" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "implementation_ready" } } },
+          "then": {
+            "properties": { "role": { "const": "implementation" } },
+            "not": { "anyOf": [{ "required": ["findingCount"] }, { "required": ["artifactRef"] }, { "required": ["shortErrorCode"] }] }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "review_findings" } } },
+          "then": {
+            "properties": { "role": { "const": "review" }, "findingCount": { "minimum": 1 } },
+            "required": ["findingCount"],
+            "not": { "required": ["shortErrorCode"] }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "review_passed" } } },
+          "then": {
+            "properties": { "role": { "const": "review" }, "findingCount": { "const": 0 } },
+            "required": ["findingCount"],
+            "not": { "anyOf": [{ "required": ["artifactRef"] }, { "required": ["shortErrorCode"] }] }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "repair_submitted" } } },
+          "then": {
+            "properties": { "role": { "const": "implementation" }, "findingCount": { "minimum": 1 } },
+            "required": ["findingCount", "artifactRef"],
+            "not": { "required": ["shortErrorCode"] }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "blocked" } } },
+          "then": {
+            "required": ["shortErrorCode"],
+            "not": { "anyOf": [{ "required": ["findingCount"] }, { "required": ["artifactRef"] }] }
+          }
+        }
+      ]
+    }
+  }
+}
