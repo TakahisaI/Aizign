@@ -30,7 +30,8 @@ health / compatibility      harness version、protocol version、capabilityの�
 
 adapterだけが保持してよいもの、coreへ渡してよいものは [data-boundary.md](../architecture/data-boundary.md) に従います。要点:
 
-- harness session IDをcore identityにしない。adapter-ownedなopaque handleかbounded evidenceへ変換する
+- harness session ID / call IDをcore identityにも、envelopeの `requestId` にもしない。`requestId` はadapter所有のnonce。adapter-ownedなopaque handleかbounded evidenceへ変換する
+- responseは `requestId` / `kind` / `eventId` を送信と照合する。不一致・2 frame・bound超過は `unknown`
 - coreへはstable identity、bounded opaque handle、digest、structured evidence、disposition、short error code、capabilityだけを渡す
 - effect結果が不明なら `unknown` を返す。blind retryしない
 - 完了の正本はdurable evidence。自然言語、idle、画面表示を使わない

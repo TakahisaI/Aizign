@@ -22,13 +22,29 @@ export interface SessionEventLike {
   readonly data: unknown;
 }
 
-/** What the cold read needs from a session store. */
+/** What the cold read needs from a session store. DSH's `SessionPersistence.readFrom` matches. */
 export interface EvidenceSource {
   readFrom(
     sessionId: string,
     fromSeq: number,
+    signal?: AbortSignal,
   ): Promise<{ readonly events: readonly SessionEventLike[] }>;
 }
+
+/** Bounds for one cold read. Every read is finite; exceeding a bound is unknown, not partial. */
+export interface ColdReadOptions {
+  /** First sequence number to read. Default 0. */
+  readonly fromSeq?: number;
+  /** Maximum number of events the source may return. Default 10000. */
+  readonly maxEvents?: number;
+  /** Wall-clock bound for the read. Default 10000 ms. */
+  readonly timeoutMs?: number;
+  /** Caller cancellation. */
+  readonly signal?: AbortSignal;
+}
+
+export const DEFAULT_MAX_EVENTS = 10_000;
+export const DEFAULT_COLD_READ_TIMEOUT_MS = 10_000;
 
 /** Presentation metadata the tool writes into every result. */
 export interface SignalResultMeta {
@@ -60,6 +76,12 @@ export type SignalEvidence =
       readonly kind: 'unknown';
       readonly reason: 'no_result' | 'meta_mismatch';
       readonly callSeq: number;
+    }
+  /** The read could not complete within its bounds; nothing partial is reported. */
+  | {
+      readonly kind: 'unknown';
+      readonly reason: 'bound_exceeded' | 'aborted';
+      readonly detail: string;
     }
   /** No call for this tool in the log. */
   | { readonly kind: 'absent' };
@@ -106,9 +128,35 @@ export async function readSignalEvidence(
   source: EvidenceSource,
   sessionId: string,
   binding: SignalBinding,
-  fromSeq = 0,
+  options: ColdReadOptions = {},
 ): Promise<SignalEvidence> {
-  const { events } = await source.readFrom(sessionId, fromSeq);
+  const fromSeq = options.fromSeq ?? 0;
+  const maxEvents = options.maxEvents ?? DEFAULT_MAX_EVENTS;
+  const timeout = AbortSignal.timeout(options.timeoutMs ?? DEFAULT_COLD_READ_TIMEOUT_MS);
+  const signal =
+    options.signal === undefined ? timeout : AbortSignal.any([options.signal, timeout]);
+
+  let events: readonly SessionEventLike[];
+  try {
+    const read = source.readFrom(sessionId, fromSeq, signal);
+    const abort = new Promise<never>((_, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    });
+    ({ events } = await Promise.race([read, abort]));
+  } catch (error) {
+    if (signal.aborted) {
+      const reason = timeout.aborted ? 'timed out' : 'cancelled';
+      return { kind: 'unknown', reason: 'aborted', detail: `cold read ${reason}` };
+    }
+    throw error;
+  }
+  if (events.length > maxEvents) {
+    return {
+      kind: 'unknown',
+      reason: 'bound_exceeded',
+      detail: `session returned ${events.length} events; at most ${maxEvents} are read`,
+    };
+  }
   const calls = events.filter(
     (event) => event.type === 'tool/call' && isRecord(event.data) && event.data.name === TOOL_NAME,
   );

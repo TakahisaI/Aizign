@@ -17,8 +17,10 @@ import {
 
 export const PROTOCOL_NAME = 'aizu';
 export const PROTOCOL_VERSION = 1;
-/** Upper bound on a request frame, in bytes. */
-export const MAX_REQUEST_BYTES = 64 * 1024;
+/** Upper bound on any frame, request or response, in bytes. */
+export const MAX_FRAME_BYTES = 64 * 1024;
+/** Alias kept for callers that only deal with requests. */
+export const MAX_REQUEST_BYTES = MAX_FRAME_BYTES;
 export const KIND_HELLO = 'hello';
 export const KIND_WORKFLOW_SIGNAL_SUBMIT = 'workflow.signal.submit';
 
@@ -87,10 +89,10 @@ export function decodeRequest(frame: Uint8Array | string): Request {
     new DecodeFailure(null, null, new ProtocolError(code, message));
 
   const size = byteLength(frame);
-  if (size > MAX_REQUEST_BYTES) {
+  if (size > MAX_FRAME_BYTES) {
     throw unaddressed(
       codes.REQUEST_TOO_LARGE,
-      `request is ${size} bytes; at most ${MAX_REQUEST_BYTES} allowed`,
+      `request is ${size} bytes; at most ${MAX_FRAME_BYTES} allowed`,
     );
   }
 
@@ -192,6 +194,10 @@ export function encodeResponse(response: Response): string {
 /** Decodes one response frame. Throws {@link ProtocolError}. */
 export function decodeResponse(frame: Uint8Array | string): Response {
   const invalidEnvelope = (message: string) => new ProtocolError(codes.INVALID_ENVELOPE, message);
+  const size = byteLength(frame);
+  if (size > MAX_FRAME_BYTES) {
+    throw invalidEnvelope(`response is ${size} bytes; at most ${MAX_FRAME_BYTES} allowed`);
+  }
   let value: unknown;
   try {
     value = parseJson(frame);
@@ -218,8 +224,8 @@ export function decodeResponse(frame: Uint8Array | string): Response {
     if (!Object.hasOwn(value, key)) throw invalidEnvelope(`missing field \`${key}\``);
   }
   const { requestId, kind, ok } = value;
-  if (requestId !== null && typeof requestId !== 'string') {
-    throw invalidEnvelope('requestId must be a string or null');
+  if (requestId !== null && !isRequestId(requestId)) {
+    throw invalidEnvelope('requestId must be null or match ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$');
   }
   if (kind !== null && typeof kind !== 'string')
     throw invalidEnvelope('kind must be a string or null');
@@ -258,4 +264,30 @@ export function decodeResponse(frame: Uint8Array | string): Response {
     };
   }
   throw invalidEnvelope('ok responses carry exactly payload; error responses carry exactly error');
+}
+
+/** What a process wrote to stdout, classified as exactly one frame or not. */
+export type FrameExtraction =
+  | { readonly kind: 'frame'; readonly frame: string }
+  | { readonly kind: 'empty' }
+  | { readonly kind: 'extra'; readonly detail: string };
+
+/**
+ * A one-shot process must write exactly one frame followed by a newline and
+ * nothing but whitespace after it. Anything else is not a response: a second
+ * frame, trailing prose, or a frame that never ended.
+ */
+export function extractFrame(output: string): FrameExtraction {
+  const newline = output.indexOf('\n');
+  if (newline < 0) {
+    return output.trim().length === 0
+      ? { kind: 'empty' }
+      : { kind: 'extra', detail: 'frame is not newline-terminated' };
+  }
+  const frame = output.slice(0, newline);
+  const rest = output.slice(newline + 1);
+  if (rest.trim().length !== 0) {
+    return { kind: 'extra', detail: 'more than one frame, or trailing content after the frame' };
+  }
+  return frame.trim().length === 0 ? { kind: 'empty' } : { kind: 'frame', frame };
 }

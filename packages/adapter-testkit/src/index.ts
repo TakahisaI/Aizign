@@ -9,6 +9,7 @@ export {
   type CoreClientFactory,
   type CoreCommand,
   FORBIDDEN_KEYS,
+  readFakeRequests,
   runCoreClientConformance,
   runCoreScenarios,
   runFaultScenarios,

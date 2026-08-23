@@ -4,7 +4,7 @@ Aizu Protocol v1 for TypeScript: closed NDJSON envelope codec, `hello` compatibi
 
 | | |
 |---|---|
-| **Responsibility** | `decodeRequest` / `encodeRequest` / `decodeResponse` / `encodeResponse`、`hello` の `checkCompatibility`（protocol version + capabilityだけで判定）、`workflow.signal.submit` のpayload型と closed decoder、`CoreClient` / `SubmitOutcome` / `UnknownOutcome` の契約型 |
+| **Responsibility** | `decodeRequest` / `encodeRequest` / `decodeResponse` / `encodeResponse`（両方向 `MAX_FRAME_BYTES`）、`extractFrame`（stdoutがframe 1つだけか）、`checkCorrelation`（`requestId` / `kind` / `eventId` の照合）、`hello` の `checkCompatibility`、`workflow.signal.submit` のpayload型と closed decoder、`CoreClient` / `SubmitOutcome` / `UnknownOutcome` の契約型 |
 | **Non-responsibility** | process起動、filesystem、harness固有型、判断（coreの責務。decoderはcoreと同じ入力規則で **事前に** 拒否するだけ） |
 | **Inputs** | frame（`Uint8Array` / `string`）、payload object |
 | **Outputs** | `Request` / `Response`、`DecodeFailure`（復元した `requestId` / `kind` 付き）、`ProtocolError` |

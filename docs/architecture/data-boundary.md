@@ -72,4 +72,4 @@ journal recordはclosed schemaで、禁止項目にあたるfield名を持つrec
 
 - `cargo xtask public-audit` — tracked treeのsecret、private path、旧repository名、依存境界
 - journal / protocolのclosed schema test — 禁止fieldを持つrecordの拒否（各crate / packageのtest）
-- adapter conformance — fake harnessで、harness IDがprotocol requestへ漏れないことを検査
+- adapter conformance — fake harnessで、harness ID（session id、call id）がprotocol requestの **envelope全体**（`requestId` を含む）へ漏れないことを検査。`requestId` はadapter所有のnonce

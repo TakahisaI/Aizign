@@ -11,6 +11,12 @@
  * - `hang`              never answer (the client's timeout must fire)
  * - `journal-unknown`   record the signal, then report JOURNAL_OUTCOME_UNKNOWN
  * - `exit-2`            usage-style failure without a frame
+ * - `wrong-request-id`  answer with another request id
+ * - `wrong-kind`        answer a submit with a hello body
+ * - `wrong-event-id`    answer a submit with another event id
+ * - `oversized`         answer with a frame above the bound
+ * - `two-frames`        answer twice
+ * - `trailing-garbage`  answer, then keep talking
  *
  * `AIZU_FAKE_HELLO_PROTOCOL_VERSION` overrides the advertised protocol
  * version, for compatibility-check tests.
@@ -179,8 +185,50 @@ async function main(argv: readonly string[]): Promise<number> {
     });
     return 0;
   }
-  write(handleSubmit(stateDir, request));
-  return 0;
+  const response = handleSubmit(stateDir, request);
+  switch (fault) {
+    case 'wrong-request-id':
+      write({ ...response, requestId: 'req-someone-else' });
+      return 0;
+    case 'wrong-kind':
+      write({
+        requestId: request.requestId,
+        kind: 'hello',
+        body: { type: 'hello', info: helloInfo },
+      });
+      return 0;
+    case 'wrong-event-id':
+      write({
+        requestId: request.requestId,
+        kind: request.kind,
+        body: {
+          type: 'workflow.signal',
+          result: { disposition: 'accepted', eventId: 'evt-someone-else' },
+        },
+      });
+      return 0;
+    case 'oversized':
+      write(
+        errorResponse(
+          request.requestId,
+          request.kind,
+          codes.INTERNAL,
+          'x'.repeat(MAX_REQUEST_BYTES + 1),
+        ),
+      );
+      return 0;
+    case 'two-frames':
+      write(response);
+      write(response);
+      return 0;
+    case 'trailing-garbage':
+      write(response);
+      process.stdout.write('and then some prose\n');
+      return 0;
+    default:
+      write(response);
+      return 0;
+  }
 }
 
 main(process.argv.slice(2)).then(

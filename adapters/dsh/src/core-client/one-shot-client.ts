@@ -8,11 +8,15 @@ import {
   type CallOptions,
   type CoreClient,
   type CoreClientConfig,
+  checkCorrelation,
   decodeResponse,
   encodeRequest,
+  extractFrame,
   type HelloOutcome,
   isUnknownOutcomeCode,
+  MAX_FRAME_BYTES,
   type Response,
+  type SentRequest,
   type SubmitOutcome,
   type UnknownOutcome,
   type WorkflowSignalSubmitPayload,
@@ -37,9 +41,17 @@ export class OneShotCoreClient implements CoreClient {
     this.#config = config;
   }
 
-  async hello(_requestId: string, options: CallOptions = {}): Promise<HelloOutcome> {
+  async hello(requestId: string, options: CallOptions = {}): Promise<HelloOutcome> {
     const exchange = await this.#exchange(['hello'], undefined, options.signal);
     if (exchange.kind === 'unknown') return exchange.outcome;
+    // `aizu hello` has no request frame, so only the kind can be correlated.
+    if (exchange.response.kind !== 'hello') {
+      return {
+        kind: 'unknown',
+        reason: 'correlation_mismatch',
+        detail: `kind: expected hello, got ${String(exchange.response.kind)} (${requestId})`,
+      };
+    }
     const { body } = exchange.response;
     switch (body.type) {
       case 'hello':
@@ -69,6 +81,19 @@ export class OneShotCoreClient implements CoreClient {
       options.signal,
     );
     if (exchange.kind === 'unknown') return exchange.outcome;
+    const sent: SentRequest = {
+      requestId,
+      kind: 'workflow.signal.submit',
+      eventId: payload.signal.eventId,
+    };
+    const mismatch = checkCorrelation(sent, exchange.response);
+    if (mismatch !== undefined) {
+      return {
+        kind: 'unknown',
+        reason: 'correlation_mismatch',
+        detail: `${mismatch.field}: expected ${mismatch.expected}, got ${String(mismatch.actual)}`,
+      };
+    }
     const { body } = exchange.response;
     switch (body.type) {
       case 'workflow.signal':
@@ -126,7 +151,21 @@ export class OneShotCoreClient implements CoreClient {
       signal?.addEventListener('abort', onAbort, { once: true });
       const spawned = child;
       const stdout: Buffer[] = [];
-      spawned.stdout?.on('data', (chunk: Buffer) => stdout.push(chunk));
+      let received = 0;
+      spawned.stdout?.on('data', (chunk: Buffer) => {
+        received += chunk.length;
+        if (received > MAX_FRAME_BYTES + 1) {
+          spawned.kill('SIGKILL');
+          settle(
+            unknown(
+              'oversized_response',
+              `stdout exceeded ${MAX_FRAME_BYTES} bytes; the core may have appended`,
+            ),
+          );
+          return;
+        }
+        stdout.push(chunk);
+      });
       spawned.stderr?.on('data', () => undefined);
       spawned.on('error', (error) => settle(unknown('spawn_failed', error.message)));
 
@@ -136,13 +175,17 @@ export class OneShotCoreClient implements CoreClient {
       }, timeoutMs);
 
       spawned.on('close', (code) => {
-        const line = Buffer.concat(stdout).toString('utf8').split('\n', 1)[0] ?? '';
-        if (line.length === 0) {
+        const extraction = extractFrame(Buffer.concat(stdout).toString('utf8'));
+        if (extraction.kind === 'empty') {
           settle(unknown('no_response', `process exited with ${String(code)} without a frame`));
           return;
         }
+        if (extraction.kind === 'extra') {
+          settle(unknown('undecodable_response', extraction.detail));
+          return;
+        }
         try {
-          settle({ kind: 'response', response: decodeResponse(line) });
+          settle({ kind: 'response', response: decodeResponse(extraction.frame) });
         } catch (error) {
           settle(unknown('undecodable_response', String(error)));
         }

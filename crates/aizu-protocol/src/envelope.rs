@@ -12,8 +12,10 @@ use crate::workflow_signal::{self, SignalResult};
 pub const PROTOCOL_NAME: &str = "aizu";
 /// The wire protocol version this crate implements.
 pub const PROTOCOL_VERSION: u32 = 1;
-/// Upper bound on a request frame, in bytes (including the newline).
-pub const MAX_REQUEST_BYTES: usize = 64 * 1024;
+/// Upper bound on any frame, request or response, in bytes.
+pub const MAX_FRAME_BYTES: usize = 64 * 1024;
+/// Alias kept for callers that only deal with requests.
+pub const MAX_REQUEST_BYTES: usize = MAX_FRAME_BYTES;
 /// Upper bound on a request id, in bytes.
 pub const MAX_REQUEST_ID_LEN: usize = 128;
 
@@ -336,6 +338,15 @@ pub fn encode_response(response: &Response) -> String {
 
 /// Decodes one response frame. Used by adapters, testkits, and fixtures.
 pub fn decode_response(frame: &[u8]) -> Result<Response, ProtocolError> {
+    if frame.len() > MAX_FRAME_BYTES {
+        return Err(ProtocolError::new(
+            codes::INVALID_ENVELOPE,
+            format!(
+                "response is {} bytes; at most {MAX_FRAME_BYTES} allowed",
+                frame.len()
+            ),
+        ));
+    }
     let envelope: ResponseEnvelope = serde_json::from_slice(frame)
         .map_err(|error| ProtocolError::new(codes::INVALID_ENVELOPE, error.to_string()))?;
     if envelope.protocol != PROTOCOL_NAME {
@@ -348,6 +359,16 @@ pub fn decode_response(frame: &[u8]) -> Result<Response, ProtocolError> {
         return Err(ProtocolError::new(
             codes::PROTOCOL_VERSION_UNSUPPORTED,
             format!("protocol version {} is not supported", envelope.version),
+        ));
+    }
+    if envelope
+        .request_id
+        .as_deref()
+        .is_some_and(|id| !valid_request_id(id))
+    {
+        return Err(ProtocolError::new(
+            codes::INVALID_ENVELOPE,
+            "requestId must be null or match ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
         ));
     }
     let body = match (envelope.ok, envelope.payload, envelope.error) {

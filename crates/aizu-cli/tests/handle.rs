@@ -187,6 +187,37 @@ fn malformed_and_oversized_frames_still_get_one_response() {
 }
 
 #[test]
+fn stdin_must_carry_exactly_one_frame() {
+    let dir = TempDir::new();
+    let two = format!(
+        "{}{}",
+        submit_frame("evt-a", "req-a"),
+        submit_frame("evt-b", "req-b")
+    );
+    let ResponseBody::Error(error) = one_frame(&run_handle(&dir.state(), &two)).body else {
+        panic!("error")
+    };
+    assert_eq!(error.code().as_str(), codes::INVALID_ENVELOPE);
+    assert!(
+        !dir.state().join(JOURNAL_FILE_NAME).exists(),
+        "nothing is appended for a rejected stdin"
+    );
+
+    let trailing = format!("{}trailing prose\n", submit_frame("evt-a", "req-a"));
+    let ResponseBody::Error(error) = one_frame(&run_handle(&dir.state(), &trailing)).body else {
+        panic!("error")
+    };
+    assert_eq!(error.code().as_str(), codes::INVALID_ENVELOPE);
+
+    // Trailing whitespace after the newline is fine.
+    let whitespace = format!("{}\n  \n", submit_frame("evt-a", "req-ws"));
+    assert!(matches!(
+        one_frame(&run_handle(&dir.state(), &whitespace)).body,
+        ResponseBody::WorkflowSignal(_)
+    ));
+}
+
+#[test]
 fn journal_problems_are_reported_as_journal_codes() {
     let dir = TempDir::new();
     let state = dir.state();

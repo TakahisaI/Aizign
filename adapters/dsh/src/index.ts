@@ -18,6 +18,9 @@ export const inject = ['tools'];
 export type { AdapterConfig, Config as PluginConfig, SignalBinding } from './config.ts';
 export { OneShotCoreClient } from './core-client/one-shot-client.ts';
 export {
+  type ColdReadOptions,
+  DEFAULT_COLD_READ_TIMEOUT_MS,
+  DEFAULT_MAX_EVENTS,
   type EvidenceSource,
   readSignalEvidence,
   type SessionEventLike,
@@ -31,8 +34,8 @@ export {
   createSubmitWorkflowSignalTool,
   decodeArgs,
   kindsForRole,
+  newRequestId,
   presentationMetaFor,
-  requestIdFor,
   type SignalArgs,
   TOOL_NAME,
   toolParameters,

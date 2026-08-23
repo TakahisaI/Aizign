@@ -5,7 +5,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -45,7 +45,28 @@ export const FORBIDDEN_KEYS: readonly string[] = [
   'sessionId',
   'threadId',
   'turnId',
+  'callId',
 ];
+
+/**
+ * Every request frame the fake core received for `stateDir`, decoded as
+ * JSON. Adapters use this to prove that nothing harness-specific crossed
+ * the boundary — in the payload or anywhere else in the envelope.
+ */
+export function readFakeRequests(stateDir: string): unknown[] {
+  const path = join(stateDir, 'fake-requests.jsonl');
+  if (!existsSync(path)) return [];
+  return readFileSync(path, 'utf8')
+    .split('\n')
+    .filter((line) => line.length > 0)
+    .map((line) => {
+      try {
+        return JSON.parse(line) as unknown;
+      } catch {
+        return line;
+      }
+    });
+}
 
 /** Asserts a JSON value carries none of the forbidden keys at any depth. */
 export function assertMetadataOnly(value: unknown, path = '$'): void {
@@ -137,6 +158,12 @@ export async function runFaultScenarios(
       ['garbage', 'undecodable_response', 'stdout is not a frame'],
       ['journal-unknown', 'reported_unknown', 'the core reports JOURNAL_OUTCOME_UNKNOWN'],
       ['exit-2', 'no_response', 'process fails before answering'],
+      ['wrong-request-id', 'correlation_mismatch', 'the response answers another request'],
+      ['wrong-kind', 'correlation_mismatch', 'the response has another kind'],
+      ['wrong-event-id', 'correlation_mismatch', 'the response names another event'],
+      ['oversized', 'oversized_response', 'the response exceeds the frame bound'],
+      ['two-frames', 'undecodable_response', 'stdout carries two frames'],
+      ['trailing-garbage', 'undecodable_response', 'stdout carries a frame and then prose'],
     ];
     for (const [fault, reason, description] of scenarios) {
       const outcome = await make(`fault-${fault}`, { AIZU_FAKE_FAULT: fault }).submitWorkflowSignal(

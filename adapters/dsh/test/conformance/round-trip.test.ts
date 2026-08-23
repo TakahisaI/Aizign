@@ -9,7 +9,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { assertMetadataOnly } from '@aizu/adapter-testkit';
+import { assertMetadataOnly, readFakeRequests } from '@aizu/adapter-testkit';
 import type { Config } from '../../src/config.ts';
 import { readSignalEvidence } from '../../src/evidence/cold-read.ts';
 import { apply, codes, TOOL_NAME } from '../../src/index.ts';
@@ -131,6 +131,14 @@ test('a crashed core leaves an unknown outcome, one submission, and no inferred 
       !existsSync(join(stateDir, 'workflow.jsonl')),
       'the fake core writes its own state file',
     );
+
+    // Nothing harness-specific crossed the boundary: not in the payload, not in the envelope.
+    for (const envelope of readFakeRequests(stateDir)) {
+      assertMetadataOnly(envelope);
+      const text = JSON.stringify(envelope);
+      assert.ok(!text.includes(unknownDsh.sessionId), 'session id must not reach the core');
+      assert.ok(!text.includes('call_0001'), 'call id must not reach the core');
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

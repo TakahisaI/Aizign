@@ -9,7 +9,7 @@ import {
   adapterCodes,
   createSubmitWorkflowSignalTool,
   decodeArgs,
-  requestIdFor,
+  newRequestId,
   TOOL_NAME,
   toolParameters,
   toPayload,
@@ -26,15 +26,20 @@ const binding: SignalBinding = {
   },
 };
 
-function stubClient(outcome: SubmitOutcome): CoreClient & { calls: WorkflowSignalSubmitPayload[] } {
+function stubClient(
+  outcome: SubmitOutcome,
+): CoreClient & { calls: WorkflowSignalSubmitPayload[]; requestIds: string[] } {
   const calls: WorkflowSignalSubmitPayload[] = [];
+  const requestIds: string[] = [];
   return {
     calls,
+    requestIds,
     async hello() {
       throw new Error('not used');
     },
-    async submitWorkflowSignal(_requestId, payload) {
+    async submitWorkflowSignal(requestId, payload) {
       calls.push(payload);
+      requestIds.push(requestId);
       return outcome;
     },
   };
@@ -108,10 +113,13 @@ test('core rules are applied before any process is spawned', () => {
   );
 });
 
-test('request ids derive from the call id within the identifier pattern', () => {
-  assert.equal(requestIdFor('call/abc 123'), 'req-call-abc-123');
-  assert.equal(requestIdFor('---'), 'req-call');
-  assert.ok(requestIdFor('x'.repeat(500)).length <= 128);
+test('request ids are adapter-owned nonces, never derived from the harness call id', () => {
+  const ids = new Set([newRequestId(), newRequestId(), newRequestId()]);
+  assert.equal(ids.size, 3);
+  for (const id of ids) {
+    assert.match(id, /^req-[0-9a-f-]{36}$/);
+    assert.ok(!id.includes('call'), id);
+  }
 });
 
 test('outcomes map to the canonical value or a harness error; unknown is never retried', async () => {

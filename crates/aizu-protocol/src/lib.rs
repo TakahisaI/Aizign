@@ -17,9 +17,9 @@ mod hello;
 mod workflow_signal;
 
 pub use envelope::{
-    DecodeFailure, KIND_HELLO, KIND_WORKFLOW_SIGNAL_SUBMIT, MAX_REQUEST_BYTES, MAX_REQUEST_ID_LEN,
-    PROTOCOL_NAME, PROTOCOL_VERSION, Request, RequestKind, Response, ResponseBody, decode_request,
-    decode_response, encode_request, encode_response,
+    DecodeFailure, KIND_HELLO, KIND_WORKFLOW_SIGNAL_SUBMIT, MAX_FRAME_BYTES, MAX_REQUEST_BYTES,
+    MAX_REQUEST_ID_LEN, PROTOCOL_NAME, PROTOCOL_VERSION, Request, RequestKind, Response,
+    ResponseBody, decode_request, decode_response, encode_request, encode_response,
 };
 pub use error::{ProtocolError, codes};
 pub use hello::{CAPABILITY_WORKFLOW_SIGNAL_SUBMIT, HelloInfo, PackageInfo};
