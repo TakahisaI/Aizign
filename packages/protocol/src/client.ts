@@ -49,8 +49,15 @@ export interface UnknownOutcome {
     | 'undecodable_response'
     | 'timeout'
     | 'spawn_failed'
-    | 'reported_unknown';
+    | 'reported_unknown'
+    | 'aborted';
   readonly detail: string;
+}
+
+/** Per-call options. */
+export interface CallOptions {
+  /** Cancels the wait (the process is killed); the outcome becomes unknown. */
+  readonly signal?: AbortSignal;
 }
 
 export type HelloOutcome =
@@ -65,10 +72,11 @@ export type SubmitOutcome =
 
 /** One-shot request/response against the core. */
 export interface CoreClient {
-  hello(requestId: string): Promise<HelloOutcome>;
+  hello(requestId: string, options?: CallOptions): Promise<HelloOutcome>;
   submitWorkflowSignal(
     requestId: string,
     payload: WorkflowSignalSubmitPayload,
+    options?: CallOptions,
   ): Promise<SubmitOutcome>;
 }
 

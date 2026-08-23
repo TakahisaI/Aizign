@@ -11,6 +11,9 @@
  * - `hang`              never answer (the client's timeout must fire)
  * - `journal-unknown`   record the signal, then report JOURNAL_OUTCOME_UNKNOWN
  * - `exit-2`            usage-style failure without a frame
+ *
+ * `AIZU_FAKE_HELLO_PROTOCOL_VERSION` overrides the advertised protocol
+ * version, for compatibility-check tests.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -35,7 +38,7 @@ const STATE_FILE = 'fake-journal.json';
 const REQUEST_LOG = 'fake-requests.jsonl';
 
 const helloInfo: HelloInfo = {
-  protocolVersion: PROTOCOL_VERSION,
+  protocolVersion: Number(process.env.AIZU_FAKE_HELLO_PROTOCOL_VERSION ?? PROTOCOL_VERSION),
   journalSchemaVersion: 1,
   capabilities: [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT],
   package: { name: 'aizu-fake', version: '0.0.0' },

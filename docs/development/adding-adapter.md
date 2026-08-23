@@ -54,7 +54,7 @@ adapters/<harness>/
     └── conformance/    @aizu/adapter-testkit を使う
 ```
 
-- harness SDKはexact versionで固定する
+- harness SDKはexact versionで固定する（peer + dev。ADR-0010）。root `.npmrc` は `ignore-scripts=true`
 - `exports` mapはclosed。deep importを許さない
 - `@aizu/protocol` 以外のworkspace packageにruntime依存しない
 - 通常testはfake harnessとfake core processで完結させ、live smokeは `experiments/` のopt-inだけにする
