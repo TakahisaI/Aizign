@@ -1,0 +1,24 @@
+# Build outputs
+/target/
+**/target/
+node_modules/
+lib/
+dist/
+coverage/
+
+# Local state and runtime data (never tracked)
+/.aizu-state/
+/runtime/
+*.log
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Secrets and local environment (never tracked; see SECURITY.md)
+.env
+.env.*
+*.pem
+*.key

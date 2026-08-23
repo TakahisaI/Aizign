@@ -1,0 +1,52 @@
+name: Bug report
+description: 再現できる不具合の報告
+title: "bug: "
+labels: ["type:bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        credential、raw prompt、model output、実データ、private pathを貼らないでください。必要なら架空のnon-confidentialな値へ置き換えてください。
+  - type: input
+    id: location
+    attributes:
+      label: Crate / package
+      placeholder: "aizu-core / @aizu/adapter-dsh / xtask"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 再現手順
+      description: 決定論的に再現できる最小手順。可能なら `spec/conformance` 形式のfixture
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待した境界 / 挙動
+      description: どのhard invariant、spec、docsに基づく期待か
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際の挙動
+    validations:
+      required: true
+  - type: dropdown
+    id: disposition
+    attributes:
+      label: unknownの扱い
+      description: 結果不明の操作が成功や失敗へ縮約されていましたか
+      options:
+        - 該当しない
+        - unknownが成功へ縮約された
+        - unknownが失敗へ縮約された
+        - blind retryが発生した

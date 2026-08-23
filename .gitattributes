@@ -1,0 +1,11 @@
+* text=auto eol=lf
+*.rs text diff=rust
+*.md text
+*.json text
+*.jsonl text
+*.toml text
+*.yml text
+*.yaml text
+*.ts text
+Cargo.lock text -diff
+package-lock.json text -diff

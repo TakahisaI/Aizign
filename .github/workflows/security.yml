@@ -1,0 +1,33 @@
+name: Security
+
+on:
+  schedule:
+    # Weekly advisory sweep; advisories change without code changes.
+    - cron: "17 3 * * 1"
+  pull_request:
+    paths:
+      - Cargo.lock
+      - deny.toml
+      - package-lock.json
+      - .github/workflows/security.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-deny:
+    name: cargo deny
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Advisories, bans, licenses, sources
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check advisories bans licenses sources
+          rust-version: "1.97.1"

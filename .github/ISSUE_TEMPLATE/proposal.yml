@@ -1,0 +1,55 @@
+name: Proposal
+description: 挙動、API、schema、依存境界を変える提案（PRの前に契約を確定します）
+title: "proposal: "
+labels: ["type:proposal"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Aizuはproposal-firstです。ここでscopeと契約を合意してからPRを出してください。
+        大きな目的はumbrella Issueにし、leaf Issueへ分割します。
+  - type: textarea
+    id: problem
+    attributes:
+      label: 解きたい問題
+    validations:
+      required: true
+  - type: textarea
+    id: contract
+    attributes:
+      label: 提案する契約
+      description: command / event / decision、protocol kind、journal record、error code、capabilityなど、変わるものを具体的に
+    validations:
+      required: true
+  - type: textarea
+    id: contexts
+    attributes:
+      label: 触るbounded context
+      description: docs/architecture/context-map.md の行で答える。二つ以上なら理由
+    validations:
+      required: true
+  - type: dropdown
+    id: adr
+    attributes:
+      label: ADRが必要か
+      description: crate / package境界、依存方向、protocol、journal、接続方式、runtime dependency、data boundary、retry policy、toolchain、release policy
+      options:
+        - 不要
+        - 必要（このIssueでADR番号を確定する）
+    validations:
+      required: true
+  - type: textarea
+    id: invariants
+    attributes:
+      label: 関係するhard invariants
+      description: root AGENTS.md の番号と、それを壊さない理由
+  - type: textarea
+    id: tests
+    attributes:
+      label: 検証方法
+      description: どのtest / fixture / conformanceで、守る境界を一度壊して検出できることを確認するか
+  - type: textarea
+    id: legacy
+    attributes:
+      label: 旧実装からの採用（該当する場合）
+      description: "Adopt / Reject / Defer を明示し、採用する契約は新しいtestとして書き直す（ADR-0006）"
