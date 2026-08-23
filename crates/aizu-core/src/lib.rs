@@ -32,8 +32,21 @@
 //! `docs/architecture/context-map.md` in the repository for the map and
 //! `README.md` next to this crate for responsibilities and invariants.
 //!
-//! The first vertical slice (identity, workflow command, decision) is
-//! tracked in the `v0.1 — Foundation` milestone.
+//! # Public surface
+//!
+//! Only the types re-exported below are public. The shared identity
+//! vocabulary lives at the crate root; each bounded context is a module.
 
 #![no_std]
 #![forbid(unsafe_code)]
+
+extern crate alloc;
+
+mod identity;
+pub mod workflow;
+
+pub use identity::{
+    ARTIFACT_REF_MAX_LEN, ArtifactRef, ArtifactRevision, AssignmentId, AttemptId, BoundedTimestamp,
+    Digest, DigestAlgorithm, EventId, IDENTIFIER_MAX_LEN, IdentityError, SHORT_ERROR_CODE_MAX_LEN,
+    ShortErrorCode, WorkflowId,
+};

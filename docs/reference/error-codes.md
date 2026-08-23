@@ -20,15 +20,19 @@ protocol fixtureが入った後は、`spec/protocol/v1/` が wire上のcodeの�
 
 ## Workflow
 
+`aizu-core` の `workflow::WorkflowError::code()` が返すcodeです。
+
 | Code | 意味 | Status |
 |---|---|---|
-| `INVALID_SIGNAL` | signalがclosed schemaまたはkindごとの制約に合わない | reserved |
-| `INVALID_EXPECTATION` | expected assignmentが不正 | reserved |
-| `WORKFLOW_MISMATCH` | `workflowId` が期待と異なる | reserved |
-| `ASSIGNMENT_MISMATCH` | `assignmentId` が期待と異なる | reserved |
-| `ROLE_MISMATCH` | `role` が期待と異なる | reserved |
-| `REVISION_MISMATCH` | `artifactRevision` が期待と異なる | reserved |
-| `EVENT_CONFLICT` | 同一 `eventId` で内容が異なる | reserved |
+| `INVALID_SIGNAL` | signalがkindごとの制約（role、`findingCount`、`artifactRef`、`shortErrorCode`）に合わない | implemented（`aizu-core`） |
+| `INVALID_EXPECTATION` | expected assignmentがclosed schemaに合わない。coreでは型により表現不能なため、protocol境界で返す | reserved（protocol） |
+| `WORKFLOW_MISMATCH` | `workflowId` が期待と異なる | implemented（`aizu-core`） |
+| `ASSIGNMENT_MISMATCH` | `assignmentId` が期待と異なる | implemented（`aizu-core`） |
+| `ROLE_MISMATCH` | `role` が期待と異なる | implemented（`aizu-core`） |
+| `REVISION_MISMATCH` | `artifactRevision` が期待と異なる | implemented（`aizu-core`） |
+| `EVENT_CONFLICT` | 同一 `eventId` で内容が異なる | implemented（`aizu-core`） |
+
+照合順はworkflow → assignment → role → revisionで、expectationの照合がduplicate / conflict判定より先に行われます。
 
 ## Journal
 

@@ -54,7 +54,7 @@ Aizuは、harness（LLM agentを動かす実行環境）から来る **structure
 
 | 場所 | 状態 |
 |---|---|
-| `crates/aizu-core` | crateの殻と依存規則。最初の縦切り（identity、command、decision）は `v0.1 — Foundation` のIssue |
+| `crates/aizu-core` | `identity` と `workflow` context（signal、command、event、state、decision、error）。`execution` 以降は後続 |
 | `xtask` | `cargo xtask check / conformance / public-audit` |
 | `docs/`、`.github/` | governance、ADR、architecture、CI |
 | `crates/aizu-engine` ほか、`packages/`、`adapters/`、`spec/` | 未作成。最初の実装とともに追加 |

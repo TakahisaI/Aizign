@@ -28,12 +28,28 @@ bounded context単位でmoduleを置きます。配置の正本は
 ```text
 src/
 ├── lib.rs           意図した型だけを公開する（wildcard re-exportなし）
-├── identity.rs      stable ID、digest、bounded timestampの最小語彙
-├── workflow/        command.rs / event.rs / state.rs / decision.rs / error.rs
+├── identity.rs      stable ID、digest、bounded timestamp、short error codeの最小語彙
+├── workflow/
+│   ├── mod.rs       contextの公開面
+│   ├── signal.rs    Role、SignalKind、WorkflowSignal（validate）、ExpectedAssignment
+│   ├── command.rs   Command::SubmitSignal
+│   ├── event.rs     WorkflowEvent::SignalAccepted
+│   ├── state.rs     WorkflowState（BTreeMap）、apply / replay
+│   ├── decision.rs  decide(state, command) -> Decision
+│   └── error.rs     WorkflowError（short error code付き）、InvalidSignal
 └── ...              execution / evidence / workspace / authorization / integration / recovery / usage は後続
 ```
 
-現在は殻だけです。最初の縦切り（identity、workflow command、decision）はMilestone `v0.1 — Foundation` のIssueで追加します。
+```text
+tests/workflow_signal.rs   cross-module: accepted / duplicate / conflict / mismatch順 / replay
+```
+
+## Workflow contextの契約
+
+- `decide` はstateを変更しない。`Decision::Accepted { event }` を受け取ったshellは、**eventをdurableにappendしてから** 受理を報告する
+- `Decision::Duplicate` は同一 `event_id` ・同一内容。appendしない
+- `Decision::Rejected { error }` は `error.code()` のshort error codeで説明できる。appendしない
+- `WorkflowState::apply` / `replay` は同一 `event_id` の再適用を `ApplyError::DuplicateEvent` にする。journalの不整合をshellが黙って吸収しないため
 
 ## 依存規則の検査
 
