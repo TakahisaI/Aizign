@@ -65,6 +65,7 @@ Aizuは、harness（LLM agentを動かす実行環境）から来る **structure
 | `spec/conformance/` | language-neutral fixture（valid 13、invalid 45）。`cargo xtask conformance` + Rust test |
 | `packages/protocol` | `@aizu/protocol`: TypeScript codec（同じfixtureを通す）、`checkCompatibility`、`CoreClient` 契約 |
 | `packages/adapter-testkit` | `@aizu/adapter-testkit`: fake core、conformance runner、reference client |
+| `experiments/dsh-live-smoke` | opt-in live smokeのpatch生成とjournal要約（手順はoperator側） |
 | `adapters/dsh` | `@aizu/adapter-dsh`: DSH plugin（preflight、scope-bound `submit_workflow_signal`、one-shot client、evidence cold read）。fake DSH runtime + fake core / 実binaryの往復で検証 |
 
 ## 関連
