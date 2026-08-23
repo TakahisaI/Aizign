@@ -114,7 +114,7 @@ test('results bound to another identity or without our metadata are unknown', as
   );
 });
 
-test('an error result is a rejection with its code; unrelated tools are ignored', async () => {
+test('an error result is unknown, never a binding-attributed rejection (#32)', async () => {
   const args = { kind: 'implementation_ready' };
   const events = [
     call(1, 'other', { x: 1 }, 'some_other_tool'),
@@ -122,12 +122,23 @@ test('an error result is a rejection with its code; unrelated tools are ignored'
     call(3, 'c1', args),
     result(4, 'c1', undefined, { name: 'HarnessError', code: 'EVENT_CONFLICT' }),
   ];
+  // Even under the binding that made the call: the error carries no metadata.
   assert.deepEqual(await readSignalEvidence(source(events), 's', binding), {
-    kind: 'rejected',
+    kind: 'unknown',
+    reason: 'unverified_error',
     code: 'EVENT_CONFLICT',
     callSeq: 3,
     resultSeq: 4,
   });
+  // A cold read under a different binding (other eventId / assignment /
+  // revision) must not adopt the old error as its own rejection.
+  const rebound = {
+    ...binding,
+    eventId: 'evt-other',
+    expected: { ...binding.expected, artifactRevision: 'rev-other' },
+  };
+  const relabeled = await readSignalEvidence(source(events), 's', rebound);
+  assert.equal(relabeled.kind, 'unknown');
   assert.deepEqual(await readSignalEvidence(source(events.slice(0, 2)), 's', binding), {
     kind: 'absent',
   });

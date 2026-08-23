@@ -64,9 +64,16 @@ export type SignalEvidence =
       readonly resultSeq: number;
       readonly payloadDigest: string;
     }
-  /** A durable result says the core rejected the signal. */
+  /**
+   * A durable error result settled the call, but DSH persists only the error
+   * name and code with it — no presentation metadata — so it cannot be
+   * verified against this binding. `code` is diagnostic only: it may belong
+   * to a submission under a different binding in the same session, and must
+   * never be adopted as this binding's rejection (hard invariant 5).
+   */
   | {
-      readonly kind: 'rejected';
+      readonly kind: 'unknown';
+      readonly reason: 'unverified_error';
       readonly code: string;
       readonly callSeq: number;
       readonly resultSeq: number;
@@ -173,7 +180,16 @@ export async function readSignalEvidence(
 
   const errorCode = resultError(result.data);
   if (errorCode !== undefined) {
-    return { kind: 'rejected', code: errorCode, callSeq: call.seq, resultSeq: result.seq };
+    // Error results carry no binding metadata (the harness computes
+    // presentation metadata only for successful values), so the rejection
+    // cannot be attributed to this binding.
+    return {
+      kind: 'unknown',
+      reason: 'unverified_error',
+      code: errorCode,
+      callSeq: call.seq,
+      resultSeq: result.seq,
+    };
   }
   const meta = decodeMeta(isRecord(result.data) ? result.data.meta : undefined);
   if (

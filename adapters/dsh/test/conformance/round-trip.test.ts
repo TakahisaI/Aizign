@@ -77,8 +77,12 @@ async function roundTrip(binary: string, journalFile: string | undefined): Promi
     assert.equal(evidence.kind, 'duplicate');
     if (evidence.kind === 'duplicate') assert.equal(evidence.eventId, 'evt-round-trip');
     const original = await readSignalEvidence(dsh, dsh.sessionId, binding);
-    assert.equal(original.kind, 'rejected', 'the first session ended with the conflict');
-    if (original.kind === 'rejected') assert.equal(original.code, 'EVENT_CONFLICT');
+    assert.equal(original.kind, 'unknown', 'the first session ended with an unverifiable error');
+    if (original.kind === 'unknown' && original.reason === 'unverified_error') {
+      assert.equal(original.code, 'EVENT_CONFLICT');
+    } else {
+      assert.fail('expected an unverified_error evidence entry');
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -125,8 +129,12 @@ test('a crashed core leaves an unknown outcome, one submission, and no inferred 
     assert.equal(requests.length, 1, 'exactly one submission; unknown is never retried');
 
     const evidence = await readSignalEvidence(unknownDsh, unknownDsh.sessionId, binding);
-    assert.equal(evidence.kind, 'rejected');
-    if (evidence.kind === 'rejected') assert.equal(evidence.code, codes.OUTCOME_UNKNOWN);
+    assert.equal(evidence.kind, 'unknown');
+    if (evidence.kind === 'unknown' && evidence.reason === 'unverified_error') {
+      assert.equal(evidence.code, codes.OUTCOME_UNKNOWN);
+    } else {
+      assert.fail('expected an unverified_error evidence entry');
+    }
     assert.ok(
       !existsSync(join(stateDir, 'workflow.jsonl')),
       'the fake core writes its own state file',
