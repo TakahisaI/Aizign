@@ -8,7 +8,7 @@ The DSH harness adapter: a cordis plugin that registers one **scope-bound** `sub
 | **Non-responsibility** | 判断（core）、journal（coreのJSONL。DSH persistenceには書かない）、identityの決定（configで固定。agentは知らない）、live smokeの手順（operatorの `op/`） |
 | **Inputs** | plugin config（binary、stateDir、timeoutMs、eventId + expected assignment）、agentのtool call `{ kind, findingCount?, artifactRef?, shortErrorCode? }` |
 | **Outputs** | tool result `{ disposition: accepted \| duplicate, eventId }`、または `HarnessError`（protocol / workflow code、`AIZU_OUTCOME_UNKNOWN`、`AIZU_UNAVAILABLE`、`AIZU_INCOMPATIBLE`） |
-| **Hard invariants** | identity（eventId、workflowId、assignmentId、role、artifactRevision）をtool schema・引数・promptに出さない（5、8）、DSHのcall id / session idをpayloadに入れない（8）、`unknown` は `AIZU_OUTCOME_UNKNOWN` として返し再送しない（3、4）、preflight失敗時はtoolを登録しない、環境変数を子processへ丸ごと渡さない（PATHのみ） |
+| **Hard invariants** | identity（eventId、workflowId、assignmentId、role、artifactRevision）をtool schema・引数・promptに出さない（5、8）、DSHのcall id / session idを **envelope全体**（`requestId` 含む）に入れない（8。`requestId` はadapter所有のnonce）、responseは `requestId` / `kind` / `eventId` を送信と照合し不一致は `unknown`、stdoutは `MAX_FRAME_BYTES` と「frame 1つ」でbound、`unknown` は `AIZU_OUTCOME_UNKNOWN` として返し再送しない（3、4）、cold readは `maxEvents` / timeout でbound（9）、preflight失敗時はtoolを登録しない、環境変数を子processへ丸ごと渡さない（PATHのみ） |
 | **Allowed dependencies** | `@aizu/protocol`。peer: `@deepseek-ai/cordis` 4.0.1、`dsh-llm` / `dsh-tools` 0.1.1-rc.2、`schemastery` 3.18.1（exact、ADR-0010）。dev: `@aizu/adapter-testkit` |
 | **Test command** | `npm test -w @aizu/adapter-dsh`（`AIZU_BINARY` を与えると実binaryにも） |
 | **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0010](../../docs/adr/0010-harness-sdk-dependencies-and-node-policy.md) |
@@ -19,12 +19,12 @@ The DSH harness adapter: a cordis plugin that registers one **scope-bound** `sub
 src/
 ├── index.ts                       plugin entry: name / inject / Config / apply、createClient
 ├── config.ts                      Config（schemastery）、validateConfig、SignalBinding、bindingPayload
-├── core-client/one-shot-client.ts OneShotCoreClient（spawn → 1 frame → 1 frame、abort、unknownの分類）
+├── core-client/one-shot-client.ts OneShotCoreClient（spawn → 1 frame → 1 frame、相関照合、frame bound、abort、unknownの分類）
 ├── mapping/tool.ts                createSubmitWorkflowSignalTool、decodeArgs、toPayload、toToolResult、presentationMetaFor、adapterCodes
 ├── lifecycle/preflight.ts         hello → checkCompatibility
 └── evidence/
     ├── digest.ts                  canonicalJson、bindingDigest、payloadDigest（sha256）
-    └── cold-read.ts               readSignalEvidence(source, sessionId, binding): session logの tool/call + tool/result 対からの evidence
+    └── cold-read.ts               readSignalEvidence(source, sessionId, binding, { fromSeq, maxEvents, timeoutMs, signal }): bounded cold read
 test/
 ├── helpers/fake-dsh.ts            FakeDsh（tool registry + DSH風dispatch + in-memory session log）、fakeBinary
 ├── unit/                          config、tool mapping（identity非露出、metadata-only、unknown非再送）、evidence、plugin apply
@@ -64,6 +64,8 @@ completionの正本はjournal（core側）です。adapterはそれに加えて�
 | `rejected { code }` | `tool/result` が error（`EVENT_CONFLICT`、`AIZU_OUTCOME_UNKNOWN` など） |
 | `unknown no_result` | `tool/call` はあるが `tool/result` がない（crash等）。後続の発話からは推測しない |
 | `unknown meta_mismatch` | 別のidentityの結果、または metadata がない |
+| `unknown bound_exceeded` | sourceが `maxEvents`（既定 10000）を超えるeventを返した。partialな証拠は返さない |
+| `unknown aborted` | timeout（既定 10秒）または呼び出し側のabort |
 | `absent` | このtoolの呼び出しがない |
 
 `EvidenceSource` は構造的port（`readFrom(sessionId, fromSeq)`）で、DSHの `SessionPersistence` がそのまま満たします。session idはadapterの入力であり、coreへは渡りません。
@@ -74,6 +76,6 @@ completionの正本はjournal（core側）です。adapterはそれに加えて�
 |---|---|
 | `AIZU_UNAVAILABLE` | preflightでbinaryに到達できない、または `hello` がerror |
 | `AIZU_INCOMPATIBLE` | protocol versionが違う、またはcapabilityがない |
-| `AIZU_OUTCOME_UNKNOWN` | 提出の結果が不明（無応答、garbage、timeout、abort、`JOURNAL_OUTCOME_UNKNOWN`）。再送しない |
+| `AIZU_OUTCOME_UNKNOWN` | 提出の結果が不明（無応答、garbage、2 frame、oversized、相関不一致、timeout、abort、`JOURNAL_OUTCOME_UNKNOWN`）。再送しない |
 | `INVALID_SIGNAL` ほか | protocol / workflow codeをそのまま転送 |
 | `INVALID_EXPECTATION` | plugin configのidentityが不正 |

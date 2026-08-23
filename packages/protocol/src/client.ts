@@ -5,6 +5,7 @@
  * the outcome is unknown.
  */
 
+import type { Response } from './envelope.ts';
 import type { HelloInfo } from './hello.ts';
 import type { SignalResult, WorkflowSignalSubmitPayload } from './workflow-signal.ts';
 
@@ -47,11 +48,50 @@ export interface UnknownOutcome {
   readonly reason:
     | 'no_response'
     | 'undecodable_response'
+    | 'oversized_response'
+    | 'correlation_mismatch'
     | 'timeout'
     | 'spawn_failed'
     | 'reported_unknown'
     | 'aborted';
   readonly detail: string;
+}
+
+/** What a client sent, for correlating the response against it. */
+export interface SentRequest {
+  readonly requestId: string;
+  readonly kind: string;
+  /** For `workflow.signal.submit`: the submitted signal's event id. */
+  readonly eventId?: string;
+}
+
+export interface CorrelationMismatch {
+  readonly field: 'requestId' | 'kind' | 'eventId';
+  readonly expected: string;
+  readonly actual: string | null;
+}
+
+/**
+ * A response is only evidence about the request it answers. Any mismatch
+ * means the client cannot know what happened to its own request — the
+ * effect may already have been applied — so callers must treat a mismatch
+ * as an unknown outcome, never as a rejection.
+ */
+export function checkCorrelation(
+  sent: SentRequest,
+  response: Response,
+): CorrelationMismatch | undefined {
+  if (response.requestId !== sent.requestId) {
+    return { field: 'requestId', expected: sent.requestId, actual: response.requestId };
+  }
+  if (response.kind !== sent.kind) {
+    return { field: 'kind', expected: sent.kind, actual: response.kind };
+  }
+  if (sent.eventId !== undefined && response.body.type === 'workflow.signal') {
+    const actual = response.body.result.eventId;
+    if (actual !== sent.eventId) return { field: 'eventId', expected: sent.eventId, actual };
+  }
+  return undefined;
 }
 
 /** Per-call options. */

@@ -6,6 +6,7 @@
  * or the prompt.
  */
 
+import { randomUUID } from 'node:crypto';
 import {
   type CoreClient,
   decodeWorkflowSignalSubmit,
@@ -126,10 +127,13 @@ export function toPayload(binding: SignalBinding, args: SignalArgs): WorkflowSig
   }
 }
 
-/** A request id derived from the harness call id, within the identifier pattern. */
-export function requestIdFor(callId: string): string {
-  const safe = callId.replace(/[^A-Za-z0-9._:-]/g, '-').replace(/^[^A-Za-z0-9]+/, '');
-  return `req-${safe.length === 0 ? 'call' : safe}`.slice(0, 128);
+/**
+ * A fresh, adapter-owned request id. Deliberately unrelated to the harness
+ * call id: nothing harness-specific crosses the process boundary, not even
+ * in the envelope (data boundary, hard invariant 8).
+ */
+export function newRequestId(): string {
+  return `req-${randomUUID()}`;
 }
 
 /** Maps the core's answer to the tool's canonical value or a harness error. */
@@ -208,7 +212,7 @@ export function createSubmitWorkflowSignalTool(
     },
     async execute(args: unknown, exec: ToolRunContext) {
       const payload = toPayload(binding, decodeArgs(args, role));
-      const outcome = await client.submitWorkflowSignal(requestIdFor(exec.callId), payload, {
+      const outcome = await client.submitWorkflowSignal(newRequestId(), payload, {
         signal: exec.signal,
       });
       return toToolResult(outcome);

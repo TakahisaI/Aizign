@@ -18,7 +18,7 @@ Prove a harness adapter's core client against a fake core — including every wa
 ```text
 src/
 ├── index.ts
-├── fake-core.ts           node fake-core.js hello | handle --state <dir>。AIZU_FAKE_FAULT = no-response | garbage | hang | journal-unknown | exit-2
+├── fake-core.ts           node fake-core.js hello | handle --state <dir>。AIZU_FAKE_FAULT = no-response | garbage | hang | journal-unknown | exit-2 | wrong-request-id | wrong-kind | wrong-event-id | oversized | two-frames | trailing-garbage
 ├── fake-core-path.ts      fakeCoreCommand(): { command: process.execPath, args: [fake-core] }
 ├── reference-client.ts    ReferenceOneShotClient: spawn → 1 frame → 1 frame → unknownの分類
 ├── conformance.ts         runCoreScenarios / runFaultScenarios / runCoreClientConformance、samplePayload、assertMetadataOnly
@@ -51,6 +51,10 @@ runnerが検査する経路:
 | stdoutがframeでない | `unknown undecodable_response` |
 | coreが `JOURNAL_OUTCOME_UNKNOWN` を返す | `unknown reported_unknown` |
 | 応答なし（timeout） | `unknown timeout` |
+| 呼び出し側のabort | `unknown aborted` |
+| `requestId` / `kind` / `eventId` が送信と一致しない | `unknown correlation_mismatch` |
+| responseが `MAX_FRAME_BYTES` を超える | `unknown oversized_response`（childをkill） |
+| stdoutにframeが2つ、または末尾に非whitespace | `unknown undecodable_response` |
 | binaryが存在しない | `unknown spawn_failed` |
 
-fake coreは受け取ったframeを `<state>/fake-requests.jsonl` に残すので、adapterのmapping testは `assertMetadataOnly` でharness IDや本文の混入を検査できます。
+fake coreは受け取ったframeを `<state>/fake-requests.jsonl` に残します。`readFakeRequests(stateDir)` で読み、`assertMetadataOnly` を **envelope全体** に適用すれば、payloadだけでなく `requestId` にもharness IDが混入していないことを検査できます（`FORBIDDEN_KEYS` には `callId` / `sessionId` を含む）。

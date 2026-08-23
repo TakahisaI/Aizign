@@ -57,8 +57,19 @@ pub(crate) fn hello() -> u8 {
 
 /// `aizu handle --state <dir>`: one request in, one response out.
 pub(crate) fn handle(state: &Path) -> u8 {
-    let frame = match read_frame() {
-        Ok(frame) => frame,
+    let frame = match read_stdin() {
+        Ok(Stdin::Frame(frame)) => frame,
+        Ok(Stdin::Extra) => {
+            log("decode", None, None, codes::INVALID_ENVELOPE);
+            return write_frame(&Response {
+                request_id: None,
+                kind: None,
+                body: ResponseBody::Error(ProtocolError::new(
+                    codes::INVALID_ENVELOPE,
+                    "stdin must carry exactly one frame",
+                )),
+            });
+        }
         Err(error) => {
             eprintln!("aizu: cannot read request frame: {error}");
             return exit::IO;
@@ -93,16 +104,30 @@ pub(crate) fn handle(state: &Path) -> u8 {
     write_frame(&response)
 }
 
-/// Reads one line, refusing to buffer more than the protocol bound.
-fn read_frame() -> io::Result<Vec<u8>> {
+/// What stdin carried: exactly one frame, or something that is not one.
+enum Stdin {
+    Frame(Vec<u8>),
+    /// A second frame or trailing content followed the first newline.
+    Extra,
+}
+
+/// Reads stdin up to the protocol bound (plus one byte to detect overflow).
+/// Exactly one frame is allowed: the first line, followed by nothing but
+/// whitespace. Anything else is not a request.
+fn read_stdin() -> io::Result<Stdin> {
     let stdin = io::stdin();
-    let mut reader = stdin.lock().take(MAX_REQUEST_BYTES as u64 + 1);
+    let mut reader = stdin.lock().take(MAX_REQUEST_BYTES as u64 + 2);
     let mut frame = Vec::new();
     reader.read_until(b'\n', &mut frame)?;
     if frame.last() == Some(&b'\n') {
         frame.pop();
+        let mut rest = Vec::new();
+        reader.read_to_end(&mut rest)?;
+        if rest.iter().any(|byte| !byte.is_ascii_whitespace()) {
+            return Ok(Stdin::Extra);
+        }
     }
-    Ok(frame)
+    Ok(Stdin::Frame(frame))
 }
 
 fn respond(frame: &[u8], state: &Path) -> Response {

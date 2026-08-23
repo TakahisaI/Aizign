@@ -132,3 +132,39 @@ test('an error result is a rejection with its code; unrelated tools are ignored'
     kind: 'absent',
   });
 });
+
+test('cold reads are bounded: too many events or a timeout is unknown, never partial', async () => {
+  const args = { kind: 'implementation_ready' };
+  const meta = presentationMetaFor(binding, args, { disposition: 'accepted', eventId: 'evt-1' });
+  const events = [call(1, 'c1', args), result(2, 'c1', meta)];
+  const bounded = await readSignalEvidence(source(events), 's', binding, { maxEvents: 1 });
+  assert.deepEqual(bounded, {
+    kind: 'unknown',
+    reason: 'bound_exceeded',
+    detail: 'session returned 2 events; at most 1 are read',
+  });
+
+  const slow: EvidenceSource = { readFrom: () => new Promise(() => undefined) };
+  const timedOut = await readSignalEvidence(slow, 's', binding, { timeoutMs: 50 });
+  assert.deepEqual(timedOut, { kind: 'unknown', reason: 'aborted', detail: 'cold read timed out' });
+
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), 20);
+  const cancelled = await readSignalEvidence(slow, 's', binding, { signal: controller.signal });
+  assert.deepEqual(cancelled, {
+    kind: 'unknown',
+    reason: 'aborted',
+    detail: 'cold read cancelled',
+  });
+
+  // The signal is forwarded to the source, as DSH's readFrom expects.
+  let forwarded: AbortSignal | undefined;
+  const observing: EvidenceSource = {
+    readFrom: async (_id: string, _from: number, signal?: AbortSignal) => {
+      forwarded = signal;
+      return { events };
+    },
+  };
+  await readSignalEvidence(observing, 's', binding, { fromSeq: 1 });
+  assert.ok(forwarded instanceof AbortSignal);
+});

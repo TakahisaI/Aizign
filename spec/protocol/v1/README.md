@@ -1,7 +1,11 @@
 # Aizu Protocol v1
 
 NDJSON over stdin / stdout。**1 request frame in、1 response frame out**。frameは改行で終わる1行のJSON objectで、
-request frameは改行を含めて `65536` bytes以下。
+request / response とも `65536` bytes（`MAX_FRAME_BYTES`）以下。
+
+- stdinは **frame 1つ + 末尾 whitespace** だけを許す。2つ目のframeや末尾の非whitespaceは `INVALID_ENVELOPE`（何もappendしない）
+- stdoutも **frame 1つ + 末尾 whitespace** だけ。clientは2つ目のframe・末尾の非whitespace・boundの超過を `unknown` として扱う（effectが実行済みの可能性があるため、拒否ではなく不明）
+- clientはresponseの `requestId` / `kind` / （signalでは）`eventId` を送信したものと照合し、不一致は `unknown`（correlation mismatch）にする
 
 ```text
 adapter ──(request frame)──▶ aizu handle --state <dir> ──(response frame)──▶ adapter
@@ -14,7 +18,7 @@ adapter ──(request frame)──▶ aizu handle --state <dir> ──(response
 |---|---|---|
 | `protocol` | `"aizu"` | `"aizu"` |
 | `version` | `1` | `1` |
-| `requestId` | `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$` | requestの値をecho。復元できなければ `null` |
+| `requestId` | `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$` | requestの値をecho（同じpattern）。復元できなければ `null` |
 | `kind` | 登録済みkind | requestの値をecho。復元できなければ `null` |
 | `payload` | kindごとのclosed object | `ok: true` のときだけ |
 | `ok` | — | `true` / `false` |
@@ -48,8 +52,8 @@ structured workflow signalを、shellがbindされている `expected` assignmen
 
 | Code | いつ |
 |---|---|
-| `REQUEST_TOO_LARGE` | frameが上限を超える。`requestId` / `kind` は `null` |
-| `INVALID_ENVELOPE` | JSONでない、`protocol` が違う、`version` が整数でない、未知field、`requestId` が不正 |
+| `REQUEST_TOO_LARGE` | request frameが上限を超える。`requestId` / `kind` は `null` |
+| `INVALID_ENVELOPE` | JSONでない、`protocol` が違う、`version` が整数でない、未知field、`requestId` が不正、stdinに2つ目のframe。response側では上限超過もこれ |
 | `PROTOCOL_VERSION_UNSUPPORTED` | `version` が `1` 以外。`requestId` / `kind` は復元できれば返る |
 | `UNKNOWN_KIND` | `kind` が未登録 |
 | `INVALID_PAYLOAD` | payloadの形がkindのschemaに合わない（欠落、型違い、未知field、`null`） |
