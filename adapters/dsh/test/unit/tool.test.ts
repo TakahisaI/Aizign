@@ -147,7 +147,7 @@ test('outcomes map to the canonical value or a harness error; unknown is never r
   );
 });
 
-test('the tool renders and presents only metadata', () => {
+test('the tool renders and presents only identity and digests', () => {
   const tool = createSubmitWorkflowSignalTool(
     stubClient({ kind: 'accepted', eventId: 'evt-fixed' }),
     binding,
@@ -156,12 +156,23 @@ test('the tool renders and presents only metadata', () => {
   assert.deepEqual(tool.output.render({ kind: 'review_passed' }, value), [
     { type: 'text', text: JSON.stringify(value) },
   ]);
-  assert.deepEqual(
-    tool.output.presentationMeta?.({ kind: 'review_passed', findingCount: 0 }, value),
-    {
-      tool: TOOL_NAME,
-      kind: 'review_passed',
-      result: value,
-    },
-  );
+  const meta = tool.output.presentationMeta?.(
+    { kind: 'review_passed', findingCount: 0 },
+    value,
+  ) as Record<string, unknown>;
+  assert.deepEqual(Object.keys(meta).sort(), [
+    'bindingDigest',
+    'disposition',
+    'eventId',
+    'payloadDigest',
+    'tool',
+  ]);
+  assert.equal(meta.tool, TOOL_NAME);
+  assert.equal(meta.eventId, 'evt-fixed');
+  assert.equal(meta.disposition, 'accepted');
+  assert.match(String(meta.bindingDigest), /^[0-9a-f]{64}$/);
+  assert.match(String(meta.payloadDigest), /^[0-9a-f]{64}$/);
+  // Total even for arguments that could never have produced a result.
+  const degraded = tool.output.presentationMeta?.('garbage', value) as Record<string, unknown>;
+  assert.equal(degraded.payloadDigest, '');
 });

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -17,6 +17,7 @@ import {
   name,
 } from '../../src/index.ts';
 import { preflight } from '../../src/lifecycle/preflight.ts';
+import { fakeBinary } from '../helpers/fake-dsh.ts';
 
 /** A fake that wraps the fake core script so `binary` alone is enough. */
 function fakeBinaryConfig(
@@ -90,24 +91,6 @@ test('preflight accepts a compatible core and rejects an incompatible or unreach
     return error instanceof HarnessError && error.code === codes.UNAVAILABLE;
   });
 });
-
-/** A tiny executable that runs the fake core, so `binary` alone reaches it. */
-function fakeBinary(dir: string, env: Record<string, string> = {}): string {
-  const fake = fakeCoreCommand();
-  const exports = Object.entries(env)
-    .map(([key, value]) => `export ${key}=${JSON.stringify(value)}`)
-    .join('\n');
-  mkdirSync(dir, { recursive: true });
-  const path = join(dir, 'aizu-fake');
-  writeFileSync(
-    path,
-    `#!/bin/sh\n${exports}\nexec ${JSON.stringify(fake.command)} ${fake.args.map((a) => JSON.stringify(a)).join(' ')} "$@"\n`,
-    {
-      mode: 0o755,
-    },
-  );
-  return path;
-}
 
 test('apply runs the preflight and registers exactly one scope-bound tool', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aizu-dsh-plugin-'));

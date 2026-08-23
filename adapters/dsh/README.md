@@ -4,7 +4,7 @@ The DSH harness adapter: a cordis plugin that registers one **scope-bound** `sub
 
 | | |
 |---|---|
-| **Responsibility** | DSH plugin entry（`name` / `inject` / `Config` / `apply`）、preflight（`aizu hello` → protocol version + capability）、`OneShotCoreClient`、agentの引数 → `workflow.signal.submit` payload のmapping、coreの結果 → tool result / `HarnessError` |
+| **Responsibility** | DSH plugin entry（`name` / `inject` / `Config` / `apply`）、preflight（`aizu hello` → protocol version + capability）、`OneShotCoreClient`、agentの引数 → `workflow.signal.submit` payload のmapping、coreの結果 → tool result / `HarnessError`、durable evidence（`tool/result` の `meta` に digest を記録し、session logの cold read で照合） |
 | **Non-responsibility** | 判断（core）、journal（coreのJSONL。DSH persistenceには書かない）、identityの決定（configで固定。agentは知らない）、live smokeの手順（operatorの `op/`） |
 | **Inputs** | plugin config（binary、stateDir、timeoutMs、eventId + expected assignment）、agentのtool call `{ kind, findingCount?, artifactRef?, shortErrorCode? }` |
 | **Outputs** | tool result `{ disposition: accepted \| duplicate, eventId }`、または `HarnessError`（protocol / workflow code、`AIZU_OUTCOME_UNKNOWN`、`AIZU_UNAVAILABLE`、`AIZU_INCOMPATIBLE`） |
@@ -20,11 +20,17 @@ src/
 ├── index.ts                       plugin entry: name / inject / Config / apply、createClient
 ├── config.ts                      Config（schemastery）、validateConfig、SignalBinding、bindingPayload
 ├── core-client/one-shot-client.ts OneShotCoreClient（spawn → 1 frame → 1 frame、abort、unknownの分類）
-├── mapping/tool.ts                createSubmitWorkflowSignalTool、decodeArgs、toPayload、toToolResult、adapterCodes
-└── lifecycle/preflight.ts         hello → checkCompatibility
+├── mapping/tool.ts                createSubmitWorkflowSignalTool、decodeArgs、toPayload、toToolResult、presentationMetaFor、adapterCodes
+├── lifecycle/preflight.ts         hello → checkCompatibility
+└── evidence/
+    ├── digest.ts                  canonicalJson、bindingDigest、payloadDigest（sha256）
+    └── cold-read.ts               readSignalEvidence(source, sessionId, binding): session logの tool/call + tool/result 対からの evidence
 test/
-├── unit/                          config、tool mapping（identity非露出、metadata-only、unknown非再送）、plugin apply
-└── conformance/core-client.test.ts  runCoreClientConformance + 実binary
+├── helpers/fake-dsh.ts            FakeDsh（tool registry + DSH風dispatch + in-memory session log）、fakeBinary
+├── unit/                          config、tool mapping（identity非露出、metadata-only、unknown非再送）、evidence、plugin apply
+└── conformance/
+    ├── core-client.test.ts        runCoreClientConformance + 実binary
+    └── round-trip.test.ts         fake DSH → plugin → fake core / 実binary → journal → cold read、crash時の unknown
 cordis.patch.yml                   bundle時にdisabledで挿入。operatorのpatchが有効化する
 ```
 
@@ -45,6 +51,22 @@ cordis.patch.yml                   bundle時にdisabledで挿入。operatorのpa
         role: implementation
         artifactRevision: rev-c0ffee
 ```
+
+## Evidence
+
+completionの正本はjournal（core側）です。adapterはそれに加えて、toolの `presentationMeta` で durable な `tool/result` event の `meta` に
+`{ tool, eventId, disposition, bindingDigest, payloadDigest }` を書きます。`readSignalEvidence` はsession logを cold read し、
+最後の `tool/call`（このtool）と対になる `tool/result` を探して、`eventId` と `bindingDigest` を plugin config から再計算した値と照合します。
+
+| 結果 | 意味 |
+|---|---|
+| `accepted` / `duplicate` | 対が揃い、digestが一致 |
+| `rejected { code }` | `tool/result` が error（`EVENT_CONFLICT`、`AIZU_OUTCOME_UNKNOWN` など） |
+| `unknown no_result` | `tool/call` はあるが `tool/result` がない（crash等）。後続の発話からは推測しない |
+| `unknown meta_mismatch` | 別のidentityの結果、または metadata がない |
+| `absent` | このtoolの呼び出しがない |
+
+`EvidenceSource` は構造的port（`readFrom(sessionId, fromSeq)`）で、DSHの `SessionPersistence` がそのまま満たします。session idはadapterの入力であり、coreへは渡りません。
 
 ## Harness-facing codes
 
