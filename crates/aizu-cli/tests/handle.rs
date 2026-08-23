@@ -3,6 +3,7 @@
 use std::io::Write as _;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
+use std::time::Duration;
 
 use aizu_core::workflow::Command as CoreCommand;
 use aizu_protocol::{
@@ -261,6 +262,47 @@ fn trailing_content_is_still_rejected_at_the_frame_size_bound() {
         one_frame(&run_handle(&dir.state(), &exact)).body,
         ResponseBody::WorkflowSignal(_)
     ));
+}
+
+#[test]
+fn a_stdin_that_never_closes_ends_as_handler_timeout_not_a_hang() {
+    // The one-frame check scans to EOF, so the whole request (read included)
+    // must sit inside the watchdog: a caller holding stdin open after the
+    // trailing whitespace gets a bounded HANDLER_TIMEOUT, and the process
+    // exits without appending (#34).
+    let dir = TempDir::new();
+    let mut child = aizu()
+        .arg("handle")
+        .arg("--state")
+        .arg(dir.state())
+        .env("AIZU_HANDLE_TIMEOUT_MS", "300")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn aizu");
+    let mut stdin = child.stdin.take().unwrap();
+    stdin
+        .write_all(format!("{}  ", submit_frame("evt-held", "req-held")).as_bytes())
+        .unwrap();
+    stdin.flush().unwrap();
+
+    // Keep stdin open; the watchdog must answer anyway, within bounded time.
+    let started = std::time::Instant::now();
+    let output = child.wait_with_output().expect("wait for aizu");
+    drop(stdin);
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "the process must exit on the watchdog, not wait for EOF"
+    );
+    let ResponseBody::Error(error) = one_frame(&output).body else {
+        panic!("error")
+    };
+    assert_eq!(error.code().as_str(), codes::HANDLER_TIMEOUT);
+    assert!(
+        !dir.state().join(JOURNAL_FILE_NAME).exists(),
+        "nothing is appended while stdin is still open"
+    );
 }
 
 #[test]

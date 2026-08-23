@@ -28,9 +28,9 @@ echo '<request frame>' | aizu handle --state ./.aizu-state
 
 ## 挙動
 
-1. stdinから1行を読む（`MAX_REQUEST_BYTES` + 1 までしかbufferしない）
-2. worker threadで `decode_request` → `hello` ならhello info、`workflow.signal.submit` なら `JsonlJournal::open` → `handle_workflow_signal`
-3. 10秒で打ち切り。打ち切り時は `HANDLER_TIMEOUT` を返す。進行中のappendの結果は不明として扱い、再送しない
+1. worker threadでstdinを読む: 1行目は `MAX_REQUEST_BYTES` + 1 までしかbufferせず、改行後はEOFまで走査して「frame 1つ + 末尾whitespace」以外を拒否する
+2. 同じworker threadで `decode_request` → `hello` ならhello info、`workflow.signal.submit` なら `JsonlJournal::open` → `handle_workflow_signal`
+3. 10秒で打ち切り（**stdinのread込み**。one-frame検査はEOFまで走査するので、stdinを閉じないcallerもこのboundで終わる）。打ち切り時は `HANDLER_TIMEOUT` を返す。進行中のappendの結果は不明として扱い、再送しない。boundはtest用に `AIZU_HANDLE_TIMEOUT_MS`（1..=600000）で上書きできる（adapterは子processへ `PATH` しか渡さないので、harness側からは届かない）
 4. stderrに `aizu: stage=... requestId=... kind=... outcome=...` を1行
 
 `hello` responseの `journalSchemaVersion` は `aizu-store-jsonl` の定数から、`package.version` はこのcrateのversionから取ります。
