@@ -1,0 +1,74 @@
+# Dependency rules
+
+依存方向の正本です。`cargo xtask public-audit` がこの表と同じ規則を機械的に検査します
+（検査の実装は `xtask/src/audit/dependencies.rs`。表と実装がずれたら実装を直すのではなく、両方を同じPRで更新してください）。
+
+## 方向
+
+```text
+aizu-cli ─────┬──────────────┬──────────────┬─────────────┐
+              ▼              ▼              ▼             ▼
+       aizu-protocol  aizu-store-jsonl  aizu-engine  aizu-testkit
+              │              │              │             │
+              │              └──────┬───────┘             │
+              ▼                     ▼                     ▼
+           aizu-core ◄──────────────┴─────────────────────┘
+```
+
+矢印の向きにだけ依存できます。逆方向、および表にない依存は禁止です。
+
+## Rust crates
+
+| Crate | 依存してよいworkspace crate | 依存してよい外部crate | 備考 |
+|---|---|---|---|
+| `aizu-core` | なし | **なし**（dev-dependenciesも含む） | `#![forbid(unsafe_code)]`。追加にはADR |
+| `aizu-engine` | `aizu-core` | なし | portを定義する側 |
+| `aizu-protocol` | `aizu-core` | `serde`、`serde_json` | DTOはここで定義。domain型をderiveしない |
+| `aizu-store-jsonl` | `aizu-core`、`aizu-engine` | `serde`、`serde_json` | engineの `Journal` portを実装 |
+| `aizu-testkit` | `aizu-core`、`aizu-engine`、`aizu-protocol` | `serde_json` | fixture読み込み、memory store、fake clock |
+| `aizu-cli` | 上記すべて | `serde_json`（引数parseは標準libraryで十分な範囲に留める） | composition root。ここ以外でworkspace全体を束ねない |
+| `xtask` | なし（workspace crateに依存しない） | `serde_json` | repository tooling。公開artifactではない |
+
+外部crateの追加は「新しいruntime dependency」としてADRを要します（[CONTRIBUTING.md](../../CONTRIBUTING.md#adrが必要な変更)）。
+dev-dependencyの追加もこの表の更新を要します（`aizu-core` には追加しない）。
+
+## `aizu-core` で禁止するもの
+
+source中に次が現れたら `public-audit` が失敗します。
+
+| 禁止 | 理由 |
+|---|---|
+| `std::fs`、`std::process`、`std::net`、`std::env`、`std::io` | I/Oはshellが所有 |
+| `std::time`、`std::thread`、`std::sync::mpsc` | clockとschedulingはshellが所有。時刻はbounded timestampとして値で渡す |
+| `async`、`tokio`、`futures` | async runtimeを持ち込まない |
+| `serde`、`serde_json` | serializationはprotocol / storeが所有（ADR-0004） |
+| `unsafe` | `forbid(unsafe_code)` |
+| harness / providerの固有名（`dsh`、`codex`、`hermes`、`deepseek`、`openai`、`anthropic`） | coreは固有名を知らない |
+
+`aizu-engine` には上のうちI/O、async、serde、固有名の規則を同様に適用します（`std::time` はengineでもportを通す）。
+
+## TypeScript packages
+
+| Package | 依存してよいworkspace package | 外部依存 |
+|---|---|---|
+| `@aizu/protocol` | なし | なし（生成codeとvalidatorは自前） |
+| `@aizu/adapter-testkit` | `@aizu/protocol` | test runnerに必要な最小限 |
+| `@aizu/adapter-<harness>` | `@aizu/protocol`、`@aizu/adapter-testkit`（devのみ） | そのharnessのSDK（exact version固定） |
+
+- package間はworkspace依存だけを使い、相対pathで別packageのsourceをimportしない
+- `exports` mapはclosed。`./*` のようなwildcardを許さない
+- adapterから `aizu-core` / `aizu-engine` の型を参照しない。契約は `@aizu/protocol` だけ
+
+## Port ownership
+
+| Port | 定義する側 | 実装する側 |
+|---|---|---|
+| `Journal` | `aizu-engine` | `aizu-store-jsonl`、`aizu-testkit`（memory） |
+| `Clock` | `aizu-engine` | `aizu-cli`、`aizu-testkit`（fixed） |
+| `EffectSink` | `aizu-engine` | `aizu-cli`（protocol responseとして返す） |
+| Harness adapter contract | `@aizu/protocol` / `spec/protocol` | 各adapter |
+
+## 横断的な置き場の禁止
+
+`common`、`utils`、`shared`、`ports`（巨大な単一package）、`AppContext`、`GlobalState`、`Services`、`Container`、`Dependencies` を作らない。
+共有は、二つ以上のcontextで実際に必要になり、方向を壊さないことを確認してから `identity` のような最小語彙に限って行う。
