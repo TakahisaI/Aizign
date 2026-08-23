@@ -27,7 +27,7 @@ adapterはpackage versionの完全一致ではなく、`hello` で得たprotocol
 | npm | `package.json` の `packageManager` |
 | GitHub Actions | commit SHAで固定 |
 
-Node versionはDSH adapterが入る時点で、harness SDKの要求に合わせて再評価します（専用PR）。
+Node.jsは `24.19.0`（LTS）、npmは `12.0.2` に固定しています。DSH adapterが入る時点で、harness SDKの要求に合わせて再評価します（専用PR）。
 
 ## Harness
 
