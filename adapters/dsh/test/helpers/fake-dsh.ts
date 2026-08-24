@@ -42,7 +42,7 @@ export class FakeDsh implements EvidenceSource {
     return tool;
   }
 
-  /** Dispatches like DSH: durable call, execution, durable result. */
+  /** Dispatches like DSH while recording an in-memory call/result pair. */
   async dispatch(name: string, args: unknown): Promise<DispatchResult> {
     const tool = this.tool(name);
     const callId = `call_${String(++this.#calls).padStart(4, '0')}`;

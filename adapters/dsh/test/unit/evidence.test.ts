@@ -68,7 +68,7 @@ test('canonical JSON sorts keys recursively and drops undefined', () => {
   assert.notEqual(bindingDigest(binding), bindingDigest({ ...binding, eventId: 'evt-2' }));
 });
 
-test('a durable call/result pair with matching digests is evidence', async () => {
+test('a recorded call/result pair with matching event and binding metadata is evidence', async () => {
   const args = { kind: 'implementation_ready' };
   const meta = presentationMetaFor(binding, args, { disposition: 'accepted', eventId: 'evt-1' });
   const evidence = await readSignalEvidence(
@@ -149,7 +149,7 @@ test('an error result is unknown, never a binding-attributed rejection (#32)', a
   });
 });
 
-test('cold reads are bounded: too many events or a timeout is unknown, never partial', async () => {
+test('caller timeout and the post-read event guard are unknown, never partial', async () => {
   const args = { kind: 'implementation_ready' };
   const meta = presentationMetaFor(binding, args, { disposition: 'accepted', eventId: 'evt-1' });
   const events = [call(1, 'c1', args), result(2, 'c1', meta)];

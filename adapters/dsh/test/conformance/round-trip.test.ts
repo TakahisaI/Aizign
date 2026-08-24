@@ -82,7 +82,7 @@ async function roundTrip(binary: string, journalFile: string | undefined): Promi
     const afterRestart = await restarted.dispatch(TOOL_NAME, { kind: 'implementation_ready' });
     assert.deepEqual(afterRestart.value, { disposition: 'duplicate', eventId: 'evt-round-trip' });
 
-    // cold read of the durable session log: the latest call settled as a duplicate.
+    // In-memory session observation: the latest recorded call settled as a duplicate.
     const evidence = await readSignalEvidence(restarted, restarted.sessionId, binding);
     assert.equal(evidence.kind, 'duplicate');
     if (evidence.kind === 'duplicate') assert.equal(evidence.eventId, 'evt-round-trip');

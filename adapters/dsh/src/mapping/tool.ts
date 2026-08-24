@@ -158,9 +158,10 @@ export function toToolResult(outcome: SubmitOutcome): {
 }
 
 /**
- * Presentation metadata recorded in the durable `tool/result`: identity and
- * digests only, so a cold read of the session log can be checked against the
- * plugin configuration (see `evidence/cold-read.ts`). Must be total and pure.
+ * Presentation metadata written to the harness `tool/result`: identity and
+ * digests only. A later session read verifies the event and binding metadata
+ * and reports the recorded payload digest (see `evidence/cold-read.ts`). This
+ * type makes no durability or retention claim. Must be total and pure.
  */
 export interface SignalPresentationMeta {
   tool: string;

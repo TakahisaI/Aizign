@@ -1,10 +1,10 @@
 /**
- * Cold read of durable tool evidence from a harness session log.
+ * Cold read of harness session-log observations.
  *
  * Completion is never inferred from a live notification, idle state, or
- * prose (hard invariant 1). What counts is the durable pair of a top-level
- * `tool/call` for our tool and its `tool/result`, whose presentation
- * metadata must carry the digests this plugin instance would have written.
+ * prose (hard invariant 1). The reader examines a persisted top-level
+ * `tool/call` / `tool/result` pair when the source provides one, and checks
+ * the result's binding metadata against what this plugin instance writes.
  *
  * The source is a structural port: DSH's `SessionPersistence.readFrom`
  * satisfies it, and tests supply an in-memory log. Session ids are adapter
@@ -31,13 +31,13 @@ export interface EvidenceSource {
   ): Promise<{ readonly events: readonly SessionEventLike[] }>;
 }
 
-/** Bounds for one cold read. Every read is finite; exceeding a bound is unknown, not partial. */
+/** Caller-wait and post-materialization classification guards for one session read. */
 export interface ColdReadOptions {
   /** First sequence number to read. Default 0. */
   readonly fromSeq?: number;
-  /** Maximum number of events the source may return. Default 10000. */
+  /** Maximum number of materialized events accepted for classification. Default 10000. */
   readonly maxEvents?: number;
-  /** Wall-clock bound for the read. Default 10000 ms. */
+  /** Wall-clock bound for caller wait. Default 10000 ms. */
   readonly timeoutMs?: number;
   /** Caller cancellation. */
   readonly signal?: AbortSignal;
@@ -56,7 +56,7 @@ export interface SignalResultMeta {
 }
 
 export type SignalEvidence =
-  /** A durable result matched the binding: the signal was accepted or was a duplicate. */
+  /** A success observation matched the event and binding metadata. */
   | {
       readonly kind: 'accepted' | 'duplicate';
       readonly eventId: string;
@@ -65,7 +65,7 @@ export type SignalEvidence =
       readonly payloadDigest: string;
     }
   /**
-   * A durable error result settled the call, but DSH persists only the error
+   * A persisted error result settled the call, but DSH persists only the error
    * name and code with it — no presentation metadata — so it cannot be
    * verified against this binding. `code` is diagnostic only: it may belong
    * to a submission under a different binding in the same session, and must
@@ -84,7 +84,7 @@ export type SignalEvidence =
       readonly reason: 'no_result' | 'meta_mismatch';
       readonly callSeq: number;
     }
-  /** The read could not complete within its bounds; nothing partial is reported. */
+  /** Caller wait ended or the materialized event-count guard failed; nothing partial is reported. */
   | {
       readonly kind: 'unknown';
       readonly reason: 'bound_exceeded' | 'aborted';
@@ -130,6 +130,10 @@ function resultError(data: unknown): string | undefined {
  * tool. Earlier calls are ignored: the journal, not the log, is the
  * authority on what was accepted; this only tells the adapter whether a
  * submission it cannot remember did settle.
+ *
+ * A non-abort rejection from the source is propagated rather than converted
+ * to `SignalEvidence`. Callers must treat that observation as unavailable and
+ * must not infer success, rejection, or absence from it.
  */
 export async function readSignalEvidence(
   source: EvidenceSource,
