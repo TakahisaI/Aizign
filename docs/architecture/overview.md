@@ -44,7 +44,7 @@ Aizignは、harness（LLM agentを動かす実行環境）から来る **structu
 7. `aizign-protocol` がresponse envelopeへ変換し、stdoutへ一行で書く。logはstderr。processは終了する。
 8. adapterはresponseのdispositionに従って次の動作を行う。`unknown` を成功や失敗へ推測しない。
 
-restart後の照合では、adapterが同じfull signalを`workflow.signal.reconcile`で問い合わせます。storeのread-only readerは`workflow.commit.json`が公開したexact prefixだけを読み、engine / coreは`accepted`、`conflict`、`absent`を返します。missing storage、active writer、corruption、unpublished tail、transport / correlation failureはすべて`unknown`であり、reconciliationはstateを作成・同期・修復しません。
+restart後の照合では、adapterが同じfull signalを`workflow.signal.reconcile`で問い合わせます。storeのread-only readerは`workflow.commit.json`が公開したexact prefixだけを読み、engine / coreは`accepted`、`conflict`、`absent`を返します。missing storage、active writer、corruption、unpublished tail、transport / correlation failureはすべて`unknown`であり、reconciliationはstateを作成・同期・修復しません。初期store implementationはdurability contractをCIで検証するLinuxだけでcapabilityをadvertiseし、未検証platformはfail closedします。
 
 ## Functional core / imperative shell
 

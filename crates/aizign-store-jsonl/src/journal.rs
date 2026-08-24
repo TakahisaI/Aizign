@@ -1,6 +1,8 @@
 //! The durable JSONL journal and its strictly read-only committed reader.
 
-use std::fs::{self, File, OpenOptions};
+#[cfg(target_os = "linux")]
+use std::fs::OpenOptions;
+use std::fs::{self, File};
 use std::io::{Read as _, Seek as _, SeekFrom, Write as _};
 use std::path::{Path, PathBuf};
 
@@ -18,6 +20,13 @@ pub const LOCK_FILE_NAME: &str = "workflow.lock";
 /// File name of the writer-published committed-prefix metadata.
 pub const COMMIT_FILE_NAME: &str = "workflow.commit.json";
 const COMMIT_TEMP_FILE_NAME: &str = "workflow.commit.tmp";
+
+/// Whether this build target has the verified durability implementation.
+///
+/// Linux is the only platform covered by the initial contract tests in
+/// ADR-0013. Other targets fail closed until equivalent barriers and artifact
+/// handling have their own CI coverage.
+pub const STORE_PLATFORM_SUPPORTED: bool = cfg!(target_os = "linux");
 
 /// Upper bound on the journal file size a cold read will attempt.
 const MAX_JOURNAL_BYTES: u64 = 64 * 1024 * 1024;
@@ -46,6 +55,7 @@ struct Snapshot {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 enum DurabilityStep {
     StateDirectoryCreate,
     StateDirectorySync,
@@ -103,16 +113,17 @@ impl JsonlJournal {
     where
         H: FnMut(DurabilityStep) -> Result<(), JournalError>,
     {
-        #[cfg(not(unix))]
-        return Err(unsupported_platform());
+        if !STORE_PLATFORM_SUPPORTED {
+            return Err(unsupported_platform());
+        }
         ensure_durable_state_dir(state_dir, hook)?;
 
         let lock_path = state_dir.join(LOCK_FILE_NAME);
         let path = state_dir.join(JOURNAL_FILE_NAME);
         let commit_path = state_dir.join(COMMIT_FILE_NAME);
-        let lock_existed = lock_path.exists();
-        let journal_existed = path.exists();
-        let commit_existed = commit_path.exists();
+        let lock_existed = path_entry_exists(&lock_path)?;
+        let journal_existed = path_entry_exists(&path)?;
+        let commit_existed = path_entry_exists(&commit_path)?;
 
         if journal_existed && !lock_existed {
             return Err(unavailable("journal exists without its ownership lock"));
@@ -124,7 +135,7 @@ impl JsonlJournal {
         if !lock_existed {
             hook(DurabilityStep::LockFileCreate)?;
         }
-        let lock = open_private_update_file(&lock_path, true)?;
+        let lock = open_private_update_file(&lock_path, !lock_existed)?;
         match lock.try_lock() {
             Ok(()) => {}
             Err(std::fs::TryLockError::WouldBlock) => return Err(JournalError::Locked),
@@ -136,7 +147,7 @@ impl JsonlJournal {
         if !journal_existed {
             hook(DurabilityStep::JournalFileCreate)?;
         }
-        let file = open_private_append_file(&path, true)?;
+        let file = open_private_append_file(&path, !journal_existed)?;
         let journal_len = file
             .metadata()
             .map_err(|error| unavailable(format!("cannot stat journal: {error}")))?
@@ -251,8 +262,9 @@ impl JsonlJournalReader {
     /// Opens an existing initialized store without creating, synchronizing,
     /// repairing, or otherwise changing any state.
     pub fn open(state_dir: &Path) -> Result<Self, JournalError> {
-        #[cfg(not(unix))]
-        return Err(unsupported_platform());
+        if !STORE_PLATFORM_SUPPORTED {
+            return Err(unsupported_platform());
+        }
         ensure_existing_private_dir(state_dir)?;
         let lock_path = state_dir.join(LOCK_FILE_NAME);
         let path = state_dir.join(JOURNAL_FILE_NAME);
@@ -445,19 +457,18 @@ fn decode_contents(contents: &str) -> Result<Vec<JournalEntry>, JournalError> {
     Ok(entries)
 }
 
-#[cfg(not(unix))]
 fn unsupported_platform() -> JournalError {
     unavailable("this platform has no verified committed-prefix durability implementation")
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn ensure_durable_state_dir<H>(dir: &Path, hook: &mut H) -> Result<(), JournalError>
 where
     H: FnMut(DurabilityStep) -> Result<(), JournalError>,
 {
     use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _};
 
-    if dir.exists() {
+    if path_entry_exists(dir)? {
         ensure_existing_private_dir(dir)?;
     } else {
         hook(DurabilityStep::StateDirectoryCreate)?;
@@ -465,7 +476,7 @@ where
             .mode(0o700)
             .create(dir)
             .map_err(|error| unavailable(format!("cannot create state directory: {error}")))?;
-        let mode = fs::metadata(dir)
+        let mode = fs::symlink_metadata(dir)
             .map_err(|error| unavailable(format!("cannot stat state directory: {error}")))?
             .permissions()
             .mode();
@@ -485,7 +496,7 @@ where
     sync_directory(parent)
 }
 
-#[cfg(not(unix))]
+#[cfg(not(target_os = "linux"))]
 fn ensure_durable_state_dir<H>(_dir: &Path, _hook: &mut H) -> Result<(), JournalError>
 where
     H: FnMut(DurabilityStep) -> Result<(), JournalError>,
@@ -493,12 +504,15 @@ where
     Err(unsupported_platform())
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn ensure_existing_private_dir(dir: &Path) -> Result<(), JournalError> {
-    use std::os::unix::fs::PermissionsExt as _;
+    use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 
-    let metadata = fs::metadata(dir)
+    let metadata = fs::symlink_metadata(dir)
         .map_err(|error| unavailable(format!("cannot stat state directory: {error}")))?;
+    if metadata.file_type().is_symlink() {
+        return Err(unavailable("state directory must not be a symbolic link"));
+    }
     if !metadata.is_dir() {
         return Err(unavailable("state path is not a directory"));
     }
@@ -507,87 +521,128 @@ fn ensure_existing_private_dir(dir: &Path) -> Result<(), JournalError> {
             "state directory must be owner-only (mode 0700)",
         ));
     }
+    let opened = open_directory_no_follow(dir)?;
+    let opened_metadata = opened
+        .metadata()
+        .map_err(|error| unavailable(format!("cannot stat opened state directory: {error}")))?;
+    if opened_metadata.dev() != metadata.dev() || opened_metadata.ino() != metadata.ino() {
+        return Err(unavailable("state directory changed while it was opened"));
+    }
     Ok(())
 }
 
-#[cfg(not(unix))]
+#[cfg(not(target_os = "linux"))]
 fn ensure_existing_private_dir(_dir: &Path) -> Result<(), JournalError> {
     Err(unsupported_platform())
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn sync_directory(dir: &Path) -> Result<(), JournalError> {
-    File::open(dir)
-        .and_then(|file| file.sync_all())
-        .map_err(|error| unavailable(format!("cannot synchronize directory: {error}")))
+    open_directory_no_follow(dir)?.sync_all().map_err(|error| {
+        unavailable(format!(
+            "cannot synchronize directory {}: {error}",
+            dir.display()
+        ))
+    })
 }
 
-#[cfg(not(unix))]
+#[cfg(not(target_os = "linux"))]
 fn sync_directory(_dir: &Path) -> Result<(), JournalError> {
     Err(unsupported_platform())
 }
 
-fn open_private_read_file(path: &Path) -> Result<File, JournalError> {
-    let file = OpenOptions::new()
-        .read(true)
-        .open(path)
-        .map_err(|error| unavailable(format!("cannot open {}: {error}", name_of(path))))?;
-    check_private_file(path, &file)?;
-    Ok(file)
+#[cfg(target_os = "linux")]
+const O_CLOEXEC: i32 = 0o2_000_000;
+#[cfg(target_os = "linux")]
+const O_DIRECTORY: i32 = 0o200_000;
+#[cfg(target_os = "linux")]
+const O_NOFOLLOW: i32 = 0o400_000;
+#[cfg(target_os = "linux")]
+const O_NONBLOCK: i32 = 0o4_000;
+
+#[cfg(target_os = "linux")]
+#[derive(Clone, Copy)]
+struct FileIdentity {
+    device: u64,
+    inode: u64,
 }
 
-fn open_private_update_file(path: &Path, create: bool) -> Result<File, JournalError> {
-    let mut options = OpenOptions::new();
-    options.read(true).write(true).create(create);
-    configure_owner_only(&mut options);
-    let file = options
-        .open(path)
-        .map_err(|error| unavailable(format!("cannot open {}: {error}", name_of(path))))?;
-    check_private_file(path, &file)?;
-    Ok(file)
+#[cfg(target_os = "linux")]
+fn path_entry_exists(path: &Path) -> Result<bool, JournalError> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(unavailable(format!(
+            "cannot inspect {}: {error}",
+            path.display()
+        ))),
+    }
 }
 
-fn open_private_append_file(path: &Path, create: bool) -> Result<File, JournalError> {
-    let mut options = OpenOptions::new();
-    options.read(true).append(true).create(create);
-    configure_owner_only(&mut options);
-    let file = options
-        .open(path)
-        .map_err(|error| unavailable(format!("cannot open {}: {error}", name_of(path))))?;
-    check_private_file(path, &file)?;
-    Ok(file)
+#[cfg(not(target_os = "linux"))]
+fn path_entry_exists(_path: &Path) -> Result<bool, JournalError> {
+    Err(unsupported_platform())
 }
 
-fn open_private_replace_file(path: &Path) -> Result<File, JournalError> {
-    let mut options = OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    configure_owner_only(&mut options);
-    let file = options
-        .open(path)
-        .map_err(|error| unavailable(format!("cannot open {}: {error}", name_of(path))))?;
-    check_private_file(path, &file)?;
-    Ok(file)
+#[cfg(target_os = "linux")]
+fn private_parent_owner(path: &Path) -> Result<u32, JournalError> {
+    use std::os::unix::fs::MetadataExt as _;
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| unavailable("artifact has no state directory"))?;
+    ensure_existing_private_dir(parent)?;
+    fs::symlink_metadata(parent)
+        .map(|metadata| metadata.uid())
+        .map_err(|error| unavailable(format!("cannot stat state directory: {error}")))
 }
 
-#[cfg(unix)]
-fn configure_owner_only(options: &mut OpenOptions) {
-    use std::os::unix::fs::OpenOptionsExt as _;
-    options.mode(0o600);
+#[cfg(target_os = "linux")]
+fn inspect_private_file(path: &Path, owner: u32) -> Result<FileIdentity, JournalError> {
+    use std::os::unix::fs::MetadataExt as _;
+
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|error| unavailable(format!("cannot inspect {}: {error}", name_of(path))))?;
+    if metadata.file_type().is_symlink() {
+        return Err(unavailable(format!(
+            "{} must not be a symbolic link",
+            name_of(path)
+        )));
+    }
+    if !metadata.file_type().is_file() {
+        return Err(unavailable(format!(
+            "{} must be a regular file",
+            name_of(path)
+        )));
+    }
+    check_private_metadata(path, &metadata, owner)?;
+    Ok(FileIdentity {
+        device: metadata.dev(),
+        inode: metadata.ino(),
+    })
 }
 
-#[cfg(not(unix))]
-fn configure_owner_only(_options: &mut OpenOptions) {}
+#[cfg(target_os = "linux")]
+fn check_private_metadata(
+    path: &Path,
+    metadata: &fs::Metadata,
+    owner: u32,
+) -> Result<(), JournalError> {
+    use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 
-#[cfg(unix)]
-fn check_private_file(path: &Path, file: &File) -> Result<(), JournalError> {
-    use std::os::unix::fs::PermissionsExt as _;
-
-    let mode = file
-        .metadata()
-        .map_err(|error| unavailable(format!("cannot stat {}: {error}", name_of(path))))?
-        .permissions()
-        .mode();
-    if mode & 0o077 != 0 {
+    if metadata.uid() != owner {
+        return Err(unavailable(format!(
+            "{} owner must match the state directory owner",
+            name_of(path)
+        )));
+    }
+    if metadata.nlink() != 1 {
+        return Err(unavailable(format!(
+            "{} must have exactly one hard link",
+            name_of(path)
+        )));
+    }
+    if metadata.permissions().mode() & 0o077 != 0 {
         return Err(unavailable(format!(
             "{} must be owner-only (mode 0600)",
             name_of(path)
@@ -596,18 +651,193 @@ fn check_private_file(path: &Path, file: &File) -> Result<(), JournalError> {
     Ok(())
 }
 
-#[cfg(not(unix))]
-fn check_private_file(_path: &Path, _file: &File) -> Result<(), JournalError> {
+#[cfg(target_os = "linux")]
+fn configure_secure_file(options: &mut OpenOptions) {
+    use std::os::unix::fs::OpenOptionsExt as _;
+
+    options
+        .mode(0o600)
+        .custom_flags(O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
+}
+
+#[cfg(target_os = "linux")]
+fn check_opened_private_file(
+    path: &Path,
+    file: &File,
+    owner: u32,
+    expected: Option<FileIdentity>,
+) -> Result<(), JournalError> {
+    use std::os::unix::fs::MetadataExt as _;
+
+    let metadata = file
+        .metadata()
+        .map_err(|error| unavailable(format!("cannot stat {}: {error}", name_of(path))))?;
+    if !metadata.file_type().is_file() {
+        return Err(unavailable(format!(
+            "{} must be a regular file",
+            name_of(path)
+        )));
+    }
+    check_private_metadata(path, &metadata, owner)?;
+    if let Some(expected) = expected
+        && (metadata.dev() != expected.device || metadata.ino() != expected.inode)
+    {
+        return Err(unavailable(format!(
+            "{} changed while it was opened",
+            name_of(path)
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn open_private_read_file(path: &Path) -> Result<File, JournalError> {
+    let owner = private_parent_owner(path)?;
+    let expected = inspect_private_file(path, owner)?;
+    let mut options = OpenOptions::new();
+    options.read(true);
+    configure_secure_file(&mut options);
+    let file = options
+        .open(path)
+        .map_err(|error| unavailable(format!("cannot open {}: {error}", name_of(path))))?;
+    check_opened_private_file(path, &file, owner, Some(expected))?;
+    Ok(file)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn open_private_read_file(_path: &Path) -> Result<File, JournalError> {
     Err(unsupported_platform())
 }
 
+#[cfg(target_os = "linux")]
+fn open_private_update_file(path: &Path, create_new: bool) -> Result<File, JournalError> {
+    open_private_writable_file(path, create_new, false)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn open_private_update_file(_path: &Path, _create_new: bool) -> Result<File, JournalError> {
+    Err(unsupported_platform())
+}
+
+#[cfg(target_os = "linux")]
+fn open_private_append_file(path: &Path, create_new: bool) -> Result<File, JournalError> {
+    open_private_writable_file(path, create_new, true)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn open_private_append_file(_path: &Path, _create_new: bool) -> Result<File, JournalError> {
+    Err(unsupported_platform())
+}
+
+#[cfg(target_os = "linux")]
+fn open_private_writable_file(
+    path: &Path,
+    create_new: bool,
+    append: bool,
+) -> Result<File, JournalError> {
+    let owner = private_parent_owner(path)?;
+    let expected = if create_new {
+        if path_entry_exists(path)? {
+            return Err(unavailable(format!(
+                "{} appeared while the store was opening",
+                name_of(path)
+            )));
+        }
+        None
+    } else {
+        Some(inspect_private_file(path, owner)?)
+    };
+    let mut options = OpenOptions::new();
+    options
+        .read(true)
+        .write(!append)
+        .append(append)
+        .create_new(create_new);
+    configure_secure_file(&mut options);
+    let file = options
+        .open(path)
+        .map_err(|error| unavailable(format!("cannot open {}: {error}", name_of(path))))?;
+    check_opened_private_file(path, &file, owner, expected)?;
+    Ok(file)
+}
+
+#[cfg(target_os = "linux")]
+fn open_private_replace_file(path: &Path) -> Result<File, JournalError> {
+    let owner = private_parent_owner(path)?;
+    if path_entry_exists(path)? {
+        let expected = inspect_private_file(path, owner)?;
+        let mut options = OpenOptions::new();
+        options.read(true);
+        configure_secure_file(&mut options);
+        let stale = options
+            .open(path)
+            .map_err(|error| unavailable(format!("cannot open {}: {error}", name_of(path))))?;
+        check_opened_private_file(path, &stale, owner, Some(expected))?;
+        fs::remove_file(path).map_err(|error| {
+            unavailable(format!("cannot remove stale {}: {error}", name_of(path)))
+        })?;
+    }
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    configure_secure_file(&mut options);
+    let file = options
+        .open(path)
+        .map_err(|error| unavailable(format!("cannot create {}: {error}", name_of(path))))?;
+    check_opened_private_file(path, &file, owner, None)?;
+    Ok(file)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn open_private_replace_file(_path: &Path) -> Result<File, JournalError> {
+    Err(unsupported_platform())
+}
+
+#[cfg(target_os = "linux")]
+fn open_directory_no_follow(path: &Path) -> Result<File, JournalError> {
+    use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _};
+
+    let expected = fs::symlink_metadata(path).map_err(|error| {
+        unavailable(format!(
+            "cannot inspect directory {}: {error}",
+            path.display()
+        ))
+    })?;
+    if expected.file_type().is_symlink() || !expected.file_type().is_dir() {
+        return Err(unavailable(format!(
+            "{} must be a real directory",
+            path.display()
+        )));
+    }
+    let mut options = OpenOptions::new();
+    options
+        .read(true)
+        .custom_flags(O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    let directory = options.open(path).map_err(|error| {
+        unavailable(format!("cannot open directory {}: {error}", path.display()))
+    })?;
+    let actual = directory.metadata().map_err(|error| {
+        unavailable(format!("cannot stat directory {}: {error}", path.display()))
+    })?;
+    if !actual.file_type().is_dir()
+        || actual.dev() != expected.dev()
+        || actual.ino() != expected.ino()
+    {
+        return Err(unavailable(format!(
+            "directory {} changed while it was opened",
+            path.display()
+        )));
+    }
+    Ok(directory)
+}
+
+#[cfg(target_os = "linux")]
 fn name_of(path: &Path) -> String {
     path.file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default()
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use std::io;
     use std::path::Path;

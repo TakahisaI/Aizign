@@ -54,6 +54,7 @@ versionとcapabilityの事前確認。stateを要求しない。
 
 - `protocolVersion` / `journalSchemaVersion` は `1..=4294967295`
 - capabilityは `^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*$`（128 bytes以下）、重複なし。**一覧はopen**: 未知のcapabilityもdecodeは通り、互換判定（`checkCompatibility`）が拒否を決める。v1が定義するのは `workflow.signal.submit` と `workflow.signal.reconcile`
+- kindがProtocol v1に定義されていても、build targetでそのoperationを提供できない場合は該当capabilityをadvertiseしない。直接送られたrequestは `CAPABILITY_UNSUPPORTED`
 
 ### `workflow.signal.submit`
 

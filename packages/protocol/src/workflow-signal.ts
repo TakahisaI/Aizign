@@ -126,30 +126,24 @@ function validDigest(digest: ContentDigest): boolean {
   return digest.algorithm === 'sha256' && SHA256_HEX_PATTERN.test(digest.hex);
 }
 
-/** Decodes the shape, then validates values the way the core does. */
-export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubmitPayload {
-  if (!isPlainObject(payload)) throw invalidPayload('payload must be an object');
-  assertOnlyKeys(payload, ['expected', 'signal'], invalidPayload);
-  const { expected, signal } = payload;
-  if (!isPlainObject(expected)) throw invalidPayload('expected must be an object');
-  if (!isPlainObject(signal)) throw invalidPayload('signal must be an object');
+type WorkflowSignalShape = {
+  readonly eventId: string;
+  readonly workflowId: string;
+  readonly assignmentId: string;
+  readonly attemptId: string;
+  readonly role: Role;
+  readonly artifactRevision: string;
+  readonly candidateDigest: ContentDigest;
+  readonly kind: SignalKind;
+  readonly findingCount: number | undefined;
+  readonly artifactRef: string | undefined;
+  readonly shortErrorCode: string | undefined;
+};
 
+function decodeWorkflowSignalShape(value: unknown): WorkflowSignalShape {
+  if (!isPlainObject(value)) throw invalidPayload('signal must be an object');
   assertOnlyKeys(
-    expected,
-    ['workflowId', 'assignmentId', 'attemptId', 'role', 'artifactRevision', 'candidateDigest'],
-    invalidPayload,
-  );
-  const expectedShape = {
-    workflowId: requireString(expected, 'workflowId', 'expected'),
-    assignmentId: requireString(expected, 'assignmentId', 'expected'),
-    attemptId: requireString(expected, 'attemptId', 'expected'),
-    role: requireRole(expected, 'expected'),
-    artifactRevision: requireString(expected, 'artifactRevision', 'expected'),
-    candidateDigest: requireDigest(expected, 'candidateDigest', 'expected'),
-  };
-
-  assertOnlyKeys(
-    signal,
+    value,
     [
       'eventId',
       'workflowId',
@@ -165,11 +159,11 @@ export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubm
     ],
     invalidPayload,
   );
-  const kind = signal.kind;
+  const kind = value.kind;
   if (typeof kind !== 'string' || !(SIGNAL_KINDS as readonly string[]).includes(kind)) {
     throw invalidPayload(`signal.kind must be one of ${SIGNAL_KINDS.join(', ')}`);
   }
-  const findingCount = optionalField(signal, 'findingCount', 'signal');
+  const findingCount = optionalField(value, 'findingCount', 'signal');
   if (
     findingCount !== undefined &&
     (typeof findingCount !== 'number' ||
@@ -179,27 +173,91 @@ export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubm
   ) {
     throw invalidPayload('signal.findingCount must be an unsigned 32-bit integer');
   }
-  const artifactRef = optionalField(signal, 'artifactRef', 'signal');
+  const artifactRef = optionalField(value, 'artifactRef', 'signal');
   if (artifactRef !== undefined && typeof artifactRef !== 'string') {
     throw invalidPayload('signal.artifactRef must be a string');
   }
-  const shortErrorCode = optionalField(signal, 'shortErrorCode', 'signal');
+  const shortErrorCode = optionalField(value, 'shortErrorCode', 'signal');
   if (shortErrorCode !== undefined && typeof shortErrorCode !== 'string') {
     throw invalidPayload('signal.shortErrorCode must be a string');
   }
-  const signalShape = {
-    eventId: requireString(signal, 'eventId', 'signal'),
-    workflowId: requireString(signal, 'workflowId', 'signal'),
-    assignmentId: requireString(signal, 'assignmentId', 'signal'),
-    attemptId: requireString(signal, 'attemptId', 'signal'),
-    role: requireRole(signal, 'signal'),
-    artifactRevision: requireString(signal, 'artifactRevision', 'signal'),
-    candidateDigest: requireDigest(signal, 'candidateDigest', 'signal'),
+  return {
+    eventId: requireString(value, 'eventId', 'signal'),
+    workflowId: requireString(value, 'workflowId', 'signal'),
+    assignmentId: requireString(value, 'assignmentId', 'signal'),
+    attemptId: requireString(value, 'attemptId', 'signal'),
+    role: requireRole(value, 'signal'),
+    artifactRevision: requireString(value, 'artifactRevision', 'signal'),
+    candidateDigest: requireDigest(value, 'candidateDigest', 'signal'),
     kind: kind as SignalKind,
     findingCount: findingCount as number | undefined,
     artifactRef: artifactRef as string | undefined,
     shortErrorCode: shortErrorCode as string | undefined,
   };
+}
+
+function validateWorkflowSignal(signal: WorkflowSignalShape): WorkflowSignal {
+  const invalidSignal = (message: string) => new ProtocolError(codes.INVALID_SIGNAL, message);
+  for (const field of [
+    'eventId',
+    'workflowId',
+    'assignmentId',
+    'attemptId',
+    'artifactRevision',
+  ] as const) {
+    if (!isIdentifier(signal[field])) {
+      throw invalidSignal(`signal.${field}: not a stable identifier`);
+    }
+  }
+  if (!validDigest(signal.candidateDigest)) {
+    throw invalidSignal('signal.candidateDigest: not a supported content digest');
+  }
+  if (signal.artifactRef !== undefined && !ARTIFACT_REF_PATTERN.test(signal.artifactRef)) {
+    throw invalidSignal('signal.artifactRef: not a bounded artifact reference');
+  }
+  if (signal.shortErrorCode !== undefined && !isShortErrorCode(signal.shortErrorCode)) {
+    throw invalidSignal('signal.shortErrorCode: not a short error code');
+  }
+  validateSignalRules(signal, invalidSignal);
+
+  const result: { -readonly [K in keyof WorkflowSignal]: WorkflowSignal[K] } = {
+    eventId: signal.eventId,
+    workflowId: signal.workflowId,
+    assignmentId: signal.assignmentId,
+    attemptId: signal.attemptId,
+    role: signal.role,
+    artifactRevision: signal.artifactRevision,
+    candidateDigest: signal.candidateDigest,
+    kind: signal.kind,
+  };
+  if (signal.findingCount !== undefined) result.findingCount = signal.findingCount;
+  if (signal.artifactRef !== undefined) result.artifactRef = signal.artifactRef;
+  if (signal.shortErrorCode !== undefined) result.shortErrorCode = signal.shortErrorCode;
+  return result;
+}
+
+/** Decodes the shape, then validates values the way the core does. */
+export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubmitPayload {
+  if (!isPlainObject(payload)) throw invalidPayload('payload must be an object');
+  assertOnlyKeys(payload, ['expected', 'signal'], invalidPayload);
+  const { expected, signal } = payload;
+  if (!isPlainObject(expected)) throw invalidPayload('expected must be an object');
+
+  assertOnlyKeys(
+    expected,
+    ['workflowId', 'assignmentId', 'attemptId', 'role', 'artifactRevision', 'candidateDigest'],
+    invalidPayload,
+  );
+  const expectedShape = {
+    workflowId: requireString(expected, 'workflowId', 'expected'),
+    assignmentId: requireString(expected, 'assignmentId', 'expected'),
+    attemptId: requireString(expected, 'attemptId', 'expected'),
+    role: requireRole(expected, 'expected'),
+    artifactRevision: requireString(expected, 'artifactRevision', 'expected'),
+    candidateDigest: requireDigest(expected, 'candidateDigest', 'expected'),
+  };
+
+  const signalShape = decodeWorkflowSignalShape(signal);
 
   // Values: expectation first, then the signal, in the core's order.
   const invalidExpectation = (field: string, reason: string) =>
@@ -212,31 +270,6 @@ export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubm
   if (!validDigest(expectedShape.candidateDigest)) {
     throw invalidExpectation('candidateDigest', 'not a supported content digest');
   }
-  const invalidSignal = (message: string) => new ProtocolError(codes.INVALID_SIGNAL, message);
-  for (const field of [
-    'eventId',
-    'workflowId',
-    'assignmentId',
-    'attemptId',
-    'artifactRevision',
-  ] as const) {
-    if (!isIdentifier(signalShape[field]))
-      throw invalidSignal(`signal.${field}: not a stable identifier`);
-  }
-  if (!validDigest(signalShape.candidateDigest)) {
-    throw invalidSignal('signal.candidateDigest: not a supported content digest');
-  }
-  if (
-    signalShape.artifactRef !== undefined &&
-    !ARTIFACT_REF_PATTERN.test(signalShape.artifactRef)
-  ) {
-    throw invalidSignal('signal.artifactRef: not a bounded artifact reference');
-  }
-  if (signalShape.shortErrorCode !== undefined && !isShortErrorCode(signalShape.shortErrorCode)) {
-    throw invalidSignal('signal.shortErrorCode: not a short error code');
-  }
-  validateSignalRules(signalShape, invalidSignal);
-
   const expectedResult: { -readonly [K in keyof ExpectedAssignment]: ExpectedAssignment[K] } = {
     workflowId: expectedShape.workflowId,
     assignmentId: expectedShape.assignmentId,
@@ -245,20 +278,7 @@ export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubm
     artifactRevision: expectedShape.artifactRevision,
     candidateDigest: expectedShape.candidateDigest,
   };
-  const result: { -readonly [K in keyof WorkflowSignal]: WorkflowSignal[K] } = {
-    eventId: signalShape.eventId,
-    workflowId: signalShape.workflowId,
-    assignmentId: signalShape.assignmentId,
-    attemptId: signalShape.attemptId,
-    role: signalShape.role,
-    artifactRevision: signalShape.artifactRevision,
-    candidateDigest: signalShape.candidateDigest,
-    kind: signalShape.kind,
-  };
-  if (signalShape.findingCount !== undefined) result.findingCount = signalShape.findingCount;
-  if (signalShape.artifactRef !== undefined) result.artifactRef = signalShape.artifactRef;
-  if (signalShape.shortErrorCode !== undefined) result.shortErrorCode = signalShape.shortErrorCode;
-  return { expected: expectedResult, signal: result };
+  return { expected: expectedResult, signal: validateWorkflowSignal(signalShape) };
 }
 
 /** The kind-specific rules shared with `aizign-core`. */
@@ -345,29 +365,7 @@ export function encodeWorkflowSignal(signal: WorkflowSignal): Record<string, unk
 export function decodeWorkflowSignalReconcile(payload: unknown): WorkflowSignalReconcilePayload {
   if (!isPlainObject(payload)) throw invalidPayload('payload must be an object');
   assertOnlyKeys(payload, ['signal'], invalidPayload);
-  if (!isPlainObject(payload.signal)) throw invalidPayload('signal must be an object');
-  const signal = payload.signal;
-  const syntheticExpected = {
-    workflowId: signal.workflowId,
-    assignmentId: signal.assignmentId,
-    attemptId: signal.attemptId,
-    role: signal.role,
-    artifactRevision: signal.artifactRevision,
-    candidateDigest: signal.candidateDigest,
-  };
-  try {
-    return {
-      signal: decodeWorkflowSignalSubmit({ expected: syntheticExpected, signal }).signal,
-    };
-  } catch (error) {
-    if (error instanceof ProtocolError && error.code === codes.INVALID_EXPECTATION) {
-      throw new ProtocolError(
-        codes.INVALID_SIGNAL,
-        error.message.replace(/^expected\./, 'signal.'),
-      );
-    }
-    throw error;
-  }
+  return { signal: validateWorkflowSignal(decodeWorkflowSignalShape(payload.signal)) };
 }
 
 /** Encodes a reconciliation request payload. */

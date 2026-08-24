@@ -26,7 +26,7 @@ src/
 └── real-binary.test.ts        AIZIGN_BINARY が指す実binaryに対する core scenario（未設定ならskip）
 ```
 
-`cargo xtask npm-check` は `aizign` をbuildして `AIZIGN_BINARY` を渡すので、TypeScript client ↔ 実binary ↔ JSONL journal の往復も通常の検査に含まれます。
+`cargo xtask npm-check` はLinux上で `aizign` をbuildして `AIZIGN_BINARY` を渡すので、TypeScript client ↔ 実binary ↔ JSONL journal の往復も通常の検査に含まれます。未検証storage targetでは実binary scenarioをskipし、Linux CIを正本とします。
 
 ## adapterからの使い方
 

@@ -16,7 +16,13 @@ import { adapterCodes } from '../mapping/tool.ts';
 
 export const REQUIRED = {
   protocolVersion: PROTOCOL_VERSION,
-  capabilities: [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT, CAPABILITY_WORKFLOW_SIGNAL_RECONCILE],
+  capabilities: [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT],
+} as const;
+
+/** Compatibility requirement for an explicit control-plane reconciliation caller. */
+export const RECONCILIATION_REQUIRED = {
+  protocolVersion: PROTOCOL_VERSION,
+  capabilities: [CAPABILITY_WORKFLOW_SIGNAL_RECONCILE],
 } as const;
 
 /** Resolves with the binary's `hello` info or throws a harness error. */

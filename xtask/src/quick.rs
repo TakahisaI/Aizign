@@ -170,10 +170,21 @@ fn run_protocol(root: &Path) -> Result<(), String> {
 }
 
 fn run_adapter_dsh(root: &Path) -> Result<(), String> {
-    report::stage("quick/adapter-dsh: rebuild real aizign binary");
-    let binary = cargo_build::aizign_binary(root, true)?;
-    let binary = binary.to_string_lossy().into_owned();
-    let env = [("AIZIGN_BINARY", binary.as_str())];
+    let binary = if cfg!(target_os = "linux") {
+        report::stage("quick/adapter-dsh: rebuild real aizign binary");
+        Some(
+            cargo_build::aizign_binary(root, true)?
+                .to_string_lossy()
+                .into_owned(),
+        )
+    } else {
+        report::stage("quick/adapter-dsh: fake core on unsupported storage host");
+        None
+    };
+    let mut env = Vec::new();
+    if let Some(binary) = &binary {
+        env.push(("AIZIGN_BINARY", binary.as_str()));
+    }
 
     run_npm(
         root,

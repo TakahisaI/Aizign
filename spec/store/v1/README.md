@@ -33,6 +33,17 @@ to match, and the decoded count to equal `committedEntries`.
 - Missing state directory, lock, journal, or commit document is
   `JOURNAL_UNAVAILABLE`, not an authoritative empty snapshot.
 - Only a valid zero-entry commit point can establish an empty snapshot.
+- Every state artifact is an owner-only regular file owned by the state
+  directory owner with exactly one hard link. Symbolic links and special
+  files are rejected without following or opening their targets. Temporary
+  commit metadata is created exclusively rather than truncating an existing
+  path.
+
+The initial implementation advertises this store only on Linux, where the
+barrier, atomic-replace, locking, permission, and artifact-type contract runs
+in CI. Other build targets do not advertise submit or reconciliation and
+reject direct requests with `CAPABILITY_UNSUPPORTED` until equivalent
+platform-specific contract tests exist.
 
 The SHA-256 value detects mismatch; it is not authentication against a process
 that can rewrite both journal and commit metadata. See ADR-0013 and ADR-0014.

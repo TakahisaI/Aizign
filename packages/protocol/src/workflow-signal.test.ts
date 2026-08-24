@@ -67,6 +67,20 @@ test('reconciliation reuses the exact signal contract without expected', () => {
       error.code === codes.INVALID_SIGNAL &&
       error.message.startsWith('signal.workflowId:'),
   );
+
+  for (const invalid of [
+    { ...signal, workflowId: 7 },
+    { ...signal, candidateDigest: { algorithm: 'sha256', hex: 'ABC' } },
+    { ...signal, artifactRef: null },
+  ]) {
+    assert.throws(
+      () => decodeWorkflowSignalReconcile({ signal: invalid }),
+      (error: unknown) =>
+        error instanceof ProtocolError &&
+        !error.message.includes('expected.') &&
+        error.message.includes('signal.'),
+    );
+  }
 });
 
 test('reconciliation result accepts only accepted, conflict, or absent', () => {

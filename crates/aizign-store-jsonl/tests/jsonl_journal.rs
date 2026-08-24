@@ -1,8 +1,11 @@
 //! Durable committed-prefix behaviour, locking, permissions, and bounds.
 
+#![cfg(target_os = "linux")]
+
 use std::fs::{self, OpenOptions};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
+use std::process::Command as ProcessCommand;
 
 use aizign_core::workflow::{Command, Decision, WorkflowEvent, WorkflowState, decide};
 use aizign_engine::{Journal, JournalEntry, JournalError, JournalReader, MAX_JOURNAL_ENTRIES};
@@ -12,6 +15,8 @@ use aizign_store_jsonl::{
 };
 use aizign_testkit::{TempDir, journal_contract, signals};
 use sha2::{Digest as _, Sha256};
+
+const COMMIT_TEMP_FILE_NAME: &str = "workflow.commit.tmp";
 
 fn journal_file(state: &Path) -> PathBuf {
     state.join(JOURNAL_FILE_NAME)
@@ -66,6 +71,20 @@ fn create_private_file(path: &Path, bytes: &[u8]) {
     }
     let mut file = options.open(path).expect("create test artifact");
     file.write_all(bytes).expect("write test artifact");
+}
+
+fn create_private_fifo(path: &Path) {
+    let status = ProcessCommand::new("mkfifo")
+        .args(["--mode=600", path.to_str().expect("UTF-8 test path")])
+        .status()
+        .expect("run mkfifo");
+    assert!(status.success(), "create FIFO at {}", path.display());
+}
+
+fn safe_partial_initialization(state: &Path) {
+    create_private_state(state);
+    create_private_file(&state.join(LOCK_FILE_NAME), b"");
+    create_private_file(&state.join(JOURNAL_FILE_NAME), b"");
 }
 
 fn replace_snapshot(state: &Path, contents: &str, entries: u64) {
@@ -297,6 +316,117 @@ fn refuses_directories_and_files_that_are_not_owner_only() {
         JsonlJournalReader::open(&state),
         Err(JournalError::Unavailable { .. })
     ));
+}
+
+#[test]
+fn rejects_symlink_artifacts_without_reading_or_mutating_their_targets() {
+    use std::os::unix::fs::symlink;
+
+    for name in [LOCK_FILE_NAME, JOURNAL_FILE_NAME, COMMIT_FILE_NAME] {
+        let dir = TempDir::new();
+        let state = dir.state();
+        initialize(&state);
+        let target = dir.path().join(format!("{name}.target"));
+        let protected = format!("protected bytes for {name}").into_bytes();
+        create_private_file(&target, &protected);
+        fs::remove_file(state.join(name)).unwrap();
+        symlink(&target, state.join(name)).unwrap();
+
+        assert!(matches!(
+            JsonlJournalReader::open(&state),
+            Err(JournalError::Unavailable { .. })
+        ));
+        assert_eq!(
+            fs::read(&target).unwrap(),
+            protected,
+            "reader followed {name}"
+        );
+        assert!(matches!(
+            JsonlJournal::open(&state),
+            Err(JournalError::Unavailable { .. })
+        ));
+        assert_eq!(
+            fs::read(&target).unwrap(),
+            protected,
+            "writer followed {name}"
+        );
+    }
+
+    let dir = TempDir::new();
+    let state = dir.state();
+    safe_partial_initialization(&state);
+    let target = dir.path().join("temp.target");
+    let protected = b"temp target must remain intact";
+    create_private_file(&target, protected);
+    symlink(&target, state.join(COMMIT_TEMP_FILE_NAME)).unwrap();
+    assert!(matches!(
+        JsonlJournal::open(&state),
+        Err(JournalError::Unavailable { .. })
+    ));
+    assert_eq!(fs::read(target).unwrap(), protected);
+}
+
+#[test]
+fn rejects_special_file_artifacts_before_opening_them() {
+    for name in [LOCK_FILE_NAME, JOURNAL_FILE_NAME, COMMIT_FILE_NAME] {
+        let dir = TempDir::new();
+        let state = dir.state();
+        initialize(&state);
+        fs::remove_file(state.join(name)).unwrap();
+        create_private_fifo(&state.join(name));
+        assert!(matches!(
+            JsonlJournalReader::open(&state),
+            Err(JournalError::Unavailable { .. })
+        ));
+        assert!(matches!(
+            JsonlJournal::open(&state),
+            Err(JournalError::Unavailable { .. })
+        ));
+    }
+
+    let dir = TempDir::new();
+    let state = dir.state();
+    safe_partial_initialization(&state);
+    create_private_fifo(&state.join(COMMIT_TEMP_FILE_NAME));
+    assert!(matches!(
+        JsonlJournal::open(&state),
+        Err(JournalError::Unavailable { .. })
+    ));
+}
+
+#[test]
+fn rejects_hard_linked_artifacts_without_mutating_the_other_link() {
+    for name in [LOCK_FILE_NAME, JOURNAL_FILE_NAME, COMMIT_FILE_NAME] {
+        let dir = TempDir::new();
+        let state = dir.state();
+        initialize(&state);
+        let target = dir.path().join(format!("{name}.target"));
+        fs::rename(state.join(name), &target).unwrap();
+        fs::hard_link(&target, state.join(name)).unwrap();
+        let protected = fs::read(&target).unwrap();
+        assert!(matches!(
+            JsonlJournalReader::open(&state),
+            Err(JournalError::Unavailable { .. })
+        ));
+        assert!(matches!(
+            JsonlJournal::open(&state),
+            Err(JournalError::Unavailable { .. })
+        ));
+        assert_eq!(fs::read(target).unwrap(), protected);
+    }
+
+    let dir = TempDir::new();
+    let state = dir.state();
+    safe_partial_initialization(&state);
+    let target = dir.path().join("temp-hardlink.target");
+    let protected = b"hard-linked temp target must remain intact";
+    create_private_file(&target, protected);
+    fs::hard_link(&target, state.join(COMMIT_TEMP_FILE_NAME)).unwrap();
+    assert!(matches!(
+        JsonlJournal::open(&state),
+        Err(JournalError::Unavailable { .. })
+    ));
+    assert_eq!(fs::read(target).unwrap(), protected);
 }
 
 #[test]

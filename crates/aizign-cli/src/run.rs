@@ -18,7 +18,9 @@ use aizign_protocol::{
     ReconciliationDisposition, ReconciliationResult, Request, RequestKind, Response, ResponseBody,
     SignalResult, codes, decode_request, encode_response,
 };
-use aizign_store_jsonl::{JOURNAL_SCHEMA_VERSION, JsonlJournal, JsonlJournalReader};
+use aizign_store_jsonl::{
+    JOURNAL_SCHEMA_VERSION, JsonlJournal, JsonlJournalReader, STORE_PLATFORM_SUPPORTED,
+};
 
 use crate::exit;
 
@@ -51,13 +53,18 @@ impl Clock for SystemClock {
 }
 
 fn hello_info() -> HelloInfo {
+    let capabilities = if STORE_PLATFORM_SUPPORTED {
+        vec![
+            CAPABILITY_WORKFLOW_SIGNAL_SUBMIT.to_owned(),
+            CAPABILITY_WORKFLOW_SIGNAL_RECONCILE.to_owned(),
+        ]
+    } else {
+        Vec::new()
+    };
     HelloInfo {
         protocol_version: PROTOCOL_VERSION,
         journal_schema_version: u32::try_from(JOURNAL_SCHEMA_VERSION).unwrap_or(u32::MAX),
-        capabilities: vec![
-            CAPABILITY_WORKFLOW_SIGNAL_SUBMIT.to_owned(),
-            CAPABILITY_WORKFLOW_SIGNAL_RECONCILE.to_owned(),
-        ],
+        capabilities,
         package: PackageInfo {
             name: env!("CARGO_PKG_NAME").trim_end_matches("-cli").to_owned(),
             version: env!("CARGO_PKG_VERSION").to_owned(),
@@ -188,6 +195,11 @@ fn respond(frame: &[u8], state: &Path) -> Response {
     let kind_name = kind.name().to_owned();
     let body = match kind {
         RequestKind::Hello => ResponseBody::Hello(hello_info()),
+        RequestKind::SubmitWorkflowSignal(_) | RequestKind::ReconcileWorkflowSignal(_)
+            if !STORE_PLATFORM_SUPPORTED =>
+        {
+            ResponseBody::Error(store_capability_unsupported(&kind_name))
+        }
         RequestKind::SubmitWorkflowSignal(command) => match JsonlJournal::open(state) {
             Err(error) => ResponseBody::Error(ProtocolError::new(error.code(), error.to_string())),
             Ok(mut journal) => match handle_workflow_signal(&mut journal, &SystemClock, *command) {
@@ -245,6 +257,13 @@ fn respond(frame: &[u8], state: &Path) -> Response {
         kind: Some(kind_name),
         body,
     }
+}
+
+fn store_capability_unsupported(kind: &str) -> ProtocolError {
+    ProtocolError::new(
+        codes::CAPABILITY_UNSUPPORTED,
+        format!("{kind} is unavailable on this unverified storage platform"),
+    )
 }
 
 fn handle_error(error: &HandleError) -> ProtocolError {

@@ -4,6 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fakeCoreCommand } from '@aizign/adapter-testkit';
+import {
+  CAPABILITY_WORKFLOW_SIGNAL_RECONCILE,
+  CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
+} from '@aizign/protocol';
 import type { Context } from '@deepseek-ai/cordis';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools';
@@ -80,6 +84,28 @@ test('preflight accepts a compatible core and rejects an incompatible or unreach
   const ok = new OneShotCoreClient({ ...fake, stateDir: '/unused', timeoutMs: 5_000 });
   const info = await preflight(ok);
   assert.equal(info.protocolVersion, 1);
+
+  const submitOnly = new OneShotCoreClient({
+    ...fake,
+    env: { AIZIGN_FAKE_CAPABILITIES: CAPABILITY_WORKFLOW_SIGNAL_SUBMIT },
+    stateDir: '/unused',
+    timeoutMs: 5_000,
+  });
+  assert.deepEqual(
+    (await preflight(submitOnly)).capabilities,
+    [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT],
+    'the model-visible submit tool must not require the separate control-plane capability',
+  );
+
+  const reconcileOnly = new OneShotCoreClient({
+    ...fake,
+    env: { AIZIGN_FAKE_CAPABILITIES: CAPABILITY_WORKFLOW_SIGNAL_RECONCILE },
+    stateDir: '/unused',
+    timeoutMs: 5_000,
+  });
+  await assert.rejects(preflight(reconcileOnly), (error: unknown) => {
+    return error instanceof HarnessError && error.code === codes.INCOMPATIBLE;
+  });
 
   const future = new OneShotCoreClient({
     ...fake,

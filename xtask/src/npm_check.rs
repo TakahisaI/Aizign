@@ -1,8 +1,9 @@
 //! The TypeScript gates, delegated to the npm workspace root: `npm ci` for a
 //! reproducible install, then `npm run check` (lint, build, typecheck, test,
-//! pack inspection). The real `aizign` binary is built first and handed to the
-//! tests through `AIZIGN_BINARY`, so the TypeScript reference client is
-//! exercised against the real process boundary, not only the fake core.
+//! pack inspection). On Linux, the real `aizign` binary is built first and
+//! handed to the tests through `AIZIGN_BINARY`, so the TypeScript reference
+//! client is exercised against the verified storage/process boundary, not
+//! only the fake core. Unsupported storage targets run the fake-core suite.
 //! Skipped with a notice when the workspace has no packages yet, so the
 //! Rust-only path keeps working without Node.
 
@@ -22,15 +23,22 @@ pub(crate) fn run(root: &Path) -> Result<(), String> {
     if !shell::available(root, "npm", &["--version"]) {
         return Err(NPM_INSTALL_HINT.to_string());
     }
-    let binary = cargo_build::aizign_binary(root, false)?;
-    let binary = binary.to_string_lossy().into_owned();
+    let binary = if cfg!(target_os = "linux") {
+        Some(
+            cargo_build::aizign_binary(root, false)?
+                .to_string_lossy()
+                .into_owned(),
+        )
+    } else {
+        println!("non-Linux host: real-binary store scenarios are covered by Linux CI");
+        None
+    };
+    let mut environment = Vec::new();
+    if let Some(binary) = &binary {
+        environment.push(("AIZIGN_BINARY", binary.as_str()));
+    }
     shell::run(root, "npm", &["ci", "--no-audit", "--no-fund"])?;
-    shell::run_with_env(
-        root,
-        "npm",
-        &["run", "check"],
-        &[("AIZIGN_BINARY", binary.as_str())],
-    )
+    shell::run_with_env(root, "npm", &["run", "check"], &environment)
 }
 
 fn has_workspace_packages(root: &Path) -> bool {

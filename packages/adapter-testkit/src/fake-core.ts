@@ -21,6 +21,7 @@
  *
  * `AIZIGN_FAKE_HELLO_PROTOCOL_VERSION` overrides the advertised protocol
  * version, for compatibility-check tests.
+ * `AIZIGN_FAKE_CAPABILITIES` is a comma-separated capability override.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -48,7 +49,10 @@ const REQUEST_LOG = 'fake-requests.jsonl';
 const helloInfo: HelloInfo = {
   protocolVersion: Number(process.env.AIZIGN_FAKE_HELLO_PROTOCOL_VERSION ?? PROTOCOL_VERSION),
   journalSchemaVersion: 1,
-  capabilities: [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT, CAPABILITY_WORKFLOW_SIGNAL_RECONCILE],
+  capabilities: process.env.AIZIGN_FAKE_CAPABILITIES?.split(',').filter(Boolean) ?? [
+    CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
+    CAPABILITY_WORKFLOW_SIGNAL_RECONCILE,
+  ],
   package: { name: 'aizign-fake', version: '0.0.0' },
 };
 
