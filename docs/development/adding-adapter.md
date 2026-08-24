@@ -107,6 +107,13 @@ Keep the outcome vocabularies source-qualified:
 The same spelling in two rows does not imply the same authority or observation
 source.
 
+An observation operation can also fail before it produces an outcome value.
+The current DSH `readSignalEvidence` propagates a non-abort source rejection
+instead of returning `SignalEvidence`. Its caller must treat the harness
+observation as unavailable/unknown and must not infer success, rejection, or
+absence from the thrown error. Adding a closed `source_error` reason would be a
+separate runtime contract change.
+
 ## Core reconciliation is not harness evidence
 
 `workflow.signal.reconcile` is a core protocol operation over the Aizign

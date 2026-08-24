@@ -76,7 +76,7 @@ It also demonstrates three optional harness adapter integrations:
 - caller-wait timeout with a post-read event-count guard; and
 - binding-digest verification with payload-digest recording.
 
-These optional capabilities are DSH-owned and do not define a generic adapter
+These optional integrations are DSH-owned and do not define a generic adapter
 event shape. An adapter without harness persistence or cold read can still
 satisfy the minimum signal-submission behavior. A DSH error record without
 verifiable binding metadata remains `unknown / unverified_error`; persistence
@@ -90,6 +90,11 @@ this API does not bound source-side I/O, allocation, event byte size, or work
 that continues when a source ignores cancellation. The reader verifies
 `eventId` and `bindingDigest`. It records and returns `payloadDigest` but does not
 recompute it during cold read.
+
+A non-abort rejection from `EvidenceSource.readFrom()` rejects the
+`readSignalEvidence()` operation instead of producing a `SignalEvidence` value.
+Callers must treat the observation as unavailable/unknown and must not infer
+success, rejection, or absence from that failure.
 
 `workflow.signal.reconcile` is a separate core protocol capability and performs
 a bounded read-only lookup of the Aizign journal. It is not one of the DSH

@@ -1,8 +1,8 @@
 /**
- * Digests that bind durable tool evidence to the control plane's identity.
- * Computed here and recorded in the tool result's presentation metadata, so
- * a later cold read of the harness log can be checked against the plugin
- * configuration without trusting the log's prose.
+ * Digests recorded with harness session-log observations.
+ * The binding digest is checked against the control-plane identity during a
+ * later read without trusting the log's prose. The payload digest is recorded
+ * and returned, but the current reader does not recompute it.
  */
 
 import { createHash } from 'node:crypto';
