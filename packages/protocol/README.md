@@ -51,10 +51,12 @@ if (response.body.type === 'hello') {
 ```
 
 TypeScript adapterがこの `CoreClient` を選ぶ場合、その実装はadapterが所有します。
-このinterfaceはsubmissionに加えてreconciliationも要求するため、言語中立のminimum
-signal-submission contractのreference-layer supersetです。`reconcileWorkflowSignal`
-はsuccessを`accepted | conflict | absent`へ写像し、error / transport / decode /
-timeout / abort / correlation failureを`unknown`へ写像します。responseにvalidな
-error codeがあれば、相関しないwatchdog responseでも診断用`reportedCode`として
-保持します。TypeScriptでの検証には
+このinterfaceはsubmissionとreconciliationのoperation surfaceを含むTypeScript
+referenceです。実装したことだけでは、trusted identity provenance、model-visible
+schema、native registration / preflightを含むharness-adapter conformanceは証明
+されません。`reconcileWorkflowSignal`はsuccessを
+`accepted | conflict | absent`へ写像し、error / transport / decode / timeout /
+abort / correlation failureを`unknown`へ写像します。responseにvalidなerror
+codeがあれば、相関しないwatchdog responseでも診断用`reportedCode`として保持
+します。TypeScriptでのclient boundary検証には
 [`@aizign/adapter-testkit`](../adapter-testkit/README.md)を使えます。

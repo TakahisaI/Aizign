@@ -28,8 +28,10 @@ runtime or development dependencies required of every adapter.
 2. Implement Protocol v1 `hello` compatibility and the minimum
    signal-submission behavior from the architecture contract.
 3. Inject workflow, assignment, attempt, role, artifact revision, and candidate
-   digest from trusted control-plane configuration. Do not accept them from
-   model-visible arguments.
+   digest from trusted control-plane configuration. Obtain `eventId` from that
+   trusted configuration or generate and retain it in the adapter/control
+   plane for the same logical submission. Do not accept any of these fields
+   from model-visible arguments.
 4. Generate adapter-owned request nonces. Keep harness session, call, thread,
    provider, and delivery identifiers out of the complete protocol envelope.
 5. Enforce request/response bounds and correlation, and preserve all submit
@@ -37,9 +39,11 @@ runtime or development dependencies required of every adapter.
    that it does not trigger a blind submit retry.
 6. Run the language-neutral wire fixtures and the applicable core-client
    scenario groups described by the architecture contract.
-7. Test plugin registration, native input mapping, visible argument schemas,
-   persistence, lifecycle, and harness error mapping in harness-native fake
-   tests owned by the adapter.
+7. Test the native entrypoint/registration where applicable, native input
+   mapping, trusted identity injection, any model-visible schema, and harness
+   error mapping in harness-native fake tests owned by the adapter. Test
+   persistence, native session/call handling, lifecycle, and evidence semantics
+   only when the adapter claims them.
 8. Document optional integrations and their actual durability, retention,
    integrity, I/O-bound, and cancellation limits. Do not promote them into the
    generic minimum.
@@ -50,7 +54,9 @@ runtime or development dependencies required of every adapter.
 Core reconciliation is a separate extension. If the adapter claims it, check
 the advertised `workflow.signal.reconcile` capability and implement the full
 read-only reconciliation scenario group. Submission must remain usable when
-reconciliation or harness-native evidence is unavailable.
+reconciliation or harness-native evidence is unavailable. A reconciliation
+result of `absent` is a snapshot observation, not permission to resubmit; prove
+that the adapter does not automatically or implicitly submit after `absent`.
 
 ## Conformance split
 
@@ -58,9 +64,9 @@ Keep the following tests separate even if one test command runs all of them:
 
 | Test boundary | Shared requirement | Owned by |
 |---|---|---|
-| Wire codec | `spec/conformance/` valid/invalid frames and Protocol v1 schemas | Each language's codec tests |
+| Wire codec | Applicable directions/kinds from `spec/conformance/` and Protocol v1 schemas | Each language's codec tests |
 | Core client | Minimum submission scenarios plus any claimed extension scenarios | Each language's client runner/tests |
-| Harness-native adapter | Registration, native events, model-visible schema, trusted injection, persistence, lifecycle, native errors | The adapter's fake-harness tests |
+| Harness-native adapter | Native entrypoint, mapping, trusted identity, visible schema, and errors; optional persistence/lifecycle only when claimed | The adapter's fake-harness tests |
 
 The scenarios are language-neutral; the executable runner is not. Do not add a
 universal adapter driver or a second process protocol for tests.
@@ -100,10 +106,13 @@ Do not add empty `evidence/` or `lifecycle/` layers merely to match this tree.
 The DSH event shape and lifecycle are not generic interfaces.
 
 The TypeScript `CoreClient` interface and `runCoreClientConformance` runner
-require submission and reconciliation, so they are reference-layer supersets
-of the minimum signal-submission contract. A TypeScript adapter choosing these
-APIs implements the full interface. A non-TypeScript adapter can satisfy only
-the minimum or claim the same extension through native types and tests.
+include submission and reconciliation operations. They exercise the
+core-client boundary only; implementing the interface or passing the runner
+does not establish harness-adapter conformance. A TypeScript adapter choosing
+these APIs implements the full interface and still needs harness-native tests
+for preflight, identity provenance, model-visible isolation, and other owned
+behavior. A non-TypeScript adapter can implement the minimum or claim the same
+extension through native types and tests.
 
 TypeScript repository rules:
 

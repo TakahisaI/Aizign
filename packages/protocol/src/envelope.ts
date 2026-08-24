@@ -323,13 +323,21 @@ export function encodeRequest(request: Request): string {
       : request.kind === 'workflow.signal.submit'
         ? encodeWorkflowSignalSubmit(request.payload)
         : encodeWorkflowSignalReconcile(request.payload);
-  return JSON.stringify({
+  const frame = JSON.stringify({
     protocol: PROTOCOL_NAME,
     version: PROTOCOL_VERSION,
     requestId: request.requestId,
     kind: request.kind,
     payload,
   });
+  const size = byteLength(frame);
+  if (size > MAX_REQUEST_BYTES) {
+    throw new ProtocolError(
+      codes.REQUEST_TOO_LARGE,
+      `request is ${size} bytes; at most ${MAX_REQUEST_BYTES} allowed`,
+    );
+  }
+  return frame;
 }
 
 /** Encodes a response as one line (no trailing newline). */

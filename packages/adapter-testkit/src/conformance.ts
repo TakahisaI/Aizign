@@ -1,7 +1,7 @@
 /**
  * TypeScript reference scenarios for the submit/reconcile `CoreClient`,
- * proven against the fake core. This runner is a superset of the
- * language-neutral minimum signal-submission contract.
+ * proven against the fake core. Passing this runner establishes only the
+ * core-client operation boundary, not harness-adapter conformance.
  */
 
 import assert from 'node:assert/strict';
@@ -52,12 +52,15 @@ export const FORBIDDEN_KEYS: readonly string[] = [
   'threadId',
   'turnId',
   'callId',
+  'providerId',
+  'deliveryId',
 ];
 
 /**
  * Every request frame the fake core received for `stateDir`, decoded as
- * JSON. Adapters use this to prove that nothing harness-specific crossed
- * the boundary — in the payload or anywhere else in the envelope.
+ * JSON. Harness-native tests can inspect the complete envelope and compare it
+ * with actual native identifiers; the key scan alone cannot prove value
+ * provenance.
  */
 export function readFakeRequests(stateDir: string): unknown[] {
   const path = join(stateDir, 'fake-requests.jsonl');
@@ -74,7 +77,10 @@ export function readFakeRequests(stateDir: string): unknown[] {
     });
 }
 
-/** Asserts a JSON value carries none of the forbidden keys at any depth. */
+/**
+ * Asserts that a JSON value uses none of the known forbidden keys. This is a
+ * key-level convenience check, not proof of identifier or value provenance.
+ */
 export function assertMetadataOnly(value: unknown, path = '$'): void {
   if (Array.isArray(value)) {
     for (const [index, item] of value.entries()) assertMetadataOnly(item, `${path}[${index}]`);
@@ -327,6 +333,22 @@ export async function runFaultScenarios(
         assert.equal(requests.length, 1, `${fault}: reconciliation must not retry`);
       }
     }
+
+    const absentState = join(root, 'absent-no-resubmit');
+    const absent = factory({ ...fake, stateDir: absentState, timeoutMs: 10_000 });
+    assert.deepEqual(
+      await absent.reconcileWorkflowSignal('req-absent-no-resubmit', {
+        signal: samplePayload('evt-absent-no-resubmit').signal,
+      }),
+      { kind: 'absent', eventId: 'evt-absent-no-resubmit' },
+    );
+    const absentRequests = readFakeRequests(absentState);
+    assert.equal(absentRequests.length, 1, 'absent causes no implicit resubmission');
+    assert.equal(
+      (absentRequests[0] as { kind?: unknown }).kind,
+      'workflow.signal.reconcile',
+      'the only request is the read-only reconciliation',
+    );
 
     const lostAckState = join(root, 'lost-ack-reconciliation');
     const lostAck = factory({

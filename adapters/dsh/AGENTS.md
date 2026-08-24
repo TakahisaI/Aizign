@@ -2,16 +2,20 @@
 
 This file is navigation for automated coding agents.
 Human contributors may ignore it and should follow [CONTRIBUTING.md](../../CONTRIBUTING.md).
-The adapter contract lives in [README.md](README.md), not here.
+The language-neutral adapter behavior is owned by the
+[harness adapter contract](../../docs/architecture/harness-adapter-contract.md).
+DSH-native behavior is owned by [README.md](README.md), source, and tests, not
+by this navigation file.
 
 ## Read scope
 
-1. [README.md](README.md)
-2. [Hard invariants](../../docs/architecture/invariants.md)
-3. [Protocol v1](../../spec/protocol/v1/README.md)
-4. `packages/protocol/src/client.ts`
-5. [Adapter testkit](../../packages/adapter-testkit/README.md)
-6. The adapter directory being edited
+1. [Harness adapter contract](../../docs/architecture/harness-adapter-contract.md)
+2. [README.md](README.md)
+3. [Hard invariants](../../docs/architecture/invariants.md)
+4. [Protocol v1](../../spec/protocol/v1/README.md)
+5. `packages/protocol/src/client.ts`
+6. [Adapter testkit](../../packages/adapter-testkit/README.md)
+7. The adapter directory being edited
 
 Do not read Rust crates unless the Issue explicitly requires investigation across the protocol boundary.
 

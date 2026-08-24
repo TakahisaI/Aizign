@@ -19,8 +19,10 @@ harness, or a network.
 [`harness-adapter-contract.md`](../../docs/architecture/harness-adapter-contract.md)
 が所有します。このpackageはTypeScript reference / convenience layerであり、
 全adapterに共通の実行可能interfaceではありません。現在のrunnerはsubmitと
-reconcileの両方を要求するため、minimum signal-submission contractのsupersetです。
-非TypeScript adapterは同じfixtureと適用対象scenarioをその言語のrunnerで検証できます。
+reconcileのcore-client operation surfaceを検査します。runnerの通過だけでは、
+identity provenance、model-visible schema、native registration / preflightなどの
+harness-adapter conformanceは証明されません。非TypeScript adapterは同じfixtureと
+適用対象scenarioをその言語のrunnerで検証できます。
 
 ## Layout
 
@@ -67,7 +69,14 @@ runnerが検査する経路:
 | 呼び出し側のabort | `unknown aborted` |
 | `requestId` / `kind` / `eventId` が送信と一致しない | `unknown correlation_mismatch` |
 | responseが `MAX_FRAME_BYTES` を超える | `unknown oversized_response`（childをkill） |
+| reconciliationが `absent` | reconcile request 1件だけ。implicit submitなし |
 | stdoutにframeが2つ、または末尾に非whitespace | `unknown undecodable_response` |
 | binaryが存在しない | `unknown spawn_failed` |
 
-fake coreは受け取ったframeを `<state>/fake-requests.jsonl` に残します。`readFakeRequests(stateDir)` で読み、`assertMetadataOnly` を **envelope全体** に適用すれば、payloadだけでなく `requestId` にもharness IDが混入していないことを検査できます（`FORBIDDEN_KEYS` には `callId` / `sessionId` を含む）。
+fake coreは受け取ったframeを `<state>/fake-requests.jsonl` に残します。
+`readFakeRequests(stateDir)` でcomplete envelopeを読み、harness-native testから検査
+できます。`assertMetadataOnly` は `callId` / `sessionId` / `providerId` /
+`deliveryId` など既知の禁止keyを走査するconvenience assertionに限られ、値の
+provenanceまでは証明しません。adapter側は、実際のnative ID値がcaptured envelope
+のどこにも現れないことと、`requestId`がadapter-owned nonceであることを別途検査
+します。

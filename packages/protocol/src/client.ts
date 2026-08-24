@@ -1,9 +1,9 @@
 /**
- * The TypeScript reference contract for talking to the core. It includes
- * signal submission and the reconciliation extension, so it is a superset of
- * the language-neutral minimum adapter contract. TypeScript adapters may use
- * `@aizign/adapter-testkit` to exercise it against a fake core process,
- * including the cases where the outcome is unknown.
+ * The TypeScript reference operation surface for talking to the core. It
+ * includes signal submission and reconciliation. TypeScript adapters may use
+ * `@aizign/adapter-testkit` to exercise this client boundary against a fake
+ * core process, including the cases where the outcome is unknown. Implementing
+ * this interface does not establish harness-adapter conformance.
  */
 
 import type { Response } from './envelope.ts';

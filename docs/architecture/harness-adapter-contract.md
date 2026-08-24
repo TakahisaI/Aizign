@@ -41,19 +41,23 @@ A v0.1 signal-submission adapter must:
 2. submit a scope-bound structured workflow signal;
 3. obtain workflow, assignment, attempt, role, artifact revision, and candidate
    digest from trusted control-plane configuration;
-4. keep those stable identity fields out of model-visible arguments;
-5. keep harness session, call, thread, provider, and delivery identifiers out
+4. obtain `eventId` from trusted control-plane configuration, or have the
+   adapter/control plane generate it and retain it for the same logical
+   submission;
+5. keep `eventId` and all other stable identity fields out of model-visible
+   arguments;
+6. keep harness session, call, thread, provider, and delivery identifiers out
    of Aizign identity and the complete protocol envelope, including
    `requestId`;
-6. validate response `requestId`, `kind`, and, where applicable, `eventId`
+7. validate response `requestId`, `kind`, and, where applicable, `eventId`
    correlation;
-7. preserve the submit classification as `accepted`, `duplicate`, `rejected`,
+8. preserve the submit classification as `accepted`, `duplicate`, `rejected`,
    or `unknown`;
-8. never infer success, rejection, or absence from `unknown`, and never blindly
+9. never infer success, rejection, or absence from `unknown`, and never blindly
    retry an unknown submission;
-9. keep raw prompts, model output, reasoning, credentials, and other
+10. keep raw prompts, model output, reasoning, credentials, and other
    conversation content out of the protocol and control journal; and
-10. enforce request and response frame limits, reject extra response frames,
+11. enforce request and response frame limits, reject extra response frames,
     and place a wall-clock bound on caller wait. If cancellation cannot prove
     that remote work stopped, the outcome remains `unknown`.
 
@@ -67,11 +71,13 @@ Protocol v1 currently uses one BOM-free UTF-8 NDJSON request and one NDJSON
 response over a one-shot process. The schemas, maximum sizes, version, kinds,
 capabilities, and stable error codes are owned by `spec/protocol/v1/`.
 
-An adapter may use a different transport only when it preserves the same
+The currently accepted transport is the one-shot process boundary from
+[ADR-0003](../adr/0003-use-a-versioned-ndjson-process-boundary.md). A future
+transport accepted by an ADR may be added only if it preserves the same
 Protocol v1 envelope, closed decoding, size and frame-count bounds, correlation,
-and outcome semantics. A transport bridge is not permission to define another
-Aizign protocol or to treat MCP, a harness SDK, or a provider API as the wire
-authority.
+and outcome semantics. This contract does not authorize an adapter to introduce
+another transport independently. MCP, a harness SDK, or a provider API is not
+the Aizign wire authority.
 
 Each request uses an adapter-owned nonce for `requestId`. Native harness
 identifiers must not be repurposed as correlation or workflow identity.
@@ -119,7 +125,9 @@ A client claiming reconciliation support must:
   them;
 - retain a syntactically valid reported stable code as diagnostic information
   before applying correlation checks, without treating an uncorrelated code as
-  a fact about the request; and
+  a fact about the request;
+- treat `absent` only as an observation of the completed snapshot, never as
+  permission for automatic or implicit resubmission; and
 - make no append, initialization, synchronization, repair, or tail-promotion
   request as part of reconciliation.
 
@@ -131,7 +139,8 @@ by [ADR-0013](../adr/0013-add-bounded-read-only-workflow-signal-reconciliation.m
 and the store specification.
 
 Submission must not become unavailable merely because reconciliation is
-unavailable.
+unavailable. Any retry policy after `absent` requires a separately defined
+decision and authorization boundary.
 
 ## Completion authority and harness evidence
 
@@ -151,17 +160,10 @@ the requested binding was rejected. Conversely, binding verification does not
 prove crash durability or retention. The adapter owns its native evidence
 interpretation and must document its limits.
 
-The DSH adapter currently demonstrates only these optional integrations:
-
-- harness-persisted success metadata integration;
-- caller-wait timeout with a post-read event-count classification guard; and
-- binding-digest verification with payload-digest recording.
-
-These integrations do not establish the durability or retention of real DSH
-persistence, bound source-side I/O, allocation, event byte size, or work after
-ignored cancellation, and do not verify payload digest content on cold read.
-DSH event shapes and Cordis lifecycle are not generic adapter contracts; see
-the [DSH adapter README](../../adapters/dsh/README.md) for its native boundary.
+The DSH adapter is a non-normative example of optional harness integrations.
+Its current integrations, event shapes, persistence limitations, and Cordis
+lifecycle boundary are owned by the
+[DSH adapter README](../../adapters/dsh/README.md), not this contract.
 
 ## Data boundary
 
@@ -180,9 +182,21 @@ Conformance has three independent parts.
 
 ### Wire conformance
 
-Every implementation must match the Protocol v1 schemas and decoder acceptance
-set. `spec/conformance/` contains language-neutral valid and invalid frames.
-Each language may provide its own runner over those fixtures.
+Every implementation must match the Protocol v1 envelope rules and the schemas
+for the directions and kinds it uses:
+
+- a client adapter applies the shared envelope requirements, request encoder
+  fixtures for each kind it sends, and response decoder fixtures for each kind
+  it receives;
+- an adapter claiming the reconciliation extension also applies the
+  reconciliation request-encoder and response-decoder fixtures; and
+- a language binding claiming a full Protocol v1 codec applies every request
+  and response encode/decode fixture.
+
+`spec/conformance/` contains the language-neutral valid and invalid frames.
+It does not require a submission-only client to implement a server-side request
+decoder, a response encoder, or an unclaimed kind. Each language may provide
+its own runner over the applicable fixtures.
 
 ### Core-client conformance
 
@@ -196,6 +210,7 @@ The minimum signal-submission group covers:
 - expectation mismatch and stable rejection codes;
 - timeout, no response, malformed or oversized response, spawn/transport
   failure, and correlation mismatch becoming `unknown`;
+- oversized outbound requests being rejected before transport;
 - non-collapse of `unknown` and no blind submit retry; and
 - metadata-only frames with no harness or provider identifier leakage.
 
@@ -207,7 +222,8 @@ The reconciliation extension group covers:
 - unavailable/corrupt/inconsistent storage and transport failures remaining
   `unknown`;
 - diagnostic `reportedCode` handling around correlation failure; and
-- proof that the reconciliation path does not modify state.
+- proof that the reconciliation path does not modify state or submit after
+  `absent`.
 
 Scenario requirements are shared; an executable runner is not. A language may
 express them with its native test framework. This repository does not define a
@@ -217,15 +233,42 @@ stdin/stdout adapter-test protocol or a universal adapter driver.
 
 Each adapter owns tests for:
 
-- plugin or tool registration;
-- native event mapping and model-visible argument schema;
-- trusted identity injection;
-- native session/call identifiers and persistence reads;
-- lifecycle hooks and harness error mapping; and
-- any claimed harness-native durability, retention, or evidence semantics.
+- its native entrypoint or registration surface, where applicable;
+- native input to protocol DTO mapping;
+- the model-visible schema when a model-visible surface exists;
+- trusted identity injection, including `eventId` generation/retention and the
+  exclusion of stable identity from model-visible input;
+- exclusion of native session, call, thread, provider, and delivery identities
+  from the complete protocol envelope;
+- protocol health/capability preflight before the submission path is exposed;
+  and
+- harness failures mapped to the adapter's documented outcome or failure
+  boundary.
+
+When an adapter claims persistence/cold read, native session or call identity
+handling, lifecycle hooks, or native evidence semantics, it additionally owns
+tests for those claims, including durability, retention, attribution,
+integrity, bounds, and cancellation limits as applicable. An adapter without
+such a claim does not create an empty layer or no-op test.
 
 Those tests may reuse shared assertions, but no common executable harness
 interface is required.
+
+### Requirement and test ownership
+
+Passing one test layer does not prove requirements owned by another:
+
+| Requirement | Primary test owner |
+|---|---|
+| Protocol envelope, schema, stable code, and applicable encode/decode acceptance | Language codec tests over applicable `spec/conformance/` fixtures |
+| Request-size rejection, response/frame bounds, correlation, and submit outcome mapping | Protocol encoder and core-client tests, as applicable |
+| Negative preflight for incompatible version or missing submit capability before exposing submission | Harness-native adapter tests, using a fake core/client |
+| `eventId` and other stable identity provenance; model-visible exclusion | Harness-native adapter tests |
+| Harness/provider identity exclusion from the complete emitted envelope | Harness-native adapter tests that inspect captured requests |
+| Duplicate/conflict and durable journal semantics | Core, engine, store, and protocol tests |
+| Reconciliation mapping and diagnostic code handling | Core-client tests plus core/store tests |
+| No state mutation and no resubmission after reconciliation `absent` | Core/store tests for read-only behavior; harness-native adapter tests for orchestration behavior |
+| Claimed persistence, lifecycle, durability, retention, or evidence semantics | Harness-native tests, only when claimed |
 
 ## TypeScript reference layer
 
@@ -234,11 +277,14 @@ reference `CoreClient` interface. `@aizign/adapter-testkit` provides a fake core
 reference one-shot client, convenience assertions, and a TypeScript conformance
 runner.
 
-The current TypeScript `CoreClient` and `runCoreClientConformance` require both
-submission and reconciliation. They are therefore a useful reference-layer
-superset of the minimum signal-submission contract, not the minimum itself.
-Failing to implement that TypeScript interface does not by itself make a
-non-TypeScript submission adapter non-conforming.
+The current TypeScript `CoreClient` and `runCoreClientConformance` expose and
+exercise both submit and reconciliation operations. They are a TypeScript
+reference core-client interface and scenario runner, not a proof of the whole
+harness adapter contract. Implementing the interface or passing the runner does
+not establish trusted identity provenance, model-visible isolation, native
+registration/preflight behavior, or harness-evidence conformance. Failing to
+implement that TypeScript interface does not by itself make a non-TypeScript
+submission adapter non-conforming.
 
 TypeScript adapters in this repository follow the Node support policy,
 workspace dependency rules, and exact harness SDK pinning. An implementation

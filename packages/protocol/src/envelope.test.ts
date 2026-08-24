@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { decodeResponse, encodeRequest, encodeResponse, type Request } from './envelope.ts';
+import {
+  decodeResponse,
+  encodeRequest,
+  encodeResponse,
+  MAX_REQUEST_BYTES,
+  type Request,
+} from './envelope.ts';
 import { codes, ProtocolError } from './error.ts';
 
 test('encoded frames are single lines with escaped newlines', () => {
@@ -23,6 +29,17 @@ test('encoded frames are single lines with escaped newlines', () => {
 
 test('malformed codes degrade to INTERNAL rather than reaching the wire', () => {
   assert.equal(new ProtocolError('not a code', 'm').code, codes.INTERNAL);
+});
+
+test('oversized requests are rejected by the encoder before transport', () => {
+  assert.throws(
+    () =>
+      encodeRequest({
+        requestId: `r${'x'.repeat(MAX_REQUEST_BYTES)}`,
+        kind: 'hello',
+      }),
+    (error: unknown) => error instanceof ProtocolError && error.code === codes.REQUEST_TOO_LARGE,
+  );
 });
 
 test('extractFrame accepts exactly one newline-terminated frame plus whitespace', async () => {
