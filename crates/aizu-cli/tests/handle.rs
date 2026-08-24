@@ -3,6 +3,7 @@
 use std::io::Write as _;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
+use std::time::Duration;
 
 use aizu_core::workflow::Command as CoreCommand;
 use aizu_protocol::{
@@ -215,6 +216,93 @@ fn stdin_must_carry_exactly_one_frame() {
         one_frame(&run_handle(&dir.state(), &whitespace)).body,
         ResponseBody::WorkflowSignal(_)
     ));
+}
+
+/// Pads a frame with trailing spaces (inside the frame, before its newline)
+/// to exactly `MAX_REQUEST_BYTES`, the largest size the protocol accepts.
+fn frame_at_size_bound(event_id: &str, request_id: &str) -> String {
+    let frame = submit_frame(event_id, request_id);
+    let body = frame.trim_end_matches('\n');
+    assert!(body.len() < MAX_REQUEST_BYTES);
+    format!("{body}{}\n", " ".repeat(MAX_REQUEST_BYTES - body.len()))
+}
+
+#[test]
+fn trailing_content_is_still_rejected_at_the_frame_size_bound() {
+    // Regression for the fail-open boundary (#34): with the frame at exactly
+    // MAX_REQUEST_BYTES, a bounded reader saw only one byte after the newline,
+    // so one whitespace byte could hide a second frame beyond the bound.
+    let dir = TempDir::new();
+    let hidden = format!(
+        "{} {}",
+        frame_at_size_bound("evt-bound", "req-bound"),
+        submit_frame("evt-hidden", "req-hidden")
+    );
+    let ResponseBody::Error(error) = one_frame(&run_handle(&dir.state(), &hidden)).body else {
+        panic!("error")
+    };
+    assert_eq!(error.code().as_str(), codes::INVALID_ENVELOPE);
+    assert!(
+        !dir.state().join(JOURNAL_FILE_NAME).exists(),
+        "nothing is appended for a rejected stdin"
+    );
+
+    let garbage = format!(
+        "{}   trailing prose\n",
+        frame_at_size_bound("evt-bound", "req-bound")
+    );
+    let ResponseBody::Error(error) = one_frame(&run_handle(&dir.state(), &garbage)).body else {
+        panic!("error")
+    };
+    assert_eq!(error.code().as_str(), codes::INVALID_ENVELOPE);
+
+    // A frame at exactly the bound is still valid on its own.
+    let exact = frame_at_size_bound("evt-bound", "req-bound");
+    assert!(matches!(
+        one_frame(&run_handle(&dir.state(), &exact)).body,
+        ResponseBody::WorkflowSignal(_)
+    ));
+}
+
+#[test]
+fn a_stdin_that_never_closes_ends_as_handler_timeout_not_a_hang() {
+    // The one-frame check scans to EOF, so the whole request (read included)
+    // must sit inside the watchdog: a caller holding stdin open after the
+    // trailing whitespace gets a bounded HANDLER_TIMEOUT, and the process
+    // exits without appending (#34).
+    let dir = TempDir::new();
+    let mut child = aizu()
+        .arg("handle")
+        .arg("--state")
+        .arg(dir.state())
+        .env("AIZU_HANDLE_TIMEOUT_MS", "300")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn aizu");
+    let mut stdin = child.stdin.take().unwrap();
+    stdin
+        .write_all(format!("{}  ", submit_frame("evt-held", "req-held")).as_bytes())
+        .unwrap();
+    stdin.flush().unwrap();
+
+    // Keep stdin open; the watchdog must answer anyway, within bounded time.
+    let started = std::time::Instant::now();
+    let output = child.wait_with_output().expect("wait for aizu");
+    drop(stdin);
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "the process must exit on the watchdog, not wait for EOF"
+    );
+    let ResponseBody::Error(error) = one_frame(&output).body else {
+        panic!("error")
+    };
+    assert_eq!(error.code().as_str(), codes::HANDLER_TIMEOUT);
+    assert!(
+        !dir.state().join(JOURNAL_FILE_NAME).exists(),
+        "nothing is appended while stdin is still open"
+    );
 }
 
 #[test]
