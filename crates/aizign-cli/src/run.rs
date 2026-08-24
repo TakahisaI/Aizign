@@ -449,9 +449,18 @@ fn write_measured_frame(
     handler_started: Instant,
 ) -> u8 {
     let encode_started = Instant::now();
-    let mut line = encode_response(response);
-    line.push('\n');
+    let encoded = encode_response(response);
     timing.response_encode_ms = Some(milliseconds(encode_started.elapsed()));
+    let mut line = match encoded {
+        Ok(line) => line,
+        Err(error) => {
+            timing.handler_total_ms = Some(milliseconds(handler_started.elapsed()));
+            timing.emit();
+            eprintln!("aizign: cannot encode response frame: {error}");
+            return exit::IO;
+        }
+    };
+    line.push('\n');
 
     let write_started = Instant::now();
     let mut stdout = io::stdout().lock();
