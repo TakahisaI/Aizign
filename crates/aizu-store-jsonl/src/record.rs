@@ -5,7 +5,7 @@ use aizu_core::{
     ArtifactRef, ArtifactRevision, AssignmentId, BoundedTimestamp, EventId, ShortErrorCode,
     WorkflowId,
 };
-use aizu_engine::{JournalEntry, JournalError};
+use aizu_engine::{JournalEntry, JournalError, MAX_JOURNAL_ENTRIES};
 use serde::de::{Deserializer, Error as _};
 use serde::{Deserialize, Serialize};
 
@@ -156,6 +156,20 @@ pub(crate) fn encode_entry(entry: &JournalEntry) -> String {
     serde_json::to_string(&record).expect("records serialize without error")
 }
 
+/// Encodes one entry as its canonical record line, without the newline —
+/// the counterpart of [`decode_record`] for the conformance fixtures.
+#[must_use]
+pub fn encode_record(entry: &JournalEntry) -> String {
+    encode_entry(entry)
+}
+
+/// Decodes one record line by the grammar of `spec/journal/v1` — the entry
+/// point the conformance fixtures exercise. Journal-level rules (contiguous
+/// `seq`, the entry bound of a whole file) live in [`crate::JsonlJournal`].
+pub fn decode_record(line: &str) -> Result<JournalEntry, JournalError> {
+    decode_line(1, line)
+}
+
 /// Decodes one line. Shape, version, and value problems are all reported
 /// without echoing the line's contents.
 pub(crate) fn decode_line(line_number: usize, line: &str) -> Result<JournalEntry, JournalError> {
@@ -178,6 +192,11 @@ pub(crate) fn decode_line(line_number: usize, line: &str) -> Result<JournalEntry
     }
     let at = BoundedTimestamp::from_unix_seconds(record.at)
         .map_err(|error| corrupt(format!("line {line_number}: at: {error}")))?;
+    if record.seq == 0 || record.seq > MAX_JOURNAL_ENTRIES as u64 {
+        return Err(corrupt(format!(
+            "line {line_number}: seq must be 1..={MAX_JOURNAL_ENTRIES}"
+        )));
+    }
 
     let dto = record.signal;
     let parts = SignalParts {

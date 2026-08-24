@@ -19,7 +19,10 @@ control journalのdurable format。**metadata-only、append-only**（ADR-0007）
 | `signal` | object | 受理されたstructured signal（closed。protocol v1の `signal` と同じ形だが別schemaとして所有） |
 
 - すべてclosed schema（`additionalProperties: false`）。未知fieldは `JOURNAL_CORRUPT`
-- `signal` の条件規則（kindとroleの対応、`findingCount` / `artifactRef` / `shortErrorCode` の必須・禁止）は [`record.schema.json`](schemas/record.schema.json) がprotocol v1のrequest schemaと同じ形で持つ。**schemaとruntime decoder（`aizu-store-jsonl`）の受理集合は同一**で、exampleをschemaに通すgate（`@aizu/protocol` のschema test）がCIで検証する
+- `signal` の条件規則（kindとroleの対応、`findingCount` / `artifactRef` / `shortErrorCode` の必須・禁止）は [`record.schema.json`](schemas/record.schema.json) がprotocol v1のrequest schemaと同じ形で持つ
+- **schemaとruntime decoder（`aizu-store-jsonl`）の受理集合は同一**。`spec/conformance/{valid,invalid}/journal` の同じfixtureを、runtimeは `decode_record`（`crates/aizu-store-jsonl/tests/conformance.rs`）、schemaは [`spec/test/schema.test.mjs`](../../test/schema.test.mjs) が読み、`.expect.json` の `schema` 判定で両者を突き合わせる
+- `seq` の範囲はschemaとruntimeで一致させる: `1..=10000`（`MAX_JOURNAL_ENTRIES`。cold readがこの件数でboundされるため、これを超えるseqを持つdurable fileは読めない）
+- 整数の字句表現はprotocolと同じくcanonical token（`1.0` などは `JOURNAL_CORRUPT`）。schemaでは表現できないのでfixtureに `schema: true` と記録する
 - optional fieldは省略する。`null` は `JOURNAL_CORRUPT`
 - 本文、credential、harness ID（`prompt`、`output`、`reasoning`、`token`、`sessionId`、`threadId` など）にあたるfieldは存在しない。record schemaがclosedなので、そのようなfieldを持つrecordは読み込めない
 

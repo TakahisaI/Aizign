@@ -12,4 +12,4 @@ mod journal;
 mod record;
 
 pub use journal::{JOURNAL_FILE_NAME, JsonlJournal, LOCK_FILE_NAME};
-pub use record::JOURNAL_SCHEMA_VERSION;
+pub use record::{JOURNAL_SCHEMA_VERSION, decode_record, encode_record};

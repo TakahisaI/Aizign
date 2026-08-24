@@ -6,6 +6,7 @@
       "packages/**",
       "adapters/**",
       "experiments/**",
+      "spec/test/**",
       "*.json",
       "!**/lib",
       "!**/node_modules",

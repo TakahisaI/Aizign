@@ -67,9 +67,29 @@ function byteLength(frame: Uint8Array | string): number {
   return typeof frame === 'string' ? encoder.encode(frame).byteLength : frame.byteLength;
 }
 
+/**
+ * Wire numbers must be canonical integer tokens (`0` or `-?[1-9][0-9]*`) —
+ * the lexical space serde_json accepts for the integer fields of this
+ * protocol. Any other spelling (`1.0`, `1e0`, `-0`) is replaced by a sentinel
+ * no field check accepts, so it fails exactly where the field is validated,
+ * with the same stable code and recovered correlation data as the Rust
+ * decoder. JSON Schema operates on the data model and cannot see lexemes;
+ * this is one of the two documented decoder-only rules (with the size bound).
+ */
+const NON_CANONICAL_NUMBER = Symbol('non-canonical number');
+const CANONICAL_INTEGER = /^(?:0|-?[1-9][0-9]*)$/;
+
+type RevivedContext = { readonly source?: string };
+function reviveCanonicalNumbers(_key: string, value: unknown, context?: RevivedContext): unknown {
+  if (typeof value === 'number' && !CANONICAL_INTEGER.test(context?.source ?? '')) {
+    return NON_CANONICAL_NUMBER;
+  }
+  return value;
+}
+
 function parseJson(frame: Uint8Array | string): unknown {
   const text = typeof frame === 'string' ? frame : decoder.decode(frame);
-  return JSON.parse(text);
+  return JSON.parse(text, reviveCanonicalNumbers as (key: string, value: unknown) => unknown);
 }
 
 function isRequestId(value: unknown): value is string {

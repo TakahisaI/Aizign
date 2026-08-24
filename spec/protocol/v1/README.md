@@ -25,7 +25,11 @@ adapter ──(request frame)──▶ aizu handle --state <dir> ──(response
 | `error` | — | `ok: false` のときだけ。`{ "code", "message" }` |
 
 - すべてclosed schema（`additionalProperties: false`）。未知fieldは `INVALID_ENVELOPE` / `INVALID_PAYLOAD`
-- **受理集合はJSON Schemaが正**: [`schemas/`](schemas/) とRust / TS decoderは同じ集合を受理する。唯一の例外はframeのsize bound（schemaでは表現できず、decoderだけが `REQUEST_TOO_LARGE` / `INVALID_ENVELOPE` にする）。一致は `spec/conformance` の全fixture（`.expect.json` の `schema` 判定）とexampleをschemaに通すgate（`@aizu/protocol` のschema test）がCIで検証する
+- **受理集合はJSON Schemaが正**: [`schemas/`](schemas/) とRust / TS decoderは同じ集合を受理する。一致は `spec/conformance` の全fixture（`.expect.json` の `schema` 判定）とexampleをschemaに通すgate（[`spec/test/schema.test.mjs`](../../test/schema.test.mjs)）がCIで検証する
+- schemaが表現できず **decoderだけが拒否する規則は2つ**（fixtureでは `schema: true` と記録する）
+  - frameのsize bound（`MAX_FRAME_BYTES`）→ `REQUEST_TOO_LARGE` / `INVALID_ENVELOPE`
+  - **整数の字句表現**（下記）
+- 整数fieldのwire表現は **canonicalな整数token** だけを許す: `0` または `-?[1-9][0-9]*`。`1.0`、`1e0`、`-0` のような表記はJSON data model上は整数1（や0）だが、frameとしては拒否する（`version` は `INVALID_ENVELOPE`、payload内は `INVALID_PAYLOAD`）。JSON Schemaはdata modelしか見ないためこの規則を書けず、両decoderが実装する（Rustは `serde_json` の整数型、TSはparse時のtoken検査）
 - optional fieldは **省略** する。`null` は許可しない
 - `message` は人向けの説明で、request本文を含めない。機械判定は `code` だけで行う
 - 互換性はpackage versionではなく `version` と `hello` の `capabilities` で判定する

@@ -1,0 +1,1 @@
+{"schemaVersion":1,"seq":1,"at":1787000000,"kind":"workflow.signal.revoked","signal":{"eventId":"evt-0001","workflowId":"wf-0001","assignmentId":"as-implementation","role":"implementation","artifactRevision":"rev-c0ffee","kind":"implementation_ready"}}

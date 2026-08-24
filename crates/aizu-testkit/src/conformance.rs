@@ -6,13 +6,16 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Which side of the boundary a frame belongs to.
+/// Which contract a fixture belongs to: one of the two wire directions, or
+/// the durable journal record format.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Direction {
     /// Frames an adapter sends to `aizu`.
     Request,
     /// Frames `aizu` sends back.
     Response,
+    /// Lines of the durable control journal (`spec/journal/v1`).
+    Journal,
 }
 
 impl Direction {
@@ -20,6 +23,7 @@ impl Direction {
         match self {
             Self::Request => "request",
             Self::Response => "response",
+            Self::Journal => "journal",
         }
     }
 }
@@ -43,10 +47,11 @@ pub struct InvalidFixture {
     /// The stable error code the decoder must return.
     pub code: String,
     /// For requests: the `requestId` the decoder must recover (`None` means
-    /// it must not recover one). Always `None` for responses.
+    /// it must not recover one). Always `None` for responses and journal
+    /// records, which carry no correlation data.
     pub request_id: Option<String>,
     /// For requests: the `kind` the decoder must recover. Always `None` for
-    /// responses.
+    /// responses and journal records.
     pub kind: Option<String>,
 }
 

@@ -1,0 +1,1 @@
+{"schemaVersion":1,"seq":2,"at":1787000010,"kind":"workflow.signal.accepted","signal":{"eventId":"evt-0002","workflowId":"wf-0001","assignmentId":"as-review","role":"review","artifactRevision":"rev-c0ffee","kind":"review_findings","findingCount":2,"artifactRef":"review-findings-0002"}}

@@ -29,8 +29,5 @@
     "test": "node --test \"src/**/*.test.ts\"",
     "build": "rm -rf lib && tsc -p tsconfig.build.json",
     "pack:check": "npm pack --dry-run --json > /dev/null"
-  },
-  "devDependencies": {
-    "ajv": "8.20.0"
   }
 }

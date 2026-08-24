@@ -1,0 +1,1 @@
+{"protocol":"aizu","version":1.0,"requestId":"r","kind":"hello","ok":true,"payload":{"protocolVersion":1,"journalSchemaVersion":1,"capabilities":["workflow.signal.submit"],"package":{"name":"aizu","version":"0.1.0"}}}

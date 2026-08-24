@@ -13,7 +13,9 @@ Append-only, metadata-only JSONL control journal. Implements `aizu_engine::Journ
 | **Test command** | `cargo test -p aizu-store-jsonl` |
 | **Related ADR** | [0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md)、[0007](../../docs/adr/0007-use-metadata-only-control-journals.md)、[0009](../../docs/adr/0009-serialization-dependencies-for-the-protocol-crate.md) |
 
-formatの正本は [`spec/journal/v1/`](../../spec/journal/v1/README.md)。
+formatの正本は [`spec/journal/v1/`](../../spec/journal/v1/README.md)。`decode_record` / `encode_record` は
+`spec/conformance/{valid,invalid}/journal` のfixtureを回すための入口で、同じfixtureを `spec/test/schema.test.mjs` が
+JSON Schemaに通すため、schemaとruntimeの受理集合はCIで突き合わされる。
 
 ## Layout
 
