@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-25
-- Related: ADR-0003, ADR-0004, ADR-0007, ADR-0012, ADR-0013, ADR-0014, Issue #52
+- Related: ADR-0003, ADR-0004, ADR-0007, ADR-0012, ADR-0013, ADR-0014, Issue #52, PR #70
 
 ## Context
 
