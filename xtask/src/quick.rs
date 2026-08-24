@@ -170,7 +170,11 @@ fn run_protocol(root: &Path) -> Result<(), String> {
 }
 
 fn run_adapter_dsh(root: &Path) -> Result<(), String> {
-    let binary = if cfg!(target_os = "linux") {
+    let binary = if cfg!(all(
+        target_os = "linux",
+        target_arch = "x86_64",
+        target_env = "gnu"
+    )) {
         report::stage("quick/adapter-dsh: rebuild real aizign binary");
         Some(
             cargo_build::aizign_binary(root, true)?

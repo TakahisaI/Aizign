@@ -1,6 +1,6 @@
 //! Durable committed-prefix behaviour, locking, permissions, and bounds.
 
-#![cfg(target_os = "linux")]
+#![cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 
 use std::fs::{self, OpenOptions};
 use std::io::Write as _;

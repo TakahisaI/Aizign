@@ -7,12 +7,12 @@
 //! schema-valid, and one it rejects must be schema-invalid unless the
 //! expectation says the rule is outside what a JSON Schema can express.
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 use aizign_engine::JournalReader as _;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 use aizign_store_jsonl::{COMMIT_FILE_NAME, JsonlJournal, JsonlJournalReader};
 use aizign_store_jsonl::{decode_record, encode_record};
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 use aizign_testkit::TempDir;
 use aizign_testkit::conformance::{self, Direction};
 
@@ -52,7 +52,7 @@ fn invalid_records_fail_with_the_expected_journal_code() {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 fn install_commit_fixture(frame: &[u8]) -> (TempDir, std::path::PathBuf) {
     let dir = TempDir::new();
     let state = dir.state();
@@ -61,7 +61,7 @@ fn install_commit_fixture(frame: &[u8]) -> (TempDir, std::path::PathBuf) {
     (dir, state)
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 #[test]
 fn valid_store_metadata_opens_an_empty_committed_snapshot() {
     for fixture in conformance::valid(Direction::Store) {
@@ -73,7 +73,7 @@ fn valid_store_metadata_opens_an_empty_committed_snapshot() {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 #[test]
 fn invalid_store_metadata_fails_with_the_expected_journal_code() {
     for fixture in conformance::invalid(Direction::Store) {
