@@ -5,6 +5,7 @@
 //! that works identically on a developer machine and in CI.
 
 mod audit;
+mod cargo_build;
 mod conformance;
 mod npm_check;
 mod quick;

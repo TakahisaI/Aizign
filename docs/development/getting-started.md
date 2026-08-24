@@ -27,10 +27,13 @@ cargo --version   # rust-toolchain.toml の channel と一致すること
 ```sh
 git clone <this repository> Aizign
 cd Aizign
+cargo fetch --locked
 cargo xtask check
 ```
 
 `cargo xtask` は `.cargo/config.toml` のaliasで、`xtask/` crateを実行します。
+The alias starts `xtask` itself with `--frozen`, so Cargo cannot access the network or update `Cargo.lock` before command dispatch.
+The explicit `cargo fetch --locked` setup step populates a clean Cargo cache without allowing lockfile changes.
 `check` は次をまとめて実行します。
 
 | 段階 | 内容 |
@@ -67,9 +70,10 @@ The `protocol` profile adds the Rust and TypeScript protocol tests, journal test
 The `adapter-dsh` profile incrementally builds `aizign-cli`, runs DSH-only lint and type checks, then passes that binary to the protocol, adapter-testkit, and DSH adapter tests.
 It never skips the build based on the existing binary or its timestamp.
 
-If `node_modules` is missing, run this setup command first:
+If the Cargo cache or `node_modules` is missing, run these setup commands first:
 
 ```sh
+cargo fetch --locked
 npm ci --no-audit --no-fund
 ```
 

@@ -25,8 +25,10 @@ The developer selects a profile explicitly; `quick` does not infer affected crat
 | `quick adapter-dsh` | default → `cargo build --frozen -p aizign-cli` → DSH lint and typecheck → protocol tests → adapter-testkit tests → DSH adapter tests | The default guarantees, targeted DSH checks, and fake-core and freshly built real-binary round trips |
 
 No profile runs `npm ci`, `npm install`, or a toolchain install.
-Cargo child commands use `--frozen`, and npm child commands receive the offline setting.
-If `node_modules` or a required package is missing, the command fails with an actionable `npm ci --no-audit --no-fund` setup instruction.
+The Cargo alias starts `xtask` with `--frozen` before command dispatch, Cargo child commands use `--frozen`, and npm child commands receive the offline setting.
+This prevents registry access and `Cargo.lock` changes before the tracked-file snapshot is taken.
+The dependency preflight runs `npm ls --all --offline`; if `node_modules` is missing or incomplete, the command fails with an actionable `npm ci --no-audit --no-fund` setup instruction.
+Run `cargo fetch --locked` outside `quick` when a clean Cargo cache needs to be populated.
 Each profile compares the tracked diff before and after the run and fails if a tracked file changes.
 
 `quick` does not run cargo doc, cargo deny, package-content inspection, the public audit, full workspace integration tests, or clean-install reproducibility checks.

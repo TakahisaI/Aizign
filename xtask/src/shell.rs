@@ -60,6 +60,12 @@ pub(crate) fn capture(root: &Path, program: &str, args: &[&str]) -> Result<Strin
         .map_err(|error| format!("`{rendered}` produced non-UTF-8 output: {error}"))
 }
 
+/// Like [`capture`], but logs the command before running it.
+pub(crate) fn capture_logged(root: &Path, program: &str, args: &[&str]) -> Result<String, String> {
+    println!("$ {}", render(program, args));
+    capture(root, program, args)
+}
+
 /// Returns whether a program can be started at all (used for install hints).
 pub(crate) fn available(root: &Path, program: &str, args: &[&str]) -> bool {
     Command::new(program)

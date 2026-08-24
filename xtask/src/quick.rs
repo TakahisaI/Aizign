@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use crate::{conformance, report, shell};
+use crate::{cargo_build, conformance, report, shell};
 
 pub(crate) const USAGE: &str = "\
 usage: cargo xtask quick [profile]
@@ -40,7 +40,7 @@ before push or PR.
 ";
 
 const NPM_SETUP_HINT: &str = "quick checks require the existing npm workspace dependencies, \
-    but {missing} is missing. Run `npm ci --no-audit --no-fund` once (or run \
+    but {problem}. Run `npm ci --no-audit --no-fund` once (or run \
     `cargo xtask check` for the full setup and PR gate), then retry. \
     `cargo xtask quick` never installs dependencies";
 
@@ -79,7 +79,7 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
         return Ok(());
     };
 
-    ensure_dependencies(root, profile)?;
+    ensure_dependencies(root)?;
     let tracked_before = tracked_changes(root)?;
     let outcome = run_profile(root, profile);
     let tracked_after = tracked_changes(root)?;
@@ -171,17 +171,7 @@ fn run_protocol(root: &Path) -> Result<(), String> {
 
 fn run_adapter_dsh(root: &Path) -> Result<(), String> {
     report::stage("quick/adapter-dsh: rebuild real aizign binary");
-    shell::run(
-        root,
-        "cargo",
-        &["build", "--frozen", "--quiet", "-p", "aizign-cli"],
-    )?;
-
-    let binary = root.join("target").join("debug").join(if cfg!(windows) {
-        "aizign.exe"
-    } else {
-        "aizign"
-    });
+    let binary = cargo_build::aizign_binary(root, true)?;
     let binary = binary.to_string_lossy().into_owned();
     let env = [("AIZIGN_BINARY", binary.as_str())];
 
@@ -231,7 +221,7 @@ fn run_npm_with_env(
     shell::run_with_env(root, "npm", args, &env)
 }
 
-fn ensure_dependencies(root: &Path, profile: Profile) -> Result<(), String> {
+fn ensure_dependencies(root: &Path) -> Result<(), String> {
     if !shell::available(root, "node", &["--version"]) {
         return Err(
             "Node.js is required for quick checks. Install the version pinned in \
@@ -247,29 +237,16 @@ fn ensure_dependencies(root: &Path, profile: Profile) -> Result<(), String> {
         );
     }
 
-    let mut required = vec![
-        "node_modules/.package-lock.json",
-        "node_modules/@biomejs/biome/package.json",
-        "node_modules/typescript/package.json",
-        "node_modules/@aizign/protocol/package.json",
-        "node_modules/@aizign/adapter-testkit/package.json",
-        "node_modules/@aizign/adapter-dsh/package.json",
-    ];
-    match profile {
-        Profile::Default => {}
-        Profile::Protocol => required.push("node_modules/ajv/package.json"),
-        Profile::AdapterDsh => {
-            required.extend([
-                "node_modules/@deepseek-ai/cordis/package.json",
-                "node_modules/@deepseek-ai/dsh-llm/package.json",
-                "node_modules/@deepseek-ai/dsh-tools/package.json",
-                "node_modules/@deepseek-ai/schemastery/package.json",
-            ]);
-        }
+    if !root.join("node_modules/.package-lock.json").is_file() {
+        return Err(
+            NPM_SETUP_HINT.replace("{problem}", "node_modules/.package-lock.json is missing")
+        );
     }
-
-    if let Some(missing) = required.into_iter().find(|path| !root.join(path).exists()) {
-        return Err(NPM_SETUP_HINT.replace("{missing}", missing));
+    if shell::capture(root, "npm", &["ls", "--all", "--offline"]).is_err() {
+        return Err(NPM_SETUP_HINT.replace(
+            "{problem}",
+            "the installed npm dependency tree is incomplete",
+        ));
     }
     Ok(())
 }
@@ -321,5 +298,19 @@ mod tests {
     fn rejects_more_than_one_profile() {
         let error = Profile::parse(&args(&["protocol", "adapter-dsh"])).unwrap_err();
         assert!(error.contains("at most one profile"));
+    }
+
+    #[test]
+    fn repository_alias_starts_xtask_frozen() {
+        let config = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.cargo/config.toml"),
+        )
+        .unwrap();
+        let compact: String = config.split_whitespace().collect();
+        assert!(
+            compact.contains(
+                "xtask=[\"run\",\"--quiet\",\"--frozen\",\"--package\",\"xtask\",\"--\",]"
+            )
+        );
     }
 }
