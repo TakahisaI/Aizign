@@ -37,7 +37,7 @@ export interface ColdReadOptions {
   readonly fromSeq?: number;
   /** Maximum number of materialized events accepted for classification. Default 10000. */
   readonly maxEvents?: number;
-  /** Wall-clock bound for the read. Default 10000 ms. */
+  /** Wall-clock bound for caller wait. Default 10000 ms. */
   readonly timeoutMs?: number;
   /** Caller cancellation. */
   readonly signal?: AbortSignal;

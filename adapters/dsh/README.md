@@ -98,7 +98,7 @@ success, rejection, or absence from that failure.
 
 `workflow.signal.reconcile` is a separate core protocol capability and performs
 a bounded read-only lookup of the Aizign journal. It is not one of the DSH
-harness evidence capabilities above. Submit and reconciliation preflight remain
+harness-evidence integrations above. Submit and reconciliation preflight remain
 independent.
 
 Interrupt, effect dispatch, resource release, ownership, general lifecycle, and

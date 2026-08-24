@@ -74,7 +74,7 @@ Absence of an optional harness capability must never weaken identity isolation,
 the metadata-only boundary, correlation checks, bounds, or the non-collapse of
 `unknown`.
 
-## Optional capabilities demonstrated today
+## Optional integrations demonstrated today
 
 The DSH adapter currently demonstrates these harness adapter integrations:
 
