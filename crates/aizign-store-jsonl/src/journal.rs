@@ -298,6 +298,10 @@ impl JsonlJournalReader {
         let path = state_dir.join(JOURNAL_FILE_NAME);
         let commit_path = state_dir.join(COMMIT_FILE_NAME);
 
+        // Missing or structurally unsafe snapshot artifacts are unavailable
+        // even if another process holds the lock. The secure opens below
+        // repeat every check after the lock to close the preflight race.
+        require_snapshot_artifacts(&lock_path, &path, &commit_path)?;
         let lock = open_private_read_file(&lock_path)?;
         match lock.try_lock_shared() {
             Ok(()) => {}
@@ -727,6 +731,38 @@ fn inspect_private_file(path: &Path, owner: u32) -> Result<FileIdentity, Journal
         device: metadata.dev(),
         inode: metadata.ino(),
     })
+}
+
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
+fn require_snapshot_artifacts(
+    lock_path: &Path,
+    journal_path: &Path,
+    commit_path: &Path,
+) -> Result<(), JournalError> {
+    let owner = private_parent_owner(lock_path)?;
+    inspect_private_file(lock_path, owner)?;
+    inspect_private_file(journal_path, owner)?;
+    inspect_private_file(commit_path, owner)?;
+    Ok(())
+}
+
+#[cfg(not(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+)))]
+fn require_snapshot_artifacts(
+    _lock_path: &Path,
+    _journal_path: &Path,
+    _commit_path: &Path,
+) -> Result<(), JournalError> {
+    Err(unsupported_platform())
 }
 
 #[cfg(all(

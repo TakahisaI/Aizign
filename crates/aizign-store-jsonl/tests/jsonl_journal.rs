@@ -233,6 +233,23 @@ fn reader_is_observational_and_requires_every_existing_artifact() {
 }
 
 #[test]
+fn missing_snapshot_artifact_is_unavailable_before_lock_contention() {
+    for missing_name in [LOCK_FILE_NAME, JOURNAL_FILE_NAME, COMMIT_FILE_NAME] {
+        let dir = TempDir::new();
+        let state = dir.state();
+        let writer = JsonlJournal::open(&state).unwrap();
+        fs::remove_file(state.join(missing_name)).unwrap();
+
+        let result = JsonlJournalReader::open(&state);
+        assert!(
+            matches!(result, Err(JournalError::Unavailable { .. })),
+            "missing {missing_name} under writer contention returned {result:?}"
+        );
+        drop(writer);
+    }
+}
+
+#[test]
 fn writer_completes_only_safe_empty_initialization_states() {
     for artifacts in [
         &[][..],
