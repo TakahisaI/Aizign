@@ -8,7 +8,7 @@ Pure, deterministic decisions for Aizu software-change workflows.
 | **Non-responsibility** | I/O、clock、process、network、environment、async runtime、harness / provider SDK、Git、serialization（wire / journal）、harness固有名 |
 | **Inputs** | `State`、`Command`、`Event`、shellが与えるbounded timestamp |
 | **Outputs** | `Decision`（追加するevent、effect intent、または説明可能なrejection）、次の `State` |
-| **Hard invariants** | root [AGENTS.md](../../AGENTS.md#hard-invariants) の12項目。特に 1、4、5、8、12 はこのcrateが直接担う |
+| **Hard invariants** | [docs/architecture/invariants.md](../../docs/architecture/invariants.md) の12項目。特に 1、4、5、8、12 はこのcrateが直接担う |
 | **Allowed dependencies** | なし（`dependencies`、`dev-dependencies` ともに空。`#![no_std]` + `core` / `alloc` のみ） |
 | **Test command** | `cargo test -p aizu-core` |
 | **Related ADR** | [0002](../../docs/adr/0002-implement-the-deterministic-core-in-rust.md)、[0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md)、[0005](../../docs/adr/0005-organize-the-core-by-bounded-context.md) |

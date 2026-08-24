@@ -7,6 +7,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
+exclude = ["AGENTS.md"]
 
 # `aizu-core` has no dependencies of any kind. Adding one requires an ADR
 # and an update to docs/architecture/dependency-rules.md (checked by
