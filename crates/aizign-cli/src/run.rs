@@ -9,8 +9,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use aizign_core::BoundedTimestamp;
 use aizign_core::recovery::SignalReconciliation;
 use aizign_engine::{
-    Clock, ClockError, HandleError, ReconcileError, SignalOutcome, handle_workflow_signal_observed,
-    reconcile_workflow_signal_observed,
+    Clock, ClockError, HandleError, ReconcileError, SignalOutcome, handle_workflow_signal,
+    handle_workflow_signal_observed, reconcile_workflow_signal, reconcile_workflow_signal_observed,
 };
 use aizign_protocol::{
     CAPABILITY_WORKFLOW_SIGNAL_RECONCILE, CAPABILITY_WORKFLOW_SIGNAL_SUBMIT, Disposition,
@@ -23,7 +23,7 @@ use aizign_store_jsonl::{
 };
 
 use crate::exit;
-use crate::timing::{HandlerTiming, StageTimingObserver, milliseconds};
+use crate::timing::{HandlerTiming, StageTimingObserver, enabled as timing_enabled, milliseconds};
 
 /// Upper bound on reading and processing one request. Past it, the response
 /// reports `HANDLER_TIMEOUT` and the process exits; any append in flight is
@@ -89,22 +89,27 @@ pub(crate) fn hello() -> u8 {
 /// the one-frame check scans to EOF and a caller that never closes stdin
 /// must not hold the process open (#34).
 pub(crate) fn handle(state: &Path) -> u8 {
-    let handler_started = Instant::now();
+    let timing_enabled = timing_enabled();
+    let handler_started = timing_enabled.then(Instant::now);
     let timeout = handler_timeout();
     let state = state.to_path_buf();
     let (sender, receiver) = mpsc::channel();
     std::thread::spawn(move || {
-        let mut timing = HandlerTiming::default();
-        let read_started = Instant::now();
+        let mut timing = timing_enabled.then(HandlerTiming::default);
+        let read_started = timing_enabled.then(Instant::now);
         let stdin = read_stdin();
-        timing.request_read_ms = Some(milliseconds(read_started.elapsed()));
+        if let (Some(timing), Some(started)) = (timing.as_mut(), read_started) {
+            timing.request_read_ms = Some(milliseconds(started.elapsed()));
+        }
         let outcome = stdin.map(|stdin| match stdin {
-            Stdin::Frame(frame) => respond(&frame, &state, &mut timing),
+            Stdin::Frame(frame) => respond(&frame, &state, timing.as_mut()),
             Stdin::Extra => {
                 log("decode", None, None, codes::INVALID_ENVELOPE);
-                timing.operation_kind = Some("unknown".to_owned());
-                timing.outcome = Some("rejected");
-                timing.error_code = Some(codes::INVALID_ENVELOPE.to_owned());
+                if let Some(timing) = timing.as_mut() {
+                    timing.operation_kind = Some("unknown");
+                    timing.outcome = Some("rejected");
+                    timing.error_code = Some(codes::INVALID_ENVELOPE.to_owned());
+                }
                 Response {
                     request_id: None,
                     kind: None,
@@ -116,10 +121,10 @@ pub(crate) fn handle(state: &Path) -> u8 {
             }
         });
         // The receiver is gone only if the watchdog already answered.
-        let _ = sender.send(outcome.map(|response| MeasuredResponse { response, timing }));
+        let _ = sender.send(outcome.map(|response| WorkerResponse { response, timing }));
     });
 
-    let mut measured = match receiver.recv_timeout(timeout) {
+    let mut handled = match receiver.recv_timeout(timeout) {
         Ok(Ok(measured)) => measured,
         Ok(Err(error)) => {
             eprintln!("aizign: cannot read request frame: {error}");
@@ -130,7 +135,7 @@ pub(crate) fn handle(state: &Path) -> u8 {
                 "aizign: request exceeded {}ms; any append outcome is unknown",
                 timeout.as_millis()
             );
-            MeasuredResponse {
+            WorkerResponse {
                 response: Response {
                     request_id: None,
                     kind: None,
@@ -142,21 +147,24 @@ pub(crate) fn handle(state: &Path) -> u8 {
                         ),
                     )),
                 },
-                timing: HandlerTiming {
-                    operation_kind: Some("unknown".to_owned()),
+                timing: timing_enabled.then(|| HandlerTiming {
+                    operation_kind: Some("unknown"),
                     outcome: Some("unknown"),
                     error_code: Some(codes::HANDLER_TIMEOUT.to_owned()),
                     ..HandlerTiming::default()
-                },
+                }),
             }
         }
     };
-    write_measured_frame(&measured.response, &mut measured.timing, handler_started)
+    match (handled.timing.as_mut(), handler_started) {
+        (Some(timing), Some(started)) => write_measured_frame(&handled.response, timing, started),
+        _ => write_frame(&handled.response),
+    }
 }
 
-struct MeasuredResponse {
+struct WorkerResponse {
     response: Response,
-    timing: HandlerTiming,
+    timing: Option<HandlerTiming>,
 }
 
 /// What stdin carried: exactly one frame, or something that is not one.
@@ -196,22 +204,29 @@ fn read_stdin() -> io::Result<Stdin> {
     Ok(Stdin::Frame(frame))
 }
 
-fn respond(frame: &[u8], state: &Path, timing: &mut HandlerTiming) -> Response {
-    let decode_started = Instant::now();
+fn respond(frame: &[u8], state: &Path, mut timing: Option<&mut HandlerTiming>) -> Response {
+    let decode_started = timing.is_some().then(Instant::now);
     let request = match decode_request(frame) {
         Ok(request) => {
-            timing.decode_ms = Some(milliseconds(decode_started.elapsed()));
+            if let (Some(timing), Some(started)) = (timing.as_deref_mut(), decode_started) {
+                timing.decode_ms = Some(milliseconds(started.elapsed()));
+            }
             request
         }
         Err(failure) => {
-            timing.decode_ms = Some(milliseconds(decode_started.elapsed()));
-            timing.operation_kind = failure.kind.clone().or_else(|| Some("unknown".to_owned()));
-            timing.outcome = Some("rejected");
-            timing.error_code = Some(failure.error.code().as_str().to_owned());
+            let safe_kind = observed_operation_kind(failure.kind.as_deref());
+            if let Some(timing) = timing.as_deref_mut() {
+                if let Some(started) = decode_started {
+                    timing.decode_ms = Some(milliseconds(started.elapsed()));
+                }
+                timing.operation_kind = Some(safe_kind);
+                timing.outcome = Some("rejected");
+                timing.error_code = Some(failure.error.code().as_str().to_owned());
+            }
             log(
                 "decode",
                 failure.request_id.as_deref(),
-                failure.kind.as_deref(),
+                Some(safe_kind),
                 failure.error.code().as_str(),
             );
             return Response {
@@ -222,9 +237,12 @@ fn respond(frame: &[u8], state: &Path, timing: &mut HandlerTiming) -> Response {
         }
     };
     let Request { request_id, kind } = request;
-    let kind_name = kind.name().to_owned();
-    timing.operation_kind = Some(kind_name.clone());
-    let body = execute_request(kind, &kind_name, state, timing);
+    let operation_kind = kind.name();
+    let kind_name = operation_kind.to_owned();
+    if let Some(timing) = timing.as_deref_mut() {
+        timing.operation_kind = Some(operation_kind);
+    }
+    let body = execute_request(kind, &kind_name, state, timing.as_deref_mut());
     let outcome = match &body {
         ResponseBody::Hello(_) => "ok",
         ResponseBody::WorkflowSignal(result) => match result.disposition {
@@ -238,7 +256,9 @@ fn respond(frame: &[u8], state: &Path, timing: &mut HandlerTiming) -> Response {
         },
         ResponseBody::Error(error) => error.code().as_str(),
     };
-    record_semantic_outcome(&kind_name, &body, timing);
+    if let Some(timing) = timing {
+        record_semantic_outcome(&kind_name, &body, timing);
+    }
     log("handle", Some(&request_id), Some(&kind_name), outcome);
     Response {
         request_id: Some(request_id),
@@ -251,7 +271,7 @@ fn execute_request(
     kind: RequestKind,
     kind_name: &str,
     state: &Path,
-    timing: &mut HandlerTiming,
+    timing: Option<&mut HandlerTiming>,
 ) -> ResponseBody {
     match kind {
         RequestKind::Hello => ResponseBody::Hello(hello_info()),
@@ -268,23 +288,28 @@ fn execute_request(
 fn submit_response(
     command: aizign_core::workflow::Command,
     state: &Path,
-    timing: &mut HandlerTiming,
+    timing: Option<&mut HandlerTiming>,
 ) -> ResponseBody {
-    let open_started = Instant::now();
+    let open_started = timing.is_some().then(Instant::now);
     let opened = JsonlJournal::open(state);
-    timing.journal_open_ms = Some(milliseconds(open_started.elapsed()));
+    let mut timing = timing;
+    if let (Some(timing), Some(started)) = (timing.as_deref_mut(), open_started) {
+        timing.journal_open_ms = Some(milliseconds(started.elapsed()));
+    }
     let mut journal = match opened {
         Ok(journal) => journal,
         Err(error) => {
             return ResponseBody::Error(ProtocolError::new(error.code(), error.to_string()));
         }
     };
-    timing.journal_bytes = std::fs::metadata(journal.path())
-        .ok()
-        .map(|metadata| metadata.len());
-    let handled = {
+    let handled = if let Some(timing) = timing {
+        timing.journal_physical_bytes = std::fs::metadata(journal.path())
+            .ok()
+            .map(|metadata| metadata.len());
         let mut observer = StageTimingObserver::new(timing);
         handle_workflow_signal_observed(&mut journal, &SystemClock, command, &mut observer)
+    } else {
+        handle_workflow_signal(&mut journal, &SystemClock, command)
     };
     match handled {
         Ok(SignalOutcome::Accepted { entry }) => {
@@ -305,23 +330,28 @@ fn submit_response(
 fn reconcile_response(
     signal: &aizign_core::workflow::WorkflowSignal,
     state: &Path,
-    timing: &mut HandlerTiming,
+    timing: Option<&mut HandlerTiming>,
 ) -> ResponseBody {
-    let open_started = Instant::now();
+    let open_started = timing.is_some().then(Instant::now);
     let opened = JsonlJournalReader::open(state);
-    timing.journal_open_ms = Some(milliseconds(open_started.elapsed()));
+    let mut timing = timing;
+    if let (Some(timing), Some(started)) = (timing.as_deref_mut(), open_started) {
+        timing.journal_open_ms = Some(milliseconds(started.elapsed()));
+    }
     let mut journal = match opened {
         Ok(journal) => journal,
         Err(error) => {
             return ResponseBody::Error(ProtocolError::new(error.code(), error.to_string()));
         }
     };
-    timing.journal_bytes = std::fs::metadata(journal.path())
-        .ok()
-        .map(|metadata| metadata.len());
-    let reconciled = {
+    let reconciled = if let Some(timing) = timing {
+        timing.journal_physical_bytes = std::fs::metadata(journal.path())
+            .ok()
+            .map(|metadata| metadata.len());
         let mut observer = StageTimingObserver::new(timing);
         reconcile_workflow_signal_observed(&mut journal, signal, &mut observer)
+    } else {
+        reconcile_workflow_signal(&mut journal, signal)
     };
     match reconciled {
         Ok(disposition) => {
@@ -370,6 +400,19 @@ fn record_semantic_outcome(kind: &str, body: &ResponseBody, timing: &mut Handler
                 },
             );
         }
+    }
+}
+
+fn observed_operation_kind(kind: Option<&str>) -> &'static str {
+    match kind {
+        Some(aizign_protocol::KIND_HELLO) => aizign_protocol::KIND_HELLO,
+        Some(aizign_protocol::KIND_WORKFLOW_SIGNAL_SUBMIT) => {
+            aizign_protocol::KIND_WORKFLOW_SIGNAL_SUBMIT
+        }
+        Some(aizign_protocol::KIND_WORKFLOW_SIGNAL_RECONCILE) => {
+            aizign_protocol::KIND_WORKFLOW_SIGNAL_RECONCILE
+        }
+        _ => "unknown",
     }
 }
 

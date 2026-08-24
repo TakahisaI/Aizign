@@ -1,5 +1,7 @@
 //! Optional, side-effect-free observation points for engine stage timing.
 
+use std::panic::{AssertUnwindSafe, catch_unwind};
+
 /// A bounded stage inside a submit or reconciliation use case.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EngineStage {
@@ -35,10 +37,39 @@ pub trait EngineObserver {
     fn stage_finished(&mut self, stage: EngineStage, journal_entries: Option<usize>);
 }
 
-pub(crate) struct NoopObserver;
+/// Prevents an observer panic from crossing an engine or store boundary.
+///
+/// The first panic disables the wrapped observer for the rest of the operation.
+pub struct BestEffortObserver<'a> {
+    inner: &'a mut dyn EngineObserver,
+    enabled: bool,
+}
 
-impl EngineObserver for NoopObserver {
-    fn stage_started(&mut self, _stage: EngineStage) {}
+impl<'a> BestEffortObserver<'a> {
+    /// Wraps one caller-supplied observer.
+    pub fn new(inner: &'a mut dyn EngineObserver) -> Self {
+        Self {
+            inner,
+            enabled: true,
+        }
+    }
 
-    fn stage_finished(&mut self, _stage: EngineStage, _journal_entries: Option<usize>) {}
+    fn notify(&mut self, operation: impl FnOnce(&mut dyn EngineObserver)) {
+        if !self.enabled {
+            return;
+        }
+        if catch_unwind(AssertUnwindSafe(|| operation(self.inner))).is_err() {
+            self.enabled = false;
+        }
+    }
+}
+
+impl EngineObserver for BestEffortObserver<'_> {
+    fn stage_started(&mut self, stage: EngineStage) {
+        self.notify(|observer| observer.stage_started(stage));
+    }
+
+    fn stage_finished(&mut self, stage: EngineStage, journal_entries: Option<usize>) {
+        self.notify(|observer| observer.stage_finished(stage, journal_entries));
+    }
 }

@@ -11,7 +11,7 @@ use aizign_core::workflow::{ApplyError, Command, Decision, WorkflowError, Workfl
 
 use crate::clock::{Clock, ClockError};
 use crate::journal::{Journal, JournalEntry, JournalError};
-use crate::observation::{EngineObserver, EngineStage, NoopObserver};
+use crate::observation::{BestEffortObserver, EngineObserver, EngineStage};
 
 /// What happened to a submitted signal. `Accepted` is returned only after
 /// the entry is durable (hard invariant 2).
@@ -81,7 +81,18 @@ pub fn handle_workflow_signal(
     clock: &impl Clock,
     command: Command,
 ) -> Result<SignalOutcome, HandleError> {
-    handle_workflow_signal_observed(journal, clock, command, &mut NoopObserver)
+    let entries = journal.load_committed().map_err(HandleError::Journal)?;
+    let state = WorkflowState::replay(entries.iter().map(|entry| &entry.event))
+        .map_err(HandleError::Replay)?;
+    match decide(&state, command) {
+        Decision::Accepted { event } => {
+            let at = clock.now().map_err(HandleError::Clock)?;
+            let entry = journal.append(&event, at).map_err(HandleError::Journal)?;
+            Ok(SignalOutcome::Accepted { entry })
+        }
+        Decision::Duplicate { event_id } => Ok(SignalOutcome::Duplicate { event_id }),
+        Decision::Rejected { error } => Err(HandleError::Rejected(error)),
+    }
 }
 
 /// Handles one signal while marking stage boundaries for an optional shell
@@ -92,8 +103,9 @@ pub fn handle_workflow_signal_observed(
     command: Command,
     observer: &mut impl EngineObserver,
 ) -> Result<SignalOutcome, HandleError> {
+    let mut observer = BestEffortObserver::new(observer);
     observer.stage_started(EngineStage::JournalLoadDecode);
-    let loaded = journal.load_committed_observed(observer);
+    let loaded = journal.load_committed_observed(&mut observer);
     observer.stage_finished(
         EngineStage::JournalLoadDecode,
         loaded.as_ref().ok().map(Vec::len),
@@ -113,7 +125,7 @@ pub fn handle_workflow_signal_observed(
         Decision::Accepted { event } => {
             let at = clock.now().map_err(HandleError::Clock)?;
             observer.stage_started(EngineStage::AppendSync);
-            let appended = journal.append_observed(&event, at, observer);
+            let appended = journal.append_observed(&event, at, &mut observer);
             observer.stage_finished(EngineStage::AppendSync, None);
             let entry = appended.map_err(HandleError::Journal)?;
             Ok(SignalOutcome::Accepted { entry })

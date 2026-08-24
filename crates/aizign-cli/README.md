@@ -37,8 +37,9 @@ echo '<request frame>' | aizign handle --state ./.aizign-state
 
 `AIZIGN_TIMING_JSON=1`を設定すると、`handle`は通常のlogに加えて`aizign_timing:`で始まるmetadata-only JSONをstderrへ一行出します。
 request read、decode、journal open、committed-prefix read、verification hash、decode、replay、decision、appendと`sync_all`、publish-prefix hash、response encode、response write、handler totalを到達したstageだけ記録します。
-値にはoperation kind、semantic outcome、stable error code、journal byte数とentry数を含められますが、request ID、state path、本文、credentialは含めません。
+値にはallowlist済みoperation kind、semantic outcome、stable error code、journal physical byte数とcommitted entry数を含められますが、request ID、state path、本文、credentialは含めません。
 timingの生成や出力に失敗してもresponseとexit codeは変わりません。
+環境変数を設定しない通常経路はstage clock、observer、追加のjournal statを実行せず、非observed engine APIを使います。
 
 fieldごとの計測区間は[`benchmarks/performance/README.md`](../../benchmarks/performance/README.md#計測区間)を参照してください。
 

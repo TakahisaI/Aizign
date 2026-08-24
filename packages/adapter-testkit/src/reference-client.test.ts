@@ -28,7 +28,9 @@ test('parent timing is metadata-only and sink failures do not change outcomes', 
       ...fakeCoreCommand(),
       stateDir: join(root, 'state'),
       timeoutMs: 5_000,
-      timingSink: (measurement) => measurements.push(measurement),
+      timingSink: (measurement) => {
+        measurements.push(measurement);
+      },
     });
     assert.deepEqual(await client.submitWorkflowSignal('req-timed', samplePayload('evt-timed')), {
       kind: 'accepted',
@@ -64,7 +66,9 @@ test('parent timing is metadata-only and sink failures do not change outcomes', 
       env: { AIZIGN_FAKE_FAULT: 'journal-unknown' },
       stateDir: join(root, 'unknown'),
       timeoutMs: 5_000,
-      timingSink: (measurement) => unknownMeasurements.push(measurement),
+      timingSink: (measurement) => {
+        unknownMeasurements.push(measurement);
+      },
     });
     assert.equal(
       (await unknown.submitWorkflowSignal('req-unknown', samplePayload('evt-unknown'))).kind,
@@ -86,6 +90,23 @@ test('parent timing is metadata-only and sink failures do not change outcomes', 
       kind: 'accepted',
       eventId: 'evt-ok',
     });
+
+    const rejecting = new ReferenceOneShotClient({
+      ...fakeCoreCommand(),
+      stateDir: join(root, 'rejecting'),
+      timeoutMs: 5_000,
+      timingSink: async () => {
+        throw new Error('async metric sink unavailable');
+      },
+    });
+    assert.deepEqual(
+      await rejecting.submitWorkflowSignal('req-async', samplePayload('evt-async')),
+      {
+        kind: 'accepted',
+        eventId: 'evt-async',
+      },
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -12,6 +12,7 @@ import {
   type CoreClientConfig,
   checkCorrelation,
   decodeResponse,
+  emitBestEffort,
   encodeRequest,
   extractFrame,
   type HelloOutcome,
@@ -19,6 +20,7 @@ import {
   MAX_FRAME_BYTES,
   type ParentOperationKind,
   type ParentTimingMeasurement,
+  parentTimingOutcome,
   type ReconcileOutcome,
   type ReconcileUnknown,
   type Response,
@@ -210,15 +212,11 @@ export class ReferenceOneShotClient implements CoreClient {
     const measurement: ParentTimingMeasurement = {
       operation_kind,
       ...timing,
-      outcome: errorCode === 'EVENT_CONFLICT' ? 'conflict' : classified.kind,
+      outcome: parentTimingOutcome(operation_kind, classified.kind, errorCode),
       ...(errorCode === undefined ? {} : { error_code: errorCode }),
       ...(classified.reason === undefined ? {} : { unknown_reason: classified.reason }),
     };
-    try {
-      this.#config.timingSink?.(measurement);
-    } catch {
-      // Observability is deliberately best-effort and cannot change semantics.
-    }
+    emitBestEffort(this.#config.timingSink, measurement);
     return outcome;
   }
 
@@ -230,24 +228,23 @@ export class ReferenceOneShotClient implements CoreClient {
     const { command, args = [], env = {}, timeoutMs } = this.#config;
     return new Promise((resolve) => {
       const started = performance.now();
+      let spawnToExitMs: number | undefined;
       let responseFirstByteMs: number | undefined;
-      const timing = (exited: boolean): TransportTiming => ({
-        ...(exited ? { spawn_to_exit_ms: performance.now() - started } : {}),
+      const timing = (): TransportTiming => ({
+        ...(spawnToExitMs === undefined ? {} : { spawn_to_exit_ms: spawnToExitMs }),
         ...(responseFirstByteMs === undefined
           ? {}
           : { response_first_byte_ms: responseFirstByteMs }),
       });
       if (signal?.aborted) {
-        resolve(unknown('aborted', 'cancelled before the process was spawned', timing(false)));
+        resolve(unknown('aborted', 'cancelled before the process was spawned', timing()));
         return;
       }
       let settled = false;
       let timer: NodeJS.Timeout | undefined;
       const onAbort = () => {
         child?.kill('SIGKILL');
-        settle(
-          unknown('aborted', 'cancelled while waiting; the core may have appended', timing(false)),
-        );
+        settle(unknown('aborted', 'cancelled while waiting; the core may have appended', timing()));
       };
       const settle = (exchange: Exchange) => {
         if (settled) return;
@@ -264,7 +261,7 @@ export class ReferenceOneShotClient implements CoreClient {
           stdio: ['pipe', 'pipe', 'pipe'],
         });
       } catch (error) {
-        settle(unknown('spawn_failed', String(error), timing(false)));
+        settle(unknown('spawn_failed', String(error), timing()));
         return;
       }
       signal?.addEventListener('abort', onAbort, { once: true });
@@ -280,7 +277,7 @@ export class ReferenceOneShotClient implements CoreClient {
             unknown(
               'oversized_response',
               `stdout exceeded ${MAX_FRAME_BYTES} bytes; the core may have appended`,
-              timing(false),
+              timing(),
             ),
           );
           return;
@@ -288,7 +285,11 @@ export class ReferenceOneShotClient implements CoreClient {
         stdout.push(chunk);
       });
       spawned.stderr?.on('data', () => undefined);
-      spawned.on('error', (error) => settle(unknown('spawn_failed', error.message, timing(false))));
+      spawned.on('error', (error) => settle(unknown('spawn_failed', error.message, timing())));
+
+      spawned.once('exit', () => {
+        spawnToExitMs ??= performance.now() - started;
+      });
 
       timer = setTimeout(() => {
         spawned.kill('SIGKILL');
@@ -296,7 +297,7 @@ export class ReferenceOneShotClient implements CoreClient {
           unknown(
             'timeout',
             `no response within ${timeoutMs}ms; the core may have appended`,
-            timing(false),
+            timing(),
           ),
         );
       }, timeoutMs);
@@ -305,26 +306,22 @@ export class ReferenceOneShotClient implements CoreClient {
         const extraction = extractFrame(Buffer.concat(stdout).toString('utf8'));
         if (extraction.kind === 'empty') {
           settle(
-            unknown(
-              'no_response',
-              `process exited with ${String(code)} without a frame`,
-              timing(true),
-            ),
+            unknown('no_response', `process exited with ${String(code)} without a frame`, timing()),
           );
           return;
         }
         if (extraction.kind === 'extra') {
-          settle(unknown('undecodable_response', extraction.detail, timing(true)));
+          settle(unknown('undecodable_response', extraction.detail, timing()));
           return;
         }
         try {
           settle({
             kind: 'response',
             response: decodeResponse(extraction.frame),
-            timing: timing(true),
+            timing: timing(),
           });
         } catch (error) {
-          settle(unknown('undecodable_response', String(error), timing(true)));
+          settle(unknown('undecodable_response', String(error), timing()));
         }
       });
 

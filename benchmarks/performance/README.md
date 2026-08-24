@@ -32,6 +32,7 @@ cargo xtask performance-baseline \
 
 child側の計測は`AIZIGN_TIMING_JSON=1`でopt inします。
 `aizign handle`は通常のlogに加え、`aizign_timing:`で始まるmetadata-only JSONをstderrへ一行出力します。
+opt inしていない通常経路は追加のstage clock、observer、journal statを実行せず、非observed engine APIを使います。
 未到達のstageは0ではなくfield自体を省略します。
 
 | Field | 区間 |
@@ -39,7 +40,7 @@ child側の計測は`AIZIGN_TIMING_JSON=1`でopt inします。
 | `request_read_ms` | stdinの読み取り開始から、one-frame検査を含む読み取り完了まで |
 | `decode_ms` | request frameのdecode開始から完了まで |
 | `journal_open_ms` | submit用writerまたはreconcile用readerのopen |
-| `journal_bytes` | open後に観測したcommitted journal bytes |
+| `journal_physical_bytes` | open後にstatしたjournal file全体の長さ。未公開tailを含み得るためcommitted bytesとは呼ばない |
 | `journal_entries` | committed journalをloadしてdecodeしたentry数 |
 | `journal_load_decode_ms` | committed prefixのload、検証、record decode |
 | `committed_prefix_read_ms` | commit metadataの読み取りと、公開済みprefixのexact read |
@@ -54,15 +55,16 @@ child側の計測は`AIZIGN_TIMING_JSON=1`でopt inします。
 | `handler_total_ms` | `handle`がworkerを起動する直前からresponse flushが終わるまで |
 | `outcome` | `accepted`、`duplicate`、`conflict`、`rejected`、`absent`、`unknown`などのsemantic outcome |
 | `error_code` | error responseに含まれるstable code |
-| `operation_kind` | `hello`、`workflow.signal.submit`、`workflow.signal.reconcile` |
+| `operation_kind` | `hello`、`workflow.signal.submit`、`workflow.signal.reconcile`、`unknown`の有限集合。decode前の入力文字列は転記しない |
 
 parent側は`CoreClientConfig.timingSink`でopt inします。
-`spawn_to_exit_ms`はspawn呼び出しからchild exitまで、`response_first_byte_ms`は最初のstdout byteまでを測ります。
+`spawn_to_exit_ms`はspawn呼び出しからNodeのchild `exit` eventまで、`response_first_byte_ms`は最初のstdout byteまでを測ります。
 CLIは一つのresponse frameをまとめて書くため、first byteはstreaming progressではなくresponse-readyの近似です。
 DSH preflightは`preflight_ms`、evidence cold readは`harness_cold_read_ms`と`events_returned`を別のsinkへ通知します。
 
 どのsinkにもrequest ID、event ID、path、本文、credentialを渡しません。
-sinkの例外とchild timingのencode失敗はworkflow結果を変えません。
+同期throwと非同期Promise rejectionを含むsinkの失敗、およびchild timingのencode失敗はworkflow結果を変えません。
+APIが`unknown`を返す場合、診断codeが`EVENT_CONFLICT`でもtiming outcomeは`unknown`のままです。
 
 ## Sweep
 
@@ -75,8 +77,8 @@ runnerは一つの大きな直積を作らず、問いごとにfixtureを限定�
 | `transport` | 同じfixtureでdirect Node runnerと`ReferenceOneShotClient`のparent観測がどう違うか |
 | `max-payload` | 128-byte識別子と256-byte `artifactRef`を使う1,000 / 10,000-entryのsubmitとreconcile |
 | `concurrency` | 同じstate directoryと独立state directoryで、同時実行数1、2、4、8がどう振る舞うか |
-| `dsh` | 100、1,000、10,000 eventのDSH session evidence cold read |
-| `scenarios` | assignment submitと、lost acknowledgement後の明示的なreconcile |
+| `dsh` | 100、1,000、10,000 eventのin-memory evidence scanとdeterministic file-backed read |
+| `scenarios` | reference clientによるassignment submitと、実際のlost acknowledgement後の明示的なreconcile |
 
 accepted fixtureはjournal上限10,000の一つ手前まで、duplicate fixtureは照合対象を含む1 entry以上だけを生成します。
 bound exceededは10,000 entryから新規submitし、lookupはread-onlyのまま0から10,000 entryを走査します。
@@ -87,7 +89,16 @@ fixture生成時間は計測に含みません。
 各pointの最初の`new_process_new_open` observationがreview follow-upで指定されたrelease-binary cold境界です。
 
 同じstate directoryへのsubmitはqueueもretryもせず、`JOURNAL_LOCKED`をそのまま数えます。
-lost acknowledgement scenarioは完了したsubmit responseを捨てて`unknown`を注入し、submitを再送せずに一度だけreconcileします。
+same-stateとdifferent-stateのfixtureは、どちらも共通batch timerを開始する前にすべて生成します。
+runnerはchildの開始barrierを設けないため、batch値には`Promise.all`でspawnを順に発行する短いずれが残ります。
+
+lost acknowledgement scenarioは`ReferenceOneShotClient`をbenchmark専用proxyへ接続します。
+proxyは実binaryによるdurable appendとresponse生成を完了させてからsubmitのstdout frameだけを破棄します。
+clientが`unknown/no_response`を返したこと、submit invocationが一回だけであること、同じclient abstractionから一度だけreconcileして`accepted`になることをassertします。
+
+DSH sweepの`in_memory_scan`はsource I/Oを含まず、evidence classificationだけを測ります。
+`file_backed_read`は各sampleの計測前に生成したJSON fileを`readFrom()`内で読み取り、file readとJSON decodeを含めます。
+後者もDSH session databaseそのものではないため、実harness storageのlatencyとは区別します。
 
 ## Sampling
 
@@ -102,11 +113,12 @@ summaryとmachine-readable resultは、全warm aggregateで最も遅い`handler_
 
 ## Artifactと更新手順
 
-`result.json`はmachine-readableなenvironment、設定、aggregate、生sampleを持ちます。
+`result.json`はmachine-readableなenvironment、GitHub runner image version、設定、aggregate、生sampleを持ちます。
 `summary.md`は同じaggregateをレビュー用tableへ変換します。
-runnerはartifactへprivate filesystem pathやrequest IDなどの禁止keyが混入していないことを保存前に検査します。
+runnerはchild、parent、DSH timingごとにexact-key allowlistを検査し、未登録fieldが一つでもあればartifactを保存しません。
+private filesystem pathとidentity keyの検査も重ねます。
 
-scheduled workflowは毎週水曜日とmanual dispatchで実行し、両fileを30日間artifactとして保存します。
+scheduled workflowは固定した`ubuntu-24.04` imageで毎週水曜日とmanual dispatchにより実行し、両fileを30日間artifactとして保存します。
 pull requestでは起動せず、required checkにも設定しません。
 
 reviewed baselineを更新するときは、同じcommitのartifact二点を確認し、environmentとsample設定を記録した解釈だけを`docs/performance/`へ追加します。

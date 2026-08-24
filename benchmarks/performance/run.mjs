@@ -2,7 +2,8 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { cpus, platform, release, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -20,10 +21,11 @@ import {
   TRANSPORT_CASES,
 } from './matrix.mjs';
 
-export const RUNNER_VERSION = 2;
+export const RUNNER_VERSION = 3;
 export const CORE_WATCHDOG_MS = 10_000;
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = resolve(HERE, '../..');
+const LOST_ACK_PROXY = join(HERE, 'lost-ack-proxy.mjs');
 const TARGET_EVENT_ID = 'evt-benchmark-target';
 const FIXED_EXPECTED = {
   workflowId: 'wf-benchmark',
@@ -243,6 +245,7 @@ function extractResponse(stdout) {
 function runProcess(binary, args, frame, operationKind, timingEnabled = true) {
   return new Promise((resolvePromise) => {
     const started = performance.now();
+    let spawnToExitMs;
     let responseFirstByteMs;
     let stdout = '';
     let stderr = '';
@@ -299,19 +302,24 @@ function runProcess(binary, args, frame, operationKind, timingEnabled = true) {
         detail: error.message,
       });
     });
+    child.once('exit', () => {
+      spawnToExitMs ??= performance.now() - started;
+    });
     child.on('close', () => {
       clearTimeout(timer);
-      const spawnToExitMs = performance.now() - started;
+      const transportTiming = {
+        ...(spawnToExitMs === undefined ? {} : { spawn_to_exit_ms: spawnToExitMs }),
+        ...(responseFirstByteMs === undefined
+          ? {}
+          : { response_first_byte_ms: responseFirstByteMs }),
+      };
       if (timedOut) {
         finish({
           outcome: 'unknown',
           unknown_reason: 'timeout',
           parent: {
             operation_kind: operationKind,
-            spawn_to_exit_ms: spawnToExitMs,
-            ...(responseFirstByteMs === undefined
-              ? {}
-              : { response_first_byte_ms: responseFirstByteMs }),
+            ...transportTiming,
             outcome: 'unknown',
             unknown_reason: 'timeout',
           },
@@ -326,10 +334,7 @@ function runProcess(binary, args, frame, operationKind, timingEnabled = true) {
           unknown_reason: 'undecodable_response',
           parent: {
             operation_kind: operationKind,
-            spawn_to_exit_ms: spawnToExitMs,
-            ...(responseFirstByteMs === undefined
-              ? {}
-              : { response_first_byte_ms: responseFirstByteMs }),
+            ...transportTiming,
             outcome: 'unknown',
             unknown_reason: 'undecodable_response',
           },
@@ -342,10 +347,7 @@ function runProcess(binary, args, frame, operationKind, timingEnabled = true) {
         ...classified,
         parent: {
           operation_kind: operationKind,
-          spawn_to_exit_ms: spawnToExitMs,
-          ...(responseFirstByteMs === undefined
-            ? {}
-            : { response_first_byte_ms: responseFirstByteMs }),
+          ...transportTiming,
           ...classified,
         },
         child: extractChildTiming(stderr),
@@ -377,7 +379,9 @@ async function runReferenceOperation(ReferenceOneShotClient, binary, stateDir, b
     env: { AIZIGN_TIMING_JSON: '1' },
     stateDir,
     timeoutMs: 60_000,
-    timingSink: (measurement) => timings.push(measurement),
+    timingSink: (measurement) => {
+      timings.push(measurement);
+    },
   });
   const request = buildRequest(benchmarkCase);
   const outcome =
@@ -496,29 +500,41 @@ function concurrencyCase(operationKind, concurrency) {
   };
 }
 
-async function executeConcurrencyBatch(context, mode, operationKind, concurrency, phase, index) {
+export async function executeConcurrencyBatch(
+  context,
+  mode,
+  operationKind,
+  concurrency,
+  phase,
+  index,
+  hooks = {},
+) {
   const benchmarkCase = concurrencyCase(operationKind, concurrency);
+  const seed = hooks.seedFixture ?? seedFixture;
+  const run = hooks.runDirectOperation ?? runDirectOperation;
+  const now = hooks.now ?? (() => performance.now());
   const sharedState =
     mode === 'same_state_dir'
       ? context.nextState(`concurrency-${mode}-${operationKind}`)
       : undefined;
-  if (sharedState !== undefined) seedFixture(sharedState, 100, 'absent');
-  const operations = [];
-  const started = performance.now();
-  for (let operation = 0; operation < concurrency; operation += 1) {
-    const stateDir = sharedState ?? context.nextState(`concurrency-${mode}-${operationKind}`);
-    if (sharedState === undefined) seedFixture(stateDir, 100, 'absent');
-    operations.push(
-      runDirectOperation(
+  const stateDirs = Array.from(
+    { length: concurrency },
+    () => sharedState ?? context.nextState(`concurrency-${mode}-${operationKind}`),
+  );
+  for (const stateDir of new Set(stateDirs)) seed(stateDir, 100, 'absent');
+
+  const started = now();
+  const results = await Promise.all(
+    stateDirs.map((stateDir, operation) =>
+      run(
         context.config.binary,
         stateDir,
         benchmarkCase,
         `evt-concurrent-${String(index)}-${String(operation)}`,
       ),
-    );
-  }
-  const results = await Promise.all(operations);
-  const batchTotalMs = performance.now() - started;
+    ),
+  );
+  const batchTotalMs = now() - started;
   const successful = results.filter((result) =>
     operationKind === 'workflow.signal.submit'
       ? result.outcome === 'accepted'
@@ -621,30 +637,42 @@ function dshEvents(count, dependencies) {
   return { events, binding };
 }
 
-async function executeDshColdRead(context, eventCount, phase, index) {
+async function executeDshEvidenceRead(context, eventCount, sourceKind, phase, index) {
   const { events, binding } = dshEvents(eventCount, context.dependencies);
+  let source;
+  if (sourceKind === 'in_memory_scan') {
+    source = { readFrom: async () => ({ events }) };
+  } else {
+    const eventsPath = context.nextState(`dsh-events-${eventCount}-${phase}-${index}.json`);
+    writeFileSync(eventsPath, JSON.stringify(events), { mode: 0o600 });
+    source = {
+      readFrom: async () => ({ events: JSON.parse(await readFile(eventsPath, 'utf8')) }),
+    };
+  }
   const timings = [];
   const evidence = await context.dependencies.readSignalEvidence(
-    { readFrom: async () => ({ events }) },
+    source,
     'session-benchmark',
     binding,
     {
       maxEvents: eventCount,
-      timingSink: (measurement) => timings.push(measurement),
+      timingSink: (measurement) => {
+        timings.push(measurement);
+      },
     },
   );
   if (evidence.kind !== 'accepted') {
-    throw new Error(`dsh_${eventCount}: expected accepted, got ${evidence.kind}`);
+    throw new Error(`dsh_${sourceKind}_${eventCount}: expected accepted, got ${evidence.kind}`);
   }
   const timing = timings.at(-1);
-  if (timing === undefined) throw new Error(`dsh_${eventCount}: timing missing`);
+  if (timing === undefined) throw new Error(`dsh_${sourceKind}_${eventCount}: timing missing`);
   return {
     sweep: 'dsh',
-    case_name: `dsh_cold_read_${eventCount}`,
+    case_name: `dsh_evidence_${sourceKind}_${eventCount}`,
     sample_phase: phase,
     sample_index: index,
     event_count: eventCount,
-    process_model: 'in_process_cold_read',
+    process_model: sourceKind,
     outcome: evidence.kind,
     timing,
   };
@@ -652,56 +680,82 @@ async function executeDshColdRead(context, eventCount, phase, index) {
 
 async function runDshSweep(context, samples) {
   for (const count of DSH_EVENT_COUNTS) {
-    process.stdout.write(`  dsh: ${count} events\n`);
-    samples.push(await executeDshColdRead(context, count, 'new_process_new_open', 0));
-    for (let index = 0; index < context.config.warmup; index += 1) {
-      await executeDshColdRead(context, count, 'warmup', index);
-    }
-    for (let index = 0; index < context.config.samples; index += 1) {
-      samples.push(await executeDshColdRead(context, count, 'warm_repeated', index));
+    for (const sourceKind of ['in_memory_scan', 'file_backed_read']) {
+      process.stdout.write(`  dsh: ${sourceKind} ${count} events\n`);
+      samples.push(
+        await executeDshEvidenceRead(context, count, sourceKind, 'new_process_new_open', 0),
+      );
+      for (let index = 0; index < context.config.warmup; index += 1) {
+        await executeDshEvidenceRead(context, count, sourceKind, 'warmup', index);
+      }
+      for (let index = 0; index < context.config.samples; index += 1) {
+        samples.push(
+          await executeDshEvidenceRead(context, count, sourceKind, 'warm_repeated', index),
+        );
+      }
     }
   }
 }
 
 async function executeScenario(context, scenario, phase, index) {
   const stateDir = context.nextState(`scenario-${scenario}`);
+  const counterPath = context.nextState(`scenario-${scenario}-invocations.txt`);
   const parentTimings = [];
+  const losesSubmitAcknowledgement = scenario === 'assignment_unknown_reconcile';
   const client = new context.dependencies.ReferenceOneShotClient({
-    command: context.config.binary,
+    command: losesSubmitAcknowledgement ? process.execPath : context.config.binary,
+    ...(losesSubmitAcknowledgement
+      ? {
+          args: [LOST_ACK_PROXY, context.config.binary],
+          env: {
+            AIZIGN_LOST_ACK_COUNTER: counterPath,
+            AIZIGN_TIMING_JSON: '1',
+          },
+        }
+      : { env: { AIZIGN_TIMING_JSON: '1' } }),
     stateDir,
     timeoutMs: 60_000,
-    timingSink: (measurement) => parentTimings.push(measurement),
+    timingSink: (measurement) => {
+      parentTimings.push(measurement);
+    },
   });
   const started = performance.now();
   await context.dependencies.preflight(client, {
-    timingSink: (measurement) => parentTimings.push(measurement),
+    timingSink: (measurement) => {
+      parentTimings.push(measurement);
+    },
   });
   const operations = [];
   const submitCase = {
     name: `${scenario}_submit`,
     operation_kind: 'workflow.signal.submit',
-    expected_outcome: 'accepted',
+    expected_outcome: losesSubmitAcknowledgement ? 'unknown' : 'accepted',
     journal_entries_before_operation: 0,
     fixture_target: 'absent',
   };
+  const submitRequest = buildRequest(submitCase);
+  const submitOutcome = await client.submitWorkflowSignal(
+    submitRequest.requestId,
+    submitRequest.payload,
+  );
+  const submitted = {
+    outcome: submitOutcome.kind,
+    ...('code' in submitOutcome ? { error_code: submitOutcome.code } : {}),
+    ...('reportedCode' in submitOutcome && submitOutcome.reportedCode !== undefined
+      ? { error_code: submitOutcome.reportedCode }
+      : {}),
+    ...('reason' in submitOutcome ? { unknown_reason: submitOutcome.reason } : {}),
+    parent: parentTimings.at(-1),
+  };
   if (scenario === 'assignment_submit') {
-    const submitted = await runDirectOperation(context.config.binary, stateDir, submitCase);
     assertExpected(submitCase, submitted);
     operations.push({ name: 'submit', ...submitted });
   } else {
-    const submitted = await runDirectOperation(context.config.binary, stateDir, submitCase);
     assertExpected(submitCase, submitted);
-    operations.push({
-      name: 'submit_injected_unknown',
-      ...submitted,
-      outcome: 'unknown',
-      unknown_reason: 'injected_lost_ack',
-      parent: {
-        ...submitted.parent,
-        outcome: 'unknown',
-        unknown_reason: 'injected_lost_ack',
-      },
-    });
+    if (submitted.unknown_reason !== 'no_response') {
+      throw new Error(`lost-ACK submit expected no_response, got ${submitted.unknown_reason}`);
+    }
+    operations.push({ name: 'submit_lost_ack', ...submitted });
     const lookupCase = {
       name: `${scenario}_lookup`,
       operation_kind: 'workflow.signal.reconcile',
@@ -709,9 +763,26 @@ async function executeScenario(context, scenario, phase, index) {
       journal_entries_before_operation: 1,
       fixture_target: 'exact',
     };
-    const reconciled = await runDirectOperation(context.config.binary, stateDir, lookupCase);
+    const reconcileOutcome = await client.reconcileWorkflowSignal(nextRequestId(), {
+      signal: submitRequest.payload.signal,
+    });
+    const reconciled = {
+      outcome: reconcileOutcome.kind,
+      ...('reportedCode' in reconcileOutcome && reconcileOutcome.reportedCode !== undefined
+        ? { error_code: reconcileOutcome.reportedCode }
+        : {}),
+      ...('reason' in reconcileOutcome ? { unknown_reason: reconcileOutcome.reason } : {}),
+      parent: parentTimings.at(-1),
+    };
     assertExpected(lookupCase, reconciled);
     operations.push({ name: 'lookup', ...reconciled });
+    const invocations = readFileSync(counterPath, 'utf8').trim().split('\n');
+    if (invocations.filter((kind) => kind === 'workflow.signal.submit').length !== 1) {
+      throw new Error('lost-ACK scenario must invoke submit exactly once');
+    }
+    if (invocations.filter((kind) => kind === 'workflow.signal.reconcile').length !== 1) {
+      throw new Error('lost-ACK scenario must invoke reconciliation exactly once');
+    }
   }
   return {
     sweep: 'scenarios',
@@ -858,7 +929,7 @@ export function renderSummary(result) {
     '',
     `Commit: \`${result.metadata.commit_sha}\` (working tree dirty: ${String(result.metadata.working_tree_dirty)})`,
     '',
-    `Environment: ${result.metadata.os} ${result.metadata.arch}, ${result.metadata.cpu_model}, filesystem ${result.metadata.filesystem}`,
+    `Environment: ${result.metadata.os} ${result.metadata.arch}, ${result.metadata.cpu_model}, filesystem ${result.metadata.filesystem}, runner image ${result.metadata.github_runner_image} ${result.metadata.github_runner_image_version}`,
     '',
     `Toolchain: ${result.metadata.rust_version}; ${result.metadata.node_version}; release profile; runner v${result.metadata.runner_version}`,
     '',
@@ -916,8 +987,8 @@ export function renderSummary(result) {
     '- `spawn_to_exit_ms` is observed by the TypeScript/Node parent. `response_first_byte_ms` is response-ready timing because the CLI writes one complete frame, not a stream.',
     '- `journal_entries_before_operation` includes a seeded duplicate/conflict target. Invalid zero-entry duplicate and 10,000-entry accepted fixtures are never generated.',
     '- Same-state contention preserves `JOURNAL_LOCKED`; the runner does not queue or retry. Different-state work uses independent stores.',
-    '- DSH evidence cold read is reported as auxiliary harness evidence and is not mixed with journal reconciliation authority.',
-    '- `assignment_unknown_reconcile` injects a lost acknowledgement by discarding a completed submit response, then performs one explicit read-only lookup. It never retries submit.',
+    '- DSH in-memory scan and deterministic file-backed read are separate auxiliary series and are not mixed with journal reconciliation authority.',
+    '- `assignment_unknown_reconcile` routes the reference client through a proxy that drops the real submit response. The client must return `unknown/no_response`, issue no submit retry, and reconcile once through the same abstraction.',
     '- `max-payload` uses 128-byte identifiers and a 256-byte `artifactRef`; its first observation is the requested release-binary `new_process_new_open` boundary point.',
     '',
   );
@@ -972,6 +1043,8 @@ function environmentMetadata(tempRoot) {
     node_version: process.version,
     build_profile: 'release',
     runner_version: RUNNER_VERSION,
+    github_runner_image: process.env.ImageOS ?? 'local',
+    github_runner_image_version: process.env.ImageVersion ?? 'unavailable',
   };
 }
 
@@ -1014,14 +1087,159 @@ async function loadDependencies() {
   }
 }
 
-function assertArtifactHasNoPrivatePaths(result, forbiddenPaths) {
+const CHILD_TIMING_KEYS = new Set([
+  'schema_version',
+  'request_read_ms',
+  'decode_ms',
+  'journal_open_ms',
+  'journal_physical_bytes',
+  'journal_entries',
+  'journal_load_decode_ms',
+  'committed_prefix_read_ms',
+  'committed_prefix_hash_ms',
+  'committed_prefix_decode_ms',
+  'replay_ms',
+  'decide_us',
+  'append_sync_ms',
+  'publish_prefix_hash_ms',
+  'response_encode_ms',
+  'response_write_ms',
+  'handler_total_ms',
+  'outcome',
+  'error_code',
+  'operation_kind',
+]);
+const PARENT_TIMING_KEYS = new Set([
+  'operation_kind',
+  'spawn_to_exit_ms',
+  'response_first_byte_ms',
+  'preflight_ms',
+  'outcome',
+  'error_code',
+  'unknown_reason',
+]);
+const DSH_TIMING_KEYS = new Set([
+  'operation_kind',
+  'harness_cold_read_ms',
+  'events_returned',
+  'outcome',
+  'unknown_reason',
+]);
+const OPERATION_KINDS = new Set([
+  'hello',
+  'workflow.signal.submit',
+  'workflow.signal.reconcile',
+  'preflight',
+  'dsh.evidence.cold_read',
+  'unknown',
+]);
+const TIMING_OUTCOMES = new Set([
+  'ok',
+  'accepted',
+  'duplicate',
+  'conflict',
+  'absent',
+  'rejected',
+  'error',
+  'unknown',
+]);
+const UNKNOWN_REASONS = new Set([
+  'no_response',
+  'undecodable_response',
+  'oversized_response',
+  'correlation_mismatch',
+  'timeout',
+  'spawn_failed',
+  'reported_unknown',
+  'aborted',
+  'unverified_error',
+  'no_result',
+  'meta_mismatch',
+  'bound_exceeded',
+]);
+
+function assertTimingShape(measurement, allowedKeys, label) {
+  if (typeof measurement !== 'object' || measurement === null || Array.isArray(measurement)) {
+    throw new Error(`${label} timing must be an object`);
+  }
+  for (const key of Object.keys(measurement)) {
+    if (!allowedKeys.has(key)) throw new Error(`${label} timing contains unregistered key ${key}`);
+  }
+  if (!OPERATION_KINDS.has(measurement.operation_kind)) {
+    throw new Error(`${label} timing contains unregistered operation_kind`);
+  }
+  if (!TIMING_OUTCOMES.has(measurement.outcome)) {
+    throw new Error(`${label} timing contains unregistered outcome`);
+  }
+  if (
+    measurement.error_code !== undefined &&
+    !/^[A-Z][A-Z0-9_]{0,63}$/.test(measurement.error_code)
+  ) {
+    throw new Error(`${label} timing contains an invalid error_code`);
+  }
+  if (
+    measurement.unknown_reason !== undefined &&
+    !UNKNOWN_REASONS.has(measurement.unknown_reason)
+  ) {
+    throw new Error(`${label} timing contains an unregistered unknown_reason`);
+  }
+}
+
+export function assertArtifactPrivacy(result, forbiddenPaths = []) {
+  for (const [sampleIndex, sample] of (result.samples ?? []).entries()) {
+    if (sample.child !== undefined) {
+      assertTimingShape(sample.child, CHILD_TIMING_KEYS, `samples[${sampleIndex}].child`);
+    }
+    if (sample.parent !== undefined) {
+      assertTimingShape(sample.parent, PARENT_TIMING_KEYS, `samples[${sampleIndex}].parent`);
+    }
+    if (sample.timing !== undefined) {
+      assertTimingShape(sample.timing, DSH_TIMING_KEYS, `samples[${sampleIndex}].timing`);
+    }
+    for (const [timingIndex, timing] of (sample.parent_timings ?? []).entries()) {
+      assertTimingShape(
+        timing,
+        PARENT_TIMING_KEYS,
+        `samples[${sampleIndex}].parent_timings[${timingIndex}]`,
+      );
+    }
+    for (const [operationIndex, operation] of (sample.operations ?? []).entries()) {
+      if (operation.child !== undefined) {
+        assertTimingShape(
+          operation.child,
+          CHILD_TIMING_KEYS,
+          `samples[${sampleIndex}].operations[${operationIndex}].child`,
+        );
+      }
+      if (operation.parent !== undefined) {
+        assertTimingShape(
+          operation.parent,
+          PARENT_TIMING_KEYS,
+          `samples[${sampleIndex}].operations[${operationIndex}].parent`,
+        );
+      }
+    }
+  }
   const encoded = JSON.stringify(result);
   for (const forbidden of forbiddenPaths) {
     if (forbidden.length > 0 && encoded.includes(forbidden)) {
       throw new Error('performance artifact contains a private filesystem path');
     }
   }
-  for (const forbiddenKey of ['requestId', 'stateDir', 'prompt', 'reasoning', 'credential']) {
+  for (const forbiddenKey of [
+    'requestId',
+    'eventId',
+    'workflowId',
+    'assignmentId',
+    'attemptId',
+    'artifactRevision',
+    'artifactRef',
+    'candidateDigest',
+    'stateDir',
+    'prompt',
+    'reasoning',
+    'credential',
+  ]) {
     if (encoded.includes(`"${forbiddenKey}"`)) {
       throw new Error(`performance artifact contains forbidden content key ${forbiddenKey}`);
     }
@@ -1061,7 +1279,7 @@ export async function main(argv = process.argv.slice(2)) {
 
     const aggregates = aggregateSamples(samples);
     const result = {
-      schema_version: 2,
+      schema_version: 3,
       metadata: environmentMetadata(tempRoot),
       config: {
         warmup: config.warmup,
@@ -1074,7 +1292,7 @@ export async function main(argv = process.argv.slice(2)) {
       aggregates,
       samples,
     };
-    assertArtifactHasNoPrivatePaths(result, [REPOSITORY_ROOT, tempRoot, config.binary]);
+    assertArtifactPrivacy(result, [REPOSITORY_ROOT, tempRoot, config.binary]);
     mkdirSync(config.outputDir, { recursive: true });
     writeFileSync(join(config.outputDir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`);
     writeFileSync(join(config.outputDir, 'summary.md'), renderSummary(result));

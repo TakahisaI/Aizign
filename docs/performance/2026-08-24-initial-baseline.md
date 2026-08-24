@@ -3,6 +3,11 @@
 このreportは、Issue #57で導入した計測経路と全sweepが一つのrelease binaryで完走することを確認した開発観測です。
 QEMU user emulationを含むため、絶対値をperformance budgetやnative Linuxの予測値には使いません。
 
+このartifactはrunner v2で取得した履歴です。
+PR review後のrunner v3は、parent exit時刻、concurrency timer、lost-ACK、DSH source、artifact allowlistを修正しました。
+そのため、v2のparent timing、concurrency、DSH、canonical scenarioの数値をv3 baselineとして再利用しません。
+child handlerとstore stageの開発観測だけを、native run前の参考値として残します。
+
 ## Environment
 
 | Item | Value |
@@ -18,7 +23,7 @@ QEMU user emulationを含むため、絶対値をperformance budgetやnative Lin
 | Filesystem | overlayfs |
 | Sampling | pointごとに`new_process_new_open` 1回、未記録warmup 1回、`warm_repeated` 5回 |
 | Percentile | nearest rank |
-| Coverage | 全6 sweep、396 recorded observations、66 aggregate rows |
+| Coverage | runner v2の全6 sweep、396 recorded observations、66 aggregate rows |
 
 runner containerからgitとrustcを参照できなかったため、生artifact内の`commit_sha`と`rust_version`は`unavailable`でした。
 上表のbase commitとbuild toolchainは、buildを行ったhostとworktreeで確認した値です。
@@ -31,7 +36,7 @@ filesystemが異なるため、最初のoverlayfs runとの絶対値比較には
 
 次のtableは`warm_repeated`だけを集計し、各cellをp50 / p95 / p99 ms（n）で示します。
 
-| Case | Entries | Handler | Spawn to exit | Load and decode | Replay | Append and sync |
+| Case | Entries | Handler | Parent close（v2旧定義） | Load and decode | Replay | Append and sync |
 |---|---:|---:|---:|---:|---:|---:|
 | accepted | 0 | 37.723 / 40.873 / 40.873 (5) | 69.485 / 74.349 / 74.349 (5) | 0.818 / 1.060 / 1.060 (5) | 0.035 / 0.038 / 0.038 (5) | 5.087 / 6.365 / 6.365 (5) |
 | accepted | 100 | 54.603 / 58.777 / 58.777 (5) | 90.914 / 95.925 / 95.925 (5) | 12.356 / 13.604 / 13.604 (5) | 1.503 / 1.593 / 1.593 (5) | 5.181 / 5.898 / 5.898 (5) |
@@ -49,9 +54,10 @@ acceptedのappendと`sync_all`は0から100 entryではp50約5 msでしたが、
 この増加にはcommit pointのhashとpublish、emulated syscall、overlayfsが含まれるため、native filesystemでstage別に再確認する必要があります。
 duplicateとlookupはappendしない一方で、照合のために同じcommitted prefixをloadしてreplayします。
 
-## Transport
+## Transport（runner v2の履歴）
 
-direct runnerとTypeScript reference clientの`spawn_to_exit_ms`を同じfixtureで比較しました。
+runner v2はNodeの`close` eventで`spawn_to_exit_ms`を確定していたため、このsectionの値は現行定義と互換ではありません。
+runner v3は`exit` eventのtimestampを保存し、response parseだけを`close`まで待ちます。
 
 | Case | Entries | Direct p50 / p95 / p99 ms | TypeScript reference p50 / p95 / p99 ms |
 |---|---:|---:|---:|
@@ -68,7 +74,7 @@ direct runnerとTypeScript reference clientの`spawn_to_exit_ms`を同じfixture
 
 follow-up runは、識別子を有効な上限の128 bytes、`artifactRef`を256 bytesにして、release binaryの`new_process_new_open`を記録しました。
 
-| Operation | Entries | Outcome | Handler ms | Spawn to exit ms | Prefix read ms | Verify hash ms | Decode ms | Replay ms | Publish hash ms |
+| Operation | Entries | Outcome | Handler ms | Parent close ms（v2旧定義） | Prefix read ms | Verify hash ms | Decode ms | Replay ms | Publish hash ms |
 |---|---:|---|---:|---:|---:|---:|---:|---:|---:|
 | submit | 1,000 | accepted | 75.600 | 109.412 | 0.479 | 2.715 | 30.206 | 5.477 | 2.107 |
 | submit | 10,000 | rejected `JOURNAL_BOUND_EXCEEDED` | 422.819 | 452.523 | 2.229 | 20.270 | 261.779 | 58.780 | n/a |
@@ -106,29 +112,18 @@ QEMU上でもjust-under-timeoutではなく秒単位の余裕があり、現状�
 
 ## Concurrency
 
-同じstate directoryへのsubmitはexclusive lockを競合させ、runnerはqueueもretryもしません。
-5 batchのwarm sampleでは、concurrency 2で5件、4で15件、8で33件の`JOURNAL_LOCKED`が返りました。
-concurrency 8では7件だけがacceptedでした。
-
-独立state directoryへのsubmitはconcurrency 8でも40件すべてacceptedでした。
-同じstate directoryへのlookupはshared read-only lockを使うため、concurrency 8の40件すべてが`absent`まで完了しました。
-このsweepはlock semanticsを確認する観測であり、same-state submitのrejectionをlatency regressionとして扱いません。
+runner v2のdifferent-state batchは、timer開始後にfixtureを逐次生成していました。
+same-state batchはtimer開始前にfixtureを生成していたため、両modeのthroughputとparallelismは比較できません。
+runner v3は全stateをtimer開始前に準備し、境界テストでseed、timer、spawnの順序を固定しました。
+このreportにはv2 concurrencyの数値をbaselineとして残しません。
 
 ## DSH evidenceとcanonical scenario
 
-| Case | p50 / p95 / p99 ms (n) | Outcome |
-|---|---:|---|
-| DSH cold read 100 events | 0.057 / 0.081 / 0.081 (5) | accepted 5 |
-| DSH cold read 1,000 events | 0.060 / 0.100 / 0.100 (5) | accepted 5 |
-| DSH cold read 10,000 events | 0.217 / 0.416 / 0.416 (5) | accepted 5 |
-| assignment submit end to end | 105.362 / 108.856 / 108.856 (5) | accepted 5 |
-| lost acknowledgement and reconcile end to end | 170.227 / 181.858 / 181.858 (5) | unknown 5、accepted lookup 5 |
-
-DSH cold readはin-memory evidence sourceを使う補助計測であり、session persistenceのI/Oは含みません。
-10,000 eventでは走査量の増加が見えますが、値を実harnessのstorage latencyへ読み替えることはできません。
-
-lost acknowledgement scenarioは、durable append後のresponseを捨ててsubmit outcomeを`unknown`にしました。
-その後にsubmitを再送せず、read-only reconcileを一度だけ行ってacceptedを確認しました。
+runner v2のDSH seriesはin-memory array走査だけを測りながらcold readと表記していました。
+lost-ACK seriesも正常responseを受信した後でresult objectを書き換えており、clientの`no_response`経路を通っていませんでした。
+runner v3はin-memory scanとdeterministic file-backed readを分離し、benchmark専用proxyが実submit responseを破棄します。
+clientが`unknown/no_response`を返し、submit一回とreconcile一回だけを実行したことをrunnerがassertします。
+このreportにはv2 DSHとcanonical scenarioの数値をbaselineとして残しません。
 
 ## Budget candidates
 

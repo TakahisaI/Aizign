@@ -20,7 +20,7 @@ env:
 jobs:
   baseline:
     name: Release-profile observation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       # setup-node runs before checkout because the runner's bundled npm can

@@ -557,6 +557,25 @@ fn opt_in_timing_for_handle_hello_is_metadata_only() {
     }
 }
 
+#[test]
+fn invalid_raw_kind_is_never_copied_into_timing() {
+    let dir = TempDir::new();
+    let secret_like_kind = "credential-or-prompt-material-here";
+    let frame = format!(
+        "{{\"protocol\":\"aizign\",\"version\":1,\"requestId\":\"req-invalid-kind\",\"kind\":\"{secret_like_kind}\",\"payload\":{{}}}}\n"
+    );
+    let output = run_handle_with_timing(&dir.state(), &frame);
+    let metric = timing_metric(&output);
+    assert_eq!(metric["operation_kind"], "unknown");
+    assert_eq!(metric["outcome"], "rejected");
+    assert!(!metric.to_string().contains(secret_like_kind));
+    assert!(
+        !String::from_utf8(output.stderr)
+            .unwrap()
+            .contains(secret_like_kind)
+    );
+}
+
 #[cfg(all(
     target_os = "linux",
     target_arch = "x86_64",
@@ -575,7 +594,7 @@ fn opt_in_submit_timing_reports_every_applicable_stage() {
     assert_eq!(metric["operation_kind"], "workflow.signal.submit");
     assert_eq!(metric["outcome"], "accepted");
     assert_eq!(metric["journal_entries"], 0);
-    assert_eq!(metric["journal_bytes"], 0);
+    assert_eq!(metric["journal_physical_bytes"], 0);
     for field in [
         "journal_open_ms",
         "journal_load_decode_ms",

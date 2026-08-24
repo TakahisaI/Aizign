@@ -8,6 +8,7 @@ import {
   CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
   type CoreClient,
   checkCompatibility,
+  emitBestEffort,
   type HelloInfo,
   type ParentTimingMeasurement,
   type ParentTimingSink,
@@ -43,17 +44,13 @@ export async function preflight(
     error_code?: string,
     unknown_reason?: ParentTimingMeasurement['unknown_reason'],
   ) => {
-    try {
-      options.timingSink?.({
-        operation_kind: 'preflight',
-        preflight_ms: performance.now() - started,
-        outcome,
-        ...(error_code === undefined ? {} : { error_code }),
-        ...(unknown_reason === undefined ? {} : { unknown_reason }),
-      });
-    } catch {
-      // Observability is best-effort and cannot change compatibility results.
-    }
+    emitBestEffort(options.timingSink, {
+      operation_kind: 'preflight',
+      preflight_ms: performance.now() - started,
+      outcome,
+      ...(error_code === undefined ? {} : { error_code }),
+      ...(unknown_reason === undefined ? {} : { unknown_reason }),
+    });
   };
   const outcome = await client.hello('req-preflight');
   if (outcome.kind === 'unknown') {

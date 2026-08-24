@@ -67,5 +67,7 @@ process spawn前に `ProtocolError(REQUEST_TOO_LARGE)` でrejectします。こ�
 failureです。
 
 `CoreClientConfig.timingSink`は任意のmetadata-only observation portです。
-clientは`spawn_to_exit_ms`、`response_first_byte_ms`、operation kind、semantic outcome、stable codeまたはunknown reasonだけを通知し、sinkの例外をworkflowへ伝播しません。
+clientは`spawn_to_exit_ms`、`response_first_byte_ms`、operation kind、semantic outcome、stable codeまたはunknown reasonだけを通知します。
+`unknown`は診断codeによって確定outcomeへ縮約しません。
+共通のbest-effort emitterが同期throwと非同期Promise rejectionを隔離するため、sink failureはworkflowへ伝播しません。
 request ID、signal identity、path、本文はmeasurement型に存在しません。

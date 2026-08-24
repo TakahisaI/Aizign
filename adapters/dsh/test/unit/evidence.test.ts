@@ -97,7 +97,11 @@ test('cold-read timing is metadata-only and cannot change evidence', async () =>
     source([call(3, 'c1', args), result(4, 'c1', meta)]),
     'session-sensitive',
     binding,
-    { timingSink: (measurement) => timings.push(measurement) },
+    {
+      timingSink: (measurement) => {
+        timings.push(measurement);
+      },
+    },
   );
   assert.equal(evidence.kind, 'accepted');
   assert.equal(timings.length, 1);
@@ -113,12 +117,13 @@ test('cold-read timing is metadata-only and cannot change evidence', async () =>
     'session-sensitive',
     binding,
     {
-      timingSink: () => {
+      timingSink: async () => {
         throw new Error('timing sink unavailable');
       },
     },
   );
   assert.equal(stillAccepted.kind, 'accepted');
+  await new Promise<void>((resolve) => setImmediate(resolve));
 });
 
 test('a call without a result is unknown, never inferred from later prose', async () => {

@@ -14,8 +14,8 @@ use std::path::{Path, PathBuf};
 use aizign_core::BoundedTimestamp;
 use aizign_core::workflow::WorkflowEvent;
 use aizign_engine::{
-    EngineObserver, EngineStage, Journal, JournalEntry, JournalError, JournalReader,
-    MAX_JOURNAL_ENTRIES,
+    BestEffortObserver, EngineObserver, EngineStage, Journal, JournalEntry, JournalError,
+    JournalReader, MAX_JOURNAL_ENTRIES,
 };
 
 use crate::commit::{CommitPoint, MAX_COMMIT_METADATA_BYTES, hash_bytes};
@@ -344,7 +344,8 @@ impl JournalReader for JsonlJournalReader {
         &mut self,
         observer: &mut dyn EngineObserver,
     ) -> Result<Vec<JournalEntry>, JournalError> {
-        let mut observer = Some(observer);
+        let mut observer = BestEffortObserver::new(observer);
+        let mut observer = Some(&mut observer as &mut dyn EngineObserver);
         read_snapshot_observed(&mut self.file, &mut self.commit_file, &mut observer)
             .map(|snapshot| snapshot.entries)
     }
@@ -370,7 +371,8 @@ impl JournalReader for JsonlJournal {
             return Ok(snapshot.entries.clone());
         }
         let mut commit_file = open_private_read_file(&self.commit_path)?;
-        let mut observer = Some(observer);
+        let mut observer = BestEffortObserver::new(observer);
+        let mut observer = Some(&mut observer as &mut dyn EngineObserver);
         let snapshot = read_snapshot_observed(&mut self.file, &mut commit_file, &mut observer)?;
         let entries = snapshot.entries.clone();
         self.snapshot = Some(snapshot);
@@ -393,7 +395,14 @@ impl Journal for JsonlJournal {
         at: BoundedTimestamp,
         observer: &mut dyn EngineObserver,
     ) -> Result<JournalEntry, JournalError> {
-        self.append_with(event, at, File::sync_all, publish_commit, Some(observer))
+        let mut observer = BestEffortObserver::new(observer);
+        self.append_with(
+            event,
+            at,
+            File::sync_all,
+            publish_commit,
+            Some(&mut observer),
+        )
     }
 }
 

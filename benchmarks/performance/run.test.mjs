@@ -1,10 +1,21 @@
 // These tests validate fixtures and aggregation without requiring Linux storage support.
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { dropsAcknowledgement, requestKind } from './lost-ack-proxy.mjs';
 import {
   JOURNAL_SCALE_CASES,
   MAX_PAYLOAD_CASES,
@@ -16,9 +27,11 @@ import {
 } from './matrix.mjs';
 import {
   aggregateSamples,
+  assertArtifactPrivacy,
   buildRequest,
   classifyResponse,
   compareWatchdog,
+  executeConcurrencyBatch,
   parseArgs,
   renderSummary,
   seedFixture,
@@ -223,4 +236,118 @@ test('runner arguments keep sweeps independent', () => {
   assert.equal(parsed.warmup, 0);
   assert.equal(parsed.samples, 2);
   assert.deepEqual(parsed.sweeps, ['outcomes', 'max-payload', 'dsh']);
+});
+
+test('concurrency prepares every fixture before the common timed execution window', async () => {
+  const events = [];
+  let clock = 0;
+  let stateSequence = 0;
+  const context = {
+    config: { binary: '/unused' },
+    nextState: (label) => `${label}-${++stateSequence}`,
+  };
+  await executeConcurrencyBatch(
+    context,
+    'different_state_dir',
+    'workflow.signal.submit',
+    2,
+    'warm_repeated',
+    0,
+    {
+      seedFixture: (stateDir) => events.push(`seed:${stateDir}`),
+      now: () => {
+        events.push('clock');
+        clock += 10;
+        return clock;
+      },
+      runDirectOperation: async (_binary, stateDir) => {
+        events.push(`spawn:${stateDir}`);
+        return { outcome: 'accepted', parent: {} };
+      },
+    },
+  );
+  assert.deepEqual(events, [
+    'seed:concurrency-different_state_dir-workflow.signal.submit-1',
+    'seed:concurrency-different_state_dir-workflow.signal.submit-2',
+    'clock',
+    'spawn:concurrency-different_state_dir-workflow.signal.submit-1',
+    'spawn:concurrency-different_state_dir-workflow.signal.submit-2',
+    'clock',
+  ]);
+});
+
+test('lost-ACK proxy drops only a submit response', () => {
+  assert.equal(requestKind(['hello'], ''), 'hello');
+  assert.equal(
+    requestKind(['handle', '--state', '/private'], '{"kind":"workflow.signal.submit"}\n'),
+    'workflow.signal.submit',
+  );
+  assert.equal(dropsAcknowledgement('workflow.signal.submit'), true);
+  assert.equal(dropsAcknowledgement('workflow.signal.reconcile'), false);
+});
+
+test('lost-ACK proxy preserves the child side effect while suppressing its submit frame', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aizign-lost-ack-proxy-'));
+  try {
+    const fakeBinary = join(root, 'fake-core.cjs');
+    const durableMarker = join(root, 'durable-marker');
+    const counter = join(root, 'invocations.txt');
+    writeFileSync(
+      fakeBinary,
+      `#!/usr/bin/env node
+const fs = require('node:fs');
+let input = '';
+process.stdin.on('data', (chunk) => { input += chunk; });
+process.stdin.on('end', () => {
+  fs.writeFileSync(${JSON.stringify(durableMarker)}, 'durable');
+  process.stdout.write(JSON.stringify({ ok: true, inputBytes: input.length }) + '\\n');
+});
+`,
+      { mode: 0o700 },
+    );
+    chmodSync(fakeBinary, 0o700);
+    const proxy = fileURLToPath(new URL('./lost-ack-proxy.mjs', import.meta.url));
+    const run = (kind) =>
+      spawnSync(process.execPath, [proxy, fakeBinary, 'handle', '--state', root], {
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH ?? '', AIZIGN_LOST_ACK_COUNTER: counter },
+        input: `${JSON.stringify({ kind })}\n`,
+      });
+    const submit = run('workflow.signal.submit');
+    assert.equal(submit.status, 0, submit.stderr);
+    assert.equal(submit.stdout, '');
+    assert.equal(existsSync(durableMarker), true);
+
+    const reconcile = run('workflow.signal.reconcile');
+    assert.equal(reconcile.status, 0, reconcile.stderr);
+    assert.match(reconcile.stdout, /"ok":true/);
+    assert.deepEqual(readFileSync(counter, 'utf8').trim().split('\n'), [
+      'workflow.signal.submit',
+      'workflow.signal.reconcile',
+    ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('artifact privacy validates timing with an exact key allowlist', () => {
+  const result = {
+    samples: [
+      {
+        parent: {
+          operation_kind: 'workflow.signal.submit',
+          spawn_to_exit_ms: 1,
+          outcome: 'accepted',
+        },
+      },
+    ],
+  };
+  assert.doesNotThrow(() => assertArtifactPrivacy(result));
+  assert.throws(
+    () =>
+      assertArtifactPrivacy({
+        samples: [{ parent: { ...result.samples[0].parent, eventId: 'evt-secret' } }],
+      }),
+    /unregistered key eventId/,
+  );
 });

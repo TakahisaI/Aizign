@@ -11,6 +11,7 @@
  * input and never leave this module toward the core.
  */
 
+import { emitBestEffort, type TimingSink } from '@aizign/protocol';
 import type { SignalBinding } from '../config.ts';
 import { TOOL_NAME } from '../mapping/tool.ts';
 import { bindingDigest } from './digest.ts';
@@ -57,7 +58,7 @@ export interface ColdReadTimingMeasurement {
   readonly unknown_reason?: string;
 }
 
-export type ColdReadTimingSink = (measurement: ColdReadTimingMeasurement) => void;
+export type ColdReadTimingSink = TimingSink<ColdReadTimingMeasurement>;
 
 /** Presentation metadata the tool writes into every result. */
 export interface SignalResultMeta {
@@ -157,17 +158,13 @@ export async function readSignalEvidence(
   const started = performance.now();
   let eventsReturned: number | undefined;
   const finish = (evidence: SignalEvidence): SignalEvidence => {
-    try {
-      options.timingSink?.({
-        operation_kind: 'dsh.evidence.cold_read',
-        harness_cold_read_ms: performance.now() - started,
-        ...(eventsReturned === undefined ? {} : { events_returned: eventsReturned }),
-        outcome: evidence.kind,
-        ...(evidence.kind === 'unknown' ? { unknown_reason: evidence.reason } : {}),
-      });
-    } catch {
-      // Observability is deliberately best-effort and cannot change evidence.
-    }
+    emitBestEffort(options.timingSink, {
+      operation_kind: 'dsh.evidence.cold_read',
+      harness_cold_read_ms: performance.now() - started,
+      ...(eventsReturned === undefined ? {} : { events_returned: eventsReturned }),
+      outcome: evidence.kind,
+      ...(evidence.kind === 'unknown' ? { unknown_reason: evidence.reason } : {}),
+    });
     return evidence;
   };
   const fromSeq = options.fromSeq ?? 0;

@@ -29,7 +29,9 @@ test('OneShotCoreClient reports parent timing without exposing request identity'
       ...fakeCoreCommand(),
       stateDir: join(root, 'state'),
       timeoutMs: 5_000,
-      timingSink: (measurement) => measurements.push(measurement),
+      timingSink: (measurement) => {
+        measurements.push(measurement);
+      },
     });
     const outcome = await client.submitWorkflowSignal('req-parent', samplePayload('evt-parent'));
     assert.deepEqual(outcome, { kind: 'accepted', eventId: 'evt-parent' });
@@ -58,7 +60,9 @@ test('OneShotCoreClient reports parent timing without exposing request identity'
       env: { AIZIGN_FAKE_FAULT: 'journal-unknown' },
       stateDir: join(root, 'unknown'),
       timeoutMs: 5_000,
-      timingSink: (measurement) => unknownMeasurements.push(measurement),
+      timingSink: (measurement) => {
+        unknownMeasurements.push(measurement);
+      },
     });
     assert.equal(
       (await unknown.submitWorkflowSignal('req-unknown', samplePayload('evt-unknown'))).kind,

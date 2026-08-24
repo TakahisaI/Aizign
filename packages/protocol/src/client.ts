@@ -41,7 +41,7 @@ export type ParentOperationKind =
 /** One metadata-only parent observation. Content, identity, and paths are excluded. */
 export interface ParentTimingMeasurement {
   readonly operation_kind: ParentOperationKind;
-  /** Spawn invocation until child exit. Absent when no exit was observed. */
+  /** Spawn invocation until the child `exit` event. Absent when no exit was observed. */
   readonly spawn_to_exit_ms?: number;
   /** Spawn invocation until first stdout byte. The CLI writes one complete response, not a stream. */
   readonly response_first_byte_ms?: number;
@@ -52,8 +52,38 @@ export interface ParentTimingMeasurement {
   readonly unknown_reason?: UnknownOutcome['reason'];
 }
 
-/** Receives a timing observation. Implementations must isolate sink failures. */
-export type ParentTimingSink = (measurement: ParentTimingMeasurement) => void;
+/** A best-effort timing destination. Both synchronous and asynchronous failures are ignored. */
+export type TimingSink<T> = (measurement: T) => void | Promise<void>;
+
+/** Receives a parent timing observation. Implementations must use {@link emitBestEffort}. */
+export type ParentTimingSink = TimingSink<ParentTimingMeasurement>;
+
+/** Emits one observation without allowing a synchronous throw or rejected promise to escape. */
+export function emitBestEffort<T>(sink: TimingSink<T> | undefined, measurement: T): void {
+  if (sink === undefined) return;
+  try {
+    void Promise.resolve(sink(measurement)).catch(() => undefined);
+  } catch {
+    // Synchronous sink failures are deliberately isolated too.
+  }
+}
+
+/** Maps a returned semantic outcome to the closed parent timing vocabulary. */
+export function parentTimingOutcome(
+  operationKind: ParentOperationKind,
+  outcomeKind: string,
+  errorCode?: string,
+): string {
+  if (outcomeKind === 'unknown') return 'unknown';
+  if (
+    operationKind === 'workflow.signal.submit' &&
+    outcomeKind === 'rejected' &&
+    errorCode === 'EVENT_CONFLICT'
+  ) {
+    return 'conflict';
+  }
+  return outcomeKind;
+}
 
 /**
  * Error codes that mean "the outcome is unknown", not "the request was

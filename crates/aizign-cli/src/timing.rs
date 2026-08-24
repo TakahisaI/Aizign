@@ -8,12 +8,16 @@ use serde_json::{Map, Value};
 
 pub(crate) const TIMING_ENV: &str = "AIZIGN_TIMING_JSON";
 
+pub(crate) fn enabled() -> bool {
+    std::env::var(TIMING_ENV).as_deref() == Ok("1")
+}
+
 #[derive(Default)]
 pub(crate) struct HandlerTiming {
     pub(crate) request_read_ms: Option<f64>,
     pub(crate) decode_ms: Option<f64>,
     pub(crate) journal_open_ms: Option<f64>,
-    pub(crate) journal_bytes: Option<u64>,
+    pub(crate) journal_physical_bytes: Option<u64>,
     pub(crate) journal_entries: Option<usize>,
     pub(crate) journal_load_decode_ms: Option<f64>,
     pub(crate) committed_prefix_read_ms: Option<f64>,
@@ -28,20 +32,29 @@ pub(crate) struct HandlerTiming {
     pub(crate) handler_total_ms: Option<f64>,
     pub(crate) outcome: Option<&'static str>,
     pub(crate) error_code: Option<String>,
-    pub(crate) operation_kind: Option<String>,
+    pub(crate) operation_kind: Option<&'static str>,
 }
 
 impl HandlerTiming {
     pub(crate) fn emit(&self) {
-        if std::env::var(TIMING_ENV).as_deref() != Ok("1") {
-            return;
+        let metric = self.metric();
+        if let Ok(encoded) = serde_json::to_string(&metric) {
+            let mut stderr = std::io::stderr().lock();
+            let _ = writeln!(stderr, "aizign_timing:{encoded}");
         }
+    }
+
+    fn metric(&self) -> Map<String, Value> {
         let mut metric = Map::new();
         metric.insert("schema_version".to_owned(), Value::from(1));
         insert_f64(&mut metric, "request_read_ms", self.request_read_ms);
         insert_f64(&mut metric, "decode_ms", self.decode_ms);
         insert_f64(&mut metric, "journal_open_ms", self.journal_open_ms);
-        insert_u64(&mut metric, "journal_bytes", self.journal_bytes);
+        insert_u64(
+            &mut metric,
+            "journal_physical_bytes",
+            self.journal_physical_bytes,
+        );
         if let Some(entries) = self
             .journal_entries
             .and_then(|value| u64::try_from(value).ok())
@@ -86,12 +99,9 @@ impl HandlerTiming {
             metric.insert("error_code".to_owned(), Value::from(code.clone()));
         }
         if let Some(kind) = &self.operation_kind {
-            metric.insert("operation_kind".to_owned(), Value::from(kind.clone()));
+            metric.insert("operation_kind".to_owned(), Value::from(*kind));
         }
-        if let Ok(encoded) = serde_json::to_string(&metric) {
-            let mut stderr = std::io::stderr().lock();
-            let _ = writeln!(stderr, "aizign_timing:{encoded}");
-        }
+        metric
     }
 }
 
@@ -170,18 +180,66 @@ fn insert_u64(metric: &mut Map<String, Value>, name: &str, value: Option<u64>) {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use aizign_engine::{EngineObserver as _, EngineStage};
 
     use super::{HandlerTiming, StageTimingObserver};
 
     #[test]
-    fn timing_shape_contains_only_metadata_fields() {
-        let timing = HandlerTiming::default();
-        let debug = std::any::type_name_of_val(&timing);
-        assert!(debug.ends_with("HandlerTiming"));
-        for forbidden in ["prompt", "reasoning", "credential", "state_dir", "path"] {
-            assert!(!debug.contains(forbidden));
-        }
+    fn timing_serialization_has_an_exact_metadata_only_key_set() {
+        let timing = HandlerTiming {
+            request_read_ms: Some(1.0),
+            decode_ms: Some(1.0),
+            journal_open_ms: Some(1.0),
+            journal_physical_bytes: Some(1),
+            journal_entries: Some(1),
+            journal_load_decode_ms: Some(1.0),
+            committed_prefix_read_ms: Some(1.0),
+            committed_prefix_hash_ms: Some(1.0),
+            committed_prefix_decode_ms: Some(1.0),
+            replay_ms: Some(1.0),
+            decide_us: Some(1.0),
+            append_sync_ms: Some(1.0),
+            publish_prefix_hash_ms: Some(1.0),
+            response_encode_ms: Some(1.0),
+            response_write_ms: Some(1.0),
+            handler_total_ms: Some(1.0),
+            outcome: Some("accepted"),
+            error_code: Some("EVENT_CONFLICT".to_owned()),
+            operation_kind: Some("workflow.signal.submit"),
+        };
+        let actual = timing
+            .metric()
+            .into_iter()
+            .map(|(key, _)| key)
+            .collect::<BTreeSet<_>>();
+        let expected = [
+            "append_sync_ms",
+            "committed_prefix_decode_ms",
+            "committed_prefix_hash_ms",
+            "committed_prefix_read_ms",
+            "decide_us",
+            "decode_ms",
+            "error_code",
+            "handler_total_ms",
+            "journal_entries",
+            "journal_load_decode_ms",
+            "journal_open_ms",
+            "journal_physical_bytes",
+            "operation_kind",
+            "outcome",
+            "publish_prefix_hash_ms",
+            "replay_ms",
+            "request_read_ms",
+            "response_encode_ms",
+            "response_write_ms",
+            "schema_version",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .collect::<BTreeSet<_>>();
+        assert_eq!(actual, expected);
     }
 
     #[test]

@@ -19,7 +19,7 @@ pub use handle::{
     HandleError, SignalOutcome, handle_workflow_signal, handle_workflow_signal_observed,
 };
 pub use journal::{Journal, JournalEntry, JournalError, JournalReader, MAX_JOURNAL_ENTRIES};
-pub use observation::{EngineObserver, EngineStage};
+pub use observation::{BestEffortObserver, EngineObserver, EngineStage};
 pub use reconcile::{
     ReconcileError, reconcile_workflow_signal, reconcile_workflow_signal_observed,
 };

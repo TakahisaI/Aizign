@@ -129,7 +129,8 @@ completionの正本はjournal（core側）です。adapterはそれに加えて�
 
 `OneShotCoreClient`は`CoreClientConfig.timingSink`、`preflight`は`PreflightOptions.timingSink`、`readSignalEvidence`は`ColdReadOptions.timingSink`がある場合だけmetadata-only timingを通知します。
 preflightは全体の`preflight_ms`、evidence cold readは`harness_cold_read_ms`と返されたevent数を記録します。
-どのmeasurementにもsession ID、signal identity、path、本文を含めず、sinkの例外はtool登録、submit、reconcile、evidence classificationを変えません。
+どのmeasurementにもsession ID、signal identity、path、本文を含めません。
+同期throwと非同期Promise rejectionを共通helperで隔離するため、sink failureはtool登録、submit、reconcile、evidence classificationを変えません。
 
 ## Harness-facing codes
 

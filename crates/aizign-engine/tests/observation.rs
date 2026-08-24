@@ -1,9 +1,10 @@
 //! Stage observation is complete, ordered, and unable to alter outcomes.
 
-use aizign_core::workflow::Command;
+use aizign_core::BoundedTimestamp;
+use aizign_core::workflow::{Command, WorkflowEvent};
 use aizign_engine::{
-    EngineObserver, EngineStage, SignalOutcome, handle_workflow_signal_observed,
-    reconcile_workflow_signal_observed,
+    EngineObserver, EngineStage, Journal, JournalEntry, JournalError, JournalReader, SignalOutcome,
+    handle_workflow_signal, handle_workflow_signal_observed, reconcile_workflow_signal_observed,
 };
 use aizign_testkit::{FixedClock, MemoryJournal, signals};
 
@@ -72,4 +73,108 @@ fn reconciliation_uses_the_shared_read_only_stage_vocabulary() {
             ("finish", EngineStage::Decide, None),
         ]
     );
+}
+
+struct PublishingJournal(MemoryJournal);
+
+impl JournalReader for PublishingJournal {
+    fn load_committed(&mut self) -> Result<Vec<JournalEntry>, JournalError> {
+        self.0.load_committed()
+    }
+}
+
+impl Journal for PublishingJournal {
+    fn append(
+        &mut self,
+        event: &WorkflowEvent,
+        at: BoundedTimestamp,
+    ) -> Result<JournalEntry, JournalError> {
+        self.0.append(event, at)
+    }
+
+    fn append_observed(
+        &mut self,
+        event: &WorkflowEvent,
+        at: BoundedTimestamp,
+        observer: &mut dyn EngineObserver,
+    ) -> Result<JournalEntry, JournalError> {
+        observer.stage_started(EngineStage::PublishPrefixHash);
+        observer.stage_finished(EngineStage::PublishPrefixHash, None);
+        self.0.append(event, at)
+    }
+}
+
+struct PanicsOnPublish;
+
+impl EngineObserver for PanicsOnPublish {
+    fn stage_started(&mut self, stage: EngineStage) {
+        assert_ne!(
+            stage,
+            EngineStage::PublishPrefixHash,
+            "metric collector failed"
+        );
+    }
+
+    fn stage_finished(&mut self, _stage: EngineStage, _journal_entries: Option<usize>) {}
+}
+
+#[test]
+fn panicking_observer_cannot_change_the_durable_outcome() {
+    let mut journal = PublishingJournal(MemoryJournal::new());
+    let outcome = handle_workflow_signal_observed(
+        &mut journal,
+        &FixedClock::default(),
+        submit("evt-observer-panic"),
+        &mut PanicsOnPublish,
+    )
+    .unwrap();
+    assert!(matches!(outcome, SignalOutcome::Accepted { .. }));
+    assert_eq!(journal.0.entries().len(), 1);
+}
+
+struct PlainOnlyJournal(MemoryJournal);
+
+impl JournalReader for PlainOnlyJournal {
+    fn load_committed(&mut self) -> Result<Vec<JournalEntry>, JournalError> {
+        self.0.load_committed()
+    }
+
+    fn load_committed_observed(
+        &mut self,
+        _observer: &mut dyn EngineObserver,
+    ) -> Result<Vec<JournalEntry>, JournalError> {
+        panic!("plain execution must not use the observed read path");
+    }
+}
+
+impl Journal for PlainOnlyJournal {
+    fn append(
+        &mut self,
+        event: &WorkflowEvent,
+        at: BoundedTimestamp,
+    ) -> Result<JournalEntry, JournalError> {
+        self.0.append(event, at)
+    }
+
+    fn append_observed(
+        &mut self,
+        _event: &WorkflowEvent,
+        _at: BoundedTimestamp,
+        _observer: &mut dyn EngineObserver,
+    ) -> Result<JournalEntry, JournalError> {
+        panic!("plain execution must not use the observed append path");
+    }
+}
+
+#[test]
+fn unobserved_api_never_calls_observed_journal_ports() {
+    let mut journal = PlainOnlyJournal(MemoryJournal::new());
+    let outcome = handle_workflow_signal(
+        &mut journal,
+        &FixedClock::default(),
+        submit("evt-unobserved"),
+    )
+    .unwrap();
+    assert!(matches!(outcome, SignalOutcome::Accepted { .. }));
+    assert_eq!(journal.0.entries().len(), 1);
 }
