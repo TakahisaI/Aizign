@@ -30,6 +30,9 @@ to match, and the decoded count to equal `committedEntries`.
 - An unsupported `storeVersion` is `JOURNAL_SCHEMA_UNSUPPORTED`.
 - A journal tail beyond `committedBytes` is `JOURNAL_OUTCOME_UNKNOWN`; a
   reader never promotes, truncates, synchronizes, or repairs it.
+- A reader performs no Aizign state write and does not change file contents,
+  length, mtime, or the commit document. Filesystem-managed atime is outside
+  this contract.
 - Missing state directory, lock, journal, or commit document is
   `JOURNAL_UNAVAILABLE`, not an authoritative empty snapshot.
 - Only a valid zero-entry commit point can establish an empty snapshot.
@@ -44,19 +47,24 @@ to match, and the decoded count to equal `committedEntries`.
 The initial implementation advertises this store only on
 `x86_64-unknown-linux-gnu`, where the
 barrier, atomic-replace, locking, permission, and artifact-type contract runs
-in CI and the numeric Linux open-flag ABI is fixed. Other Linux ABIs (including
-x32), architectures, or libc environments and non-Linux build targets do not
+in CI and the numeric Linux open-flag ABI is fixed. Other Linux ABIs,
+architectures, or libc environments and non-Linux build targets do not
 advertise submit or reconciliation and reject direct requests with
 `CAPABILITY_UNSUPPORTED` until equivalent target-specific contract tests exist.
+The x32 ABI is intentionally unsupported and is only cross-compiled in CI as a
+negative boundary; this is not a runtime test, release artifact, or support
+claim.
 
 The SHA-256 value detects mismatch; it is not authentication against a process
 that can rewrite both journal and commit metadata. See ADR-0013 and ADR-0014.
 
 This layout version is independent of Protocol v1 and journal record schema
 v1. A non-empty legacy state directory without this document is not adopted
-automatically. Downgrade to a binary that ignores the commit point is
-unsupported; preserving legacy state requires a separately designed explicit
-migration or effectful recovery operation.
+automatically. Binary downgrade against the same state directory is unsupported
+and is not technically prevented: an old binary may ignore this document and
+mutate `workflow.jsonl`. Operators must use a separate state directory rather
+than relying on an old binary to fail closed. Preserving legacy state requires
+a separately designed explicit migration or effectful recovery operation.
 
 Fixtures under `spec/conformance/{valid,invalid}/store` are run through both
 this schema and the Rust store reader. Invalid fixtures declare whether JSON

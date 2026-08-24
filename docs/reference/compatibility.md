@@ -12,6 +12,8 @@
 adapterはpackage versionの完全一致ではなく、`hello` で得たprotocol versionとcapabilityで互換性を判定します
 （[ADR-0003](../adr/0003-use-a-versioned-ndjson-process-boundary.md)、[ADR-0008](../adr/0008-use-lockstep-artifact-versions-before-1-0.md)）。
 初期のcommitted-prefix JSONL storeは `x86_64-unknown-linux-gnu` だけが検証済みで、x32を含む別ABIや別architecture / libcのLinuxなど、その他のbuildはsubmit / reconcile capabilityをadvertiseしません。
+x32は、64-bit targetと誤認しないことをCIでcross-compileするnegative boundaryに限定し、runtime support、release artifact、support claimは提供しません。
+同じstate directoryを旧binaryで開くdowngradeはunsupportedであり、技術的には防止していません。旧binaryがcommit metadataを無視できるため、operatorは別のstate directoryを使用する必要があります。
 
 ## 互換性の規則
 

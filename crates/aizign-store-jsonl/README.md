@@ -38,4 +38,6 @@ tests/
 - `append(event, at)`: 現commit pointとphysical fileの一致を確認し、次の `seq` の1行を`write_all`、journal `sync_all`、owner-only temporary commit metadataのwrite + `sync_all`、atomic replace、state directory barrierの順に実行する。最後まで成功して初めてappend成功。journal write開始後の失敗は `OutcomeUnknown`
 - **10000件に達した後のappendは書き込まず `BoundExceeded`**（journal / metadata不変）。encoderもrange外の `seq` を生成できない
 - 初期実装はCIとopen-flag ABIを検証した `x86_64-unknown-linux-gnu` 専用。x86_64 GNU/Linux CIでfile / directory barrier、atomic replace、lock、owner-only mode、artifact type / linkを検証する。x32を含む別ABIや別architecture / libcのLinux、macOS、BSD、Windowsなどの未検証targetは `Unavailable` でfail closedし、CLIもstore capabilityをadvertiseしない
+- x32は64-bit targetとの誤認を防ぐcompile-only negative boundaryであり、durability実装、runtime test、release artifact、support claimは追加しない
 - lock / journal / commit / temporary commitは検証済みtargetの`O_NOFOLLOW`で開き、open前後のdevice / inode、regular file、link count 1、state directoryと同じowner、exact `0600` modeを検査する。新規fileは作成fdから`0600`へ正規化する。temporary commitは検査済みのstale regular fileだけを除去し、`create_new`で作る。state directoryも`0700`へ正規化する
+- 同じstate directoryを旧binaryで開くdowngradeはunsupportedであり、技術的には防止しない。旧binaryはcommit metadataを無視してjournalを変更できるため、operatorはstate directoryを分離する
