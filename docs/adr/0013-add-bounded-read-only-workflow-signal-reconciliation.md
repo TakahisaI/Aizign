@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-24
-- Related: ADR-0003, ADR-0004, ADR-0007, ADR-0012, Issue #51
+- Related: ADR-0003, ADR-0004, ADR-0007, ADR-0012, Issue #51, PR #61
 
 ## Context
 
@@ -80,23 +80,39 @@ Response handling follows this order:
 
 This order deliberately preserves `HANDLER_TIMEOUT` from the current watchdog response, whose `requestId` and `kind` are `null`, while still treating that response as uncorrelated and therefore unknown.
 
-Split the engine journal port into read and write capabilities. A `JournalReader` exposes only `load_committed`, which returns a bounded cold snapshot only after the store's durability barrier succeeds. The existing `Journal` extends it with durable append. The reconciliation use case accepts only `JournalReader`, replays into a fresh in-memory state, performs the pure classification, and has no clock, append, submit, or effect dependency. Every JSONL load path, including the append-capable journal's pre-decision load, uses the same committed-snapshot contract; no caller may classify merely readable but uncommitted bytes as accepted.
+Split the engine journal port into read and write capabilities. A `JournalReader` exposes only `load_committed`, which returns a bounded snapshot that the writer previously published as committed. It performs no write, flush, sync, repair, initialization, or commit action. The existing `Journal` extends it with durable append. The reconciliation use case accepts only `JournalReader`, replays into a fresh in-memory state, performs the pure classification, and has no clock, append, submit, recovery-write, or effect dependency.
 
-Add a logically read-only JSONL journal reader that never creates a state directory, lock file, or journal file and never appends, truncates, rewrites, or otherwise changes journal content. A trustworthy snapshot requires an existing private state directory, ownership lock file, and journal file. If any of those three is missing, the reader returns `JOURNAL_UNAVAILABLE`, which the client exposes as `unknown`. Missing storage cannot prove that the authoritative journal has always been empty: the path may be uninitialized, misconfigured, unmounted, deleted, lost, or refer to another state location.
+The current single JSONL file cannot distinguish a successfully synchronized record from a complete record left readable after `sync_data` failed. Add a versioned, owner-only store metadata file, `workflow.commit.json`, that publishes the committed JSONL prefix. Its closed document contains the store-metadata version, committed byte length, committed entry count, and SHA-256 digest of exactly that prefix. The prefix digest is store-internal integrity metadata and never crosses the protocol boundary or becomes core candidate identity. This is store metadata, not a journal record; Protocol v1 and journal schema v1 remain unchanged.
 
-For existing storage, `load_committed` performs the following sequence:
+The JSONL writer establishes durable initialization before it may append or report the store initialized:
 
-1. Acquire the shared advisory lock without waiting. Writers continue to take the exclusive lock.
-2. Open the existing journal without create, append, or truncate capability. The implementation may require a read-write file descriptor solely to invoke the platform's `sync_data` operation; it must not change the file's logical bytes or length.
-3. Read the bounded snapshot and completely decode every record. A truncated, corrupt, or out-of-bounds snapshot is `unknown` and is not deliberately committed by the reader.
-4. While still holding the shared lock, execute the same `sync_data` durability barrier used by append.
-5. Return the decoded entries only if that barrier succeeds. If it fails, return `JOURNAL_OUTCOME_UNKNOWN`, which remains semantic `unknown`.
+1. Create the state directory if needed, synchronize it and the parent directory that names it, and fail closed if the required directory barrier is unavailable.
+2. Create or open the owner-only lock file, acquire its exclusive lock, create the empty owner-only journal, synchronize both files, and synchronize the state directory that names them.
+3. Publish the zero-entry commit metadata using the same atomic replacement procedure used after append, then synchronize the state directory.
 
-The successful barrier is what promotes a completely decoded, currently readable snapshot to a committed snapshot. This distinction covers an append whose `write_all` completed but whose original `sync_data` failed: a later reconciliation may return `accepted` only after its own barrier succeeds. If that later barrier also fails, the outcome remains `unknown`; a read alone never proves durability.
+An empty journal is authoritative only after that sequence. A writer may complete a failed empty initialization under the exclusive lock, but it must not silently adopt a non-empty journal that has no valid commit metadata. Missing state directory, lock, journal, or commit metadata remains `JOURNAL_UNAVAILABLE`; an unsupported metadata version is `JOURNAL_SCHEMA_UNSUPPORTED`; malformed or inconsistent metadata is `JOURNAL_CORRUPT`.
 
-`absent` is returned only from a committed snapshot. An existing zero-record journal whose reconciliation barrier succeeds is authoritative evidence of an initialized empty state; a missing journal is not. A submission failure that occurs after the writer initialized an empty journal can therefore reconcile as `absent`, while a failure before journal initialization remains `unknown`.
+Append publishes a new committed prefix in this order:
 
-The reader holds the shared lock through the bounded decode and durability barrier. A concurrent writer therefore either completes before the reader snapshot, starts after it, or causes the non-blocking lock attempt to return `JOURNAL_LOCKED`; the reader never interprets or commits a partial concurrent append. The outer one-shot handler watchdog bounds total request processing time in addition to the existing frame-size, journal-byte, and record-count bounds.
+1. Require the physical journal length and digest to match the current committed prefix. Any bytes beyond the published boundary are an unresolved prior append, so the writer returns `JOURNAL_OUTCOME_UNKNOWN` without appending.
+2. Append exactly one complete record and run the journal file's `sync_all` barrier, including the file metadata required to recover its new length. This replaces the current `sync_data`-only append contract.
+3. Only after that barrier succeeds, write the next commit document to an owner-only temporary file, synchronize that file, atomically replace `workflow.commit.json`, and synchronize the state directory.
+4. Return the appended entry only after the metadata and directory barriers succeed. A failure after the first journal byte is written remains `JOURNAL_OUTCOME_UNKNOWN`.
+
+The ordering makes a visible, valid new commit point safe evidence: the referenced JSONL prefix completed its file and file-metadata barrier before the writer could publish that point. If metadata replacement or its directory barrier fails, a reader may observe either commit point. The new point is safe because its referenced prefix was already synchronized; the old point leaves an extra tail and therefore remains `unknown`. A later effectful recovery operation may decide how to handle such a tail, but read-only reconciliation does not promote, truncate, or repair it.
+
+The JSONL `load_committed` path is strictly observational:
+
+1. Require the existing private state directory, lock file, journal file, and commit metadata, then acquire the shared advisory lock without waiting.
+2. Open the journal and metadata read-only and read them within their byte and entry bounds.
+3. Require the physical file length to equal the committed byte length, the decoded entry count to equal the committed count, and the prefix digest to match. A shorter file or mismatched count/digest is `JOURNAL_CORRUPT`; any extra tail is `JOURNAL_OUTCOME_UNKNOWN`.
+4. Return the decoded entries without changing file contents, length, metadata documents, or durability state.
+
+`absent` is returned only from a valid published zero-entry snapshot. A submission failure after durable initialization but before the first append can therefore reconcile as `absent`, while a failure before initialization remains `unknown`. A complete record left after `write_all` succeeded and `sync_data` failed is beyond the published boundary and remains `unknown`, even after restart.
+
+The reader holds the shared lock through metadata validation and bounded decode. A concurrent writer therefore either publishes before the reader snapshot, starts after it, or causes the non-blocking lock attempt to return `JOURNAL_LOCKED`; the reader never interprets a partial concurrent append. The outer one-shot handler watchdog bounds total request processing time in addition to the existing frame-size, journal-byte, metadata-byte, and record-count bounds.
+
+Directory durability is part of the store contract, not an optional optimization. The initial implementation supports only platforms on which it implements and tests equivalent file synchronization, atomic replacement, parent-directory synchronization, and state-directory synchronization. On any other platform it fails closed with `JOURNAL_UNAVAILABLE`; it must not silently downgrade the durability guarantee. The normative first implementation is the Unix barrier sequence above, with Linux covered in CI. Additional platform support requires platform-specific contract tests before it is claimed.
 
 Add `reconcileWorkflowSignal` to the TypeScript `CoreClient`. It is a control-plane/operator method, not a model-visible tool. The DSH adapter implements and exports the client method but does not add tool arguments, a second tool, automatic reconciliation, or automatic retry. Harness session IDs, call IDs, provider IDs, prompts, model output, reasoning, and credentials remain outside the reconciliation envelope.
 
@@ -105,12 +121,12 @@ Add `reconcileWorkflowSignal` to the TypeScript `CoreClient`. It is a control-pl
 ### Positive
 
 - A lost acknowledgement can be resolved after restart from the authoritative journal without resubmitting the signal.
-- A successful committed-snapshot barrier distinguishes durable journal evidence from bytes that are only currently readable after an uncertain append.
+- A writer-published commit point distinguishes durable journal evidence from bytes that are only currently readable after an uncertain append.
 - Exact event-content comparison preserves attempt and candidate binding and distinguishes acceptance from an event conflict.
 - The read-only type boundary makes append and effect dispatch unavailable to the reconciliation use case.
 - Shared-lock reading gives the outcome a precise snapshot meaning under concurrent access.
 - Existing stable journal codes explain `unknown` without adding a generic code that discards the cause.
-- Protocol v1 remains extensible through capabilities and the journal format remains unchanged.
+- Protocol v1 remains extensible through capabilities and the journal record format remains unchanged; only the versioned JSONL store layout gains commit metadata.
 
 ### Negative / Risks
 
@@ -118,17 +134,21 @@ Add `reconcileWorkflowSignal` to the TypeScript `CoreClient`. It is a control-pl
 - A legitimate but never-initialized state directory cannot produce `absent`; a writer must first establish the authoritative lock and journal files.
 - Without a durable state-instance identity, a misconfigured path that points to another fully initialized, valid journal cannot be detected. Selecting the configured state directory remains a control-plane responsibility until a manifest contract is added.
 - An active writer makes a non-blocking reconciliation attempt `unknown` (`JOURNAL_LOCKED`) rather than waiting.
-- A logically read-only reconciliation still performs durability I/O and may require write permission on the existing journal solely to execute `sync_data`. A read-only mount or barrier failure therefore produces `unknown`.
+- A failed append can leave an unpublished tail that blocks both reconciliation and further append until a separate effectful recovery policy resolves it. This is a conservative `unknown`, not silent truncation or promotion.
+- Durable initialization and atomic commit metadata add filesystem barriers, a bounded sidecar format, a prefix digest, and write amplification to the JSONL store.
+- Existing non-empty state directories without valid commit metadata cannot be adopted automatically; migration or explicit recovery is separate work.
+- Platforms without tested file and directory durability primitives fail closed instead of receiving a weaker `accepted` contract.
 - A full bounded cold read is linear in journal size and is not suitable for high-frequency polling.
 - `absent` can become stale immediately after the shared lock is released; it is not permission to retry.
-- Adding a committed-snapshot store path duplicates a small amount of open and permission-checking logic while preserving the no-logical-mutation boundary.
 
 ### Follow-up
 
 - Add language-neutral request and response fixtures for `accepted`, `conflict`, `absent`, and an error-envelope `unknown` case.
 - Test a lost acknowledgement followed by reconciliation in a fresh process, an initialized pre-append failure followed by `absent`, and a changed signal followed by `conflict`.
-- Fault-inject `write_all` success followed by `sync_data` failure with a complete newline-terminated record still readable, then reopen: reconciliation may report `accepted` only after its own durability barrier succeeds, and must remain `unknown` if that barrier fails.
-- Fix the initialization matrix: missing directory, directory without a lock, lock without a journal, and a different uninitialized state location are `unknown`; a shared-locked zero-record journal is `absent`; a first writer racing any intermediate state is `unknown` until a complete snapshot can be acquired.
+- Fault-inject `write_all` success followed by the journal `sync_all` failure with a complete newline-terminated record still readable. Assert that the commit point remains unchanged, reopen returns `unknown`, no reader-side barrier occurs, and a later unrelated submit does not append or promote the tail. This test covers the same uncertainty as the current store's `sync_data` failure path.
+- Fault-inject response loss after the journal, commit metadata, and directory barriers succeed; a fresh-process read-only reconciliation must return `accepted` without changing any state artifact.
+- Test initialization crashes after state-directory creation, lock-file creation, journal-file creation, journal-file synchronization but before state-directory synchronization, initial commit publication, and final directory synchronization. Only a valid published zero-entry commit point may yield `absent`.
+- Fix the initialization matrix: missing directory, directory without a lock, lock without a journal, journal without valid commit metadata, and a different uninitialized state location are `unknown`; a shared-locked zero-record journal with a valid zero-entry commit point is `absent`; a first writer racing any intermediate state is `unknown` until a complete snapshot can be acquired.
 - Test corruption, bound, lock, timeout, malformed response, oversized response, abort, and correlation mismatch as `unknown`.
 - Add a response fixture and client test for `requestId: null`, `kind: null`, and `error.code: HANDLER_TIMEOUT`; assert `reason: correlation_mismatch` and diagnostic `reportedCode: HANDLER_TIMEOUT`.
 - Prove the operation does not append records, dispatch effects, retry submission, or leak harness/provider data.
@@ -143,7 +163,9 @@ Add `reconcileWorkflowSignal` to the TypeScript `CoreClient`. It is a control-pl
 - **Read without a lock or retry until the lock becomes available.** Rejected because an unlocked read can observe a partial append, while waiting or retrying introduces an additional scheduling policy. A non-blocking lock failure remains `unknown`.
 - **Treat missing state files as an empty snapshot or create them while reconciling.** Rejected because missing storage is not authoritative evidence of emptiness, and a read-only recovery operation must not mutate the filesystem merely to report `absent`.
 - **Exclude only requests already known to have returned `JOURNAL_OUTCOME_UNKNOWN`.** Rejected because an outer timeout, response loss, or correlation failure can conceal the same underlying `sync_data` failure. The original caller-visible cause is not a sufficient durability proof.
+- **Run `sync_data` from `load_committed`.** Rejected because synchronization changes durability state: the reconciliation call could commit an uncertain prior append or an unrelated later submit could do so while merely loading. That violates hard invariant 9 and the Issue #51 no-state-change condition.
+- **Move synchronization into an explicit `recover` or `commit` operation.** Compatible with this decision as future work, but intentionally separate because it is effectful and requires an authorization and tail-resolution policy. `workflow.signal.reconcile` remains read-only.
 - **Treat any completely decoded snapshot as committed without a durability barrier.** Rejected because `write_all` can make a complete record readable before `sync_data` fails. Readability alone does not satisfy the durable-acceptance contract.
 - **Weaken `accepted` to mean only present in the current snapshot.** Rejected because Issue #51 and ADR-0007 require durable acceptance; weakening the term would leave an uncertain append unresolved while presenting it as known.
-- **Add a durable state-instance manifest in this slice.** Deferred. A manifest could distinguish initialized storage and, with a control-plane identity, detect a wrong state instance. It would add a new durable identity and initialization contract beyond workflow-signal reconciliation; until that contract exists, missing state artifacts remain `unknown` and the configured state directory remains a control-plane responsibility.
+- **Add a durable state-instance identity in this slice.** Deferred. The commit document is narrowly scoped store metadata that binds a published byte prefix; it does not identify the configured control-plane state instance. A separate manifest could detect a wrong but fully initialized state directory.
 - **Increase the protocol or journal version.** Rejected because this adds a new capability and request kind without changing existing message or record shapes.
