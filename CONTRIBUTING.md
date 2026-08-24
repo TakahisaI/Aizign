@@ -88,11 +88,18 @@ Aizignの前身となるprivate repositoryは、source of truthではなく「�
 - 採用する契約は新しいtestとして書き直す
 - literal codeやpresetを持ち込む場合だけ、licenseとattributionを個別に監査する
 
-## 言語
+## Language
 
-- code identifier、error code、public API、rustdocは英語
-- Issue、PR本文、architecture discussionは日本語でよい
-- 同じ長文文書の日本語版と英語版を常時二重管理しない
+English is the canonical language for maintained Aizign project artifacts.
+
+- Write code identifiers, error codes, public APIs, rustdoc, branch names, and commit titles in English.
+- Write new and substantially revised documentation, source comments, user-facing messages, Issue and PR titles and bodies, and repository templates in English.
+- Existing Japanese content may remain until the relevant file or bounded section is otherwise changed.
+- When a change touches a small Japanese section, translate it in the same PR only if the additional diff remains reviewable. Use a separate documentation PR when translation would dominate an unrelated change.
+- Review comments and real-time discussion may use any language that helps the participants communicate precisely.
+- Keep historical material, including closed Issues, merged PR discussions, commit history, and accepted ADRs, in its existing language unless a dedicated migration slice requires otherwise.
+- Do not maintain complete Japanese and English copies of the same long-lived document unless ownership and a synchronization process are explicit.
+- Prefer plain, consistent technical English and established project terminology.
 
 ## License
 
