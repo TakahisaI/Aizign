@@ -4,7 +4,13 @@
  * implementation so both reject the same frames with the same codes.
  */
 
-import { DuplicateMemberError, findDuplicateMember } from './duplicate-member.ts';
+import {
+  DuplicateMemberError,
+  findDuplicateMember,
+  findInvalidUnicode,
+  InvalidUnicodeError,
+  isWellFormedUnicode,
+} from './duplicate-member.ts';
 import { codes, isShortErrorCode, ProtocolError } from './error.ts';
 import { decodeHelloInfo, type HelloInfo } from './hello.ts';
 import { assertOnlyKeys, IDENTIFIER_PATTERN, isPlainObject } from './shape.ts';
@@ -68,6 +74,14 @@ function byteLength(frame: Uint8Array | string): number {
   return typeof frame === 'string' ? encoder.encode(frame).byteLength : frame.byteLength;
 }
 
+function decodeFrame(frame: Uint8Array | string): string {
+  if (typeof frame === 'string') return frame;
+  if (frame[0] === 0xef && frame[1] === 0xbb && frame[2] === 0xbf) {
+    throw new SyntaxError('UTF-8 BOM is not allowed before a JSON frame');
+  }
+  return decoder.decode(frame);
+}
+
 /**
  * Wire numbers must be canonical integer tokens (`0` or `-?[1-9][0-9]*`) —
  * the lexical space serde_json accepts for the integer fields of this
@@ -75,7 +89,7 @@ function byteLength(frame: Uint8Array | string): number {
  * no field check accepts, so it fails exactly where the field is validated,
  * with the same stable code and recovered correlation data as the Rust
  * decoder. JSON Schema operates on the data model and cannot see lexemes;
- * this is one of the three documented decoder-only rules.
+ * this is one of the four documented decoder-only rules.
  */
 const NON_CANONICAL_NUMBER = Symbol('non-canonical number');
 const CANONICAL_INTEGER = /^(?:0|-?[1-9][0-9]*)$/;
@@ -93,25 +107,69 @@ function reviveCanonicalNumbers(_key: string, value: unknown, context?: RevivedC
  * after folding: each field keeps its last spelling, and only a value that
  * passes its usual check is recovered.
  */
-function recoveredFromFolded(text: string): {
-  requestId: string | null;
-  kind: string | null;
-} {
+type Recovered = { requestId: string | null; kind: string | null };
+
+function correlationFromFolded(folded: Record<string, unknown>): Recovered {
+  const requestId =
+    typeof folded.requestId === 'string' && IDENTIFIER_PATTERN.test(folded.requestId)
+      ? folded.requestId
+      : null;
+  const kind = typeof folded.kind === 'string' ? folded.kind : null;
+  return { requestId, kind };
+}
+
+function recoveredFromFolded(text: string): Recovered {
   try {
-    const folded = JSON.parse(text) as Record<string, unknown>;
-    const requestId =
-      typeof folded.requestId === 'string' && IDENTIFIER_PATTERN.test(folded.requestId)
-        ? folded.requestId
-        : null;
-    const kind = typeof folded.kind === 'string' ? folded.kind : null;
-    return { requestId, kind };
+    if (findInvalidUnicode(text) !== null) return { requestId: null, kind: null };
+    const folded = JSON.parse(
+      text,
+      reviveCanonicalNumbers as (key: string, value: unknown) => unknown,
+    ) as Record<string, unknown>;
+    return correlationFromFolded(folded);
+  } catch {
+    return { requestId: null, kind: null };
+  }
+}
+
+function isWellFormedJsonValue(value: unknown): boolean {
+  if (typeof value === 'string') return isWellFormedUnicode(value);
+  if (Array.isArray(value)) return value.every(isWellFormedJsonValue);
+  if (!isPlainObject(value)) return true;
+  return Object.entries(value).every(
+    ([key, nested]) => isWellFormedUnicode(key) && isWellFormedJsonValue(nested),
+  );
+}
+
+/** Mirrors the Rust lenient probe: malformed strings in fields it reads make
+ * the frame unaddressed, while malformed strings in ignored payload data do
+ * not prevent recovery of an earlier valid requestId and kind. */
+function recoveredFromInvalidUnicode(text: string): Recovered {
+  try {
+    const folded = JSON.parse(
+      text,
+      reviveCanonicalNumbers as (key: string, value: unknown) => unknown,
+    );
+    if (!isPlainObject(folded)) return { requestId: null, kind: null };
+    if (Object.keys(folded).some((key) => !isWellFormedUnicode(key))) {
+      return { requestId: null, kind: null };
+    }
+    for (const key of ['protocol', 'version', 'requestId', 'kind']) {
+      if (Object.hasOwn(folded, key) && !isWellFormedJsonValue(folded[key])) {
+        return { requestId: null, kind: null };
+      }
+    }
+    return correlationFromFolded(folded);
   } catch {
     return { requestId: null, kind: null };
   }
 }
 
 function parseJson(frame: Uint8Array | string): unknown {
-  const text = typeof frame === 'string' ? frame : decoder.decode(frame);
+  const text = decodeFrame(frame);
+  const invalidUnicode = findInvalidUnicode(text);
+  if (invalidUnicode !== null) {
+    throw invalidUnicode;
+  }
   const duplicate = findDuplicateMember(text);
   if (duplicate !== null) {
     throw duplicate;
@@ -165,7 +223,15 @@ export function decodeRequest(frame: Uint8Array | string): Request {
     if (error instanceof DuplicateMemberError) {
       // Correlation data comes from the folded frame, so the recovery rule
       // matches every other rejection: last spelling wins when unambiguous.
-      const folded = recoveredFromFolded(typeof frame === 'string' ? frame : decoder.decode(frame));
+      const folded = recoveredFromFolded(decodeFrame(frame));
+      throw new DecodeFailure(
+        folded.requestId,
+        folded.kind,
+        new ProtocolError(codes.INVALID_ENVELOPE, error.message),
+      );
+    }
+    if (error instanceof InvalidUnicodeError) {
+      const folded = recoveredFromInvalidUnicode(decodeFrame(frame));
       throw new DecodeFailure(
         folded.requestId,
         folded.kind,
@@ -306,7 +372,6 @@ export function decodeResponse(frame: Uint8Array | string): Response {
   const hasPayload = Object.hasOwn(value, 'payload');
   const hasError = Object.hasOwn(value, 'error');
   if (ok && hasPayload && !hasError) {
-    if (!isPlainObject(value.payload)) throw invalidEnvelope('payload must be an object');
     switch (kind) {
       case KIND_HELLO:
         return { requestId, kind, body: { type: 'hello', info: decodeHelloInfo(value.payload) } };

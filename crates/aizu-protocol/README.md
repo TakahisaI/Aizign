@@ -34,9 +34,10 @@ tests/
 ## Decode の段階
 
 1. size（`MAX_REQUEST_BYTES`）→ `REQUEST_TOO_LARGE`
-2. duplicate member走査（lexical。schemaで表現できず、streaming / folding parserで意味が分れるため）。相関データはfold後の値から復元する
-3. lenient probe: `protocol`、`version`、`requestId`、`kind` だけを読む。versionが違えば `PROTOCOL_VERSION_UNSUPPORTED` を **requestId付きで** 返せる。versionが整数range `0..=u32::MAX` 外なら `INVALID_ENVELOPE`
-4. strict envelope（`deny_unknown_fields`、payloadはobject）→ `INVALID_ENVELOPE`
-5. kind dispatch → `UNKNOWN_KIND` / `INVALID_PAYLOAD` / `INVALID_EXPECTATION` / workflow code
+2. BOMなしUTF-8とwell-formed Unicode → 違反は `INVALID_ENVELOPE`
+3. duplicate member走査（lexical。schemaで表現できず、streaming / folding parserで意味が分れるため）。相関データはfold後の値から復元する
+4. lenient probe: `protocol`、`version`、`requestId`、`kind` だけを読む。versionが違えば `PROTOCOL_VERSION_UNSUPPORTED` を **requestId付きで** 返せる。versionが整数range `0..=u32::MAX` 外なら `INVALID_ENVELOPE`
+5. strict envelope（`deny_unknown_fields`、payloadはobject）→ `INVALID_ENVELOPE`
+6. kind dispatch → `UNKNOWN_KIND` / `INVALID_PAYLOAD` / `INVALID_EXPECTATION` / workflow code
 
 `DecodeFailure` は復元できた `request_id` / `kind` を持つので、shellは常にaddressed responseを書けます。

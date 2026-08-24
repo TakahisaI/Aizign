@@ -16,6 +16,14 @@ export class DuplicateMemberError extends Error {
   }
 }
 
+/** Marks a JSON string token that is not a Unicode scalar sequence. */
+export class InvalidUnicodeError extends Error {
+  constructor() {
+    super('JSON member names and string values must be well-formed Unicode');
+    this.name = 'InvalidUnicodeError';
+  }
+}
+
 const MAX_SCAN_DEPTH = 128;
 const ARRAY_LEVEL = Symbol('array level');
 type Level = Set<string> | typeof ARRAY_LEVEL | undefined;
@@ -31,6 +39,55 @@ function decodedName(text: string, start: number, end: number): string | null {
   } catch {
     return null;
   }
+}
+
+function endOfString(text: string, start: number): number | null {
+  let index = start + 1;
+  while (index < text.length) {
+    if (text[index] === '\\') {
+      index += 2;
+      continue;
+    }
+    if (text[index] === '"') return index + 1;
+    index += 1;
+  }
+  return null;
+}
+
+export function isWellFormedUnicode(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      if (index + 1 >= value.length) return false;
+      const next = value.charCodeAt(index + 1);
+      if (next < 0xdc00 || next > 0xdfff) return false;
+      index += 1;
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Finds a string token containing a lone UTF-16 surrogate. This lexical pass
+ * sees every token, including values that `JSON.parse` would discard while
+ * folding duplicate members.
+ */
+export function findInvalidUnicode(text: string): InvalidUnicodeError | null {
+  let index = 0;
+  while (index < text.length) {
+    if (text[index] !== '"') {
+      index += 1;
+      continue;
+    }
+    const end = endOfString(text, index);
+    if (end === null) return null;
+    const decoded = decodedName(text, index, end);
+    if (decoded !== null && !isWellFormedUnicode(decoded)) return new InvalidUnicodeError();
+    index = end;
+  }
+  return null;
 }
 
 /**
@@ -49,17 +106,10 @@ export function findDuplicateMember(text: string): DuplicateMemberError | null {
     const char = text[index];
     if (char === '"') {
       stringStart = index;
-      index += 1;
-      while (index < text.length) {
-        if (text[index] === '\\') {
-          index += 2;
-          continue;
-        }
-        if (text[index] === '"') break;
-        index += 1;
-      }
-      index += 1;
-      stringEnd = index;
+      const end = endOfString(text, index);
+      if (end === null) return null;
+      index = end;
+      stringEnd = end;
       continue;
     }
     if (char === '{') {
