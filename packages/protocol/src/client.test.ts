@@ -35,3 +35,26 @@ test('error responses correlate on request id and kind; the event id cannot be c
   assert.equal(checkCorrelation(sent, rejected), undefined);
   assert.equal(checkCorrelation(sent, { ...rejected, kind: 'hello' })?.field, 'kind');
 });
+
+test('reconciliation success also correlates the queried event id', () => {
+  const sent = { requestId: 'req-r', kind: 'workflow.signal.reconcile', eventId: 'evt-1' };
+  const response: Response = {
+    requestId: 'req-r',
+    kind: 'workflow.signal.reconcile',
+    body: {
+      type: 'workflow.signal.reconciliation',
+      result: { disposition: 'absent', eventId: 'evt-1' },
+    },
+  };
+  assert.equal(checkCorrelation(sent, response), undefined);
+  assert.equal(
+    checkCorrelation(sent, {
+      ...response,
+      body: {
+        type: 'workflow.signal.reconciliation',
+        result: { disposition: 'absent', eventId: 'evt-other' },
+      },
+    })?.field,
+    'eventId',
+  );
+});

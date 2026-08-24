@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aizign.dev/spec/store/v1/commit.schema.json",
+  "title": "Aizign JSONL committed-prefix metadata v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["storeVersion", "committedBytes", "committedEntries", "sha256"],
+  "properties": {
+    "storeVersion": { "const": 1 },
+    "committedBytes": { "type": "integer", "minimum": 0, "maximum": 67108864 },
+    "committedEntries": { "type": "integer", "minimum": 0, "maximum": 10000 },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

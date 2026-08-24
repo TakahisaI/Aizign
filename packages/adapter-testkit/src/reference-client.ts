@@ -17,10 +17,13 @@ import {
   type HelloOutcome,
   isUnknownOutcomeCode,
   MAX_FRAME_BYTES,
+  type ReconcileOutcome,
+  type ReconcileUnknown,
   type Response,
   type SentRequest,
   type SubmitOutcome,
   type UnknownOutcome,
+  type WorkflowSignalReconcilePayload,
   type WorkflowSignalSubmitPayload,
 } from '@aizign/protocol';
 
@@ -112,6 +115,52 @@ export class ReferenceOneShotClient implements CoreClient {
       kind: 'unknown',
       reason: 'undecodable_response',
       detail: 'response body does not match the request',
+    };
+  }
+
+  async reconcileWorkflowSignal(
+    requestId: string,
+    payload: WorkflowSignalReconcilePayload,
+    options: CallOptions = {},
+  ): Promise<ReconcileOutcome> {
+    const frame = encodeRequest({ requestId, kind: 'workflow.signal.reconcile', payload });
+    const exchange = await this.#exchange(
+      ['handle', '--state', this.#config.stateDir],
+      frame,
+      options.signal,
+    );
+    if (exchange.kind === 'unknown') return exchange.outcome;
+    const reportedCode =
+      exchange.response.body.type === 'error' ? exchange.response.body.error.code : undefined;
+    const mismatch = checkCorrelation(
+      { requestId, kind: 'workflow.signal.reconcile', eventId: payload.signal.eventId },
+      exchange.response,
+    );
+    if (mismatch !== undefined) {
+      const outcome: ReconcileUnknown = {
+        kind: 'unknown',
+        reason: 'correlation_mismatch',
+        detail: `${mismatch.field}: expected ${mismatch.expected}, got ${String(mismatch.actual)}`,
+        ...(reportedCode === undefined ? {} : { reportedCode }),
+      };
+      return outcome;
+    }
+    const { body } = exchange.response;
+    if (body.type === 'workflow.signal.reconciliation') {
+      return { kind: body.result.disposition, eventId: body.result.eventId };
+    }
+    if (body.type === 'error') {
+      return {
+        kind: 'unknown',
+        reason: 'reported_unknown',
+        reportedCode: body.error.code,
+        detail: `${body.error.code}: ${body.error.message}`,
+      };
+    }
+    return {
+      kind: 'unknown',
+      reason: 'undecodable_response',
+      detail: 'response body does not match the reconciliation request',
     };
   }
 

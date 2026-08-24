@@ -19,7 +19,7 @@ protocol fixtureが入った後は、`spec/protocol/v1/` が wire上のcodeの�
 | `REQUEST_TOO_LARGE` | request sizeがboundを超えた | implemented（`aizign-protocol`） |
 | `CAPABILITY_UNSUPPORTED` | 要求された操作をこのbinaryまたはadapterが提供しない | reserved（定数のみ） |
 | `INTERNAL` | 分類できない内部error。詳細はstderr | implemented（`aizign-cli`: clock失敗） |
-| `HANDLER_TIMEOUT` | 処理が時間boundを超えた。進行中のappendの結果は不明。再送せずreconcileする | implemented（`aizign-cli`） |
+| `HANDLER_TIMEOUT` | 処理が時間boundを超えた。進行中のappendまたはreconciliationの結果は不明。再送しない。uncorrelated watchdog responseから得たcodeはreconciliation clientが診断用`reportedCode`として保持する | implemented（`aizign-cli`） |
 
 ## Workflow
 
@@ -41,15 +41,15 @@ protocol fixtureが入った後は、`spec/protocol/v1/` が wire上のcodeの�
 
 ## Journal
 
-`aizign-engine` の `JournalError::code()`。formatの意味は [spec/journal/v1](../../spec/journal/v1/README.md)。
+`aizign-engine` の `JournalError::code()`。record formatの意味は [spec/journal/v1](../../spec/journal/v1/README.md)、writer-published commit pointの意味は [spec/store/v1](../../spec/store/v1/README.md)。
 
 | Code | 意味 | Status |
 |---|---|---|
-| `JOURNAL_UNAVAILABLE` | journalを開けない（directory / fileの権限、作成失敗）。何もappendされていない | implemented（`aizign-engine`、`aizign-store-jsonl`） |
-| `JOURNAL_CORRUPT` | journalをclosed schemaで読めない（未知field、`null`、欠番、途中で切れたrecord、不正なsignal） | implemented（同上） |
-| `JOURNAL_SCHEMA_UNSUPPORTED` | journal schema versionをこのbinaryが扱えない | implemented（同上） |
-| `JOURNAL_LOCKED` | 別writerがownershipを持っている | implemented（同上） |
-| `JOURNAL_OUTCOME_UNKNOWN` | appendの結果が確定できない（`write` / `fsync` 失敗）。自動再送しない | implemented（同上） |
+| `JOURNAL_UNAVAILABLE` | 必要なstate directory / lock / journal / commit metadataを開けない、または権限・platform contractを満たさない。reconciliationではmissingを`absent`へ縮約しない | implemented（`aizign-engine`、`aizign-store-jsonl`） |
+| `JOURNAL_CORRUPT` | journal recordまたはcommit metadataをclosed schemaで読めない、もしくはpublished byte length / entry count / digestと実fileが一致しない | implemented（同上） |
+| `JOURNAL_SCHEMA_UNSUPPORTED` | journal record schema versionまたはstore metadata versionをこのbinaryが扱えない | implemented（同上） |
+| `JOURNAL_LOCKED` | incompatibleなwriter / reader lockが既に取得されている | implemented（同上） |
+| `JOURNAL_OUTCOME_UNKNOWN` | appendのfile / metadata / directory barrierが確定しない、またはpublished boundaryを越えるtailがある。自動再送・reader側のpromote / repairをしない | implemented（同上） |
 | `JOURNAL_BOUND_EXCEEDED` | cold readのboundを超えた | implemented（同上） |
 
 ## Effect

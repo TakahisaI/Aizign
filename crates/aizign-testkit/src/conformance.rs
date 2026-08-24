@@ -6,8 +6,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Which contract a fixture belongs to: one of the two wire directions, or
-/// the durable journal record format.
+/// Which contract a fixture belongs to: one of the two wire directions, the
+/// durable journal record format, or the store commit document.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Direction {
     /// Frames an adapter sends to `aizign`.
@@ -16,6 +16,8 @@ pub enum Direction {
     Response,
     /// Lines of the durable control journal (`spec/journal/v1`).
     Journal,
+    /// Writer-published committed-prefix metadata (`spec/store/v1`).
+    Store,
 }
 
 impl Direction {
@@ -24,6 +26,7 @@ impl Direction {
             Self::Request => "request",
             Self::Response => "response",
             Self::Journal => "journal",
+            Self::Store => "store",
         }
     }
 }
@@ -47,11 +50,11 @@ pub struct InvalidFixture {
     /// The stable error code the decoder must return.
     pub code: String,
     /// For requests: the `requestId` the decoder must recover (`None` means
-    /// it must not recover one). Always `None` for responses and journal
-    /// records, which carry no correlation data.
+    /// it must not recover one). Always `None` for responses and durable
+    /// formats, which carry no correlation data.
     pub request_id: Option<String>,
     /// For requests: the `kind` the decoder must recover. Always `None` for
-    /// responses and journal records.
+    /// responses, journal records, and store metadata.
     pub kind: Option<String>,
 }
 

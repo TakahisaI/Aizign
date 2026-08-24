@@ -24,7 +24,7 @@
     "capabilities": {
       "type": "array",
       "uniqueItems": true,
-      "description": "Request kinds beyond `hello`. Open for future versions; v1 defines exactly `workflow.signal.submit`. Compatibility is decided by checkCompatibility, not by decoding.",
+      "description": "Request kinds beyond `hello`. Open for future versions; v1 defines `workflow.signal.submit` and `workflow.signal.reconcile`. Compatibility is decided by checkCompatibility, not by decoding.",
       "items": {
         "type": "string",
         "maxLength": 128,

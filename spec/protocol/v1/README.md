@@ -46,13 +46,14 @@ adapter ──(request frame)──▶ aizign handle --state <dir> ──(respon
 |---|---|---|
 | `hello` | `{}` | [`hello.response.schema.json`](schemas/hello.response.schema.json) |
 | `workflow.signal.submit` | [`workflow-signal-submit.request.schema.json`](schemas/workflow-signal-submit.request.schema.json) | [`workflow-signal-submit.response.schema.json`](schemas/workflow-signal-submit.response.schema.json) |
+| `workflow.signal.reconcile` | [`workflow-signal-reconcile.request.schema.json`](schemas/workflow-signal-reconcile.request.schema.json) | [`workflow-signal-reconcile.response.schema.json`](schemas/workflow-signal-reconcile.response.schema.json) |
 
 ### `hello`
 
 versionとcapabilityの事前確認。stateを要求しない。
 
 - `protocolVersion` / `journalSchemaVersion` は `1..=4294967295`
-- capabilityは `^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*$`（128 bytes以下）、重複なし。**一覧はopen**: 未知のcapabilityもdecodeは通り、互換判定（`checkCompatibility`）が拒否を決める。v1が定義するのは `workflow.signal.submit` だけ
+- capabilityは `^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*$`（128 bytes以下）、重複なし。**一覧はopen**: 未知のcapabilityもdecodeは通り、互換判定（`checkCompatibility`）が拒否を決める。v1が定義するのは `workflow.signal.submit` と `workflow.signal.reconcile`
 
 ### `workflow.signal.submit`
 
@@ -66,6 +67,18 @@ structured workflow signalを、shellがbindされている `expected` assignmen
 - 照合順はworkflow → assignment → attempt → role → revision identifier → candidate digest → duplicate / conflict。異なるevent間のrevision-to-digest registryは持たない
 - Protocol v1は未releaseのためADR-0012でin-place更新した。旧shapeは互換受理しない
 
+### `workflow.signal.reconcile`
+
+restart後に、問い合わせたsignalがwriter-published committed snapshotへ存在するかをboundedかつread-onlyに照合する。
+
+- requestはsubmitと同じclosed `signal` DTOをそのまま持つ。`expected` は持たず、含めたrequestは `INVALID_PAYLOAD`
+- successの `disposition` は、同一`eventId`・同一内容なら `accepted`、同一`eventId`・異内容なら `conflict`、eventがなければ `absent`
+- `absent` は既存のstore commit metadataが公開した完全なsnapshotからだけ返す。state directory、lock、journal、commit metadataの欠落は `JOURNAL_UNAVAILABLE` であり、semantic outcomeは `unknown`
+- journalにpublished boundaryを越えるtailがある場合は、完全なJSONL recordに見えても `JOURNAL_OUTCOME_UNKNOWN`。reconciliationはtailをsync、promote、truncate、repairしない
+- response error、transport / decode failure、timeout、abort、相関不一致はTypeScript clientで必ず `unknown`。syntactically validな `error.code` は `reportedCode` として診断用に保持できる
+- clientはerror responseをdecodeして `reportedCode` を保存してから `requestId` / `kind` / `eventId` の相関を検査する。`requestId: null`、`kind: null` のwatchdog responseは `correlation_mismatch` のまま `reportedCode: HANDLER_TIMEOUT`
+- これはcontrol-plane / operator APIであり、model-visible toolや自動retry / 自動reconcileを追加しない
+
 ## Error codes
 
 | Code | いつ |
@@ -77,9 +90,9 @@ structured workflow signalを、shellがbindされている `expected` assignmen
 | `INVALID_PAYLOAD` | payloadの形がkindのschemaに合わない（欠落、型違い、未知field、`null`） |
 | `INVALID_EXPECTATION` | `expected` の値が不正（識別子の文字種・長さ、またはcandidate digestのhex形式） |
 | `INVALID_SIGNAL` ほかworkflow code | `signal` の値や制約、expectationとの不一致、conflict |
-| `JOURNAL_*` | journalを開けない・読めない・書けない。`JOURNAL_OUTCOME_UNKNOWN` は再送しない |
+| `JOURNAL_*` | journalまたはstore commit metadataを開けない・検証できない・書けない。`JOURNAL_OUTCOME_UNKNOWN` は再送せず、reconciliationでもpublished boundaryを越えるtailを確定しない |
 | `CAPABILITY_UNSUPPORTED` | kindは既知だがこのbinaryでは無効（v1では未使用） |
-| `HANDLER_TIMEOUT` | 処理が時間bound（10秒）を超えた。進行中のappendの結果は不明。`requestId` / `kind` は `null` |
+| `HANDLER_TIMEOUT` | 処理が時間bound（10秒）を超えた。進行中のappendまたはreconciliationの結果は不明。`requestId` / `kind` は `null` |
 | `INTERNAL` | 分類不能。詳細はstderr |
 
 登録簿は [docs/reference/error-codes.md](../../../docs/reference/error-codes.md)。

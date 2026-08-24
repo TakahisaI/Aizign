@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 /// Capability advertised when `workflow.signal.submit` is available.
 pub const CAPABILITY_WORKFLOW_SIGNAL_SUBMIT: &str = "workflow.signal.submit";
+/// Capability advertised when `workflow.signal.reconcile` is available.
+pub const CAPABILITY_WORKFLOW_SIGNAL_RECONCILE: &str = "workflow.signal.reconcile";
 
 /// The `hello` response payload. Adapters decide compatibility from
 /// `protocol_version` and `capabilities`, never from `package.version`

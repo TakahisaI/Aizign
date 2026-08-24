@@ -80,7 +80,7 @@ pub fn handle_workflow_signal(
     clock: &impl Clock,
     command: Command,
 ) -> Result<SignalOutcome, HandleError> {
-    let entries = journal.load().map_err(HandleError::Journal)?;
+    let entries = journal.load_committed().map_err(HandleError::Journal)?;
     let state = WorkflowState::replay(entries.iter().map(|entry| &entry.event))
         .map_err(HandleError::Replay)?;
 

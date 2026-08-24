@@ -1,6 +1,6 @@
-//! `workflow.signal.submit`: payload DTOs and their conversion to and from
-//! the core's workflow types. The DTOs are private; only the conversions
-//! and the result type are public.
+//! Shared workflow-signal DTOs for submission and reconciliation, and their
+//! conversion to and from the core's workflow types. DTOs remain private;
+//! only the domain-facing request and result types are public.
 
 use aizign_core::workflow::{
     Command, ExpectedAssignment, Role, SignalKind, SignalParts, WorkflowSignal,
@@ -18,6 +18,12 @@ use crate::error::{ProtocolError, codes};
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct SubmitPayload {
     expected: ExpectedDto,
+    signal: SignalDto,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct ReconcilePayload {
     signal: SignalDto,
 }
 
@@ -185,6 +191,57 @@ fn digest(code: &str, name: &str, dto: &DigestDto) -> Result<Digest, ProtocolErr
     field(code, name, Digest::new(dto.algorithm.into(), &dto.hex))
 }
 
+fn decode_signal(dto: &SignalDto) -> Result<WorkflowSignal, ProtocolError> {
+    let code = "INVALID_SIGNAL";
+    let parts = SignalParts {
+        event_id: field(code, "signal.eventId", EventId::new(&dto.event_id))?,
+        workflow_id: field(code, "signal.workflowId", WorkflowId::new(&dto.workflow_id))?,
+        assignment_id: field(
+            code,
+            "signal.assignmentId",
+            AssignmentId::new(&dto.assignment_id),
+        )?,
+        attempt_id: field(code, "signal.attemptId", AttemptId::new(&dto.attempt_id))?,
+        role: dto.role.into(),
+        artifact_revision: field(
+            code,
+            "signal.artifactRevision",
+            ArtifactRevision::new(&dto.artifact_revision),
+        )?,
+        candidate_digest: digest(code, "signal.candidateDigest", &dto.candidate_digest)?,
+        kind: dto.kind.into(),
+        finding_count: dto.finding_count,
+        artifact_ref: dto
+            .artifact_ref
+            .as_deref()
+            .map(|value| field(code, "signal.artifactRef", ArtifactRef::new(value)))
+            .transpose()?,
+        short_error_code: dto
+            .short_error_code
+            .as_deref()
+            .map(|value| field(code, "signal.shortErrorCode", ShortErrorCode::new(value)))
+            .transpose()?,
+    };
+    WorkflowSignal::validate(parts).map_err(ProtocolError::from)
+}
+
+fn encode_signal(signal: &WorkflowSignal) -> SignalDto {
+    let parts = signal.parts();
+    SignalDto {
+        event_id: parts.event_id.to_string(),
+        workflow_id: parts.workflow_id.to_string(),
+        assignment_id: parts.assignment_id.to_string(),
+        attempt_id: parts.attempt_id.to_string(),
+        role: parts.role.into(),
+        artifact_revision: parts.artifact_revision.to_string(),
+        candidate_digest: (&parts.candidate_digest).into(),
+        kind: parts.kind.into(),
+        finding_count: parts.finding_count,
+        artifact_ref: parts.artifact_ref.as_ref().map(ToString::to_string),
+        short_error_code: parts.short_error_code.as_ref().map(ToString::to_string),
+    }
+}
+
 /// Decodes a `workflow.signal.submit` payload into a core command.
 ///
 /// Shape problems are `INVALID_PAYLOAD`; well-shaped but invalid
@@ -224,45 +281,13 @@ pub(crate) fn decode_submit(payload: serde_json::Value) -> Result<Command, Proto
         )?,
     };
 
-    let s = "INVALID_SIGNAL";
-    let dto = payload.signal;
-    let parts = SignalParts {
-        event_id: field(s, "signal.eventId", EventId::new(&dto.event_id))?,
-        workflow_id: field(s, "signal.workflowId", WorkflowId::new(&dto.workflow_id))?,
-        assignment_id: field(
-            s,
-            "signal.assignmentId",
-            AssignmentId::new(&dto.assignment_id),
-        )?,
-        attempt_id: field(s, "signal.attemptId", AttemptId::new(&dto.attempt_id))?,
-        role: dto.role.into(),
-        artifact_revision: field(
-            s,
-            "signal.artifactRevision",
-            ArtifactRevision::new(&dto.artifact_revision),
-        )?,
-        candidate_digest: digest(s, "signal.candidateDigest", &dto.candidate_digest)?,
-        kind: dto.kind.into(),
-        finding_count: dto.finding_count,
-        artifact_ref: dto
-            .artifact_ref
-            .as_deref()
-            .map(|value| field(s, "signal.artifactRef", ArtifactRef::new(value)))
-            .transpose()?,
-        short_error_code: dto
-            .short_error_code
-            .as_deref()
-            .map(|value| field(s, "signal.shortErrorCode", ShortErrorCode::new(value)))
-            .transpose()?,
-    };
-    let signal = WorkflowSignal::validate(parts)?;
+    let signal = decode_signal(&payload.signal)?;
     Ok(Command::SubmitSignal { signal, expected })
 }
 
 /// Encodes a core command as a `workflow.signal.submit` payload.
 pub(crate) fn encode_submit(command: &Command) -> serde_json::Value {
     let Command::SubmitSignal { signal, expected } = command;
-    let parts = signal.parts();
     let payload = SubmitPayload {
         expected: ExpectedDto {
             workflow_id: expected.workflow_id.to_string(),
@@ -272,21 +297,26 @@ pub(crate) fn encode_submit(command: &Command) -> serde_json::Value {
             artifact_revision: expected.artifact_revision.to_string(),
             candidate_digest: (&expected.candidate_digest).into(),
         },
-        signal: SignalDto {
-            event_id: parts.event_id.to_string(),
-            workflow_id: parts.workflow_id.to_string(),
-            assignment_id: parts.assignment_id.to_string(),
-            attempt_id: parts.attempt_id.to_string(),
-            role: parts.role.into(),
-            artifact_revision: parts.artifact_revision.to_string(),
-            candidate_digest: (&parts.candidate_digest).into(),
-            kind: parts.kind.into(),
-            finding_count: parts.finding_count,
-            artifact_ref: parts.artifact_ref.as_ref().map(ToString::to_string),
-            short_error_code: parts.short_error_code.as_ref().map(ToString::to_string),
-        },
+        signal: encode_signal(signal),
     };
     serde_json::to_value(payload).expect("DTOs serialize without error")
+}
+
+/// Decodes a `workflow.signal.reconcile` payload.
+pub(crate) fn decode_reconcile(
+    payload: serde_json::Value,
+) -> Result<WorkflowSignal, ProtocolError> {
+    let payload: ReconcilePayload = serde_json::from_value(payload)
+        .map_err(|error| ProtocolError::new(codes::INVALID_PAYLOAD, error.to_string()))?;
+    decode_signal(&payload.signal)
+}
+
+/// Encodes a `workflow.signal.reconcile` payload.
+pub(crate) fn encode_reconcile(signal: &WorkflowSignal) -> serde_json::Value {
+    serde_json::to_value(ReconcilePayload {
+        signal: encode_signal(signal),
+    })
+    .expect("DTOs serialize without error")
 }
 
 /// How an accepted submission was classified. Rejections travel as errors.
@@ -308,10 +338,38 @@ pub struct SignalResult {
     pub event_id: EventId,
 }
 
+/// How a committed snapshot classifies a reconciled signal.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReconciliationDisposition {
+    /// Exact event identity and content are committed.
+    Accepted,
+    /// The event identity is committed with different content.
+    Conflict,
+    /// The completed committed snapshot has no such event identity.
+    Absent,
+}
+
+/// The `workflow.signal.reconcile` success payload.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReconciliationResult {
+    /// Snapshot classification.
+    pub disposition: ReconciliationDisposition,
+    /// Queried event identity, echoed for correlation.
+    pub event_id: EventId,
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct SignalResultDto {
     disposition: Disposition,
+    event_id: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct ReconciliationResultDto {
+    disposition: ReconciliationDisposition,
     event_id: String,
 }
 
@@ -330,6 +388,29 @@ pub(crate) fn decode_result(payload: serde_json::Value) -> Result<SignalResult, 
 
 pub(crate) fn encode_result(result: &SignalResult) -> serde_json::Value {
     serde_json::to_value(SignalResultDto {
+        disposition: result.disposition,
+        event_id: result.event_id.to_string(),
+    })
+    .expect("DTOs serialize without error")
+}
+
+pub(crate) fn decode_reconciliation_result(
+    payload: serde_json::Value,
+) -> Result<ReconciliationResult, ProtocolError> {
+    let dto: ReconciliationResultDto = serde_json::from_value(payload)
+        .map_err(|error| ProtocolError::new(codes::INVALID_PAYLOAD, error.to_string()))?;
+    Ok(ReconciliationResult {
+        disposition: dto.disposition,
+        event_id: field(
+            codes::INVALID_PAYLOAD,
+            "eventId",
+            EventId::new(&dto.event_id),
+        )?,
+    })
+}
+
+pub(crate) fn encode_reconciliation_result(result: &ReconciliationResult) -> serde_json::Value {
+    serde_json::to_value(ReconciliationResultDto {
         disposition: result.disposition,
         event_id: result.event_id.to_string(),
     })
@@ -409,5 +490,37 @@ mod tests {
             json!({"disposition": "duplicate", "eventId": "evt-1"})
         );
         assert_eq!(decode_result(encoded).unwrap(), result);
+    }
+
+    #[test]
+    fn reconciliation_reuses_the_signal_shape_without_expected() {
+        let submit = decode_submit(base()).unwrap();
+        let Command::SubmitSignal { signal, .. } = submit;
+        let payload = encode_reconcile(&signal);
+        assert_eq!(payload, json!({"signal": base()["signal"]}));
+        assert_eq!(decode_reconcile(payload).unwrap(), signal);
+
+        let mut invalid = json!({"signal": base()["signal"]});
+        invalid["signal"]["workflowId"] = json!("bad id");
+        assert_eq!(
+            decode_reconcile(invalid).unwrap_err().code().as_str(),
+            "INVALID_SIGNAL"
+        );
+    }
+
+    #[test]
+    fn reconciliation_result_round_trips_each_disposition() {
+        for disposition in [
+            ReconciliationDisposition::Accepted,
+            ReconciliationDisposition::Conflict,
+            ReconciliationDisposition::Absent,
+        ] {
+            let result = ReconciliationResult {
+                disposition,
+                event_id: EventId::new("evt-1").unwrap(),
+            };
+            let encoded = encode_reconciliation_result(&result);
+            assert_eq!(decode_reconciliation_result(encoded).unwrap(), result);
+        }
     }
 }

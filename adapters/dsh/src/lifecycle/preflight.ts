@@ -4,6 +4,7 @@
  */
 
 import {
+  CAPABILITY_WORKFLOW_SIGNAL_RECONCILE,
   CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
   type CoreClient,
   checkCompatibility,
@@ -15,7 +16,7 @@ import { adapterCodes } from '../mapping/tool.ts';
 
 export const REQUIRED = {
   protocolVersion: PROTOCOL_VERSION,
-  capabilities: [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT],
+  capabilities: [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT, CAPABILITY_WORKFLOW_SIGNAL_RECONCILE],
 } as const;
 
 /** Resolves with the binary's `hello` info or throws a harness error. */

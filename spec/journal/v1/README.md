@@ -5,8 +5,12 @@ control journalのdurable format。**metadata-only、append-only**（ADR-0007）
 ```text
 <state dir>/            owner-only（0700）
 ├── workflow.jsonl      1行 = 1 record。owner-only（0600）
-└── workflow.lock       writer ownershipのadvisory lock。owner-only（0600）
+├── workflow.lock       writer ownershipのadvisory lock。owner-only（0600）
+└── workflow.commit.json writerが公開したcommitted prefix。owner-only（0600）
 ```
+
+`workflow.commit.json` はjournal recordではなく、独立したstore metadata v1である。
+closed schemaとcommit-point規則の正本は [`../../store/v1/`](../../store/v1/README.md)。
 
 ## Record
 
@@ -28,9 +32,12 @@ control journalのdurable format。**metadata-only、append-only**（ADR-0007）
 - optional fieldは省略する。`null` は `JOURNAL_CORRUPT`
 - 本文、credential、harness ID（`prompt`、`output`、`reasoning`、`token`、`sessionId`、`threadId` など）にあたるfieldは存在しない。record schemaがclosedなので、そのようなfieldを持つrecordは読み込めない
 
-## 読み取りの規則（bounded cold read）
+## 読み取りの規則（bounded committed cold read）
 
-- fileは改行で終わる。最後のrecordが途中で切れていれば `JOURNAL_CORRUPT`（黙って捨てない。直前のappendの結果は `unknown` だったことを意味する）
+- readerは既存のstate directory、lock、journal、commit metadataだけをread-onlyで開き、shared non-blocking lockを取得する。欠落はempty stateではなく `JOURNAL_UNAVAILABLE`
+- commit metadataが示すbyte prefixだけがauthoritative。physical fileがprefixより長ければ、完全なrecordに見えても未公開tailなので `JOURNAL_OUTCOME_UNKNOWN`。readerはsync、promote、truncate、repairしない
+- committed prefixは改行で終わる。最後のrecordが途中で切れていれば `JOURNAL_CORRUPT`（黙って捨てない）
+- committed byte length、entry count、SHA-256 digestが実fileと一致しなければ `JOURNAL_CORRUPT`
 - `schemaVersion` が違えば `JOURNAL_SCHEMA_UNSUPPORTED`
 - record数が `10000` を超えれば `JOURNAL_BOUND_EXCEEDED`
 - `signal` はcoreの検証（kind / role、`findingCount` などの制約）を通らなければ `JOURNAL_CORRUPT`
@@ -40,10 +47,14 @@ control journalのdurable format。**metadata-only、append-only**（ADR-0007）
 ## 書き込みの規則
 
 - `seq` は直前のrecord + 1。**10000件に達した後のappendは書き込まず `JOURNAL_BOUND_EXCEEDED`**。fileを変えず、acceptedにもしない（成功を返した直後に次回cold readが読めないjournalを作らないため）。encoder（`encode_record`）もrange外の `seq` を生成できない
-- 1行を `write` し `fsync` して初めてdurable。`write` または `fsync` が失敗したら `JOURNAL_OUTCOME_UNKNOWN`。再送しない
-- lockを取れなければ `JOURNAL_LOCKED`
+- writerはexclusive non-blocking lockを取得し、既存のpublished prefixとphysical fileが完全一致する場合だけappendする。未公開tailを見つけたらappendもpromoteもせず `JOURNAL_OUTCOME_UNKNOWN`
+- 1行を `write_all` し、journal fileの `sync_all` が成功した後にだけ、新しいcommit metadataをowner-only temporary file → `sync_all` → atomic replace → state directory barrierの順で公開する
+- journal write開始後のfile barrier、metadata publish、directory barrierの失敗は `JOURNAL_OUTCOME_UNKNOWN`。再送しない。旧commit pointが残れば追加bytesはunpublished tailとして扱う
+- fresh storeはstate directory、lock、journal、初期commit metadataと必要なdirectory entryをwriter側でdurableに初期化してからempty snapshotを公開する。readerは初期化を完了しない
+- incompatible lockを取れなければ `JOURNAL_LOCKED`
 
 ## Files
 
 - `schemas/record.schema.json` — JSON Schema draft 2020-12
 - `examples/workflow.jsonl` — 3 recordの例
+- `../../store/v1/` — commit metadataとstore-layout version

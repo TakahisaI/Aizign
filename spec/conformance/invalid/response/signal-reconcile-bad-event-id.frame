@@ -1,0 +1,1 @@
+{"protocol":"aizign","version":1,"requestId":"req-reconcile","kind":"workflow.signal.reconcile","ok":true,"payload":{"disposition":"accepted","eventId":"bad id"}}

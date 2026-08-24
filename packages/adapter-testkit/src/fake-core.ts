@@ -12,11 +12,12 @@
  * - `journal-unknown`   record the signal, then report JOURNAL_OUTCOME_UNKNOWN
  * - `exit-2`            usage-style failure without a frame
  * - `wrong-request-id`  answer with another request id
- * - `wrong-kind`        answer a submit with a hello body
- * - `wrong-event-id`    answer a submit with another event id
+ * - `wrong-kind`        answer a signal request with a hello body
+ * - `wrong-event-id`    answer a signal request with another event id
  * - `oversized`         answer with a frame above the bound
  * - `two-frames`        answer twice
  * - `trailing-garbage`  answer, then keep talking
+ * - `handler-timeout`   report HANDLER_TIMEOUT without correlation ids
  *
  * `AIZIGN_FAKE_HELLO_PROTOCOL_VERSION` overrides the advertised protocol
  * version, for compatibility-check tests.
@@ -25,6 +26,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  CAPABILITY_WORKFLOW_SIGNAL_RECONCILE,
   CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
   codes,
   DecodeFailure,
@@ -46,7 +48,7 @@ const REQUEST_LOG = 'fake-requests.jsonl';
 const helloInfo: HelloInfo = {
   protocolVersion: Number(process.env.AIZIGN_FAKE_HELLO_PROTOCOL_VERSION ?? PROTOCOL_VERSION),
   journalSchemaVersion: 1,
-  capabilities: [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT],
+  capabilities: [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT, CAPABILITY_WORKFLOW_SIGNAL_RECONCILE],
   package: { name: 'aizign-fake', version: '0.0.0' },
 };
 
@@ -143,6 +145,24 @@ function handleSubmit(
   };
 }
 
+function handleReconcile(
+  stateDir: string,
+  request: Extract<Request, { kind: 'workflow.signal.reconcile' }>,
+): Response {
+  const { signal } = request.payload;
+  const existing = loadState(stateDir).find((candidate) => candidate.eventId === signal.eventId);
+  const disposition =
+    existing === undefined ? 'absent' : sameSignal(existing, signal) ? 'accepted' : 'conflict';
+  return {
+    requestId: request.requestId,
+    kind: request.kind,
+    body: {
+      type: 'workflow.signal.reconciliation',
+      result: { disposition, eventId: signal.eventId },
+    },
+  };
+}
+
 async function main(argv: readonly string[]): Promise<number> {
   const fault = process.env.AIZIGN_FAKE_FAULT;
   if (fault === 'exit-2') return 2;
@@ -190,8 +210,14 @@ async function main(argv: readonly string[]): Promise<number> {
     });
     return 0;
   }
-  const response = handleSubmit(stateDir, request);
+  const response =
+    request.kind === 'workflow.signal.submit'
+      ? handleSubmit(stateDir, request)
+      : handleReconcile(stateDir, request);
   switch (fault) {
+    case 'handler-timeout':
+      write(errorResponse(null, null, codes.HANDLER_TIMEOUT, 'processing exceeded its bound'));
+      return 0;
     case 'wrong-request-id':
       write({ ...response, requestId: 'req-someone-else' });
       return 0;
@@ -206,10 +232,16 @@ async function main(argv: readonly string[]): Promise<number> {
       write({
         requestId: request.requestId,
         kind: request.kind,
-        body: {
-          type: 'workflow.signal',
-          result: { disposition: 'accepted', eventId: 'evt-someone-else' },
-        },
+        body:
+          request.kind === 'workflow.signal.submit'
+            ? {
+                type: 'workflow.signal',
+                result: { disposition: 'accepted', eventId: 'evt-someone-else' },
+              }
+            : {
+                type: 'workflow.signal.reconciliation',
+                result: { disposition: 'accepted', eventId: 'evt-someone-else' },
+              },
       });
       return 0;
     case 'oversized':

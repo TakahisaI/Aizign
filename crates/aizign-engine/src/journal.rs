@@ -25,20 +25,21 @@ pub struct JournalEntry {
 /// blindly (hard invariant 3).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum JournalError {
-    /// The store cannot be opened or used at all (missing directory, wrong
-    /// permissions, unwritable file). Nothing was appended.
+    /// The store cannot be opened or used at all (missing artifact, wrong
+    /// permissions, unsupported platform, or I/O failure before append).
     Unavailable {
         /// What went wrong, without file contents.
         detail: String,
     },
-    /// Another writer owns the journal.
+    /// Another process holds an incompatible journal lock.
     Locked,
-    /// The journal's schema version is not one this engine reads.
+    /// A journal-record or store-metadata schema version is unsupported.
     SchemaUnsupported {
-        /// The version found in the journal.
+        /// The unsupported version found at the storage boundary.
         found: u64,
     },
-    /// The journal contents are inconsistent with the closed schema.
+    /// Journal contents or store metadata are inconsistent with their
+    /// closed schemas and published commit point.
     Corrupt {
         /// What is wrong, without record contents.
         detail: String,
@@ -48,8 +49,8 @@ pub enum JournalError {
         /// The bound that was exceeded.
         max: usize,
     },
-    /// An append may or may not have become durable. The caller must treat
-    /// the effect as unknown, not retry it.
+    /// An append may or may not have reached the published commit point, or
+    /// an unpublished tail was observed. Treat it as unknown, not retryable.
     OutcomeUnknown {
         /// What was observed, without record contents.
         detail: String,
@@ -75,9 +76,9 @@ impl fmt::Display for JournalError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unavailable { detail } => write!(f, "journal unavailable: {detail}"),
-            Self::Locked => f.write_str("journal is owned by another writer"),
+            Self::Locked => f.write_str("journal is locked by another process"),
             Self::SchemaUnsupported { found } => {
-                write!(f, "journal schema version {found} is not supported")
+                write!(f, "journal/store schema version {found} is not supported")
             }
             Self::Corrupt { detail } => write!(f, "journal is corrupt: {detail}"),
             Self::BoundExceeded { max } => {
@@ -90,15 +91,22 @@ impl fmt::Display for JournalError {
 
 impl core::error::Error for JournalError {}
 
-/// The control journal as the engine sees it.
+/// Read-only access to a writer-published committed journal snapshot.
+pub trait JournalReader {
+    /// Bounded cold read of every committed entry.
+    ///
+    /// Implementations must not initialize, write, synchronize, repair, or
+    /// promote journal state while serving this operation.
+    fn load_committed(&mut self) -> Result<Vec<JournalEntry>, JournalError>;
+}
+
+/// The append-capable control journal as the engine sees it.
 ///
 /// Implementations must be append-only and metadata-only (ADR-0007):
-/// `append` returns `Ok` only once the entry is durable, and `load` returns
-/// entries in append order with contiguous `seq` values starting at 1.
-pub trait Journal {
-    /// Bounded cold read of every entry.
-    fn load(&mut self) -> Result<Vec<JournalEntry>, JournalError>;
-
+/// `append` returns `Ok` only once the entry is durable, and
+/// [`JournalReader::load_committed`] returns entries in append order with
+/// contiguous `seq` values starting at 1.
+pub trait Journal: JournalReader {
     /// Durably appends one event, stamped with the shell-supplied time.
     fn append(
         &mut self,

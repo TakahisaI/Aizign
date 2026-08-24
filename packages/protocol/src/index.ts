@@ -2,8 +2,8 @@
  * `@aizign/protocol` — Aizign Protocol v1 for TypeScript.
  *
  * Closed NDJSON envelope codec, the `hello` compatibility check, the
- * `workflow.signal.submit` payload types, and the `CoreClient` contract that
- * every harness adapter implements. Pure: no process, no filesystem.
+ * workflow signal submit/reconciliation payload types, and the `CoreClient`
+ * contract that every harness adapter implements. Pure: no process, no filesystem.
  */
 
 export {
@@ -14,6 +14,8 @@ export {
   checkCorrelation,
   type HelloOutcome,
   isUnknownOutcomeCode,
+  type ReconcileOutcome,
+  type ReconcileUnknown,
   type SentRequest,
   type SubmitOutcome,
   UNKNOWN_OUTCOME_CODES,
@@ -28,6 +30,7 @@ export {
   extractFrame,
   type FrameExtraction,
   KIND_HELLO,
+  KIND_WORKFLOW_SIGNAL_RECONCILE,
   KIND_WORKFLOW_SIGNAL_SUBMIT,
   MAX_FRAME_BYTES,
   MAX_REQUEST_BYTES,
@@ -39,6 +42,7 @@ export {
 } from './envelope.ts';
 export { codes, isShortErrorCode, ProtocolError, SHORT_ERROR_CODE_PATTERN } from './error.ts';
 export {
+  CAPABILITY_WORKFLOW_SIGNAL_RECONCILE,
   CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
   checkCompatibility,
   decodeHelloInfo,
@@ -50,15 +54,22 @@ export { IDENTIFIER_PATTERN, isIdentifier } from './shape.ts';
 export {
   type ContentDigest,
   type Disposition,
+  decodeReconciliationResult,
   decodeSignalResult,
+  decodeWorkflowSignalReconcile,
   decodeWorkflowSignalSubmit,
   type ExpectedAssignment,
+  encodeWorkflowSignal,
+  encodeWorkflowSignalReconcile,
   encodeWorkflowSignalSubmit,
+  type ReconciliationDisposition,
+  type ReconciliationResult,
   ROLES,
   type Role,
   SIGNAL_KINDS,
   type SignalKind,
   type SignalResult,
   type WorkflowSignal,
+  type WorkflowSignalReconcilePayload,
   type WorkflowSignalSubmitPayload,
 } from './workflow-signal.ts';

@@ -37,11 +37,14 @@ src/
 │   ├── state.rs     WorkflowState（BTreeMap）、apply / replay
 │   ├── decision.rs  decide(state, command) -> Decision
 │   └── error.rs     WorkflowError（short error code付き）、InvalidSignal
-└── ...              execution / evidence / workspace / authorization / integration / recovery / usage は後続
+├── recovery/
+│   └── mod.rs       replay済みstateとfull signalのpureなaccepted / conflict / absent分類
+└── ...              execution / evidence / workspace / authorization / integration / usage は後続
 ```
 
 ```text
-tests/workflow_signal.rs   cross-module: accepted / duplicate / conflict / mismatch順 / replay
+tests/workflow_signal.rs    cross-module: accepted / duplicate / conflict / mismatch順 / replay
+tests/workflow_recovery.rs  exact content / conflict / absentのpure reconciliation
 ```
 
 ## Workflow contextの契約
@@ -52,6 +55,12 @@ tests/workflow_signal.rs   cross-module: accepted / duplicate / conflict / misma
 - `WorkflowState::apply` / `replay` は同一 `event_id` の再適用を `ApplyError::DuplicateEvent` にする。journalの不整合をshellが黙って吸収しないため
 - expectationはworkflow → assignment → attempt → role → revision identifier → candidate digestの順で照合する
 - candidate pairはcommandとaccepted event contentへbindする。stateは異なるevent間のrevision-to-digest registryを持たない
+
+## Recovery contextの契約
+
+- `reconcile_workflow_signal(state, signal)` はreplay済みstateを変更せず、同一`eventId`の保存済みsignalとoptional fieldを含むexact contentを比較する
+- exact matchは`Accepted`、同一IDで内容差は`Conflict`、IDが存在しなければ`Absent`
+- durability、I/O failure、storage missingはcoreの語彙に含めず、engine / storeがcoreを呼ぶ前に処理する
 
 ## 依存規則の検査
 

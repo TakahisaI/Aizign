@@ -2,8 +2,8 @@
 //! `spec/conformance`.
 //!
 //! Fixtures are shared by the Rust and TypeScript implementations of the
-//! protocol and by the journal store, so this command only checks what is
-//! true regardless of language: the directory layout, that every invalid
+//! protocol and by the journal / commit-metadata store, so this command only
+//! checks what is true regardless of language: the directory layout, that every invalid
 //! frame has an expectation file with a well-formed code and a schema
 //! classification, and that valid frames are JSON. Running the frames
 //! through the actual decoders is the job of the protocol crates and
@@ -17,9 +17,9 @@ use std::path::{Path, PathBuf};
 use crate::report::{self, Findings};
 
 const FIXTURE_ROOT: &str = "spec/conformance";
-/// The wire directions plus the durable journal record format; each has its
-/// own decoder and its own JSON Schema, and the fixtures keep them aligned.
-const DIRECTIONS: [&str; 3] = ["request", "response", "journal"];
+/// The wire directions plus both durable-format documents; each has its own
+/// decoder and JSON Schema, and the fixtures keep them aligned.
+const DIRECTIONS: [&str; 4] = ["request", "response", "journal", "store"];
 
 pub(crate) fn run(root: &Path) -> Result<(), String> {
     report::stage("conformance fixtures");

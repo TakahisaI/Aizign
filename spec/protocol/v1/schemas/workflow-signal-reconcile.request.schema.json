@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aizign.dev/spec/protocol/v1/workflow-signal-reconcile.request.schema.json",
+  "title": "workflow.signal.reconcile request payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["signal"],
+  "properties": {
+    "signal": { "$ref": "workflow-signal.schema.json" }
+  }
+}

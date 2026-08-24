@@ -7,45 +7,23 @@
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
     },
-    "artifactRef": {
-      "type": "string",
-      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
-    },
-    "shortErrorCode": {
-      "type": "string",
-      "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
-    },
     "digest": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "algorithm",
-        "hex"
-      ],
+      "required": ["algorithm", "hex"],
       "properties": {
-        "algorithm": {
-          "const": "sha256"
-        },
-        "hex": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
-        }
+        "algorithm": { "const": "sha256" },
+        "hex": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       }
     },
     "role": {
       "type": "string",
-      "enum": [
-        "implementation",
-        "review"
-      ]
+      "enum": ["implementation", "review"]
     }
   },
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "expected",
-    "signal"
-  ],
+  "required": ["expected", "signal"],
   "properties": {
     "expected": {
       "type": "object",
@@ -59,242 +37,14 @@
         "candidateDigest"
       ],
       "properties": {
-        "workflowId": {
-          "$ref": "#/$defs/identifier"
-        },
-        "assignmentId": {
-          "$ref": "#/$defs/identifier"
-        },
-        "attemptId": {
-          "$ref": "#/$defs/identifier"
-        },
-        "role": {
-          "$ref": "#/$defs/role"
-        },
-        "artifactRevision": {
-          "$ref": "#/$defs/identifier"
-        },
-        "candidateDigest": {
-          "$ref": "#/$defs/digest"
-        }
+        "workflowId": { "$ref": "#/$defs/identifier" },
+        "assignmentId": { "$ref": "#/$defs/identifier" },
+        "attemptId": { "$ref": "#/$defs/identifier" },
+        "role": { "$ref": "#/$defs/role" },
+        "artifactRevision": { "$ref": "#/$defs/identifier" },
+        "candidateDigest": { "$ref": "#/$defs/digest" }
       }
     },
-    "signal": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "eventId",
-        "workflowId",
-        "assignmentId",
-        "attemptId",
-        "role",
-        "artifactRevision",
-        "candidateDigest",
-        "kind"
-      ],
-      "properties": {
-        "eventId": {
-          "$ref": "#/$defs/identifier"
-        },
-        "workflowId": {
-          "$ref": "#/$defs/identifier"
-        },
-        "assignmentId": {
-          "$ref": "#/$defs/identifier"
-        },
-        "attemptId": {
-          "$ref": "#/$defs/identifier"
-        },
-        "role": {
-          "$ref": "#/$defs/role"
-        },
-        "artifactRevision": {
-          "$ref": "#/$defs/identifier"
-        },
-        "candidateDigest": {
-          "$ref": "#/$defs/digest"
-        },
-        "kind": {
-          "type": "string",
-          "enum": [
-            "implementation_ready",
-            "review_findings",
-            "review_passed",
-            "repair_submitted",
-            "blocked"
-          ]
-        },
-        "findingCount": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 4294967295
-        },
-        "artifactRef": {
-          "$ref": "#/$defs/artifactRef"
-        },
-        "shortErrorCode": {
-          "$ref": "#/$defs/shortErrorCode"
-        }
-      },
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "kind": {
-                "const": "implementation_ready"
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "role": {
-                "const": "implementation"
-              }
-            },
-            "not": {
-              "anyOf": [
-                {
-                  "required": [
-                    "findingCount"
-                  ]
-                },
-                {
-                  "required": [
-                    "artifactRef"
-                  ]
-                },
-                {
-                  "required": [
-                    "shortErrorCode"
-                  ]
-                }
-              ]
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "kind": {
-                "const": "review_findings"
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "role": {
-                "const": "review"
-              },
-              "findingCount": {
-                "type": "integer",
-                "minimum": 1
-              }
-            },
-            "required": [
-              "findingCount"
-            ],
-            "not": {
-              "required": [
-                "shortErrorCode"
-              ]
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "kind": {
-                "const": "review_passed"
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "role": {
-                "const": "review"
-              },
-              "findingCount": {
-                "type": "integer",
-                "const": 0
-              }
-            },
-            "required": [
-              "findingCount"
-            ],
-            "not": {
-              "anyOf": [
-                {
-                  "required": [
-                    "artifactRef"
-                  ]
-                },
-                {
-                  "required": [
-                    "shortErrorCode"
-                  ]
-                }
-              ]
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "kind": {
-                "const": "repair_submitted"
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "role": {
-                "const": "implementation"
-              },
-              "findingCount": {
-                "type": "integer",
-                "minimum": 1
-              }
-            },
-            "required": [
-              "findingCount",
-              "artifactRef"
-            ],
-            "not": {
-              "required": [
-                "shortErrorCode"
-              ]
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "kind": {
-                "const": "blocked"
-              }
-            }
-          },
-          "then": {
-            "required": [
-              "shortErrorCode"
-            ],
-            "not": {
-              "anyOf": [
-                {
-                  "required": [
-                    "findingCount"
-                  ]
-                },
-                {
-                  "required": [
-                    "artifactRef"
-                  ]
-                }
-              ]
-            }
-          }
-        }
-      ]
-    }
+    "signal": { "$ref": "workflow-signal.schema.json" }
   }
 }

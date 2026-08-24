@@ -7,7 +7,12 @@
 
 import type { Response } from './envelope.ts';
 import type { HelloInfo } from './hello.ts';
-import type { SignalResult, WorkflowSignalSubmitPayload } from './workflow-signal.ts';
+import type {
+  ReconciliationResult,
+  SignalResult,
+  WorkflowSignalReconcilePayload,
+  WorkflowSignalSubmitPayload,
+} from './workflow-signal.ts';
 
 /** How to reach the `aizign` binary. */
 export interface CoreClientConfig {
@@ -57,11 +62,16 @@ export interface UnknownOutcome {
   readonly detail: string;
 }
 
+/** An indeterminate reconciliation, with any valid reported code retained diagnostically. */
+export interface ReconcileUnknown extends UnknownOutcome {
+  readonly reportedCode?: string;
+}
+
 /** What a client sent, for correlating the response against it. */
 export interface SentRequest {
   readonly requestId: string;
   readonly kind: string;
-  /** For `workflow.signal.submit`: the submitted signal's event id. */
+  /** For workflow signal submit/reconcile: the queried signal's event id. */
   readonly eventId?: string;
 }
 
@@ -87,7 +97,11 @@ export function checkCorrelation(
   if (response.kind !== sent.kind) {
     return { field: 'kind', expected: sent.kind, actual: response.kind };
   }
-  if (sent.eventId !== undefined && response.body.type === 'workflow.signal') {
+  if (
+    sent.eventId !== undefined &&
+    (response.body.type === 'workflow.signal' ||
+      response.body.type === 'workflow.signal.reconciliation')
+  ) {
     const actual = response.body.result.eventId;
     if (actual !== sent.eventId) return { field: 'eventId', expected: sent.eventId, actual };
   }
@@ -110,6 +124,13 @@ export type SubmitOutcome =
   | { readonly kind: 'rejected'; readonly code: string; readonly message: string }
   | UnknownOutcome;
 
+export type ReconcileOutcome =
+  | {
+      readonly kind: ReconciliationResult['disposition'];
+      readonly eventId: string;
+    }
+  | ReconcileUnknown;
+
 /** One-shot request/response against the core. */
 export interface CoreClient {
   hello(requestId: string, options?: CallOptions): Promise<HelloOutcome>;
@@ -118,6 +139,17 @@ export interface CoreClient {
     payload: WorkflowSignalSubmitPayload,
     options?: CallOptions,
   ): Promise<SubmitOutcome>;
+  reconcileWorkflowSignal(
+    requestId: string,
+    payload: WorkflowSignalReconcilePayload,
+    options?: CallOptions,
+  ): Promise<ReconcileOutcome>;
 }
 
-export type { HelloInfo, SignalResult, WorkflowSignalSubmitPayload };
+export type {
+  HelloInfo,
+  ReconciliationResult,
+  SignalResult,
+  WorkflowSignalReconcilePayload,
+  WorkflowSignalSubmitPayload,
+};

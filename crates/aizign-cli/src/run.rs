@@ -7,13 +7,18 @@ use std::sync::mpsc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use aizign_core::BoundedTimestamp;
-use aizign_engine::{Clock, ClockError, HandleError, SignalOutcome, handle_workflow_signal};
-use aizign_protocol::{
-    CAPABILITY_WORKFLOW_SIGNAL_SUBMIT, Disposition, HelloInfo, MAX_REQUEST_BYTES, PROTOCOL_VERSION,
-    PackageInfo, ProtocolError, Request, RequestKind, Response, ResponseBody, SignalResult, codes,
-    decode_request, encode_response,
+use aizign_core::recovery::SignalReconciliation;
+use aizign_engine::{
+    Clock, ClockError, HandleError, ReconcileError, SignalOutcome, handle_workflow_signal,
+    reconcile_workflow_signal,
 };
-use aizign_store_jsonl::{JOURNAL_SCHEMA_VERSION, JsonlJournal};
+use aizign_protocol::{
+    CAPABILITY_WORKFLOW_SIGNAL_RECONCILE, CAPABILITY_WORKFLOW_SIGNAL_SUBMIT, Disposition,
+    HelloInfo, MAX_REQUEST_BYTES, PROTOCOL_VERSION, PackageInfo, ProtocolError,
+    ReconciliationDisposition, ReconciliationResult, Request, RequestKind, Response, ResponseBody,
+    SignalResult, codes, decode_request, encode_response,
+};
+use aizign_store_jsonl::{JOURNAL_SCHEMA_VERSION, JsonlJournal, JsonlJournalReader};
 
 use crate::exit;
 
@@ -49,7 +54,10 @@ fn hello_info() -> HelloInfo {
     HelloInfo {
         protocol_version: PROTOCOL_VERSION,
         journal_schema_version: u32::try_from(JOURNAL_SCHEMA_VERSION).unwrap_or(u32::MAX),
-        capabilities: vec![CAPABILITY_WORKFLOW_SIGNAL_SUBMIT.to_owned()],
+        capabilities: vec![
+            CAPABILITY_WORKFLOW_SIGNAL_SUBMIT.to_owned(),
+            CAPABILITY_WORKFLOW_SIGNAL_RECONCILE.to_owned(),
+        ],
         package: PackageInfo {
             name: env!("CARGO_PKG_NAME").trim_end_matches("-cli").to_owned(),
             version: env!("CARGO_PKG_VERSION").to_owned(),
@@ -200,12 +208,34 @@ fn respond(frame: &[u8], state: &Path) -> Response {
                 Err(error) => ResponseBody::Error(handle_error(&error)),
             },
         },
+        RequestKind::ReconcileWorkflowSignal(signal) => match JsonlJournalReader::open(state) {
+            Err(error) => ResponseBody::Error(ProtocolError::new(error.code(), error.to_string())),
+            Ok(mut journal) => match reconcile_workflow_signal(&mut journal, &signal) {
+                Ok(disposition) => {
+                    let disposition = match disposition {
+                        SignalReconciliation::Accepted => ReconciliationDisposition::Accepted,
+                        SignalReconciliation::Conflict => ReconciliationDisposition::Conflict,
+                        SignalReconciliation::Absent => ReconciliationDisposition::Absent,
+                    };
+                    ResponseBody::WorkflowSignalReconciliation(ReconciliationResult {
+                        disposition,
+                        event_id: signal.event_id().clone(),
+                    })
+                }
+                Err(error) => ResponseBody::Error(reconcile_error(&error)),
+            },
+        },
     };
     let outcome = match &body {
         ResponseBody::Hello(_) => "ok",
         ResponseBody::WorkflowSignal(result) => match result.disposition {
             Disposition::Accepted => "accepted",
             Disposition::Duplicate => "duplicate",
+        },
+        ResponseBody::WorkflowSignalReconciliation(result) => match result.disposition {
+            ReconciliationDisposition::Accepted => "accepted",
+            ReconciliationDisposition::Conflict => "conflict",
+            ReconciliationDisposition::Absent => "absent",
         },
         ResponseBody::Error(error) => error.code().as_str(),
     };
@@ -222,6 +252,10 @@ fn handle_error(error: &HandleError) -> ProtocolError {
         HandleError::Rejected(rejection) => ProtocolError::from(rejection.clone()),
         other => ProtocolError::new(other.code(), other.to_string()),
     }
+}
+
+fn reconcile_error(error: &ReconcileError) -> ProtocolError {
+    ProtocolError::new(error.code(), error.to_string())
 }
 
 /// One structured line on stderr: identity and codes only, never contents.

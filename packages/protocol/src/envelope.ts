@@ -15,10 +15,15 @@ import { codes, isShortErrorCode, ProtocolError } from './error.ts';
 import { decodeHelloInfo, type HelloInfo } from './hello.ts';
 import { assertOnlyKeys, IDENTIFIER_PATTERN, isPlainObject } from './shape.ts';
 import {
+  decodeReconciliationResult,
   decodeSignalResult,
+  decodeWorkflowSignalReconcile,
   decodeWorkflowSignalSubmit,
+  encodeWorkflowSignalReconcile,
   encodeWorkflowSignalSubmit,
+  type ReconciliationResult,
   type SignalResult,
+  type WorkflowSignalReconcilePayload,
   type WorkflowSignalSubmitPayload,
 } from './workflow-signal.ts';
 
@@ -30,6 +35,7 @@ export const MAX_FRAME_BYTES = 64 * 1024;
 export const MAX_REQUEST_BYTES = MAX_FRAME_BYTES;
 export const KIND_HELLO = 'hello';
 export const KIND_WORKFLOW_SIGNAL_SUBMIT = 'workflow.signal.submit';
+export const KIND_WORKFLOW_SIGNAL_RECONCILE = 'workflow.signal.reconcile';
 
 export type Request =
   | { readonly requestId: string; readonly kind: 'hello' }
@@ -37,11 +43,17 @@ export type Request =
       readonly requestId: string;
       readonly kind: 'workflow.signal.submit';
       readonly payload: WorkflowSignalSubmitPayload;
+    }
+  | {
+      readonly requestId: string;
+      readonly kind: 'workflow.signal.reconcile';
+      readonly payload: WorkflowSignalReconcilePayload;
     };
 
 export type ResponseBody =
   | { readonly type: 'hello'; readonly info: HelloInfo }
   | { readonly type: 'workflow.signal'; readonly result: SignalResult }
+  | { readonly type: 'workflow.signal.reconciliation'; readonly result: ReconciliationResult }
   | { readonly type: 'error'; readonly error: ProtocolError };
 
 export interface Response {
@@ -289,6 +301,15 @@ export function decodeRequest(frame: Uint8Array | string): Request {
         throw error;
       }
     }
+    case KIND_WORKFLOW_SIGNAL_RECONCILE: {
+      try {
+        const payload = decodeWorkflowSignalReconcile(probe.payload);
+        return { requestId: probe.requestId, kind: 'workflow.signal.reconcile', payload };
+      } catch (error) {
+        if (error instanceof ProtocolError) throw new DecodeFailure(requestId, kind, error);
+        throw error;
+      }
+    }
     default:
       throw fail(codes.UNKNOWN_KIND, `kind "${probe.kind}" is not registered`);
   }
@@ -296,7 +317,12 @@ export function decodeRequest(frame: Uint8Array | string): Request {
 
 /** Encodes a request as one line (no trailing newline). */
 export function encodeRequest(request: Request): string {
-  const payload = request.kind === 'hello' ? {} : encodeWorkflowSignalSubmit(request.payload);
+  const payload =
+    request.kind === 'hello'
+      ? {}
+      : request.kind === 'workflow.signal.submit'
+        ? encodeWorkflowSignalSubmit(request.payload)
+        : encodeWorkflowSignalReconcile(request.payload);
   return JSON.stringify({
     protocol: PROTOCOL_NAME,
     version: PROTOCOL_VERSION,
@@ -318,6 +344,8 @@ export function encodeResponse(response: Response): string {
     case 'hello':
       return JSON.stringify({ ...base, ok: true, payload: response.body.info });
     case 'workflow.signal':
+      return JSON.stringify({ ...base, ok: true, payload: response.body.result });
+    case 'workflow.signal.reconciliation':
       return JSON.stringify({ ...base, ok: true, payload: response.body.result });
     case 'error':
       return JSON.stringify({
@@ -380,6 +408,15 @@ export function decodeResponse(frame: Uint8Array | string): Response {
           requestId,
           kind,
           body: { type: 'workflow.signal', result: decodeSignalResult(value.payload) },
+        };
+      case KIND_WORKFLOW_SIGNAL_RECONCILE:
+        return {
+          requestId,
+          kind,
+          body: {
+            type: 'workflow.signal.reconciliation',
+            result: decodeReconciliationResult(value.payload),
+          },
         };
       case null:
         throw invalidEnvelope('successful responses must name their kind');

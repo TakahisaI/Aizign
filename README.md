@@ -72,7 +72,7 @@ cargo xtask check
 |---|---|
 | 実際の挙動 | source、test、`spec/conformance/` |
 | Wire contract | `spec/protocol/` |
-| Durable format | `spec/journal/` |
+| Durable format | journal recordは`spec/journal/`、committed-prefix store metadataは`spec/store/` |
 | 現在のarchitecture | [`docs/architecture/`](docs/architecture/overview.md) |
 | Hard invariants | [`docs/architecture/invariants.md`](docs/architecture/invariants.md) |
 | 設計判断の履歴 | [`docs/adr/`](docs/adr/) |

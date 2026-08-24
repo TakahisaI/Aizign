@@ -65,7 +65,8 @@
           "type": "string",
           "enum": [
             "hello",
-            "workflow.signal.submit"
+            "workflow.signal.submit",
+            "workflow.signal.reconcile"
           ]
         }
       },
@@ -130,6 +131,25 @@
         "properties": {
           "payload": {
             "$ref": "workflow-signal-submit.response.schema.json"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "kind": {
+            "const": "workflow.signal.reconcile"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "workflow-signal-reconcile.response.schema.json"
           }
         }
       }

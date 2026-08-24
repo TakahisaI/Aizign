@@ -7,10 +7,10 @@ use std::time::Duration;
 
 use aizign_core::workflow::Command as CoreCommand;
 use aizign_protocol::{
-    Disposition, MAX_REQUEST_BYTES, Request, RequestKind, ResponseBody, codes, decode_response,
-    encode_request,
+    Disposition, MAX_REQUEST_BYTES, ReconciliationDisposition, Request, RequestKind, ResponseBody,
+    codes, decode_response, encode_request,
 };
-use aizign_store_jsonl::{JOURNAL_FILE_NAME, JsonlJournal};
+use aizign_store_jsonl::{COMMIT_FILE_NAME, JOURNAL_FILE_NAME, JsonlJournal};
 use aizign_testkit::{TempDir, signals};
 
 fn aizign() -> Command {
@@ -60,6 +60,15 @@ fn submit_frame(event_id: &str, request_id: &str) -> String {
     frame
 }
 
+fn reconcile_frame(signal: aizign_core::workflow::WorkflowSignal, request_id: &str) -> String {
+    let mut frame = encode_request(&Request {
+        request_id: request_id.to_owned(),
+        kind: RequestKind::ReconcileWorkflowSignal(Box::new(signal)),
+    });
+    frame.push('\n');
+    frame
+}
+
 #[test]
 fn hello_subcommand_reports_capabilities_without_state() {
     let output = aizign().arg("hello").output().unwrap();
@@ -70,8 +79,104 @@ fn hello_subcommand_reports_capabilities_without_state() {
     };
     assert_eq!(info.protocol_version, 1);
     assert_eq!(info.journal_schema_version, 1);
-    assert_eq!(info.capabilities, ["workflow.signal.submit"]);
+    assert_eq!(
+        info.capabilities,
+        ["workflow.signal.submit", "workflow.signal.reconcile"]
+    );
     assert_eq!(info.package.name, "aizign");
+}
+
+#[test]
+fn reconciliation_is_read_only_and_classifies_the_committed_snapshot() {
+    let missing = TempDir::new();
+    let output = run_handle(
+        &missing.state(),
+        &reconcile_frame(signals::implementation_ready("evt-1"), "req-missing"),
+    );
+    let ResponseBody::Error(error) = one_frame(&output).body else {
+        panic!("missing store must be unknown")
+    };
+    assert_eq!(error.code().as_str(), "JOURNAL_UNAVAILABLE");
+    assert!(
+        !missing.state().exists(),
+        "reconciliation never initializes"
+    );
+
+    let initialized = TempDir::new();
+    let initialized_state = initialized.state();
+    drop(JsonlJournal::open(&initialized_state).expect("durably initialize empty store"));
+    let before_journal = std::fs::read(initialized_state.join(JOURNAL_FILE_NAME)).unwrap();
+    let before_commit = std::fs::read(initialized_state.join(COMMIT_FILE_NAME)).unwrap();
+    let ResponseBody::WorkflowSignalReconciliation(result) = one_frame(&run_handle(
+        &initialized_state,
+        &reconcile_frame(
+            signals::implementation_ready("evt-pre-append"),
+            "req-pre-append",
+        ),
+    ))
+    .body
+    else {
+        panic!("initialized empty snapshot must establish absence")
+    };
+    assert_eq!(result.disposition, ReconciliationDisposition::Absent);
+    assert_eq!(
+        std::fs::read(initialized_state.join(JOURNAL_FILE_NAME)).unwrap(),
+        before_journal
+    );
+    assert_eq!(
+        std::fs::read(initialized_state.join(COMMIT_FILE_NAME)).unwrap(),
+        before_commit
+    );
+
+    let dir = TempDir::new();
+    let state = dir.state();
+    one_frame(&run_handle(&state, &submit_frame("evt-1", "req-submit")));
+
+    let response = one_frame(&run_handle(
+        &state,
+        &reconcile_frame(signals::implementation_ready("evt-1"), "req-accepted"),
+    ));
+    assert_eq!(response.request_id.as_deref(), Some("req-accepted"));
+    assert_eq!(response.kind.as_deref(), Some("workflow.signal.reconcile"));
+    let ResponseBody::WorkflowSignalReconciliation(result) = response.body else {
+        panic!("accepted reconciliation")
+    };
+    assert_eq!(result.disposition, ReconciliationDisposition::Accepted);
+    assert_eq!(result.event_id.as_str(), "evt-1");
+
+    let ResponseBody::WorkflowSignalReconciliation(result) = one_frame(&run_handle(
+        &state,
+        &reconcile_frame(signals::blocked("evt-1", "CHANGED"), "req-conflict"),
+    ))
+    .body
+    else {
+        panic!("conflict reconciliation")
+    };
+    assert_eq!(result.disposition, ReconciliationDisposition::Conflict);
+
+    let ResponseBody::WorkflowSignalReconciliation(result) = one_frame(&run_handle(
+        &state,
+        &reconcile_frame(signals::implementation_ready("evt-absent"), "req-absent"),
+    ))
+    .body
+    else {
+        panic!("absent reconciliation")
+    };
+    assert_eq!(result.disposition, ReconciliationDisposition::Absent);
+
+    let corrupt = TempDir::new();
+    let corrupt_state = corrupt.state();
+    drop(JsonlJournal::open(&corrupt_state).expect("initialize corrupt test store"));
+    std::fs::write(corrupt_state.join(COMMIT_FILE_NAME), b"not json").unwrap();
+    let ResponseBody::Error(error) = one_frame(&run_handle(
+        &corrupt_state,
+        &reconcile_frame(signals::implementation_ready("evt-1"), "req-corrupt"),
+    ))
+    .body
+    else {
+        panic!("corrupt snapshot must remain unknown")
+    };
+    assert_eq!(error.code().as_str(), "JOURNAL_CORRUPT");
 }
 
 #[test]

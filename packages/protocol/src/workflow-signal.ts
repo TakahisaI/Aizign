@@ -1,5 +1,5 @@
 /**
- * `workflow.signal.submit`: the payload types and their closed decoders,
+ * Workflow signal submit/reconciliation payload types and closed decoders,
  * mirroring the rules `aizign-core` enforces so that an adapter can reject
  * a malformed signal before spawning a process.
  */
@@ -62,11 +62,24 @@ export interface WorkflowSignalSubmitPayload {
   readonly signal: WorkflowSignal;
 }
 
+/** The exact signal queried by `workflow.signal.reconcile`. */
+export interface WorkflowSignalReconcilePayload {
+  readonly signal: WorkflowSignal;
+}
+
 export type Disposition = 'accepted' | 'duplicate';
 
 /** The `workflow.signal.submit` success payload. */
 export interface SignalResult {
   readonly disposition: Disposition;
+  readonly eventId: string;
+}
+
+export type ReconciliationDisposition = 'accepted' | 'conflict' | 'absent';
+
+/** The `workflow.signal.reconcile` success payload. */
+export interface ReconciliationResult {
+  readonly disposition: ReconciliationDisposition;
   readonly eventId: string;
 }
 
@@ -297,19 +310,6 @@ export function encodeWorkflowSignalSubmit(
   payload: WorkflowSignalSubmitPayload,
 ): Record<string, unknown> {
   const { expected, signal } = payload;
-  const encodedSignal: Record<string, unknown> = {
-    eventId: signal.eventId,
-    workflowId: signal.workflowId,
-    assignmentId: signal.assignmentId,
-    attemptId: signal.attemptId,
-    role: signal.role,
-    artifactRevision: signal.artifactRevision,
-    candidateDigest: signal.candidateDigest,
-    kind: signal.kind,
-  };
-  if (signal.findingCount !== undefined) encodedSignal.findingCount = signal.findingCount;
-  if (signal.artifactRef !== undefined) encodedSignal.artifactRef = signal.artifactRef;
-  if (signal.shortErrorCode !== undefined) encodedSignal.shortErrorCode = signal.shortErrorCode;
   return {
     expected: {
       workflowId: expected.workflowId,
@@ -319,8 +319,62 @@ export function encodeWorkflowSignalSubmit(
       artifactRevision: expected.artifactRevision,
       candidateDigest: expected.candidateDigest,
     },
-    signal: encodedSignal,
+    signal: encodeWorkflowSignal(signal),
   };
+}
+
+/** Encodes the shared closed workflow-signal DTO. */
+export function encodeWorkflowSignal(signal: WorkflowSignal): Record<string, unknown> {
+  const encoded: Record<string, unknown> = {
+    eventId: signal.eventId,
+    workflowId: signal.workflowId,
+    assignmentId: signal.assignmentId,
+    attemptId: signal.attemptId,
+    role: signal.role,
+    artifactRevision: signal.artifactRevision,
+    candidateDigest: signal.candidateDigest,
+    kind: signal.kind,
+  };
+  if (signal.findingCount !== undefined) encoded.findingCount = signal.findingCount;
+  if (signal.artifactRef !== undefined) encoded.artifactRef = signal.artifactRef;
+  if (signal.shortErrorCode !== undefined) encoded.shortErrorCode = signal.shortErrorCode;
+  return encoded;
+}
+
+/** Decodes the reconcile payload through the same signal rules as submit. */
+export function decodeWorkflowSignalReconcile(payload: unknown): WorkflowSignalReconcilePayload {
+  if (!isPlainObject(payload)) throw invalidPayload('payload must be an object');
+  assertOnlyKeys(payload, ['signal'], invalidPayload);
+  if (!isPlainObject(payload.signal)) throw invalidPayload('signal must be an object');
+  const signal = payload.signal;
+  const syntheticExpected = {
+    workflowId: signal.workflowId,
+    assignmentId: signal.assignmentId,
+    attemptId: signal.attemptId,
+    role: signal.role,
+    artifactRevision: signal.artifactRevision,
+    candidateDigest: signal.candidateDigest,
+  };
+  try {
+    return {
+      signal: decodeWorkflowSignalSubmit({ expected: syntheticExpected, signal }).signal,
+    };
+  } catch (error) {
+    if (error instanceof ProtocolError && error.code === codes.INVALID_EXPECTATION) {
+      throw new ProtocolError(
+        codes.INVALID_SIGNAL,
+        error.message.replace(/^expected\./, 'signal.'),
+      );
+    }
+    throw error;
+  }
+}
+
+/** Encodes a reconciliation request payload. */
+export function encodeWorkflowSignalReconcile(
+  payload: WorkflowSignalReconcilePayload,
+): Record<string, unknown> {
+  return { signal: encodeWorkflowSignal(payload.signal) };
 }
 
 /** Decodes the success payload of `workflow.signal.submit`. */
@@ -330,6 +384,18 @@ export function decodeSignalResult(payload: unknown): SignalResult {
   const { disposition, eventId } = payload;
   if (disposition !== 'accepted' && disposition !== 'duplicate') {
     throw invalidPayload('disposition must be accepted or duplicate');
+  }
+  if (!isIdentifier(eventId)) throw invalidPayload('eventId must be a stable identifier');
+  return { disposition, eventId };
+}
+
+/** Decodes the success payload of `workflow.signal.reconcile`. */
+export function decodeReconciliationResult(payload: unknown): ReconciliationResult {
+  if (!isPlainObject(payload)) throw invalidPayload('payload must be an object');
+  assertOnlyKeys(payload, ['disposition', 'eventId'], invalidPayload);
+  const { disposition, eventId } = payload;
+  if (disposition !== 'accepted' && disposition !== 'conflict' && disposition !== 'absent') {
+    throw invalidPayload('disposition must be accepted, conflict, or absent');
   }
   if (!isIdentifier(eventId)) throw invalidPayload('eventId must be a stable identifier');
   return { disposition, eventId };

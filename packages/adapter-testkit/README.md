@@ -8,17 +8,17 @@ Prove a harness adapter's core client against a fake core — including every wa
 | **Non-responsibility** | 本番でのcore client（adapterが所有）、harness固有のfake（adapter側の `test/` が持つ） |
 | **Inputs** | `CoreClientFactory`（`CoreClientConfig` → `CoreClient`） |
 | **Outputs** | `node:assert` による検証。違反で例外 |
-| **Hard invariants** | no-response / garbage / hang / `JOURNAL_OUTCOME_UNKNOWN` / spawn失敗は **すべて `unknown`**（成功にも失敗にも縮約しない、再送しない）、accepted → duplicate → conflict が別process間で成立、harness IDや本文がframeに現れない |
+| **Hard invariants** | no-response / garbage / hang / `JOURNAL_OUTCOME_UNKNOWN` / spawn失敗は **すべて `unknown`**（成功にも失敗にも縮約しない、再送しない）、reconciliationのaccepted / conflict / absentと`reportedCode`を検証、lost acknowledgement後もblind submit retryしない、harness IDや本文がframeに現れない |
 | **Allowed dependencies** | `@aizign/protocol` |
 | **Test command** | `npm test -w @aizign/adapter-testkit` |
-| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md) |
+| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md) |
 
 ## Layout
 
 ```text
 src/
 ├── index.ts
-├── fake-core.ts           node fake-core.js hello | handle --state <dir>。AIZIGN_FAKE_FAULT = no-response | garbage | hang | journal-unknown | exit-2 | wrong-request-id | wrong-kind | wrong-event-id | oversized | two-frames | trailing-garbage
+├── fake-core.ts           node fake-core.js hello | handle --state <dir>。submit / reconcile stateとfault injection
 ├── fake-core-path.ts      fakeCoreCommand(): { command: process.execPath, args: [fake-core] }
 ├── reference-client.ts    ReferenceOneShotClient: spawn → 1 frame → 1 frame → unknownの分類
 ├── conformance.ts         runCoreScenarios / runFaultScenarios / runCoreClientConformance、samplePayload、assertMetadataOnly
@@ -44,13 +44,16 @@ runnerが検査する経路:
 
 | Scenario | 期待 |
 |---|---|
-| `hello` | `ok`、`protocolVersion === 1`、capabilityに `workflow.signal.submit` |
+| `hello` | `ok`、`protocolVersion === 1`、capabilityにsubmitとreconcile |
 | submit → 同じsignal → 内容違い | `accepted` → `duplicate` → `rejected EVENT_CONFLICT` |
+| accepted signal / changed content / missing eventをreconcile | `accepted` / `conflict` / `absent` |
 | attempt / revision / candidate digest expectation違い | 対応する`*_MISMATCH` |
 | 別eventで同じrevision identifier・異candidate digest（expected / signalは一致） | `accepted`（global registryを持たない） |
 | processがframeなしで終了 / exit 2 | `unknown no_response` |
 | stdoutがframeでない | `unknown undecodable_response` |
 | coreが `JOURNAL_OUTCOME_UNKNOWN` を返す | `unknown reported_unknown` |
+| lost acknowledgement後にfresh clientでreconcile | `accepted`。submitは1回だけでblind retryなし |
+| `requestId: null` / `kind: null` / `HANDLER_TIMEOUT` watchdog response | `unknown correlation_mismatch` + `reportedCode: HANDLER_TIMEOUT` |
 | 応答なし（timeout） | `unknown timeout` |
 | 呼び出し側のabort | `unknown aborted` |
 | `requestId` / `kind` / `eventId` が送信と一致しない | `unknown correlation_mismatch` |

@@ -1,7 +1,7 @@
 /**
  * The published JSON Schemas against every example and conformance fixture.
  *
- * The schemas under `spec/protocol/v1` and `spec/journal/v1` are the
+ * The schemas under `spec/protocol/v1`, `spec/journal/v1`, and `spec/store/v1` are the
  * contract; the Rust and TypeScript decoders and the JSONL store implement
  * it. This gate keeps the acceptance sets identical: every valid fixture and
  * example must validate, and every invalid fixture states in its expectation
@@ -10,8 +10,9 @@
  * canonical integer lexemes the decoders require (`1.0` and `1e0` are the
  * integer 1 in the JSON data model a schema sees, but not tokens the wire
  * accepts), duplicate object members (a schema sees the folded object), and
- * lone UTF-16 surrogates (JavaScript strings can retain them). Both decoders
- * reject those lexical forms before interpreting the frame.
+ * lone UTF-16 surrogates (JavaScript strings can retain them). The applicable
+ * protocol decoders and store reader reject those lexical forms before
+ * interpreting the document.
  *
  * The decoders run the same files: `crates/aizign-protocol/tests/conformance.rs`,
  * `crates/aizign-store-jsonl/tests/conformance.rs`, and
@@ -27,7 +28,11 @@ import { Ajv2020 } from 'ajv/dist/2020.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const ajv = new Ajv2020({ allErrors: true });
-for (const dir of ['spec/protocol/v1/schemas', 'spec/journal/v1/schemas']) {
+for (const dir of [
+  'spec/protocol/v1/schemas',
+  'spec/journal/v1/schemas',
+  'spec/store/v1/schemas',
+]) {
   for (const file of readdirSync(join(root, dir)).sort()) {
     ajv.addSchema(JSON.parse(readFileSync(join(root, dir, file), 'utf8')));
   }
@@ -44,6 +49,7 @@ const validates = {
   request: validator('protocol/v1/request-envelope.schema.json'),
   response: validator('protocol/v1/response-envelope.schema.json'),
   journal: validator('journal/v1/record.schema.json'),
+  store: validator('store/v1/commit.schema.json'),
 };
 const directions = Object.keys(validates);
 
@@ -96,6 +102,17 @@ test('every journal example record validates against the record schema', () => {
   assert.ok(lines.length > 0);
   for (const { file, line } of lines) {
     assert.ok(validates.journal(JSON.parse(line)), `${file}: ${reasons('journal')}`);
+  }
+});
+
+test('every store metadata example validates against the commit schema', () => {
+  const validate = validator('store/v1/commit.schema.json');
+  const dir = join(root, 'spec/store/v1/examples');
+  const examples = readdirSync(dir).filter((file) => file.endsWith('.json'));
+  assert.ok(examples.length > 0);
+  for (const file of examples) {
+    const value = JSON.parse(readFileSync(join(dir, file), 'utf8'));
+    assert.ok(validate(value), `${file}: ${ajv.errorsText(validate.errors)}`);
   }
 });
 

@@ -4,14 +4,14 @@ The DSH harness adapter: a cordis plugin that registers one **scope-bound** `sub
 
 | | |
 |---|---|
-| **Responsibility** | DSH plugin entry（`name` / `inject` / `Config` / `apply`）、preflight（`aizign hello` → protocol version + capability）、`OneShotCoreClient`、agentの引数 → `workflow.signal.submit` payload のmapping、coreの結果 → tool result / `HarnessError`、durable evidence（`tool/result` の `meta` に digest を記録し、session logの cold read で照合） |
+| **Responsibility** | DSH plugin entry（`name` / `inject` / `Config` / `apply`）、preflight（`aizign hello` → protocol version + submit / reconcile capability）、`OneShotCoreClient`、agentの引数 → `workflow.signal.submit` payload のmapping、control-plane向けread-only reconciliation client、coreの結果 → tool result / `HarnessError`、durable evidence（`tool/result` の `meta` に digest を記録し、session logの cold read で照合） |
 | **Non-responsibility** | 判断（core）、journal（coreのJSONL。DSH persistenceには書かない）、identityの決定（configで固定。agentは知らない）、live smokeの手順（operatorの `op/`） |
 | **Inputs** | plugin config（binary、stateDir、timeoutMs、eventId + workflow / assignment / attempt / candidate digest）、agentのtool call `{ kind, findingCount?, artifactRef?, shortErrorCode? }` |
-| **Outputs** | tool result `{ disposition: accepted \| duplicate, eventId }`、または `HarnessError`（protocol / workflow code、`AIZIGN_OUTCOME_UNKNOWN`、`AIZIGN_UNAVAILABLE`、`AIZIGN_INCOMPATIBLE`） |
-| **Hard invariants** | control-plane identity（eventId、workflowId、assignmentId、attemptId、role、artifactRevision、candidateDigest）をtool schema・引数・promptに出さない（5、8）、DSHのcall id / session idを **envelope全体**（`requestId` 含む）に入れない（8。`requestId` はadapter所有のnonce）、responseは `requestId` / `kind` / `eventId` を送信と照合し不一致は `unknown`、stdoutは `MAX_FRAME_BYTES` と「frame 1つ」でbound、`unknown` は `AIZIGN_OUTCOME_UNKNOWN` として返し再送しない（3、4）、cold readは `maxEvents` / timeout でbound（9）、preflight失敗時はtoolを登録しない、環境変数を子processへ丸ごと渡さない（PATHのみ） |
+| **Outputs** | model tool result `{ disposition: accepted \| duplicate, eventId }`、control-plane reconciliation outcome、または `HarnessError`（protocol / workflow code、`AIZIGN_OUTCOME_UNKNOWN`、`AIZIGN_UNAVAILABLE`、`AIZIGN_INCOMPATIBLE`） |
+| **Hard invariants** | control-plane identity（eventId、workflowId、assignmentId、attemptId、role、artifactRevision、candidateDigest）をtool schema・引数・promptに出さない（5、8）、reconciliationをmodel-visible toolにしない、DSHのcall id / session idを **envelope全体**（`requestId` 含む）に入れない（8。`requestId` はadapter所有のnonce）、responseは `requestId` / `kind` / `eventId` を送信と照合し不一致は `unknown`、reconciliation error codeは相関検査前に診断用`reportedCode`へ保持、stdoutは `MAX_FRAME_BYTES` と「frame 1つ」でbound、`unknown` は成功 / 失敗に縮約せず再送しない（3、4）、cold readは `maxEvents` / timeout でbound（9）、preflight失敗時はtoolを登録しない、環境変数を子processへ丸ごと渡さない（PATHのみ） |
 | **Allowed dependencies** | `@aizign/protocol`。peer: `@deepseek-ai/cordis` 4.0.1、`dsh-llm` / `dsh-tools` 0.1.1-rc.2、`schemastery` 3.18.1（exact、ADR-0010）。dev: `@aizign/adapter-testkit` |
 | **Test command** | `npm test -w @aizign/adapter-dsh`（`AIZIGN_BINARY` を与えると実binaryにも） |
-| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0010](../../docs/adr/0010-harness-sdk-dependencies-and-node-policy.md) |
+| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0010](../../docs/adr/0010-harness-sdk-dependencies-and-node-policy.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md) |
 
 ## Layout
 
@@ -19,7 +19,7 @@ The DSH harness adapter: a cordis plugin that registers one **scope-bound** `sub
 src/
 ├── index.ts                       plugin entry: name / inject / Config / apply、createClient
 ├── config.ts                      Config（schemastery）、validateConfig、SignalBinding、bindingPayload
-├── core-client/one-shot-client.ts OneShotCoreClient（spawn → 1 frame → 1 frame、相関照合、frame bound、abort、unknownの分類）
+├── core-client/one-shot-client.ts OneShotCoreClient（submit / reconcile、spawn → 1 frame → 1 frame、相関照合、frame bound、abort、unknownの分類）
 ├── mapping/tool.ts                createSubmitWorkflowSignalTool、decodeArgs、toPayload、toToolResult、presentationMetaFor、adapterCodes
 ├── lifecycle/preflight.ts         hello → checkCompatibility
 └── evidence/
@@ -47,7 +47,7 @@ operatorのpatchはその entry を **id で上書き**して有効化します�
   disabled: false
   config:
     binary: /path/to/aizign
-    stateDir: /path/to/runtime/aizign-state   # 無ければ aizign が 0700 で作る。既存なら 0700 であること
+    stateDir: /path/to/runtime/aizign-state   # submit writerはfresh storeをdurable初期化。reconcileはmissingを作らずunknown
     timeoutMs: 15000
     eventId: evt-0001
     workflowId: wf-example
