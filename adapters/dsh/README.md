@@ -63,6 +63,34 @@ operatorのpatchはその entry を **id で上書き**して有効化します�
 `dsh --profile <name> --patch <file> --dump-config` で、合成後の tree に `aizign-workflow-signal` が `disabled: false` と上記 `config` で現れることを確認できます。
 [`experiments/dsh-live-smoke/make-patch.mjs`](../../experiments/dsh-live-smoke/make-patch.mjs) はこの形を生成します。
 
+## Capability classification
+
+This adapter satisfies the current minimum signal-submission behavior through
+protocol preflight, trusted config-bound identity injection, full response
+correlation, exact outcome propagation, non-collapse of `unknown`,
+metadata-only requests, and bounded process I/O.
+
+It also demonstrates three optional harness adapter capabilities:
+
+- harness-native durable success evidence;
+- bounded DSH session cold read; and
+- binding/payload digest verification of a DSH result.
+
+These optional capabilities are DSH-owned and do not define a generic adapter
+event shape. An adapter without harness persistence or cold read can still
+satisfy the minimum signal-submission behavior. A DSH error record without
+verifiable binding metadata remains `unknown / unverified_error`; persistence
+alone does not make it a rejection for the requested binding.
+
+`workflow.signal.reconcile` is a separate core protocol capability and performs
+a bounded read-only lookup of the Aizign journal. It is not one of the DSH
+harness evidence capabilities above. Submit and reconciliation preflight remain
+independent.
+
+Interrupt, effect dispatch, resource release, ownership, general lifecycle, and
+remote reconnect are provisional inventory, not implemented DSH capabilities or
+stable tokens.
+
 ## Evidence
 
 completionの正本はjournal（core側）です。adapterはそれに加えて、toolの `presentationMeta` で durable な `tool/result` event の `meta` に

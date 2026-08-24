@@ -32,8 +32,21 @@ core、journal、adapter、logの間を **越えてよいデータ** と **越�
 | structured evidence | closed schemaのsignal（kind、findingCount、artifactRef、shortErrorCode など） |
 | disposition | submitの`accepted` / `duplicate`、reconciliationの`accepted` / `conflict` / `absent`、`unknown`、terminal状態 |
 | stable short error code | `^[A-Z][A-Z0-9_]{0,63}$` |
-| capability information | adapterの能力宣言 |
 | bounded timestamp | shellが与える値。coreは現在時刻を取得しない |
+
+## Capability boundary
+
+Capability information is not one generic adapter-to-core value:
+
+| Layer | Boundary |
+|---|---|
+| Core protocol capability | The binary advertises supported request kinds to the adapter through `hello.capabilities`. This is protocol compatibility information, not a harness feature declaration. |
+| Harness adapter capability | Remains owned by the adapter and its control plane. Protocol v1 has no generic field or token registry for it. |
+| Workflow requirement | Has no v0.1 representation or consumer and therefore does not cross a runtime boundary. |
+
+Absence of a harness adapter capability does not permit raw content or harness
+identity to cross the protocol boundary, and it does not permit `unknown` to be
+reclassified as success or rejection.
 
 ## Journalに保存してよいもの / 禁止するもの
 

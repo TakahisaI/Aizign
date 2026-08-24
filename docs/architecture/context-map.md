@@ -51,27 +51,43 @@ engineはuse caseとportを持ちます。contextの切り方はcoreと揃えま
 
 ## Adapter (`adapters/<harness>/`)
 
-各adapterは同じ最小契約を実装し、能力差は `capabilities` で明示します。
+All adapters share a current behavioral minimum, not a uniform feature set.
+Keep these capability layers separate:
 
-```text
-connect
-capabilities
-submit / observe evidence
-dispatch effect intent
-interrupt
-release
-reconcile
-health / compatibility
-```
+| Layer | Owner | Current representation |
+|---|---|---|
+| Core protocol capability | `aizign-protocol` and the binary | Request kinds advertised by `hello.capabilities` |
+| Harness adapter capability | Each adapter and its harness-native tests | Adapter documentation only; no universal manifest or Protocol v1 field |
+| Workflow requirement | Future orchestration policy | No v0.1 consumer or runtime representation |
 
-adapter内の配置:
+The current minimum is protocol health and compatibility checking, scope-bound
+structured signal submission, trusted identity injection, full response
+correlation, exact outcome propagation, non-collapse of `unknown`, metadata-only
+data flow, and bounded request and response handling. Persisting an outcome,
+reading harness-native evidence, and implementing lifecycle operations are not
+minimum requirements.
 
-| Directory | 内容 |
+`hello`, `workflow.signal.submit`, and `workflow.signal.reconcile` are the
+implemented core protocol operations. Core reconciliation is a bounded
+read-only lookup of the Aizign journal, not a harness evidence capability. The
+DSH adapter separately demonstrates optional durable success evidence, bounded
+session cold read, and binding/payload digest verification.
+
+Interrupt, effect dispatch, resource release, session or agent ownership,
+general lifecycle hooks, and remote reconnect are provisional. They have no
+stable capability token until a dedicated contract defines their consumer and
+absence semantics.
+
+Adapter code placement follows ownership rather than a mandatory directory
+template:
+
+| Concern | Placement |
 |---|---|
-| `src/core-client/` | `aizign` binaryの起動、envelope送受信、`hello` |
-| `src/mapping/` | native event / harness型 ↔ protocol DTO |
-| `src/evidence/` | harness persistenceからのcold read（`tool/call` + `tool/result` 対）、binding / payload digest |
-| `src/lifecycle/` | connect / interrupt / release / reconcile |
-| `test/unit/`、`test/conformance/` | fake harness、fake core processでの検査 |
+| Aizign process, protocol exchange, and `hello` | adapter-owned core-client boundary |
+| Native input to protocol DTO | adapter-owned mapping boundary |
+| Harness persistence and native evidence | optional adapter-owned evidence boundary |
+| Approved harness lifecycle operations | optional adapter-owned lifecycle boundary |
+| Verification | protocol scenarios plus harness-native fake tests |
 
-新しいadapterを追加するときに読む範囲は [docs/development/adding-adapter.md](../development/adding-adapter.md) に限定します。
+See [Adding a harness adapter](../development/adding-adapter.md) for the current
+minimum, optional capability rules, and TypeScript reference layout.
