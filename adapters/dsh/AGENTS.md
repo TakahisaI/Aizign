@@ -1,29 +1,28 @@
 # AGENTS.md — @aizu/adapter-dsh
 
-このpackageを編集するときのnavigationと制約です。仕様は [README.md](README.md) と
-[docs/development/adding-adapter.md](../../docs/development/adding-adapter.md) を参照してください。
+This file is navigation for automated coding agents.
+Human contributors may ignore it and should follow [CONTRIBUTING.md](../../CONTRIBUTING.md).
+The adapter contract lives in [README.md](README.md), not here.
 
-## 読む順
+## Read scope
 
 1. [README.md](README.md)
-2. [spec/protocol/v1/README.md](../../spec/protocol/v1/README.md) — wire contract
-3. `packages/protocol/src/client.ts` — `CoreClient` / `SubmitOutcome` / `UnknownOutcome`
-4. `packages/adapter-testkit/README.md` — conformance runnerとfake core
-5. 編集対象のdirectory（`core-client/`、`mapping/`、`lifecycle/`）
+2. [Hard invariants](../../docs/architecture/invariants.md)
+3. [Protocol v1](../../spec/protocol/v1/README.md)
+4. `packages/protocol/src/client.ts`
+5. [Adapter testkit](../../packages/adapter-testkit/README.md)
+6. The adapter directory being edited
 
-`crates/` を読む必要はありません。coreの挙動はprotocolとfixtureで決まります。
+Do not read Rust crates unless the Issue explicitly requires investigation across the protocol boundary.
 
-## 制約
+## Editing boundary
 
-- identity（eventId、workflowId、assignmentId、role、artifactRevision）をtool schema、引数、descriptionに出さない。configで固定する
-- DSHのcall id、session id、agent handle、環境変数をpayloadやprocess環境へ渡さない（PATHのみ）
-- `unknown` を成功や失敗に縮約しない。`AIZU_OUTCOME_UNKNOWN` を投げ、再送しない
-- preflightが失敗したらtoolを登録しない
-- SDKからの実行時importは `HarnessError`、schemastery、`ctx.tools.register` にとどめる。Session / persistence / Agentへ広げるときはADR-0010を更新する
-- SDKのversionは `package.json` のexact pinと `docs/reference/compatibility.md` を同じPRで更新する
-- live smokeの手順・profile・観測結果はrepositoryに置かない（operatorの `op/`）
+- Keep harness-specific types and SDK usage inside this adapter.
+- Protocol behavior is changed through `spec/` and conformance fixtures, not by reading or importing core internals.
+- SDK-version or runtime-dependency changes follow the Issue and ADR process in `CONTRIBUTING.md`.
+- Put behavior and invariants in source, tests, the adapter README, or architecture docs—not in this file.
 
-## 検査
+## Check
 
 ```sh
 npm test -w @aizu/adapter-dsh

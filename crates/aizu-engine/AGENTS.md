@@ -1,27 +1,27 @@
 # AGENTS.md — aizu-engine
 
-このcrateを編集するときのnavigationと制約です。仕様は [README.md](README.md) と
-[docs/architecture/](../../docs/architecture/overview.md) を参照してください。
+This file is navigation for automated coding agents.
+Human contributors may ignore it and should follow [CONTRIBUTING.md](../../CONTRIBUTING.md).
+The crate contract lives in [README.md](README.md), not here.
 
-## 読む順
+## Read scope
 
-1. [README.md](README.md) — 責務、port、不変条件
-2. [docs/architecture/dependency-rules.md](../../docs/architecture/dependency-rules.md) — port ownership
-3. `crates/aizu-core/src/workflow/` の公開面（`Command`、`Decision`、`WorkflowState`）
-4. 編集対象のuse caseまたはport
+1. [README.md](README.md)
+2. [Hard invariants](../../docs/architecture/invariants.md)
+3. [Dependency rules](../../docs/architecture/dependency-rules.md), especially port ownership
+4. The public `aizu-core` workflow API used by the change
+5. The use case or port being edited
 
-store、cli、protocol、adapterの実装を読む必要はありません。
+Do not read store, CLI, protocol, or adapter implementations unless the Issue explicitly requires a cross-boundary change.
 
-## 制約
+## Editing boundary
 
-- portはこのcrateが定義する。外部実装の都合でport shapeを決めない
-- `std::fs` / `std::process` / `std::net` / `std::env` / `std::time` を使わない。時刻は `Clock` port、永続化は `Journal` port
-- `serde`、JSON、harness固有名を持ち込まない
-- `Decision::Accepted` を受け取ったら **appendがdurableになってから** acceptedを返す。append失敗・不明は `unknown` として返し、再送しない
-- `ApplyError` / `JournalError::Corrupt` を握りつぶさない
-- 新しいportは `README.md` の表と `dependency-rules.md` のport ownership表に行を足してから作る
+- Keep ports owned by their consumer in this crate.
+- Add a port only with matching updates to the crate README and dependency rules.
+- Dependency or crate-boundary changes follow the Issue and ADR process in `CONTRIBUTING.md`.
+- Put behavior and invariants in source, tests, the crate README, or architecture docs—not in this file.
 
-## 検査
+## Check
 
 ```sh
 cargo test -p aizu-engine

@@ -1,30 +1,28 @@
 # AGENTS.md — aizu-core
 
-このcrateを編集するときのnavigationと制約です。仕様は [README.md](README.md) と
-[docs/architecture/](../../docs/architecture/overview.md) を参照してください。
+This file is navigation for automated coding agents.
+Human contributors may ignore it and should follow [CONTRIBUTING.md](../../CONTRIBUTING.md).
+The crate contract lives in [README.md](README.md), not here.
 
-## 読む順
+## Read scope
 
-1. [README.md](README.md) — 責務、非責務、不変条件
-2. [docs/architecture/context-map.md](../../docs/architecture/context-map.md) — どのmoduleに置くか
-3. [docs/architecture/data-boundary.md](../../docs/architecture/data-boundary.md) — 受け取ってよい値
-4. 編集対象のcontext directory（例: `src/workflow/`）だけ
+1. [README.md](README.md)
+2. [Hard invariants](../../docs/architecture/invariants.md)
+3. [Context map](../../docs/architecture/context-map.md)
+4. [Dependency rules](../../docs/architecture/dependency-rules.md)
+5. [Data boundary](../../docs/architecture/data-boundary.md)
+6. The context directory being edited, such as `src/workflow/`
 
-adapter、protocol、storeの実装を読む必要はありません。
+Do not read adapter, protocol, or store implementations unless the Issue explicitly requires a cross-boundary change.
 
-## 制約
+## Editing boundary
 
-- `#![no_std]` と `#![forbid(unsafe_code)]` を外さない。`std` を使わない
-- crate依存を追加しない（追加にはADRと `docs/architecture/dependency-rules.md` の更新が必要）
-- `serde` derive、JSON、NDJSONをこのcrateへ持ち込まない
-- 現在時刻、乱数、環境変数を取得しない。必要な値は引数で受け取る
-- harness / providerの固有名（DSH、Codex、Hermesなど）をidentifier、comment、docに書かない
-- 新しいmoduleは必ずbounded contextとして `context-map.md` に行を足してから作る。`common` / `utils` / `shared` を作らない
-- `pub` は `lib.rs` から意図的に公開する型だけ。既定は `pub(crate)`。`unreachable_pub` lintを無視しない
-- 同一identity・同一内容は `duplicate`、異内容は `conflict`。`unknown` を成功や失敗へ縮約しない
-- testは対象moduleの `#[cfg(test)]`、cross-moduleは `tests/`
+- Keep changes inside this crate and the selected bounded context.
+- Add a new context only with the matching `context-map.md` update.
+- Dependency or crate-boundary changes follow the Issue and ADR process in `CONTRIBUTING.md`.
+- Put behavior and invariants in source, tests, the crate README, or architecture docs—not in this file.
 
-## 検査
+## Check
 
 ```sh
 cargo test -p aizu-core

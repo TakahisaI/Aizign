@@ -1,5 +1,8 @@
 # Contributing to Aizu
 
+この文書は、人間向けcontribution policyの正本です。
+`AGENTS.md` は自動coding agent向けのnavigationであり、人間のcontributorは読む必要がありません。
+
 Aizuは **proposal-first** で開発します。挙動、API、schema、依存境界を変える変更は、
 先にIssueで契約を確定してからPRを出してください。未合意の大規模rewriteは受け付けません。
 

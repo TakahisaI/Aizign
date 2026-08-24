@@ -23,7 +23,7 @@ LLM agentに実装・レビュー・修正を割り当てると、次の問題�
 - promptやmodel outputが監査logへ漏れ、公開や共有ができなくなる
 
 Aizuは、これらを **core / protocol / journal / adapter の物理的な境界** と、
-repository全体で固定した[hard invariants](AGENTS.md#hard-invariants)で防ぎます。
+repository全体で固定した[hard invariants](docs/architecture/invariants.md)で防ぎます。
 
 ## 構成
 
@@ -73,9 +73,11 @@ cargo xtask check
 | Wire contract | `spec/protocol/` |
 | Durable format | `spec/journal/` |
 | 現在のarchitecture | [`docs/architecture/`](docs/architecture/overview.md) |
+| Hard invariants | [`docs/architecture/invariants.md`](docs/architecture/invariants.md) |
 | 設計判断の履歴 | [`docs/adr/`](docs/adr/) |
+| 人間向けcontribution policy | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 | package固有の契約 | 各package内の `README.md` |
-| LLM向け編集ルール | 最寄りの `AGENTS.md` |
+| 自動coding agent向けnavigation | 最寄りの `AGENTS.md` |
 | 作業状況 | GitHub Issue / PR |
 
 ## Contributing
