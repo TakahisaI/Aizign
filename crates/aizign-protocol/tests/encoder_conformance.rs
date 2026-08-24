@@ -160,8 +160,7 @@ fn review_findings(event_id: &str) -> WorkflowSignal {
         kind: SignalKind::ReviewFindings,
         finding_count: Some(2),
         artifact_ref: Some(
-            ArtifactRef::new("review:0123456789abcdef")
-                .expect("valid example artifact reference"),
+            ArtifactRef::new("review:0123456789abcdef").expect("valid example artifact reference"),
         ),
         short_error_code: None,
     })
@@ -215,11 +214,7 @@ fn request_encoders_match_every_protocol_example_without_decoding() {
         ),
         (
             "workflow-signal-submit.blocked.request.json",
-            submit_request(
-                "req-signal-03",
-                expected_assignment(),
-                blocked("evt-0003"),
-            ),
+            submit_request("req-signal-03", expected_assignment(), blocked("evt-0003")),
         ),
         (
             "workflow-signal-submit.request.json",
