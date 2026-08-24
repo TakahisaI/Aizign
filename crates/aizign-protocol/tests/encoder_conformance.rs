@@ -195,9 +195,8 @@ fn request_encoders_match_every_protocol_example_without_decoding() {
     }
 }
 
-#[test]
-fn response_encoders_match_every_protocol_example_without_decoding() {
-    let cases = [
+fn envelope_response_cases() -> [(&'static str, Response); 3] {
+    [
         (
             "hello.response.json",
             response(
@@ -239,6 +238,11 @@ fn response_encoders_match_every_protocol_example_without_decoding() {
                 )),
             ),
         ),
+    ]
+}
+
+fn reconciliation_response_cases() -> [(&'static str, Response); 3] {
+    [
         (
             "workflow-signal-reconcile.absent.response.json",
             response(
@@ -272,6 +276,11 @@ fn response_encoders_match_every_protocol_example_without_decoding() {
                 }),
             ),
         ),
+    ]
+}
+
+fn submit_response_cases() -> [(&'static str, Response); 3] {
+    [
         (
             "workflow-signal-submit.accepted.response.json",
             response(
@@ -305,7 +314,16 @@ fn response_encoders_match_every_protocol_example_without_decoding() {
                 )),
             ),
         ),
-    ];
+    ]
+}
+
+#[test]
+fn response_encoders_match_every_protocol_example_without_decoding() {
+    let cases = envelope_response_cases()
+        .into_iter()
+        .chain(reconciliation_response_cases())
+        .chain(submit_response_cases())
+        .collect::<Vec<_>>();
     assert_explicit_coverage(".response.json", &cases);
 
     for (name, response) in cases {
