@@ -9,7 +9,10 @@
     "protocol": { "const": "aizign" },
     "version": { "const": 1 },
     "requestId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
-    "kind": { "type": "string", "enum": ["hello", "workflow.signal.submit"] },
+    "kind": {
+      "type": "string",
+      "enum": ["hello", "workflow.signal.submit", "workflow.signal.reconcile"]
+    },
     "payload": { "type": "object" }
   },
   "allOf": [
@@ -20,6 +23,10 @@
     {
       "if": { "properties": { "kind": { "const": "workflow.signal.submit" } } },
       "then": { "properties": { "payload": { "$ref": "workflow-signal-submit.request.schema.json" } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "workflow.signal.reconcile" } } },
+      "then": { "properties": { "payload": { "$ref": "workflow-signal-reconcile.request.schema.json" } } }
     }
   ]
 }

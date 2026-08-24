@@ -1,13 +1,13 @@
 //! Request and response envelopes: the one-line NDJSON frames that cross
 //! the process boundary.
 
-use aizign_core::workflow::Command;
+use aizign_core::workflow::{Command, WorkflowSignal};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{ProtocolError, codes};
 use crate::hello::HelloInfo;
 use crate::json_member::has_duplicate_members;
-use crate::workflow_signal::{self, SignalResult};
+use crate::workflow_signal::{self, ReconciliationResult, SignalResult};
 
 /// Value of the `protocol` field.
 pub const PROTOCOL_NAME: &str = "aizign";
@@ -24,6 +24,8 @@ pub const MAX_REQUEST_ID_LEN: usize = 128;
 pub const KIND_HELLO: &str = "hello";
 /// Kind string of the workflow signal submission.
 pub const KIND_WORKFLOW_SIGNAL_SUBMIT: &str = "workflow.signal.submit";
+/// Kind string of the read-only workflow signal reconciliation request.
+pub const KIND_WORKFLOW_SIGNAL_RECONCILE: &str = "workflow.signal.reconcile";
 
 /// A decoded request.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -41,6 +43,8 @@ pub enum RequestKind {
     Hello,
     /// Submit a structured workflow signal for decision.
     SubmitWorkflowSignal(Box<Command>),
+    /// Classify a structured signal from a committed journal snapshot.
+    ReconcileWorkflowSignal(Box<WorkflowSignal>),
 }
 
 impl RequestKind {
@@ -50,6 +54,7 @@ impl RequestKind {
         match self {
             Self::Hello => KIND_HELLO,
             Self::SubmitWorkflowSignal(_) => KIND_WORKFLOW_SIGNAL_SUBMIT,
+            Self::ReconcileWorkflowSignal(_) => KIND_WORKFLOW_SIGNAL_RECONCILE,
         }
     }
 }
@@ -84,6 +89,8 @@ pub enum ResponseBody {
     Hello(HelloInfo),
     /// `workflow.signal.submit` was accepted or recognized as a duplicate.
     WorkflowSignal(SignalResult),
+    /// `workflow.signal.reconcile` completed against a committed snapshot.
+    WorkflowSignalReconciliation(ReconciliationResult),
     /// Any request failed; the code explains why.
     Error(ProtocolError),
 }
@@ -307,6 +314,10 @@ pub fn decode_request(frame: &[u8]) -> Result<Request, DecodeFailure> {
             workflow_signal::decode_submit(serde_json::Value::Object(envelope.payload))
                 .map_err(fail)?,
         )),
+        KIND_WORKFLOW_SIGNAL_RECONCILE => RequestKind::ReconcileWorkflowSignal(Box::new(
+            workflow_signal::decode_reconcile(serde_json::Value::Object(envelope.payload))
+                .map_err(fail)?,
+        )),
         other => {
             return Err(fail(ProtocolError::new(
                 codes::UNKNOWN_KIND,
@@ -331,6 +342,12 @@ pub fn encode_request(request: &Request) -> String {
             serde_json::Value::Object(map) => map,
             _ => unreachable!("submit payloads encode as objects"),
         },
+        RequestKind::ReconcileWorkflowSignal(signal) => {
+            match workflow_signal::encode_reconcile(signal) {
+                serde_json::Value::Object(map) => map,
+                _ => unreachable!("reconciliation payloads encode as objects"),
+            }
+        }
     };
     let envelope = RequestEnvelope {
         protocol: PROTOCOL_NAME.to_owned(),
@@ -355,6 +372,11 @@ pub fn encode_response(response: &Response) -> String {
         ResponseBody::WorkflowSignal(result) => {
             (true, Some(workflow_signal::encode_result(result)), None)
         }
+        ResponseBody::WorkflowSignalReconciliation(result) => (
+            true,
+            Some(workflow_signal::encode_reconciliation_result(result)),
+            None,
+        ),
         ResponseBody::Error(error) => (
             false,
             None,
@@ -435,6 +457,9 @@ pub fn decode_response(frame: &[u8]) -> Result<Response, ProtocolError> {
             Some(KIND_WORKFLOW_SIGNAL_SUBMIT) => {
                 ResponseBody::WorkflowSignal(workflow_signal::decode_result(payload)?)
             }
+            Some(KIND_WORKFLOW_SIGNAL_RECONCILE) => ResponseBody::WorkflowSignalReconciliation(
+                workflow_signal::decode_reconciliation_result(payload)?,
+            ),
             Some(other) => {
                 return Err(ProtocolError::new(
                     codes::UNKNOWN_KIND,

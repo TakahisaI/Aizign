@@ -47,6 +47,9 @@ function stubClient(
       requestIds.push(requestId);
       return outcome;
     },
+    async reconcileWorkflowSignal() {
+      throw new Error('not used');
+    },
   };
 }
 

@@ -15,10 +15,13 @@ import {
   type HelloOutcome,
   isUnknownOutcomeCode,
   MAX_FRAME_BYTES,
+  type ReconcileOutcome,
+  type ReconcileUnknown,
   type Response,
   type SentRequest,
   type SubmitOutcome,
   type UnknownOutcome,
+  type WorkflowSignalReconcilePayload,
   type WorkflowSignalSubmitPayload,
 } from '@aizign/protocol';
 
@@ -107,6 +110,57 @@ export class OneShotCoreClient implements CoreClient {
           kind: 'unknown',
           reason: 'undecodable_response',
           detail: 'submit answered with a non-signal body',
+        };
+    }
+  }
+
+  async reconcileWorkflowSignal(
+    requestId: string,
+    payload: WorkflowSignalReconcilePayload,
+    options: CallOptions = {},
+  ): Promise<ReconcileOutcome> {
+    const frame = encodeRequest({ requestId, kind: 'workflow.signal.reconcile', payload });
+    const exchange = await this.#exchange(
+      ['handle', '--state', this.#config.stateDir],
+      frame,
+      options.signal,
+    );
+    if (exchange.kind === 'unknown') return exchange.outcome;
+
+    const reportedCode =
+      exchange.response.body.type === 'error' ? exchange.response.body.error.code : undefined;
+    const sent: SentRequest = {
+      requestId,
+      kind: 'workflow.signal.reconcile',
+      eventId: payload.signal.eventId,
+    };
+    const mismatch = checkCorrelation(sent, exchange.response);
+    if (mismatch !== undefined) {
+      const outcome: ReconcileUnknown = {
+        kind: 'unknown',
+        reason: 'correlation_mismatch',
+        detail: `${mismatch.field}: expected ${mismatch.expected}, got ${String(mismatch.actual)}`,
+        ...(reportedCode === undefined ? {} : { reportedCode }),
+      };
+      return outcome;
+    }
+
+    const { body } = exchange.response;
+    switch (body.type) {
+      case 'workflow.signal.reconciliation':
+        return { kind: body.result.disposition, eventId: body.result.eventId };
+      case 'error':
+        return {
+          kind: 'unknown',
+          reason: 'reported_unknown',
+          reportedCode: body.error.code,
+          detail: `${body.error.code}: ${body.error.message}`,
+        };
+      default:
+        return {
+          kind: 'unknown',
+          reason: 'undecodable_response',
+          detail: 'reconcile answered with a non-reconciliation body',
         };
     }
   }

@@ -10,7 +10,10 @@ use crate::signals;
 /// empty journal. Panics with a descriptive message on the first violation.
 pub fn run<J: Journal>(journal: &mut J) {
     assert!(
-        journal.load().expect("empty journal loads").is_empty(),
+        journal
+            .load_committed()
+            .expect("empty journal loads")
+            .is_empty(),
         "fresh journal must be empty"
     );
 
@@ -33,7 +36,7 @@ pub fn run<J: Journal>(journal: &mut J) {
         .expect("second append");
     assert_eq!(entry.seq, 2, "sequence numbers are contiguous");
 
-    let loaded = journal.load().expect("load after appends");
+    let loaded = journal.load_committed().expect("load after appends");
     assert_eq!(loaded.len(), 2);
     assert_eq!(loaded[0].seq, 1);
     assert_eq!(loaded[0].event, first);

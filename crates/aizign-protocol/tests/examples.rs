@@ -5,8 +5,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use aizign_protocol::{
-    Disposition, Request, RequestKind, ResponseBody, decode_request, decode_response,
-    encode_request, encode_response,
+    Disposition, ReconciliationDisposition, Request, RequestKind, ResponseBody, decode_request,
+    decode_response, encode_request, encode_response,
 };
 
 fn examples_dir() -> PathBuf {
@@ -69,7 +69,7 @@ fn hello_example_decodes_to_hello() {
 
 #[test]
 fn accepted_and_duplicate_examples_carry_dispositions() {
-    let (_, accepted) = examples("accepted.response.json").remove(0);
+    let (_, accepted) = examples("workflow-signal-submit.accepted.response.json").remove(0);
     let ResponseBody::WorkflowSignal(result) = decode_response(&accepted).unwrap().body else {
         panic!("expected a workflow signal result");
     };
@@ -81,6 +81,33 @@ fn accepted_and_duplicate_examples_carry_dispositions() {
         panic!("expected a workflow signal result");
     };
     assert_eq!(result.disposition, Disposition::Duplicate);
+}
+
+#[test]
+fn reconciliation_examples_carry_each_snapshot_disposition() {
+    for (suffix, expected) in [
+        (
+            "workflow-signal-reconcile.accepted.response.json",
+            ReconciliationDisposition::Accepted,
+        ),
+        (
+            "workflow-signal-reconcile.conflict.response.json",
+            ReconciliationDisposition::Conflict,
+        ),
+        (
+            "workflow-signal-reconcile.absent.response.json",
+            ReconciliationDisposition::Absent,
+        ),
+    ] {
+        let (_, bytes) = examples(suffix).remove(0);
+        let ResponseBody::WorkflowSignalReconciliation(result) =
+            decode_response(&bytes).unwrap().body
+        else {
+            panic!("expected a reconciliation result")
+        };
+        assert_eq!(result.disposition, expected);
+        assert_eq!(result.event_id.as_str(), "evt-0001");
+    }
 }
 
 #[test]

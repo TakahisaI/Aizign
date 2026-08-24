@@ -28,7 +28,7 @@ export {
   type SignalResultMeta,
 } from './evidence/cold-read.ts';
 export { bindingDigest, canonicalJson, payloadDigest } from './evidence/digest.ts';
-export { preflight } from './lifecycle/preflight.ts';
+export { preflight, RECONCILIATION_REQUIRED, REQUIRED } from './lifecycle/preflight.ts';
 export {
   adapterCodes,
   createSubmitWorkflowSignalTool,

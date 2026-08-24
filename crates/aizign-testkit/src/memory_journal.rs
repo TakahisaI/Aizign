@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 
 use aizign_core::BoundedTimestamp;
 use aizign_core::workflow::WorkflowEvent;
-use aizign_engine::{Journal, JournalEntry, JournalError, MAX_JOURNAL_ENTRIES};
+use aizign_engine::{Journal, JournalEntry, JournalError, JournalReader, MAX_JOURNAL_ENTRIES};
 
 /// In-memory journal. Behaves like a durable store from the engine's point
 /// of view, and lets tests inject the failures a real store can produce.
@@ -54,8 +54,8 @@ impl MemoryJournal {
     }
 }
 
-impl Journal for MemoryJournal {
-    fn load(&mut self) -> Result<Vec<JournalEntry>, JournalError> {
+impl JournalReader for MemoryJournal {
+    fn load_committed(&mut self) -> Result<Vec<JournalEntry>, JournalError> {
         if let Some(error) = self.load_faults.pop_front() {
             return Err(error);
         }
@@ -66,7 +66,9 @@ impl Journal for MemoryJournal {
         }
         Ok(self.entries.clone())
     }
+}
 
+impl Journal for MemoryJournal {
     fn append(
         &mut self,
         event: &WorkflowEvent,

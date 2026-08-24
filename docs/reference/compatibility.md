@@ -5,17 +5,22 @@
 | Version | 現在 | 管理 |
 |---|---|---|
 | Aizign package version | `0.1.0`（未release） | 全artifact lockstep。`Cargo.toml`、各 `package.json` |
-| Protocol version | `1`（`aizign-protocol` が実装。`hello` と `workflow.signal.submit`） | `spec/protocol/v1/`。envelopeの `version` |
+| Protocol version | `1`（`aizign-protocol` が実装。`hello`、`workflow.signal.submit`、`workflow.signal.reconcile`） | `spec/protocol/v1/`。envelopeの `version` |
 | Journal schema version | `1`（`aizign-store-jsonl` が実装） | `spec/journal/v1/`。recordの `schemaVersion` |
+| Store metadata version | `1`（`aizign-store-jsonl` が実装） | `spec/store/v1/`。commit documentの `storeVersion` |
 
 adapterはpackage versionの完全一致ではなく、`hello` で得たprotocol versionとcapabilityで互換性を判定します
 （[ADR-0003](../adr/0003-use-a-versioned-ndjson-process-boundary.md)、[ADR-0008](../adr/0008-use-lockstep-artifact-versions-before-1-0.md)）。
+初期のcommitted-prefix JSONL storeは `x86_64-unknown-linux-gnu` だけが検証済みで、x32を含む別ABIや別architecture / libcのLinuxなど、その他のbuildはsubmit / reconcile capabilityをadvertiseしません。
+x32は、64-bit targetと誤認しないことをCIでcross-compileするnegative boundaryに限定し、runtime support、release artifact、support claimは提供しません。
+同じstate directoryを旧binaryで開くdowngradeはunsupportedであり、技術的には防止していません。旧binaryがcommit metadataを無視できるため、operatorは別のstate directoryを使用する必要があります。
 
 ## 互換性の規則
 
 - 既存messageのshapeはrelease後に変更しない。新機能は新しい `kind` として追加する
 - envelopeや既存payloadの破壊的変更はprotocol versionを上げる
 - 既存journal recordの意味を変えない。新しいrecord kindは追加できる。破壊的変更はjournal schema versionを上げ、移行手順を `spec/journal/` に書く
+- committed-prefix metadataの意味を変えない。破壊的なstore layout変更はstore metadata versionを上げ、移行またはfail-closed方針を `spec/store/` に書く
 - `0.x` の間は最新minorだけをsupportする
 
 ## Toolchain

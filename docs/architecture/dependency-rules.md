@@ -24,7 +24,7 @@ aizign-cli ─────┬──────────────┬──
 | `aizign-core` | なし | なし | **なし**（dev-dependenciesも含む） | `#![no_std]`、`#![forbid(unsafe_code)]`。追加にはADR |
 | `aizign-engine` | `aizign-core` | `aizign-testkit` | なし | portを定義する側 |
 | `aizign-protocol` | `aizign-core` | `aizign-testkit` | `serde`、`serde_json` | DTOはここで定義。domain型をderiveしない（ADR-0009） |
-| `aizign-store-jsonl` | `aizign-core`、`aizign-engine` | `aizign-testkit` | `serde`、`serde_json` | engineの `Journal` portを実装 |
+| `aizign-store-jsonl` | `aizign-core`、`aizign-engine` | `aizign-testkit` | `serde`、`serde_json`、`sha2`（ADR-0014） | engineの `JournalReader` / `Journal` portを実装。SHA-256はcommitted-prefix metadata専用 |
 | `aizign-testkit` | `aizign-core`、`aizign-engine`、`aizign-protocol` | なし | `serde_json` | memory journal、journal contract、signal helper、fixture loader |
 | `aizign-cli` | 上記すべて | `aizign-testkit` | `serde_json`（引数parseは標準libraryで十分な範囲に留める） | composition root。ここ以外でworkspace全体を束ねない |
 | `xtask` | なし（workspace crateに依存しない） | なし | `serde_json` | repository tooling。公開artifactではない |
@@ -70,7 +70,8 @@ source中に次が現れたら `public-audit` が失敗します。
 
 | Port | 定義する側 | 実装する側 | 状態 |
 |---|---|---|---|
-| `Journal` | `aizign-engine` | `aizign-store-jsonl`、`aizign-testkit`（`MemoryJournal`） | 実装済み |
+| `JournalReader` | `aizign-engine` | `aizign-store-jsonl`、`aizign-testkit`（`MemoryJournal`） | 実装済み |
+| `Journal` | `aizign-engine` | `aizign-store-jsonl`、`aizign-testkit`（`MemoryJournal`） | 実装済み（`JournalReader`を拡張） |
 | `Clock` | `aizign-engine` | `aizign-cli`（system）、`aizign-testkit`（`FixedClock`） | 実装済み |
 | `EffectSink` | `aizign-engine` | `aizign-cli`（protocol responseとして返す） | 後続 |
 | Harness adapter contract | `@aizign/protocol` / `spec/protocol` | 各adapter |

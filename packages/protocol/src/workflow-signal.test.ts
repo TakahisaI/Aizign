@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { codes, ProtocolError } from './error.ts';
-import { decodeWorkflowSignalSubmit } from './workflow-signal.ts';
+import {
+  decodeReconciliationResult,
+  decodeWorkflowSignalReconcile,
+  decodeWorkflowSignalSubmit,
+  encodeWorkflowSignalReconcile,
+} from './workflow-signal.ts';
 
 const validDigest = {
   algorithm: 'sha256',
@@ -35,5 +40,58 @@ test('invalid expected candidate digest has a digest-specific diagnostic', () =>
       error instanceof ProtocolError &&
       error.code === codes.INVALID_EXPECTATION &&
       error.message === 'expected.candidateDigest: not a supported content digest',
+  );
+});
+
+test('reconciliation reuses the exact signal contract without expected', () => {
+  const signal = {
+    eventId: 'evt-1',
+    workflowId: 'wf-1',
+    assignmentId: 'as-1',
+    attemptId: 'attempt-1',
+    role: 'implementation',
+    artifactRevision: 'rev-1',
+    candidateDigest: validDigest,
+    kind: 'implementation_ready',
+  } as const;
+  const decoded = decodeWorkflowSignalReconcile({ signal });
+  assert.deepEqual(encodeWorkflowSignalReconcile(decoded), { signal });
+
+  assert.throws(
+    () =>
+      decodeWorkflowSignalReconcile({
+        signal: { ...signal, workflowId: 'bad id' },
+      }),
+    (error: unknown) =>
+      error instanceof ProtocolError &&
+      error.code === codes.INVALID_SIGNAL &&
+      error.message.startsWith('signal.workflowId:'),
+  );
+
+  for (const invalid of [
+    { ...signal, workflowId: 7 },
+    { ...signal, candidateDigest: { algorithm: 'sha256', hex: 'ABC' } },
+    { ...signal, artifactRef: null },
+  ]) {
+    assert.throws(
+      () => decodeWorkflowSignalReconcile({ signal: invalid }),
+      (error: unknown) =>
+        error instanceof ProtocolError &&
+        !error.message.includes('expected.') &&
+        error.message.includes('signal.'),
+    );
+  }
+});
+
+test('reconciliation result accepts only accepted, conflict, or absent', () => {
+  for (const disposition of ['accepted', 'conflict', 'absent'] as const) {
+    assert.deepEqual(decodeReconciliationResult({ disposition, eventId: 'evt-1' }), {
+      disposition,
+      eventId: 'evt-1',
+    });
+  }
+  assert.throws(
+    () => decodeReconciliationResult({ disposition: 'duplicate', eventId: 'evt-1' }),
+    (error: unknown) => error instanceof ProtocolError && error.code === codes.INVALID_PAYLOAD,
   );
 });

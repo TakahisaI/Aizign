@@ -14,7 +14,7 @@
 | Workspace | `workspace/` | writer lease、candidate revision、check evidenceのbinding | Git command、filesystem | later |
 | Authorization | `authorization/` | revision-bound human authorizationのstateとconsume | CLI、operator UI | later |
 | Integration | `integration/` | integration planとmilestone、CAS前提条件 | ref更新そのもの | later |
-| Recovery | `recovery/` | restart reconciliationのbounded read-only disposition | process監視 | later |
+| Recovery | `recovery/` | replay済みworkflow stateに対するfull signalのpureなaccepted / conflict / absent分類 | durability判断、journal I/O、process監視 | ✔ |
 | Usage | `usage/` | usage observationの共通型 | 収集、集計CLI | later |
 
 `later` のcontextは、最初のstructured workflow signalが縦に通った後、旧実装をcontext単位で再評価して追加します。
@@ -27,7 +27,8 @@ engineはuse caseとportを持ちます。contextの切り方はcoreと揃えま
 | 要素 | 内容 | 状態 |
 |---|---|---|
 | Use case | `handle_workflow_signal`: journal load → replay → core → append → outcome | 実装済み |
-| Port | `Journal`（append / load、`JournalEntry`、`JournalError`）、`Clock`（bounded timestamp） | 実装済み |
+| Use case | `reconcile_workflow_signal`: committed load → replay → exact signal classification。append / clock / effectなし | 実装済み |
+| Port | `JournalReader`（committed load）、これを拡張する`Journal`（append）、`JournalEntry`、`JournalError`、`Clock`（bounded timestamp） | 実装済み |
 | Port | `EffectSink`（effect intentの配送） | 後続 |
 | 所有 | portはengineが定義。store、testkit、cliが実装 | — |
 
@@ -36,7 +37,7 @@ engineはuse caseとportを持ちます。contextの切り方はcoreと揃えま
 | 要素 | 内容 |
 |---|---|
 | Envelope | `protocol`、`version`、`requestId`、`kind`、`payload` |
-| Kind | `hello`、`workflow.signal.submit`、以後は新しいkindとして追加 |
+| Kind | `hello`、`workflow.signal.submit`、`workflow.signal.reconcile`、以後は新しいkindとして追加 |
 | 正本 | `spec/protocol/v1/schemas/`、`spec/protocol/v1/examples/` |
 
 ## Journal (`crates/aizign-store-jsonl`)
@@ -44,8 +45,9 @@ engineはuse caseとportを持ちます。contextの切り方はcoreと揃えま
 | 要素 | 内容 |
 |---|---|
 | Record | schema version付きのclosed record。metadata-only。`workflow.signal.accepted` |
-| Store | `JsonlJournal`（owner-only、advisory lock、bounded cold read、fsync append）、`aizign-testkit::MemoryJournal` |
-| 正本 | `spec/journal/v1/` |
+| Store | `JsonlJournal` writer（exclusive lock、durable append / commit publish）、`JsonlJournalReader`（shared lock、strictly read-only committed cold read）、`aizign-testkit::MemoryJournal` |
+| Commit point | `workflow.commit.json` がcommitted byte length / entry count / SHA-256を公開。extra tailはunknownでpromoteしない |
+| 正本 | recordは`spec/journal/v1/`、store metadataは`spec/store/v1/` |
 
 ## Adapter (`adapters/<harness>/`)
 

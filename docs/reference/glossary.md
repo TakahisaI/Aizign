@@ -27,12 +27,14 @@ code identifierは英語で固定します。日本語訳は説明用で、識�
 | **Duplicate** | 同一identity・同一内容の再提出。受理済みとして扱い、再記録しない |
 | **Conflict** | 同一identity・異内容の提出。拒否し、error codeで説明する |
 | **Unknown** | effectやappendの結果が確定できない状態。成功にも失敗にも縮約せず、blind retryしない |
-| **Reconcile** | restart後に、journalとharness persistenceをbounded read-onlyで照合すること |
+| **Reconcile** | restart後に、writer-published committed journal snapshotとfull signalをbounded read-onlyで照合し、`accepted` / `conflict` / `absent`または`unknown`を得ること |
 | **Opaque handle** | adapterが発行し、coreは比較と保存にだけ使う不透明な文字列 |
 | **Capability** | adapterが提供できる操作の宣言。`hello` で交換する |
 | **Protocol version** | wire contractの整数version。package versionと独立 |
 | **Journal schema version** | journal recordの整数version。package versionと独立 |
+| **Store metadata version** | committed-prefix documentの整数version。protocol versionとjournal record schema versionの双方から独立 |
 | **Control journal** | workflowの正本となるmetadata-onlyのappend-only journal |
+| **Committed prefix** | writerがfile / metadata / directory barrier後に`workflow.commit.json`で公開したJSONL byte prefix。readerはこれを越えるtailを受理根拠にしない |
 | **Bounded** | 上限のあること。request size、record数、処理時間、cold read範囲に上限を置く |
 | **Short error code** | `^[A-Z][A-Z0-9_]{0,63}$` の安定した識別子。[error-codes.md](error-codes.md) |
 | **Live smoke** | 実harness、browser、providerを使うopt-in検査。通常CIでは起動しない |

@@ -9,6 +9,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  CAPABILITY_WORKFLOW_SIGNAL_RECONCILE,
   CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
   type CoreClient,
   type CoreClientConfig,
@@ -117,6 +118,7 @@ export async function runCoreScenarios(
     if (hello.kind === 'ok') {
       assert.equal(hello.info.protocolVersion, PROTOCOL_VERSION);
       assert.ok(hello.info.capabilities.includes(CAPABILITY_WORKFLOW_SIGNAL_SUBMIT));
+      assert.ok(hello.info.capabilities.includes(CAPABILITY_WORKFLOW_SIGNAL_RECONCILE));
     }
 
     const client = make('signals');
@@ -187,6 +189,29 @@ export async function runCoreScenarios(
       kind: 'accepted',
       eventId: 'evt-candidate-rebound',
     });
+
+    assert.deepEqual(
+      await client.reconcileWorkflowSignal('req-reconcile-accepted', {
+        signal: samplePayload('evt-1').signal,
+      }),
+      { kind: 'accepted', eventId: 'evt-1' },
+    );
+    assert.deepEqual(
+      await client.reconcileWorkflowSignal('req-reconcile-conflict', {
+        signal: {
+          ...samplePayload('evt-1').signal,
+          kind: 'blocked',
+          shortErrorCode: 'CHANGED',
+        },
+      }),
+      { kind: 'conflict', eventId: 'evt-1' },
+    );
+    assert.deepEqual(
+      await client.reconcileWorkflowSignal('req-reconcile-absent', {
+        signal: samplePayload('evt-absent').signal,
+      }),
+      { kind: 'absent', eventId: 'evt-absent' },
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -255,6 +280,73 @@ export async function runFaultScenarios(
     );
     assert.equal(spawnFailed.kind, 'unknown');
     if (spawnFailed.kind === 'unknown') assert.equal(spawnFailed.reason, 'spawn_failed');
+
+    const timeoutState = join(root, 'reconcile-handler-timeout');
+    const timeoutClient = factory({
+      ...fake,
+      env: { AIZIGN_FAKE_FAULT: 'handler-timeout' },
+      stateDir: timeoutState,
+      timeoutMs: 10_000,
+    });
+    const timeout = await timeoutClient.reconcileWorkflowSignal('req-reconcile-timeout', {
+      signal: samplePayload('evt-timeout').signal,
+    });
+    assert.equal(timeout.kind, 'unknown');
+    if (timeout.kind === 'unknown') {
+      assert.equal(timeout.reason, 'correlation_mismatch');
+      assert.equal(timeout.reportedCode, 'HANDLER_TIMEOUT');
+    }
+    assertMetadataOnly(readFakeRequests(timeoutState));
+    assert.equal(
+      readFakeRequests(timeoutState).length,
+      1,
+      'reconciliation does not retry an uncorrelated watchdog response',
+    );
+
+    const reconciliationFaults: Array<[string, string]> = [
+      ['garbage', 'undecodable_response'],
+      ['oversized', 'oversized_response'],
+      ['wrong-request-id', 'correlation_mismatch'],
+      ['wrong-kind', 'correlation_mismatch'],
+      ['wrong-event-id', 'correlation_mismatch'],
+      ['two-frames', 'undecodable_response'],
+      ['trailing-garbage', 'undecodable_response'],
+    ];
+    for (const [fault, reason] of reconciliationFaults) {
+      const stateDir = join(root, `reconcile-fault-${fault}`);
+      const outcome = await make(`reconcile-fault-${fault}`, {
+        AIZIGN_FAKE_FAULT: fault,
+      }).reconcileWorkflowSignal(`req-reconcile-${fault}`, {
+        signal: samplePayload(`evt-reconcile-${fault}`).signal,
+      });
+      assert.equal(outcome.kind, 'unknown', `${fault}: ${JSON.stringify(outcome)}`);
+      if (outcome.kind === 'unknown') assert.equal(outcome.reason, reason, fault);
+      const requests = readFakeRequests(stateDir);
+      assertMetadataOnly(requests);
+      if (fault !== 'garbage') {
+        assert.equal(requests.length, 1, `${fault}: reconciliation must not retry`);
+      }
+    }
+
+    const lostAckState = join(root, 'lost-ack-reconciliation');
+    const lostAck = factory({
+      ...fake,
+      env: { AIZIGN_FAKE_FAULT: 'journal-unknown' },
+      stateDir: lostAckState,
+      timeoutMs: 10_000,
+    });
+    const attempted = samplePayload('evt-lost-ack');
+    assert.equal((await lostAck.submitWorkflowSignal('req-lost-ack', attempted)).kind, 'unknown');
+    const restarted = factory({ ...fake, stateDir: lostAckState, timeoutMs: 10_000 });
+    assert.deepEqual(
+      await restarted.reconcileWorkflowSignal('req-restarted', { signal: attempted.signal }),
+      { kind: 'accepted', eventId: 'evt-lost-ack' },
+    );
+    assert.equal(
+      readFakeRequests(lostAckState).length,
+      2,
+      'one submit and one reconciliation occur without a blind submit retry',
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

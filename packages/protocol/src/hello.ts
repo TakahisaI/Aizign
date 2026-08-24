@@ -5,6 +5,8 @@ import { isPlainObject } from './shape.ts';
 
 /** Capability advertised when `workflow.signal.submit` is available. */
 export const CAPABILITY_WORKFLOW_SIGNAL_SUBMIT = 'workflow.signal.submit';
+/** Capability advertised when `workflow.signal.reconcile` is available. */
+export const CAPABILITY_WORKFLOW_SIGNAL_RECONCILE = 'workflow.signal.reconcile';
 
 /** Informational identity of the responding package. */
 export interface PackageInfo {

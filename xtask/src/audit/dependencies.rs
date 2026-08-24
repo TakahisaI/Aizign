@@ -57,7 +57,7 @@ const RULES: &[CrateRule] = &[
         name: "aizign-store-jsonl",
         workspace: &["aizign-core", "aizign-engine"],
         dev_workspace: &["aizign-testkit"],
-        external: &["serde", "serde_json"],
+        external: &["serde", "serde_json", "sha2"],
         harness_neutral: true,
         shell_free: false,
     },

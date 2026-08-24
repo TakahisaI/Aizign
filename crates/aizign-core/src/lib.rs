@@ -43,6 +43,7 @@
 extern crate alloc;
 
 mod identity;
+pub mod recovery;
 pub mod workflow;
 
 pub use identity::{

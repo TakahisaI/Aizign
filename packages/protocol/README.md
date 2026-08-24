@@ -4,14 +4,14 @@ Aizign Protocol v1 for TypeScript: closed NDJSON envelope codec, `hello` compati
 
 | | |
 |---|---|
-| **Responsibility** | `decodeRequest` / `encodeRequest` / `decodeResponse` / `encodeResponse`（両方向 `MAX_FRAME_BYTES`）、`extractFrame`（stdoutがframe 1つだけか）、`checkCorrelation`（`requestId` / `kind` / `eventId` の照合）、`hello` の `checkCompatibility`、`workflow.signal.submit` のpayload型と closed decoder、`CoreClient` / `SubmitOutcome` / `UnknownOutcome` の契約型 |
+| **Responsibility** | `decodeRequest` / `encodeRequest` / `decodeResponse` / `encodeResponse`（両方向 `MAX_FRAME_BYTES`）、`extractFrame`（stdoutがframe 1つだけか）、`checkCorrelation`（`requestId` / `kind` / `eventId` の照合）、`hello` の `checkCompatibility`、submit / reconcileのpayload型とclosed decoder、`CoreClient` / submit・reconcile outcomeの契約型 |
 | **Non-responsibility** | process起動、filesystem、harness固有型、判断（coreの責務。decoderはcoreと同じ入力規則で **事前に** 拒否するだけ） |
 | **Inputs** | frame（`Uint8Array` / `string`）、payload object |
 | **Outputs** | `Request` / `Response`、`DecodeFailure`（復元した `requestId` / `kind` 付き）、`ProtocolError` |
-| **Hard invariants** | BOMなしUTF-8、well-formed Unicode、closed schema（未知field、`null`、未登録kindを拒否）、attempt / typed candidate digestをRustと同じ規則でdecode、`spec/conformance` の全fixtureでRust実装と同じcodeと復元IDを返す、`JOURNAL_OUTCOME_UNKNOWN` / `HANDLER_TIMEOUT` は `rejected` ではなく `unknown` |
+| **Hard invariants** | BOMなしUTF-8、well-formed Unicode、closed schema（未知field、`null`、未登録kindを拒否）、submit / reconcileのsignalをRustと同じ規則でdecode、`spec/conformance` の全fixtureでRust実装と同じcodeと復元IDを返す、reconciliationの全failureは`unknown`、valid error codeは相関検査より先に`reportedCode`へ保持、blind retryしない |
 | **Allowed dependencies** | なし（runtime）。dev: workspace rootの `typescript` / `@biomejs/biome` / `@types/node` |
 | **Test command** | `npm test -w @aizign/protocol`（`node --test`、型はNodeがstripする） |
-| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md) |
+| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md) |
 
 wire contractの正本は [`spec/protocol/v1/`](../../spec/protocol/v1/README.md)。このpackageはそれに従う側です。
 
@@ -24,8 +24,8 @@ src/
 ├── duplicate-member.ts   member重複とUnicode stringのlexical走査（内部実装）
 ├── error.ts              ProtocolError、codes、SHORT_ERROR_CODE_PATTERN
 ├── hello.ts              HelloInfo、decodeHelloInfo、checkCompatibility
-├── workflow-signal.ts    payload型、decodeWorkflowSignalSubmit（coreと同じ規則）、decodeSignalResult
-├── client.ts             CoreClient、CoreClientConfig、HelloOutcome、SubmitOutcome、UNKNOWN_OUTCOME_CODES
+├── workflow-signal.ts    shared signal、submit / reconcile payload、result decoder
+├── client.ts             CoreClient、CoreClientConfig、Hello / Submit / ReconcileOutcome、UNKNOWN_OUTCOME_CODES
 ├── shape.ts              isPlainObject、assertOnlyKeys、IDENTIFIER_PATTERN
 └── *.test.ts             conformance（spec/conformance全件）、hello、envelope
 ```
@@ -40,9 +40,9 @@ const response = decodeResponse(lineFromStdout);
 if (response.body.type === 'hello') {
   const problem = checkCompatibility(response.body.info, {
     protocolVersion: PROTOCOL_VERSION,
-    capabilities: ['workflow.signal.submit'],
+    capabilities: ['workflow.signal.submit', 'workflow.signal.reconcile'],
   });
 }
 ```
 
-`CoreClient` の実装は各adapterが所有します。検証には [`@aizign/adapter-testkit`](../adapter-testkit/README.md) を使います。
+`CoreClient` の実装は各adapterが所有します。`reconcileWorkflowSignal` はsuccessを`accepted | conflict | absent`へ写像し、error / transport / decode / timeout / abort / correlation failureを`unknown`へ写像します。responseにvalidなerror codeがあれば、相関しないwatchdog responseでも診断用`reportedCode`として保持します。検証には [`@aizign/adapter-testkit`](../adapter-testkit/README.md) を使います。

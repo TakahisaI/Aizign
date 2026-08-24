@@ -6,11 +6,24 @@ use std::process::{Command, Output, Stdio};
 use std::time::Duration;
 
 use aizign_core::workflow::Command as CoreCommand;
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
+use aizign_protocol::{Disposition, ReconciliationDisposition};
 use aizign_protocol::{
-    Disposition, MAX_REQUEST_BYTES, Request, RequestKind, ResponseBody, codes, decode_response,
-    encode_request,
+    MAX_REQUEST_BYTES, Request, RequestKind, ResponseBody, codes, decode_response, encode_request,
 };
-use aizign_store_jsonl::{JOURNAL_FILE_NAME, JsonlJournal};
+use aizign_store_jsonl::JOURNAL_FILE_NAME;
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
+use aizign_store_jsonl::{COMMIT_FILE_NAME, JsonlJournal, LOCK_FILE_NAME};
 use aizign_testkit::{TempDir, signals};
 
 fn aizign() -> Command {
@@ -27,6 +40,61 @@ fn run_handle(state: &Path, frame: &str) -> Output {
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn aizign");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(frame.as_bytes())
+        .unwrap();
+    child.wait_with_output().expect("wait for aizign")
+}
+
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
+fn run_handle_without_observing_stdout(state: &Path, frame: &str) -> std::process::ExitStatus {
+    let mut child = aizign()
+        .arg("handle")
+        .arg("--state")
+        .arg(state)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn aizign");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(frame.as_bytes())
+        .unwrap();
+    child.wait().expect("wait for aizign")
+}
+
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
+fn run_handle_with_umask(state: &Path, frame: &str, mask: &str) -> Output {
+    let mut child = Command::new("/bin/sh")
+        .arg("-c")
+        .arg("umask \"$1\"; shift; exec \"$@\"")
+        .arg("aizign-umask-test")
+        .arg(mask)
+        .arg(env!("CARGO_BIN_EXE_aizign"))
+        .arg("handle")
+        .arg("--state")
+        .arg(state)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn aizign under restrictive umask");
     child
         .stdin
         .take()
@@ -60,6 +128,15 @@ fn submit_frame(event_id: &str, request_id: &str) -> String {
     frame
 }
 
+fn reconcile_frame(signal: aizign_core::workflow::WorkflowSignal, request_id: &str) -> String {
+    let mut frame = encode_request(&Request {
+        request_id: request_id.to_owned(),
+        kind: RequestKind::ReconcileWorkflowSignal(Box::new(signal)),
+    });
+    frame.push('\n');
+    frame
+}
+
 #[test]
 fn hello_subcommand_reports_capabilities_without_state() {
     let output = aizign().arg("hello").output().unwrap();
@@ -70,8 +147,247 @@ fn hello_subcommand_reports_capabilities_without_state() {
     };
     assert_eq!(info.protocol_version, 1);
     assert_eq!(info.journal_schema_version, 1);
-    assert_eq!(info.capabilities, ["workflow.signal.submit"]);
+    #[cfg(all(
+        target_os = "linux",
+        target_arch = "x86_64",
+        target_env = "gnu",
+        target_pointer_width = "64"
+    ))]
+    assert_eq!(
+        info.capabilities,
+        ["workflow.signal.submit", "workflow.signal.reconcile"]
+    );
+    #[cfg(not(all(
+        target_os = "linux",
+        target_arch = "x86_64",
+        target_env = "gnu",
+        target_pointer_width = "64"
+    )))]
+    assert!(info.capabilities.is_empty());
     assert_eq!(info.package.name, "aizign");
+}
+
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
+#[test]
+fn reconciliation_is_read_only_and_classifies_the_committed_snapshot() {
+    let missing = TempDir::new();
+    let output = run_handle(
+        &missing.state(),
+        &reconcile_frame(signals::implementation_ready("evt-1"), "req-missing"),
+    );
+    let ResponseBody::Error(error) = one_frame(&output).body else {
+        panic!("missing store must be unknown")
+    };
+    assert_eq!(error.code().as_str(), "JOURNAL_UNAVAILABLE");
+    assert!(
+        !missing.state().exists(),
+        "reconciliation never initializes"
+    );
+
+    let initialized = TempDir::new();
+    let initialized_state = initialized.state();
+    drop(JsonlJournal::open(&initialized_state).expect("durably initialize empty store"));
+    let before_journal = std::fs::read(initialized_state.join(JOURNAL_FILE_NAME)).unwrap();
+    let before_commit = std::fs::read(initialized_state.join(COMMIT_FILE_NAME)).unwrap();
+    let ResponseBody::WorkflowSignalReconciliation(result) = one_frame(&run_handle(
+        &initialized_state,
+        &reconcile_frame(
+            signals::implementation_ready("evt-pre-append"),
+            "req-pre-append",
+        ),
+    ))
+    .body
+    else {
+        panic!("initialized empty snapshot must establish absence")
+    };
+    assert_eq!(result.disposition, ReconciliationDisposition::Absent);
+    assert_eq!(
+        std::fs::read(initialized_state.join(JOURNAL_FILE_NAME)).unwrap(),
+        before_journal
+    );
+    assert_eq!(
+        std::fs::read(initialized_state.join(COMMIT_FILE_NAME)).unwrap(),
+        before_commit
+    );
+
+    let dir = TempDir::new();
+    let state = dir.state();
+    one_frame(&run_handle(&state, &submit_frame("evt-1", "req-submit")));
+
+    let response = one_frame(&run_handle(
+        &state,
+        &reconcile_frame(signals::implementation_ready("evt-1"), "req-accepted"),
+    ));
+    assert_eq!(response.request_id.as_deref(), Some("req-accepted"));
+    assert_eq!(response.kind.as_deref(), Some("workflow.signal.reconcile"));
+    let ResponseBody::WorkflowSignalReconciliation(result) = response.body else {
+        panic!("accepted reconciliation")
+    };
+    assert_eq!(result.disposition, ReconciliationDisposition::Accepted);
+    assert_eq!(result.event_id.as_str(), "evt-1");
+
+    let ResponseBody::WorkflowSignalReconciliation(result) = one_frame(&run_handle(
+        &state,
+        &reconcile_frame(signals::blocked("evt-1", "CHANGED"), "req-conflict"),
+    ))
+    .body
+    else {
+        panic!("conflict reconciliation")
+    };
+    assert_eq!(result.disposition, ReconciliationDisposition::Conflict);
+
+    let ResponseBody::WorkflowSignalReconciliation(result) = one_frame(&run_handle(
+        &state,
+        &reconcile_frame(signals::implementation_ready("evt-absent"), "req-absent"),
+    ))
+    .body
+    else {
+        panic!("absent reconciliation")
+    };
+    assert_eq!(result.disposition, ReconciliationDisposition::Absent);
+
+    let corrupt = TempDir::new();
+    let corrupt_state = corrupt.state();
+    drop(JsonlJournal::open(&corrupt_state).expect("initialize corrupt test store"));
+    std::fs::write(corrupt_state.join(COMMIT_FILE_NAME), b"not json").unwrap();
+    let ResponseBody::Error(error) = one_frame(&run_handle(
+        &corrupt_state,
+        &reconcile_frame(signals::implementation_ready("evt-1"), "req-corrupt"),
+    ))
+    .body
+    else {
+        panic!("corrupt snapshot must remain unknown")
+    };
+    assert_eq!(error.code().as_str(), "JOURNAL_CORRUPT");
+}
+
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
+#[test]
+fn lost_ack_is_reconciled_by_a_fresh_process_without_a_blind_retry() {
+    let dir = TempDir::new();
+    let state = dir.state();
+    let signal = signals::implementation_ready("evt-lost-ack");
+
+    let status =
+        run_handle_without_observing_stdout(&state, &submit_frame("evt-lost-ack", "req-lost-ack"));
+    assert!(status.success(), "the durable submit process must complete");
+
+    let response = one_frame(&run_handle(
+        &state,
+        &reconcile_frame(signal, "req-reconcile-lost-ack"),
+    ));
+    let ResponseBody::WorkflowSignalReconciliation(result) = response.body else {
+        panic!("fresh-process reconciliation must classify the committed signal")
+    };
+    assert_eq!(result.disposition, ReconciliationDisposition::Accepted);
+    assert_eq!(result.event_id.as_str(), "evt-lost-ack");
+
+    let journal = std::fs::read_to_string(state.join(JOURNAL_FILE_NAME)).unwrap();
+    assert_eq!(
+        journal.lines().count(),
+        1,
+        "reconciliation must not resubmit the signal"
+    );
+}
+
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
+#[test]
+fn restrictive_umask_is_normalized_before_acceptance() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    fn assert_reopenable_layout(state: &Path) {
+        assert_eq!(
+            std::fs::symlink_metadata(state)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o7777,
+            0o700
+        );
+        for name in [LOCK_FILE_NAME, JOURNAL_FILE_NAME, COMMIT_FILE_NAME] {
+            assert_eq!(
+                std::fs::symlink_metadata(state.join(name))
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o7777,
+                0o600,
+                "{name}"
+            );
+        }
+    }
+
+    // Existing files are normal, but the next commit temp is created under
+    // umask 0777. Publication must normalize it before returning accepted.
+    let existing = TempDir::new();
+    let existing_state = existing.state();
+    drop(JsonlJournal::open(&existing_state).expect("initialize normal store"));
+    let ResponseBody::WorkflowSignal(result) = one_frame(&run_handle_with_umask(
+        &existing_state,
+        &submit_frame("evt-umask-existing", "req-umask-existing"),
+        "0777",
+    ))
+    .body
+    else {
+        panic!("restrictive-umask append must succeed")
+    };
+    assert_eq!(result.disposition, Disposition::Accepted);
+    let ResponseBody::WorkflowSignalReconciliation(result) = one_frame(&run_handle(
+        &existing_state,
+        &reconcile_frame(
+            signals::implementation_ready("evt-umask-existing"),
+            "req-reconcile-umask-existing",
+        ),
+    ))
+    .body
+    else {
+        panic!("fresh process must reopen the normalized commit metadata")
+    };
+    assert_eq!(result.disposition, ReconciliationDisposition::Accepted);
+    assert_reopenable_layout(&existing_state);
+
+    // Fresh initialization normalizes the directory, lock, journal, and
+    // initial/replacement commit metadata under the same restrictive umask.
+    let fresh = TempDir::new();
+    let fresh_state = fresh.state();
+    let ResponseBody::WorkflowSignal(result) = one_frame(&run_handle_with_umask(
+        &fresh_state,
+        &submit_frame("evt-umask-fresh", "req-umask-fresh"),
+        "0777",
+    ))
+    .body
+    else {
+        panic!("restrictive-umask initialization must succeed")
+    };
+    assert_eq!(result.disposition, Disposition::Accepted);
+    let ResponseBody::WorkflowSignalReconciliation(result) = one_frame(&run_handle(
+        &fresh_state,
+        &reconcile_frame(
+            signals::implementation_ready("evt-umask-fresh"),
+            "req-reconcile-umask-fresh",
+        ),
+    ))
+    .body
+    else {
+        panic!("fresh process must reopen every normalized artifact")
+    };
+    assert_eq!(result.disposition, ReconciliationDisposition::Accepted);
+    assert_reopenable_layout(&fresh_state);
 }
 
 #[test]
@@ -91,6 +407,12 @@ fn hello_request_frame_is_answered_with_its_request_id() {
     );
 }
 
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 #[test]
 fn accepted_then_duplicate_across_processes_and_conflict() {
     let dir = TempDir::new();
@@ -110,7 +432,7 @@ fn accepted_then_duplicate_across_processes_and_conflict() {
             .unwrap()
             .permissions()
             .mode();
-        assert_eq!(mode & 0o777, 0o600);
+        assert_eq!(mode & 0o7777, 0o600);
     }
 
     // A fresh process rebuilds state from the journal alone.
@@ -144,6 +466,12 @@ fn accepted_then_duplicate_across_processes_and_conflict() {
     assert_eq!(response.kind.as_deref(), Some("workflow.signal.submit"));
 }
 
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 #[test]
 fn stderr_carries_identity_and_codes_but_no_contents() {
     let dir = TempDir::new();
@@ -212,14 +540,34 @@ fn stdin_must_carry_exactly_one_frame() {
 
     // Trailing whitespace after the newline is fine.
     let whitespace = format!("{}\n  \n", submit_frame("evt-a", "req-ws"));
+    let body = one_frame(&run_handle(&dir.state(), &whitespace)).body;
+    #[cfg(all(
+        target_os = "linux",
+        target_arch = "x86_64",
+        target_env = "gnu",
+        target_pointer_width = "64"
+    ))]
+    assert!(matches!(body, ResponseBody::WorkflowSignal(_)));
+    #[cfg(not(all(
+        target_os = "linux",
+        target_arch = "x86_64",
+        target_env = "gnu",
+        target_pointer_width = "64"
+    )))]
     assert!(matches!(
-        one_frame(&run_handle(&dir.state(), &whitespace)).body,
-        ResponseBody::WorkflowSignal(_)
+        body,
+        ResponseBody::Error(error) if error.code().as_str() == codes::CAPABILITY_UNSUPPORTED
     ));
 }
 
 /// Pads a frame with trailing spaces (inside the frame, before its newline)
 /// to exactly `MAX_REQUEST_BYTES`, the largest size the protocol accepts.
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn frame_at_size_bound(event_id: &str, request_id: &str) -> String {
     let frame = submit_frame(event_id, request_id);
     let body = frame.trim_end_matches('\n');
@@ -227,6 +575,12 @@ fn frame_at_size_bound(event_id: &str, request_id: &str) -> String {
     format!("{body}{}\n", " ".repeat(MAX_REQUEST_BYTES - body.len()))
 }
 
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 #[test]
 fn trailing_content_is_still_rejected_at_the_frame_size_bound() {
     // Regression for the fail-open boundary (#34): with the frame at exactly
@@ -305,6 +659,12 @@ fn a_stdin_that_never_closes_ends_as_handler_timeout_not_a_hang() {
     );
 }
 
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 #[test]
 fn journal_problems_are_reported_as_journal_codes() {
     let dir = TempDir::new();
@@ -328,6 +688,39 @@ fn journal_problems_are_reported_as_journal_codes() {
         assert_eq!(error.code().as_str(), "JOURNAL_UNAVAILABLE");
         std::fs::set_permissions(&state, std::fs::Permissions::from_mode(0o700)).unwrap();
     }
+}
+
+#[cfg(not(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+)))]
+#[test]
+fn unsupported_storage_platform_advertises_no_store_capability_and_rejects_direct_requests() {
+    let hello = one_frame(&aizign().arg("hello").output().unwrap());
+    let ResponseBody::Hello(info) = hello.body else {
+        panic!("hello response")
+    };
+    assert!(info.capabilities.is_empty());
+
+    let dir = TempDir::new();
+    for frame in [
+        submit_frame("evt-unsupported", "req-submit-unsupported"),
+        reconcile_frame(
+            signals::implementation_ready("evt-unsupported"),
+            "req-reconcile-unsupported",
+        ),
+    ] {
+        let ResponseBody::Error(error) = one_frame(&run_handle(&dir.state(), &frame)).body else {
+            panic!("unsupported request must fail")
+        };
+        assert_eq!(error.code().as_str(), codes::CAPABILITY_UNSUPPORTED);
+    }
+    assert!(
+        !dir.state().exists(),
+        "unsupported requests must not create state"
+    );
 }
 
 #[test]
