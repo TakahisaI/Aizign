@@ -57,11 +57,34 @@ A completed lookup returns an `ok: true` payload:
 
 `disposition` is one of `accepted`, `conflict`, or `absent`. Every successful response echoes the queried `eventId` so clients can correlate request ID, kind, and event identity. `absent` is only an observation of the completed snapshot. It does not authorize this operation or an adapter to retry submission automatically.
 
-Represent an indeterminate lookup as the normal protocol error envelope, preserving the specific stable code that prevented a trustworthy result. Journal open, lock, schema, corruption, and bound failures retain their existing `JOURNAL_*` codes; the outer processing watchdog retains `HANDLER_TIMEOUT`. The TypeScript client maps every reconciliation error response, transport failure, malformed or oversized response, timeout, abort, and correlation mismatch to its semantic `unknown` outcome and preserves a reported stable code as structured diagnostic data. It never maps one of those failures to `absent`.
+Represent an indeterminate lookup as the normal protocol error envelope, preserving the specific stable code that prevented a trustworthy result. Journal open, lock, schema, corruption, and bound failures retain their existing `JOURNAL_*` codes; the outer processing watchdog retains `HANDLER_TIMEOUT`. The TypeScript client maps every reconciliation error response, transport failure, malformed or oversized response, timeout, abort, and correlation mismatch to its semantic `unknown` outcome. It never maps one of those failures to `absent`.
+
+The reconciliation client's unknown result has a structured slot for a syntactically valid code reported by a response:
+
+```ts
+type ReconcileUnknown = {
+  readonly kind: 'unknown';
+  readonly reason: UnknownReason;
+  readonly reportedCode?: string;
+  readonly detail: string;
+};
+```
+
+Response handling follows this order:
+
+1. Decode exactly one bounded response envelope.
+2. If the decoded body is an error, retain its syntactically valid code as `reportedCode`.
+3. Check `requestId`, `kind`, and, for a successful reconciliation body, `eventId` correlation.
+4. If correlation fails, return semantic `unknown` with reason `correlation_mismatch`. A retained `reportedCode` is only a diagnostic observed on an uncorrelated response; it is not evidence that the code describes the caller's request.
+5. If correlation succeeds, map a reconciliation success body to its known disposition and any error body to semantic `unknown` with reason `reported_unknown`.
+
+This order deliberately preserves `HANDLER_TIMEOUT` from the current watchdog response, whose `requestId` and `kind` are `null`, while still treating that response as uncorrelated and therefore unknown.
 
 Split the engine journal port into read and write capabilities. A `JournalReader` exposes only the bounded cold read. The existing `Journal` extends it with durable append. The reconciliation use case accepts only `JournalReader`, replays into a fresh in-memory state, performs the pure classification, and has no clock, append, submit, or effect dependency.
 
-Add a read-only JSONL journal reader that never creates a state directory, lock file, or journal file and never opens a file for writing. A missing state directory, or a consistently observed state with no journal, is an empty snapshot and therefore yields `absent`. An existing journal without its ownership lock is not a trustworthy snapshot and yields `unknown` through `JOURNAL_UNAVAILABLE`.
+Add a read-only JSONL journal reader that never creates a state directory, lock file, or journal file and never opens a file for writing. A trustworthy snapshot requires an existing private state directory, ownership lock file, and journal file. If any of those three is missing, the reader returns `JOURNAL_UNAVAILABLE`, which the client exposes as `unknown`. Missing storage cannot prove that the authoritative journal has always been empty: the path may be uninitialized, misconfigured, unmounted, deleted, lost, or refer to another state location.
+
+`absent` is returned only after the reader acquires the shared lock and completely decodes the existing journal within all bounds. An existing zero-record journal is authoritative evidence of an initialized empty state; a missing journal is not. A submission failure that occurs after the writer initialized an empty journal can therefore reconcile as `absent`, while a failure before journal initialization remains `unknown`.
 
 For an existing journal, the reader takes a shared advisory lock before opening and reading the journal and holds it until the bounded decode completes. Writers continue to take the exclusive lock. A concurrent writer therefore either completes before the reader snapshot, starts after it, or causes the non-blocking lock attempt to return `JOURNAL_LOCKED`; the reader never interprets a partial concurrent append. The outer one-shot handler watchdog bounds total request processing time in addition to the existing frame-size, journal-byte, and record-count bounds.
 
@@ -81,6 +104,8 @@ Add `reconcileWorkflowSignal` to the TypeScript `CoreClient`. It is a control-pl
 ### Negative / Risks
 
 - The caller must retain or reconstruct the exact structured signal it attempted to submit.
+- A legitimate but never-initialized state directory cannot produce `absent`; a writer must first establish the authoritative lock and journal files.
+- Without a durable state-instance identity, a misconfigured path that points to another fully initialized, valid journal cannot be detected. Selecting the configured state directory remains a control-plane responsibility until a manifest contract is added.
 - An active writer makes a non-blocking reconciliation attempt `unknown` (`JOURNAL_LOCKED`) rather than waiting.
 - A full bounded cold read is linear in journal size and is not suitable for high-frequency polling.
 - `absent` can become stale immediately after the shared lock is released; it is not permission to retry.
@@ -89,8 +114,10 @@ Add `reconcileWorkflowSignal` to the TypeScript `CoreClient`. It is a control-pl
 ### Follow-up
 
 - Add language-neutral request and response fixtures for `accepted`, `conflict`, `absent`, and an error-envelope `unknown` case.
-- Test a lost acknowledgement followed by reconciliation in a fresh process, a pre-append failure followed by `absent`, and a changed signal followed by `conflict`.
+- Test a lost acknowledgement followed by reconciliation in a fresh process, an initialized pre-append failure followed by `absent`, and a changed signal followed by `conflict`.
+- Fix the initialization matrix: missing directory, directory without a lock, lock without a journal, and a different uninitialized state location are `unknown`; a shared-locked zero-record journal is `absent`; a first writer racing any intermediate state is `unknown` until a complete snapshot can be acquired.
 - Test corruption, bound, lock, timeout, malformed response, oversized response, abort, and correlation mismatch as `unknown`.
+- Add a response fixture and client test for `requestId: null`, `kind: null`, and `error.code: HANDLER_TIMEOUT`; assert `reason: correlation_mismatch` and diagnostic `reportedCode: HANDLER_TIMEOUT`.
 - Prove the operation does not append records, dispatch effects, retry submission, or leak harness/provider data.
 - Keep automatic retry policy, external-effect reconciliation, general restart supervision, and harness-native evidence lookup in separate decisions.
 
@@ -101,5 +128,6 @@ Add `reconcileWorkflowSignal` to the TypeScript `CoreClient`. It is a control-pl
 - **Carry only a new digest of the signal.** Deferred because it requires a canonical signal encoding and a new digest authority. The existing structured signal is already bounded and closed.
 - **Return `unknown` as an `ok: true` disposition.** Rejected because the specific stable failure code is useful and the existing error envelope already carries it. Clients still expose the semantic outcome as `unknown`.
 - **Read without a lock or retry until the lock becomes available.** Rejected because an unlocked read can observe a partial append, while waiting or retrying introduces an additional scheduling policy. A non-blocking lock failure remains `unknown`.
-- **Create missing state files while reconciling.** Rejected because a read-only recovery operation must not mutate the filesystem merely to report `absent`.
+- **Treat missing state files as an empty snapshot or create them while reconciling.** Rejected because missing storage is not authoritative evidence of emptiness, and a read-only recovery operation must not mutate the filesystem merely to report `absent`.
+- **Add a durable state-instance manifest in this slice.** Deferred. A manifest could distinguish initialized storage and, with a control-plane identity, detect a wrong state instance. It would add a new durable identity and initialization contract beyond workflow-signal reconciliation; until that contract exists, missing state artifacts remain `unknown` and the configured state directory remains a control-plane responsibility.
 - **Increase the protocol or journal version.** Rejected because this adds a new capability and request kind without changing existing message or record shapes.
