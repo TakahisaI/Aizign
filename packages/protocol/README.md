@@ -15,6 +15,13 @@ interface.
 | **Test command** | `npm test -w @aizign/protocol`（`node --test`、型はNodeがstripする） |
 | **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md) |
 
+## Security boundary
+
+The TypeScript codec enforces Protocol v1 shape, lexical rules, and frame
+bounds. It does not authenticate a peer, establish identity/digest provenance,
+or detect sensitive content hidden in an allowed opaque string. See the
+[v0.1 threat model](../../docs/security/threat-model.md).
+
 wire contractの正本は [`spec/protocol/v1/`](../../spec/protocol/v1/README.md)、
 言語中立のadapter behaviorの正本は
 [`harness-adapter-contract.md`](../../docs/architecture/harness-adapter-contract.md)です。

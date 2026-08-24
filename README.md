@@ -76,6 +76,7 @@ cargo xtask check
 | 現在のarchitecture | [`docs/architecture/`](docs/architecture/overview.md) |
 | Harness adapter contract | [`docs/architecture/harness-adapter-contract.md`](docs/architecture/harness-adapter-contract.md) |
 | Hard invariants | [`docs/architecture/invariants.md`](docs/architecture/invariants.md) |
+| Security assumptions and guarantees | [`docs/security/threat-model.md`](docs/security/threat-model.md) |
 | 設計判断の履歴 | [`docs/adr/`](docs/adr/) |
 | 人間向けcontribution policy | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 | package固有の契約 | 各package内の `README.md` |

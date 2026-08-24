@@ -14,6 +14,7 @@ session model.
 | [`harness-adapter-contract.md`](../architecture/harness-adapter-contract.md) | Language-neutral minimum, capability, outcome, evidence, and conformance boundaries |
 | [`spec/protocol/v1/`](../../spec/protocol/v1/README.md) | Wire envelope, kinds, schemas, bounds, and examples |
 | [`data-boundary.md`](../architecture/data-boundary.md) | Data allowed to cross the adapter/core boundary |
+| [`threat-model.md`](../security/threat-model.md) | Trusted configuration, guarantee levels, known limitations, and test scope |
 | The target adapter's proposal Issue | Harness choice, native integration, support policy, and live-smoke scope |
 
 Read `packages/protocol/` and `packages/adapter-testkit/` when implementing a

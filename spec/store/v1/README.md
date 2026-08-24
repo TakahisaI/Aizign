@@ -57,6 +57,8 @@ claim.
 
 The SHA-256 value detects mismatch; it is not authentication against a process
 that can rewrite both journal and commit metadata. See ADR-0013 and ADR-0014.
+The broader filesystem and same-user assumptions are normative in the
+[v0.1 threat model](../../../docs/security/threat-model.md).
 
 This layout version is independent of Protocol v1 and journal record schema
 v1. A non-empty legacy state directory without this document is not adopted

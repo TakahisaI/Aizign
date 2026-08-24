@@ -13,6 +13,13 @@ Aizign Protocol v1: NDJSON envelopes, closed decoders, and explicit DTO ↔ doma
 | **Test command** | `cargo test -p aizign-protocol` |
 | **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md)、[0009](../../docs/adr/0009-serialization-dependencies-for-the-protocol-crate.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md) |
 
+## Security boundary
+
+Closed decoding and bounded encoding enforce Protocol v1 shape and lexical
+rules. They do not authenticate the sender, prove candidate-digest provenance,
+or detect sensitive content placed in an otherwise allowed opaque string. See
+the [v0.1 threat model](../../docs/security/threat-model.md).
+
 wire contractの正本は [`spec/protocol/v1/`](../../spec/protocol/v1/README.md)。このcrateはそれに従う側です。
 
 ## Layout

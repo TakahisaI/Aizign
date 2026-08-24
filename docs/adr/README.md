@@ -24,3 +24,4 @@
 | [0012](0012-bind-workflow-evidence-to-attempts-and-candidate-content.md) | Bind workflow evidence to attempts and candidate content | Accepted |
 | [0013](0013-add-bounded-read-only-workflow-signal-reconciliation.md) | Add bounded read-only workflow signal reconciliation | Accepted |
 | [0014](0014-use-rustcrypto-sha2-for-committed-prefix-hashing.md) | Use RustCrypto sha2 for committed-prefix hashing | Accepted |
+| [0015](0015-define-v0-1-trust-boundaries-and-guarantee-levels.md) | Define v0.1 trust boundaries and guarantee levels | Accepted |

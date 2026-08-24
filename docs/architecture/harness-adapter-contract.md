@@ -184,6 +184,14 @@ engine internal types to its harness. The core, protocol, and journal likewise
 must not acquire harness or provider names. See
 [data-boundary.md](data-boundary.md) for the complete repository boundary.
 
+Adapter configuration and native mapping form a trust boundary. The core can
+reject malformed values and inconsistent bindings, but it cannot prove that a
+well-formed identity or digest came from the intended control-plane source. A
+malicious adapter can also place prohibited content into an otherwise allowed
+opaque field. The v0.1 assumptions, enforcement limits, and regression-evidence
+requirements are defined in the
+[threat model](../security/threat-model.md).
+
 ## Conformance ownership
 
 Conformance has three independent parts.

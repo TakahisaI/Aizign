@@ -13,6 +13,18 @@ The DSH harness adapter: a cordis plugin that registers one **scope-bound** `sub
 | **Test command** | `npm test -w @aizign/adapter-dsh`（`AIZIGN_BINARY` を与えると実binaryにも） |
 | **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0010](../../docs/adr/0010-harness-sdk-dependencies-and-node-policy.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md) |
 
+## Security boundary
+
+Production plugin configuration is a trusted control-plane input after local
+shape validation. `createClient()` does not inherit the harness environment:
+the child receives `PATH` only. The exported reference client can accept
+explicit child variables for tests/integration, and those values are the direct
+caller's responsibility. Closed tool arguments prevent the model from choosing
+stable identity, but neither the core nor schema can prove honest provenance
+from a malicious adapter. DSH persistence remains auxiliary evidence with the
+limits below. See the
+[v0.1 threat model](../../docs/security/threat-model.md).
+
 ## Layout
 
 ```text

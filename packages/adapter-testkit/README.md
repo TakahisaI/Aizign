@@ -15,6 +15,15 @@ harness, or a network.
 | **Test command** | `npm test -w @aizign/adapter-testkit` |
 | **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md) |
 
+## Security boundary
+
+This package supplies regression evidence, not runtime enforcement or a proof
+of end-to-end adapter security. Its fake state is not a durability or
+authenticity boundary, and generic metadata-key scanning cannot prove value
+provenance. Each adapter owns native identity, visible-schema, configuration,
+and environment-isolation tests. See the
+[v0.1 threat model](../../docs/security/threat-model.md).
+
 言語中立のscenario requirementは
 [`harness-adapter-contract.md`](../../docs/architecture/harness-adapter-contract.md)
 が所有します。このpackageはTypeScript reference / convenience layerであり、

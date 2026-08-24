@@ -9,6 +9,7 @@ It is not an architectural, behavioral, or contribution-policy authority.
 - Current behavior: source, tests, and `spec/conformance/`
 - Wire and durable contracts: `spec/`
 - Current architecture and hard invariants: `docs/architecture/`
+- Security assumptions and guarantee levels: `docs/security/threat-model.md`
 - Decision history: `docs/adr/`
 - Human contribution policy: `CONTRIBUTING.md`
 - Package contract: the nearest `README.md`
@@ -25,6 +26,7 @@ Do not copy those contracts into `AGENTS.md`. Update the authoritative file inst
 | Dependency direction | [docs/architecture/dependency-rules.md](docs/architecture/dependency-rules.md) |
 | Data crossing boundaries | [docs/architecture/data-boundary.md](docs/architecture/data-boundary.md) |
 | Harness adapter behavior | [docs/architecture/harness-adapter-contract.md](docs/architecture/harness-adapter-contract.md) |
+| Security or trust boundaries | [docs/security/threat-model.md](docs/security/threat-model.md) |
 | Contribution process | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
 Read the `AGENTS.md` nearest to the file being edited. The nearest file narrows this repository-level navigation.

@@ -5,6 +5,8 @@
 
 内容を変更する場合は、関連する設計判断を新しいADRでsupersedeし、この文書と実装・testを同じPRで更新します。
 `AGENTS.md`、package README、Issue、PRへ別の正本を作りません。
+各invariantの現在のenforcement owner、test evidence、未実装範囲は
+[`docs/security/threat-model.md`](../security/threat-model.md) に対応付けます。
 
 1. 自然言語、idle、画面表示を完了の正本にしない。
 2. External effectはeffect前にdurable claimする。

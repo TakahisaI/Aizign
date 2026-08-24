@@ -13,6 +13,15 @@ Append-only, metadata-only JSONL control journal with a writer-published committ
 | **Test command** | `cargo test -p aizign-store-jsonl` |
 | **Related ADR** | [0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md)、[0007](../../docs/adr/0007-use-metadata-only-control-journals.md)、[0009](../../docs/adr/0009-serialization-dependencies-for-the-protocol-crate.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0014](../../docs/adr/0014-use-rustcrypto-sha2-for-committed-prefix-hashing.md) |
 
+## Security boundary
+
+The verified store enforces private modes, no-follow/path-shape checks,
+single-link ownership, bounds, advisory locking, and a writer-published prefix
+on `x86_64-unknown-linux-gnu`. The configured path and local account remain
+trusted. Advisory locks and SHA-256 do not authenticate state against a
+malicious same-user process that can rewrite every artifact consistently. See
+the [v0.1 threat model](../../docs/security/threat-model.md).
+
 record formatの正本は [`spec/journal/v1/`](../../spec/journal/v1/README.md)、commit metadataとstore layoutの正本は [`spec/store/v1/`](../../spec/store/v1/README.md)。`decode_record` / `encode_record` は
 `spec/conformance/{valid,invalid}/journal` のfixtureを回すための入口で、同じfixtureを `spec/test/schema.test.mjs` が
 JSON Schemaに通すため、schemaとruntimeの受理集合はCIで突き合わされる。

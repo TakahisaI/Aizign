@@ -81,4 +81,5 @@ restart後の照合では、adapterが同じfull signalを`workflow.signal.recon
 - [dependency-rules.md](dependency-rules.md) — 依存してよいもの
 - [data-boundary.md](data-boundary.md) — core / journal / adapterの間を越えてよいデータ
 - [harness-adapter-contract.md](harness-adapter-contract.md) — adapterが満たす言語中立のbehavioral contract
+- [threat-model.md](../security/threat-model.md) — v0.1のtrust domain、guarantee level、known limitation
 - ADR-0002、0003、0004、0005

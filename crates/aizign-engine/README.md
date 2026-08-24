@@ -13,6 +13,14 @@ Application engine around `aizign-core`: use cases, and the ports the shell must
 | **Test command** | `cargo test -p aizign-engine` |
 | **Related ADR** | [0002](../../docs/adr/0002-implement-the-deterministic-core-in-rust.md)、[0005](../../docs/adr/0005-organize-the-core-by-bounded-context.md)、[0007](../../docs/adr/0007-use-metadata-only-control-journals.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md) |
 
+## Security boundary
+
+The engine preserves the decision and storage classifications supplied by its
+ports. It cannot manufacture durability, repair an uncertain append, establish
+configuration provenance, or authorize retry after `unknown`/`absent`. The
+enforcement and trust split is recorded in the
+[v0.1 threat model](../../docs/security/threat-model.md).
+
 ## Ports（engineが定義し、外側が実装する）
 
 | Port | 実装 | 状態 |

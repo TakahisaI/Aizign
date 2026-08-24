@@ -15,6 +15,24 @@ adapterはpackage versionの完全一致ではなく、`hello` で得たprotocol
 x32は、64-bit targetと誤認しないことをCIでcross-compileするnegative boundaryに限定し、runtime support、release artifact、support claimは提供しません。
 同じstate directoryを旧binaryで開くdowngradeはunsupportedであり、技術的には防止していません。旧binaryがcommit metadataを無視できるため、operatorは別のstate directoryを使用する必要があります。
 
+## Security and guarantee limits
+
+Compatibility does not widen the v0.1 trust boundary. In particular:
+
+- selecting the intended initialized state directory is an operator/control-plane
+  responsibility; v0.1 has no state-instance manifest;
+- owner-only state files, advisory locks, and committed-prefix SHA-256 do not
+  authenticate state against a malicious same-user process;
+- candidate-digest authenticity depends on a trusted artifact authority
+  computing the configured value from the intended bytes;
+- Protocol v1 schemas enforce shape and bounds, not semantic provenance or
+  data-loss prevention for allowed opaque strings; and
+- harness/provider availability, confidentiality, persistence, and retention
+  are not implied by core or protocol compatibility.
+
+The normative classifications and test scope are in the
+[v0.1 threat model](../security/threat-model.md).
+
 ## 互換性の規則
 
 - 既存messageのshapeはrelease後に変更しない。新機能は新しい `kind` として追加する
