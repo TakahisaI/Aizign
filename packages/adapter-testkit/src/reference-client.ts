@@ -17,6 +17,8 @@ import {
   type HelloOutcome,
   isUnknownOutcomeCode,
   MAX_FRAME_BYTES,
+  type ParentOperationKind,
+  type ParentTimingMeasurement,
   type ReconcileOutcome,
   type ReconcileUnknown,
   type Response,
@@ -27,12 +29,22 @@ import {
   type WorkflowSignalSubmitPayload,
 } from '@aizign/protocol';
 
-type Exchange =
-  | { readonly kind: 'response'; readonly response: Response }
-  | { readonly kind: 'unknown'; readonly outcome: UnknownOutcome };
+type TransportTiming = Pick<ParentTimingMeasurement, 'spawn_to_exit_ms' | 'response_first_byte_ms'>;
 
-function unknown(reason: UnknownOutcome['reason'], detail: string): Exchange {
-  return { kind: 'unknown', outcome: { kind: 'unknown', reason, detail } };
+type Exchange =
+  | { readonly kind: 'response'; readonly response: Response; readonly timing: TransportTiming }
+  | {
+      readonly kind: 'unknown';
+      readonly outcome: UnknownOutcome;
+      readonly timing: TransportTiming;
+    };
+
+function unknown(
+  reason: UnknownOutcome['reason'],
+  detail: string,
+  timing: TransportTiming = {},
+): Exchange {
+  return { kind: 'unknown', outcome: { kind: 'unknown', reason, detail }, timing };
 }
 
 export class ReferenceOneShotClient implements CoreClient {
@@ -44,32 +56,40 @@ export class ReferenceOneShotClient implements CoreClient {
 
   async hello(requestId: string, options: CallOptions = {}): Promise<HelloOutcome> {
     const exchange = await this.#exchange(['hello'], undefined, options.signal);
-    if (exchange.kind === 'unknown') return exchange.outcome;
+    const finish = (outcome: HelloOutcome, reportedErrorCode?: string) =>
+      this.#finish('hello', exchange.timing, outcome, reportedErrorCode);
+    if (exchange.kind === 'unknown') return finish(exchange.outcome);
     // `aizign hello` has no request frame, so only the kind can be correlated.
     if (exchange.response.kind !== 'hello') {
-      return {
+      return finish({
         kind: 'unknown',
         reason: 'correlation_mismatch',
         detail: `kind: expected hello, got ${String(exchange.response.kind)} (${requestId})`,
-      };
+      });
     }
     const { body } = exchange.response;
-    if (body.type === 'hello') return { kind: 'ok', info: body.info };
+    if (body.type === 'hello') return finish({ kind: 'ok', info: body.info });
     if (body.type === 'error') {
       if (isUnknownOutcomeCode(body.error.code)) {
-        return {
-          kind: 'unknown',
-          reason: 'reported_unknown',
-          detail: `${body.error.code}: ${body.error.message}`,
-        };
+        return finish(
+          {
+            kind: 'unknown',
+            reason: 'reported_unknown',
+            detail: `${body.error.code}: ${body.error.message}`,
+          },
+          body.error.code,
+        );
       }
-      return { kind: 'error', code: body.error.code, message: body.error.message };
+      return finish(
+        { kind: 'error', code: body.error.code, message: body.error.message },
+        body.error.code,
+      );
     }
-    return {
+    return finish({
       kind: 'unknown',
       reason: 'undecodable_response',
       detail: `unexpected body for ${requestId}`,
-    };
+    });
   }
 
   async submitWorkflowSignal(
@@ -83,7 +103,9 @@ export class ReferenceOneShotClient implements CoreClient {
       frame,
       options.signal,
     );
-    if (exchange.kind === 'unknown') return exchange.outcome;
+    const finish = (outcome: SubmitOutcome, reportedErrorCode?: string) =>
+      this.#finish('workflow.signal.submit', exchange.timing, outcome, reportedErrorCode);
+    if (exchange.kind === 'unknown') return finish(exchange.outcome);
     const sent: SentRequest = {
       requestId,
       kind: 'workflow.signal.submit',
@@ -91,31 +113,37 @@ export class ReferenceOneShotClient implements CoreClient {
     };
     const mismatch = checkCorrelation(sent, exchange.response);
     if (mismatch !== undefined) {
-      return {
+      return finish({
         kind: 'unknown',
         reason: 'correlation_mismatch',
         detail: `${mismatch.field}: expected ${mismatch.expected}, got ${String(mismatch.actual)}`,
-      };
+      });
     }
     const { body } = exchange.response;
     if (body.type === 'workflow.signal') {
-      return { kind: body.result.disposition, eventId: body.result.eventId };
+      return finish({ kind: body.result.disposition, eventId: body.result.eventId });
     }
     if (body.type === 'error') {
       if (isUnknownOutcomeCode(body.error.code)) {
-        return {
-          kind: 'unknown',
-          reason: 'reported_unknown',
-          detail: `${body.error.code}: ${body.error.message}`,
-        };
+        return finish(
+          {
+            kind: 'unknown',
+            reason: 'reported_unknown',
+            detail: `${body.error.code}: ${body.error.message}`,
+          },
+          body.error.code,
+        );
       }
-      return { kind: 'rejected', code: body.error.code, message: body.error.message };
+      return finish(
+        { kind: 'rejected', code: body.error.code, message: body.error.message },
+        body.error.code,
+      );
     }
-    return {
+    return finish({
       kind: 'unknown',
       reason: 'undecodable_response',
       detail: 'response body does not match the request',
-    };
+    });
   }
 
   async reconcileWorkflowSignal(
@@ -129,7 +157,9 @@ export class ReferenceOneShotClient implements CoreClient {
       frame,
       options.signal,
     );
-    if (exchange.kind === 'unknown') return exchange.outcome;
+    const finish = (outcome: ReconcileOutcome) =>
+      this.#finish('workflow.signal.reconcile', exchange.timing, outcome);
+    if (exchange.kind === 'unknown') return finish(exchange.outcome);
     const reportedCode =
       exchange.response.body.type === 'error' ? exchange.response.body.error.code : undefined;
     const mismatch = checkCorrelation(
@@ -143,25 +173,53 @@ export class ReferenceOneShotClient implements CoreClient {
         detail: `${mismatch.field}: expected ${mismatch.expected}, got ${String(mismatch.actual)}`,
         ...(reportedCode === undefined ? {} : { reportedCode }),
       };
-      return outcome;
+      return finish(outcome);
     }
     const { body } = exchange.response;
     if (body.type === 'workflow.signal.reconciliation') {
-      return { kind: body.result.disposition, eventId: body.result.eventId };
+      return finish({ kind: body.result.disposition, eventId: body.result.eventId });
     }
     if (body.type === 'error') {
-      return {
+      return finish({
         kind: 'unknown',
         reason: 'reported_unknown',
         reportedCode: body.error.code,
         detail: `${body.error.code}: ${body.error.message}`,
-      };
+      });
     }
-    return {
+    return finish({
       kind: 'unknown',
       reason: 'undecodable_response',
       detail: 'response body does not match the reconciliation request',
+    });
+  }
+
+  #finish<T extends { readonly kind: string }>(
+    operation_kind: ParentOperationKind,
+    timing: TransportTiming,
+    outcome: T,
+    reportedErrorCode?: string,
+  ): T {
+    const classified = outcome as {
+      readonly kind: string;
+      readonly code?: string;
+      readonly reason?: UnknownOutcome['reason'];
+      readonly reportedCode?: string;
     };
+    const errorCode = reportedErrorCode ?? classified.code ?? classified.reportedCode;
+    const measurement: ParentTimingMeasurement = {
+      operation_kind,
+      ...timing,
+      outcome: errorCode === 'EVENT_CONFLICT' ? 'conflict' : classified.kind,
+      ...(errorCode === undefined ? {} : { error_code: errorCode }),
+      ...(classified.reason === undefined ? {} : { unknown_reason: classified.reason }),
+    };
+    try {
+      this.#config.timingSink?.(measurement);
+    } catch {
+      // Observability is deliberately best-effort and cannot change semantics.
+    }
+    return outcome;
   }
 
   #exchange(
@@ -171,15 +229,25 @@ export class ReferenceOneShotClient implements CoreClient {
   ): Promise<Exchange> {
     const { command, args = [], env = {}, timeoutMs } = this.#config;
     return new Promise((resolve) => {
+      const started = performance.now();
+      let responseFirstByteMs: number | undefined;
+      const timing = (exited: boolean): TransportTiming => ({
+        ...(exited ? { spawn_to_exit_ms: performance.now() - started } : {}),
+        ...(responseFirstByteMs === undefined
+          ? {}
+          : { response_first_byte_ms: responseFirstByteMs }),
+      });
       if (signal?.aborted) {
-        resolve(unknown('aborted', 'cancelled before the process was spawned'));
+        resolve(unknown('aborted', 'cancelled before the process was spawned', timing(false)));
         return;
       }
       let settled = false;
       let timer: NodeJS.Timeout | undefined;
       const onAbort = () => {
         child?.kill('SIGKILL');
-        settle(unknown('aborted', 'cancelled while waiting; the core may have appended'));
+        settle(
+          unknown('aborted', 'cancelled while waiting; the core may have appended', timing(false)),
+        );
       };
       const settle = (exchange: Exchange) => {
         if (settled) return;
@@ -196,7 +264,7 @@ export class ReferenceOneShotClient implements CoreClient {
           stdio: ['pipe', 'pipe', 'pipe'],
         });
       } catch (error) {
-        settle(unknown('spawn_failed', String(error)));
+        settle(unknown('spawn_failed', String(error), timing(false)));
         return;
       }
       signal?.addEventListener('abort', onAbort, { once: true });
@@ -204,6 +272,7 @@ export class ReferenceOneShotClient implements CoreClient {
       const spawned = child;
       let received = 0;
       spawned.stdout?.on('data', (chunk: Buffer) => {
+        responseFirstByteMs ??= performance.now() - started;
         received += chunk.length;
         if (received > MAX_FRAME_BYTES + 1) {
           spawned.kill('SIGKILL');
@@ -211,6 +280,7 @@ export class ReferenceOneShotClient implements CoreClient {
             unknown(
               'oversized_response',
               `stdout exceeded ${MAX_FRAME_BYTES} bytes; the core may have appended`,
+              timing(false),
             ),
           );
           return;
@@ -218,27 +288,43 @@ export class ReferenceOneShotClient implements CoreClient {
         stdout.push(chunk);
       });
       spawned.stderr?.on('data', () => undefined);
-      spawned.on('error', (error) => settle(unknown('spawn_failed', error.message)));
+      spawned.on('error', (error) => settle(unknown('spawn_failed', error.message, timing(false))));
 
       timer = setTimeout(() => {
         spawned.kill('SIGKILL');
-        settle(unknown('timeout', `no response within ${timeoutMs}ms; the core may have appended`));
+        settle(
+          unknown(
+            'timeout',
+            `no response within ${timeoutMs}ms; the core may have appended`,
+            timing(false),
+          ),
+        );
       }, timeoutMs);
 
       spawned.on('close', (code) => {
         const extraction = extractFrame(Buffer.concat(stdout).toString('utf8'));
         if (extraction.kind === 'empty') {
-          settle(unknown('no_response', `process exited with ${String(code)} without a frame`));
+          settle(
+            unknown(
+              'no_response',
+              `process exited with ${String(code)} without a frame`,
+              timing(true),
+            ),
+          );
           return;
         }
         if (extraction.kind === 'extra') {
-          settle(unknown('undecodable_response', extraction.detail));
+          settle(unknown('undecodable_response', extraction.detail, timing(true)));
           return;
         }
         try {
-          settle({ kind: 'response', response: decodeResponse(extraction.frame) });
+          settle({
+            kind: 'response',
+            response: decodeResponse(extraction.frame),
+            timing: timing(true),
+          });
         } catch (error) {
-          settle(unknown('undecodable_response', String(error)));
+          settle(unknown('undecodable_response', String(error), timing(true)));
         }
       });
 

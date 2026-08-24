@@ -89,6 +89,38 @@ test('a recorded call/result pair with matching event and binding metadata is ev
   });
 });
 
+test('cold-read timing is metadata-only and cannot change evidence', async () => {
+  const args = { kind: 'implementation_ready' };
+  const meta = presentationMetaFor(binding, args, { disposition: 'accepted', eventId: 'evt-1' });
+  const timings: unknown[] = [];
+  const evidence = await readSignalEvidence(
+    source([call(3, 'c1', args), result(4, 'c1', meta)]),
+    'session-sensitive',
+    binding,
+    { timingSink: (measurement) => timings.push(measurement) },
+  );
+  assert.equal(evidence.kind, 'accepted');
+  assert.equal(timings.length, 1);
+  const timing = timings[0] as Record<string, unknown>;
+  assert.equal(timing.operation_kind, 'dsh.evidence.cold_read');
+  assert.equal(timing.events_returned, 2);
+  assert.equal(timing.outcome, 'accepted');
+  assert.equal(typeof timing.harness_cold_read_ms, 'number');
+  assert.ok(!JSON.stringify(timing).includes('session-sensitive'));
+
+  const stillAccepted = await readSignalEvidence(
+    source([call(3, 'c1', args), result(4, 'c1', meta)]),
+    'session-sensitive',
+    binding,
+    {
+      timingSink: () => {
+        throw new Error('timing sink unavailable');
+      },
+    },
+  );
+  assert.equal(stillAccepted.kind, 'accepted');
+});
+
 test('a call without a result is unknown, never inferred from later prose', async () => {
   const args = { kind: 'implementation_ready' };
   const evidence = await readSignalEvidence(

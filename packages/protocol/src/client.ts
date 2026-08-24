@@ -27,7 +27,33 @@ export interface CoreClientConfig {
   readonly stateDir: string;
   /** Wall-clock bound per request; expiry is an unknown outcome, not a retry. */
   readonly timeoutMs: number;
+  /** Optional metadata-only parent timing sink. Sink failures are ignored. */
+  readonly timingSink?: ParentTimingSink;
 }
+
+/** Parent-observed operation names shared by reference and harness clients. */
+export type ParentOperationKind =
+  | 'hello'
+  | 'workflow.signal.submit'
+  | 'workflow.signal.reconcile'
+  | 'preflight';
+
+/** One metadata-only parent observation. Content, identity, and paths are excluded. */
+export interface ParentTimingMeasurement {
+  readonly operation_kind: ParentOperationKind;
+  /** Spawn invocation until child exit. Absent when no exit was observed. */
+  readonly spawn_to_exit_ms?: number;
+  /** Spawn invocation until first stdout byte. The CLI writes one complete response, not a stream. */
+  readonly response_first_byte_ms?: number;
+  /** Whole compatibility preflight. Present only for the `preflight` operation. */
+  readonly preflight_ms?: number;
+  readonly outcome: string;
+  readonly error_code?: string;
+  readonly unknown_reason?: UnknownOutcome['reason'];
+}
+
+/** Receives a timing observation. Implementations must isolate sink failures. */
+export type ParentTimingSink = (measurement: ParentTimingMeasurement) => void;
 
 /**
  * Error codes that mean "the outcome is unknown", not "the request was

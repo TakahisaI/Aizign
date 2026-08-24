@@ -13,7 +13,10 @@ use std::path::{Path, PathBuf};
 
 use aizign_core::BoundedTimestamp;
 use aizign_core::workflow::WorkflowEvent;
-use aizign_engine::{Journal, JournalEntry, JournalError, JournalReader, MAX_JOURNAL_ENTRIES};
+use aizign_engine::{
+    EngineObserver, EngineStage, Journal, JournalEntry, JournalError, JournalReader,
+    MAX_JOURNAL_ENTRIES,
+};
 
 use crate::commit::{CommitPoint, MAX_COMMIT_METADATA_BYTES, hash_bytes};
 use crate::record;
@@ -235,6 +238,7 @@ impl JsonlJournal {
         at: BoundedTimestamp,
         journal_barrier: F,
         publish: P,
+        mut observer: Option<&mut dyn EngineObserver>,
     ) -> Result<JournalEntry, JournalError>
     where
         F: FnOnce(&File) -> std::io::Result<()>,
@@ -244,7 +248,7 @@ impl JsonlJournal {
             snapshot
         } else {
             let mut commit_file = open_private_read_file(&self.commit_path)?;
-            read_snapshot(&mut self.file, &mut commit_file)?
+            read_snapshot_observed(&mut self.file, &mut commit_file, &mut observer)?
         };
         if snapshot.entries.len() >= MAX_JOURNAL_ENTRIES {
             self.snapshot = Some(snapshot);
@@ -274,7 +278,9 @@ impl JsonlJournal {
         })?;
 
         snapshot.bytes.extend_from_slice(&line);
-        let point = CommitPoint::for_prefix(&snapshot.bytes, seq);
+        let point = observe_stage(&mut observer, EngineStage::PublishPrefixHash, || {
+            CommitPoint::for_prefix(&snapshot.bytes, seq)
+        });
         publish(&self.state_dir, &self.commit_path, &point).map_err(|error| {
             JournalError::OutcomeUnknown {
                 detail: format!("commit publication failed: {error}"),
@@ -333,6 +339,15 @@ impl JournalReader for JsonlJournalReader {
     fn load_committed(&mut self) -> Result<Vec<JournalEntry>, JournalError> {
         read_snapshot(&mut self.file, &mut self.commit_file).map(|snapshot| snapshot.entries)
     }
+
+    fn load_committed_observed(
+        &mut self,
+        observer: &mut dyn EngineObserver,
+    ) -> Result<Vec<JournalEntry>, JournalError> {
+        let mut observer = Some(observer);
+        read_snapshot_observed(&mut self.file, &mut self.commit_file, &mut observer)
+            .map(|snapshot| snapshot.entries)
+    }
 }
 
 impl JournalReader for JsonlJournal {
@@ -346,6 +361,21 @@ impl JournalReader for JsonlJournal {
         self.snapshot = Some(snapshot);
         Ok(entries)
     }
+
+    fn load_committed_observed(
+        &mut self,
+        observer: &mut dyn EngineObserver,
+    ) -> Result<Vec<JournalEntry>, JournalError> {
+        if let Some(snapshot) = &self.snapshot {
+            return Ok(snapshot.entries.clone());
+        }
+        let mut commit_file = open_private_read_file(&self.commit_path)?;
+        let mut observer = Some(observer);
+        let snapshot = read_snapshot_observed(&mut self.file, &mut commit_file, &mut observer)?;
+        let entries = snapshot.entries.clone();
+        self.snapshot = Some(snapshot);
+        Ok(entries)
+    }
 }
 
 impl Journal for JsonlJournal {
@@ -354,56 +384,97 @@ impl Journal for JsonlJournal {
         event: &WorkflowEvent,
         at: BoundedTimestamp,
     ) -> Result<JournalEntry, JournalError> {
-        self.append_with(event, at, File::sync_all, publish_commit)
+        self.append_with(event, at, File::sync_all, publish_commit, None)
+    }
+
+    fn append_observed(
+        &mut self,
+        event: &WorkflowEvent,
+        at: BoundedTimestamp,
+        observer: &mut dyn EngineObserver,
+    ) -> Result<JournalEntry, JournalError> {
+        self.append_with(event, at, File::sync_all, publish_commit, Some(observer))
     }
 }
 
 fn read_snapshot(file: &mut File, commit_file: &mut File) -> Result<Snapshot, JournalError> {
-    let point = read_commit_point(commit_file)?;
-    let physical_len = file
-        .metadata()
-        .map_err(|error| unavailable(format!("cannot stat journal: {error}")))?
-        .len();
-    if physical_len > point.committed_bytes {
-        return Err(JournalError::OutcomeUnknown {
-            detail: "journal contains bytes beyond the published commit point".to_owned(),
-        });
-    }
-    if physical_len < point.committed_bytes {
-        return Err(corrupt("journal is shorter than committedBytes"));
-    }
+    read_snapshot_observed(file, commit_file, &mut None)
+}
 
-    file.seek(SeekFrom::Start(0))
-        .map_err(|error| unavailable(format!("cannot rewind journal: {error}")))?;
-    let mut bytes = Vec::with_capacity(usize::try_from(physical_len).unwrap_or(0));
-    std::io::Read::by_ref(file)
-        .take(point.committed_bytes.saturating_add(1))
-        .read_to_end(&mut bytes)
-        .map_err(|error| unavailable(format!("cannot read journal: {error}")))?;
-    if bytes.len() as u64 > point.committed_bytes {
-        return Err(JournalError::OutcomeUnknown {
-            detail: "journal grew beyond the published commit point while reading".to_owned(),
-        });
-    }
-    if (bytes.len() as u64) < point.committed_bytes {
-        return Err(corrupt(
-            "journal became shorter than committedBytes while reading",
-        ));
-    }
-    if hash_bytes(&bytes) != point.digest {
+fn read_snapshot_observed(
+    file: &mut File,
+    commit_file: &mut File,
+    observer: &mut Option<&mut dyn EngineObserver>,
+) -> Result<Snapshot, JournalError> {
+    let (point, bytes) = observe_stage(observer, EngineStage::CommittedPrefixRead, || {
+        let point = read_commit_point(commit_file)?;
+        let physical_len = file
+            .metadata()
+            .map_err(|error| unavailable(format!("cannot stat journal: {error}")))?
+            .len();
+        if physical_len > point.committed_bytes {
+            return Err(JournalError::OutcomeUnknown {
+                detail: "journal contains bytes beyond the published commit point".to_owned(),
+            });
+        }
+        if physical_len < point.committed_bytes {
+            return Err(corrupt("journal is shorter than committedBytes"));
+        }
+
+        file.seek(SeekFrom::Start(0))
+            .map_err(|error| unavailable(format!("cannot rewind journal: {error}")))?;
+        let mut bytes = Vec::with_capacity(usize::try_from(physical_len).unwrap_or(0));
+        std::io::Read::by_ref(file)
+            .take(point.committed_bytes.saturating_add(1))
+            .read_to_end(&mut bytes)
+            .map_err(|error| unavailable(format!("cannot read journal: {error}")))?;
+        if bytes.len() as u64 > point.committed_bytes {
+            return Err(JournalError::OutcomeUnknown {
+                detail: "journal grew beyond the published commit point while reading".to_owned(),
+            });
+        }
+        if (bytes.len() as u64) < point.committed_bytes {
+            return Err(corrupt(
+                "journal became shorter than committedBytes while reading",
+            ));
+        }
+        Ok((point, bytes))
+    })?;
+    let digest = observe_stage(observer, EngineStage::CommittedPrefixHash, || {
+        hash_bytes(&bytes)
+    });
+    if digest != point.digest {
         return Err(corrupt(
             "journal prefix does not match the published SHA-256 digest",
         ));
     }
-    let contents =
-        core::str::from_utf8(&bytes).map_err(|_| corrupt("journal is not UTF-8 text"))?;
-    let entries = decode_contents(contents)?;
-    if entries.len() as u64 != point.committed_entries {
-        return Err(corrupt(
-            "decoded entry count does not match committedEntries",
-        ));
-    }
+    let entries = observe_stage(observer, EngineStage::CommittedPrefixDecode, || {
+        let contents =
+            core::str::from_utf8(&bytes).map_err(|_| corrupt("journal is not UTF-8 text"))?;
+        let entries = decode_contents(contents)?;
+        if entries.len() as u64 != point.committed_entries {
+            return Err(corrupt(
+                "decoded entry count does not match committedEntries",
+            ));
+        }
+        Ok(entries)
+    })?;
     Ok(Snapshot { bytes, entries })
+}
+
+fn observe_stage<T>(
+    observer: &mut Option<&mut dyn EngineObserver>,
+    stage: EngineStage,
+    operation: impl FnOnce() -> T,
+) -> T {
+    if let Some(observer) = observer.as_deref_mut() {
+        observer.stage_started(stage);
+    }
+    let result = operation();
+    if let Some(observer) = observer.as_deref_mut() {
+        observer.stage_finished(stage, None);
+    }
+    result
 }
 
 fn read_commit_point(file: &mut File) -> Result<CommitPoint, JournalError> {
@@ -1183,6 +1254,7 @@ mod tests {
                 signals::at(0),
                 |_| Err(io::Error::other("injected journal barrier failure")),
                 |_, _, _: &CommitPoint| panic!("commit must not be published"),
+                None,
             )
             .expect_err("barrier failure");
         assert!(matches!(error, JournalError::OutcomeUnknown { .. }));
@@ -1218,6 +1290,7 @@ mod tests {
                         detail: "injected commit publication failure".to_owned(),
                     })
                 },
+                None,
             )
             .expect_err("publication failure");
         assert!(matches!(error, JournalError::OutcomeUnknown { .. }));
@@ -1258,6 +1331,7 @@ mod tests {
                         }
                     })
                 },
+                None,
             )
             .expect_err("directory barrier failure");
         assert!(matches!(error, JournalError::OutcomeUnknown { .. }));

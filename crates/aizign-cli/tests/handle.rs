@@ -49,6 +49,26 @@ fn run_handle(state: &Path, frame: &str) -> Output {
     child.wait_with_output().expect("wait for aizign")
 }
 
+fn run_handle_with_timing(state: &Path, frame: &str) -> Output {
+    let mut child = aizign()
+        .arg("handle")
+        .arg("--state")
+        .arg(state)
+        .env("AIZIGN_TIMING_JSON", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn timed aizign");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(frame.as_bytes())
+        .unwrap();
+    child.wait_with_output().expect("wait for timed aizign")
+}
+
 #[cfg(all(
     target_os = "linux",
     target_arch = "x86_64",
@@ -113,6 +133,15 @@ fn one_frame(output: &Output) -> aizign_protocol::Response {
     );
     assert!(stdout.ends_with('\n'));
     decode_response(stdout.trim_end().as_bytes()).expect("stdout is a protocol frame")
+}
+
+fn timing_metric(output: &Output) -> serde_json::Value {
+    let stderr = String::from_utf8(output.stderr.clone()).unwrap();
+    let encoded = stderr
+        .lines()
+        .find_map(|line| line.strip_prefix("aizign_timing:"))
+        .unwrap_or_else(|| panic!("missing timing line: {stderr}"));
+    serde_json::from_str(encoded).expect("timing is JSON")
 }
 
 fn submit_frame(event_id: &str, request_id: &str) -> String {
@@ -482,12 +511,105 @@ fn stderr_carries_identity_and_codes_but_no_contents() {
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("requestId=req-log"), "{stderr}");
     assert!(stderr.contains("outcome=accepted"), "{stderr}");
+    assert!(
+        !stderr.contains("aizign_timing:"),
+        "stage timing is opt-in: {stderr}"
+    );
     for secret in ["evt-log", "rev-a", "artifactRevision", "wf-test"] {
         assert!(
             !stderr.contains(secret),
             "stderr must not echo payload content: {stderr}"
         );
     }
+}
+
+#[test]
+fn opt_in_timing_for_handle_hello_is_metadata_only() {
+    let dir = TempDir::new();
+    let output = run_handle_with_timing(
+        &dir.state(),
+        r#"{"protocol":"aizign","version":1,"requestId":"req-timing","kind":"hello","payload":{}}
+"#,
+    );
+    let metric = timing_metric(&output);
+    assert_eq!(metric["schema_version"], 1);
+    assert_eq!(metric["operation_kind"], "hello");
+    assert_eq!(metric["outcome"], "ok");
+    for field in [
+        "request_read_ms",
+        "decode_ms",
+        "response_encode_ms",
+        "response_write_ms",
+        "handler_total_ms",
+    ] {
+        assert!(metric[field].is_number(), "{field}: {metric}");
+    }
+    let encoded = metric.to_string();
+    for forbidden in [
+        "req-timing",
+        "stateDir",
+        "path",
+        "prompt",
+        "reasoning",
+        "credential",
+    ] {
+        assert!(!encoded.contains(forbidden), "{forbidden}: {encoded}");
+    }
+}
+
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
+#[test]
+fn opt_in_submit_timing_reports_every_applicable_stage() {
+    let dir = TempDir::new();
+    let output = run_handle_with_timing(&dir.state(), &submit_frame("evt-timing", "req-timing"));
+    assert!(matches!(
+        one_frame(&output).body,
+        ResponseBody::WorkflowSignal(_)
+    ));
+    let metric = timing_metric(&output);
+    assert_eq!(metric["operation_kind"], "workflow.signal.submit");
+    assert_eq!(metric["outcome"], "accepted");
+    assert_eq!(metric["journal_entries"], 0);
+    assert_eq!(metric["journal_bytes"], 0);
+    for field in [
+        "journal_open_ms",
+        "journal_load_decode_ms",
+        "committed_prefix_read_ms",
+        "committed_prefix_hash_ms",
+        "committed_prefix_decode_ms",
+        "replay_ms",
+        "decide_us",
+        "append_sync_ms",
+        "publish_prefix_hash_ms",
+    ] {
+        assert!(metric[field].is_number(), "{field}: {metric}");
+    }
+
+    let output = run_handle_with_timing(
+        &dir.state(),
+        &reconcile_frame(
+            signals::implementation_ready("evt-timing"),
+            "req-timing-reconcile",
+        ),
+    );
+    let metric = timing_metric(&output);
+    assert_eq!(metric["operation_kind"], "workflow.signal.reconcile");
+    assert_eq!(metric["outcome"], "accepted");
+    for field in [
+        "committed_prefix_read_ms",
+        "committed_prefix_hash_ms",
+        "committed_prefix_decode_ms",
+        "replay_ms",
+    ] {
+        assert!(metric[field].is_number(), "{field}: {metric}");
+    }
+    assert!(metric.get("append_sync_ms").is_none());
+    assert!(metric.get("publish_prefix_hash_ms").is_none());
 }
 
 #[test]

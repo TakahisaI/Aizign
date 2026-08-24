@@ -125,6 +125,12 @@ completionの正本はjournal（core側）です。adapterはそれに加えて�
 
 `apply()` が登録するのはsubmit toolだけなので、そのpreflightが要求するcapabilityも `workflow.signal.submit` だけです。exportされた `OneShotCoreClient.reconcileWorkflowSignal()` をcontrol planeから直接使う場合は、`hello()` と `RECONCILIATION_REQUIRED` / `checkCompatibility()` で `workflow.signal.reconcile` を独立に確認します。reconciliation capabilityがないことを理由にsubmit toolまで非公開にはしません。
 
+## Opt-in timing
+
+`OneShotCoreClient`は`CoreClientConfig.timingSink`、`preflight`は`PreflightOptions.timingSink`、`readSignalEvidence`は`ColdReadOptions.timingSink`がある場合だけmetadata-only timingを通知します。
+preflightは全体の`preflight_ms`、evidence cold readは`harness_cold_read_ms`と返されたevent数を記録します。
+どのmeasurementにもsession ID、signal identity、path、本文を含めず、sinkの例外はtool登録、submit、reconcile、evidence classificationを変えません。
+
 ## Harness-facing codes
 
 | Code | 意味 |

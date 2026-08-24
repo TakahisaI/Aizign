@@ -4,13 +4,13 @@
 use std::io::{self, BufRead as _, Read as _, Write as _};
 use std::path::Path;
 use std::sync::mpsc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use aizign_core::BoundedTimestamp;
 use aizign_core::recovery::SignalReconciliation;
 use aizign_engine::{
-    Clock, ClockError, HandleError, ReconcileError, SignalOutcome, handle_workflow_signal,
-    reconcile_workflow_signal,
+    Clock, ClockError, HandleError, ReconcileError, SignalOutcome, handle_workflow_signal_observed,
+    reconcile_workflow_signal_observed,
 };
 use aizign_protocol::{
     CAPABILITY_WORKFLOW_SIGNAL_RECONCILE, CAPABILITY_WORKFLOW_SIGNAL_SUBMIT, Disposition,
@@ -23,6 +23,7 @@ use aizign_store_jsonl::{
 };
 
 use crate::exit;
+use crate::timing::{HandlerTiming, StageTimingObserver, milliseconds};
 
 /// Upper bound on reading and processing one request. Past it, the response
 /// reports `HANDLER_TIMEOUT` and the process exits; any append in flight is
@@ -88,14 +89,22 @@ pub(crate) fn hello() -> u8 {
 /// the one-frame check scans to EOF and a caller that never closes stdin
 /// must not hold the process open (#34).
 pub(crate) fn handle(state: &Path) -> u8 {
+    let handler_started = Instant::now();
     let timeout = handler_timeout();
     let state = state.to_path_buf();
     let (sender, receiver) = mpsc::channel();
     std::thread::spawn(move || {
-        let outcome = read_stdin().map(|stdin| match stdin {
-            Stdin::Frame(frame) => respond(&frame, &state),
+        let mut timing = HandlerTiming::default();
+        let read_started = Instant::now();
+        let stdin = read_stdin();
+        timing.request_read_ms = Some(milliseconds(read_started.elapsed()));
+        let outcome = stdin.map(|stdin| match stdin {
+            Stdin::Frame(frame) => respond(&frame, &state, &mut timing),
             Stdin::Extra => {
                 log("decode", None, None, codes::INVALID_ENVELOPE);
+                timing.operation_kind = Some("unknown".to_owned());
+                timing.outcome = Some("rejected");
+                timing.error_code = Some(codes::INVALID_ENVELOPE.to_owned());
                 Response {
                     request_id: None,
                     kind: None,
@@ -107,11 +116,11 @@ pub(crate) fn handle(state: &Path) -> u8 {
             }
         });
         // The receiver is gone only if the watchdog already answered.
-        let _ = sender.send(outcome);
+        let _ = sender.send(outcome.map(|response| MeasuredResponse { response, timing }));
     });
 
-    let response = match receiver.recv_timeout(timeout) {
-        Ok(Ok(response)) => response,
+    let mut measured = match receiver.recv_timeout(timeout) {
+        Ok(Ok(measured)) => measured,
         Ok(Err(error)) => {
             eprintln!("aizign: cannot read request frame: {error}");
             return exit::IO;
@@ -121,20 +130,33 @@ pub(crate) fn handle(state: &Path) -> u8 {
                 "aizign: request exceeded {}ms; any append outcome is unknown",
                 timeout.as_millis()
             );
-            Response {
-                request_id: None,
-                kind: None,
-                body: ResponseBody::Error(ProtocolError::new(
-                    codes::HANDLER_TIMEOUT,
-                    format!(
-                        "processing exceeded {}ms; the journal outcome is unknown",
-                        timeout.as_millis()
-                    ),
-                )),
+            MeasuredResponse {
+                response: Response {
+                    request_id: None,
+                    kind: None,
+                    body: ResponseBody::Error(ProtocolError::new(
+                        codes::HANDLER_TIMEOUT,
+                        format!(
+                            "processing exceeded {}ms; the journal outcome is unknown",
+                            timeout.as_millis()
+                        ),
+                    )),
+                },
+                timing: HandlerTiming {
+                    operation_kind: Some("unknown".to_owned()),
+                    outcome: Some("unknown"),
+                    error_code: Some(codes::HANDLER_TIMEOUT.to_owned()),
+                    ..HandlerTiming::default()
+                },
             }
         }
     };
-    write_frame(&response)
+    write_measured_frame(&measured.response, &mut measured.timing, handler_started)
+}
+
+struct MeasuredResponse {
+    response: Response,
+    timing: HandlerTiming,
 }
 
 /// What stdin carried: exactly one frame, or something that is not one.
@@ -174,10 +196,18 @@ fn read_stdin() -> io::Result<Stdin> {
     Ok(Stdin::Frame(frame))
 }
 
-fn respond(frame: &[u8], state: &Path) -> Response {
+fn respond(frame: &[u8], state: &Path, timing: &mut HandlerTiming) -> Response {
+    let decode_started = Instant::now();
     let request = match decode_request(frame) {
-        Ok(request) => request,
+        Ok(request) => {
+            timing.decode_ms = Some(milliseconds(decode_started.elapsed()));
+            request
+        }
         Err(failure) => {
+            timing.decode_ms = Some(milliseconds(decode_started.elapsed()));
+            timing.operation_kind = failure.kind.clone().or_else(|| Some("unknown".to_owned()));
+            timing.outcome = Some("rejected");
+            timing.error_code = Some(failure.error.code().as_str().to_owned());
             log(
                 "decode",
                 failure.request_id.as_deref(),
@@ -193,51 +223,8 @@ fn respond(frame: &[u8], state: &Path) -> Response {
     };
     let Request { request_id, kind } = request;
     let kind_name = kind.name().to_owned();
-    let body = match kind {
-        RequestKind::Hello => ResponseBody::Hello(hello_info()),
-        RequestKind::SubmitWorkflowSignal(_) | RequestKind::ReconcileWorkflowSignal(_)
-            if !STORE_PLATFORM_SUPPORTED =>
-        {
-            ResponseBody::Error(store_capability_unsupported(&kind_name))
-        }
-        RequestKind::SubmitWorkflowSignal(command) => match JsonlJournal::open(state) {
-            Err(error) => ResponseBody::Error(ProtocolError::new(error.code(), error.to_string())),
-            Ok(mut journal) => match handle_workflow_signal(&mut journal, &SystemClock, *command) {
-                Ok(SignalOutcome::Accepted { entry }) => {
-                    let aizign_core::workflow::WorkflowEvent::SignalAccepted { signal } =
-                        entry.event;
-                    ResponseBody::WorkflowSignal(SignalResult {
-                        disposition: Disposition::Accepted,
-                        event_id: signal.event_id().clone(),
-                    })
-                }
-                Ok(SignalOutcome::Duplicate { event_id }) => {
-                    ResponseBody::WorkflowSignal(SignalResult {
-                        disposition: Disposition::Duplicate,
-                        event_id,
-                    })
-                }
-                Err(error) => ResponseBody::Error(handle_error(&error)),
-            },
-        },
-        RequestKind::ReconcileWorkflowSignal(signal) => match JsonlJournalReader::open(state) {
-            Err(error) => ResponseBody::Error(ProtocolError::new(error.code(), error.to_string())),
-            Ok(mut journal) => match reconcile_workflow_signal(&mut journal, &signal) {
-                Ok(disposition) => {
-                    let disposition = match disposition {
-                        SignalReconciliation::Accepted => ReconciliationDisposition::Accepted,
-                        SignalReconciliation::Conflict => ReconciliationDisposition::Conflict,
-                        SignalReconciliation::Absent => ReconciliationDisposition::Absent,
-                    };
-                    ResponseBody::WorkflowSignalReconciliation(ReconciliationResult {
-                        disposition,
-                        event_id: signal.event_id().clone(),
-                    })
-                }
-                Err(error) => ResponseBody::Error(reconcile_error(&error)),
-            },
-        },
-    };
+    timing.operation_kind = Some(kind_name.clone());
+    let body = execute_request(kind, &kind_name, state, timing);
     let outcome = match &body {
         ResponseBody::Hello(_) => "ok",
         ResponseBody::WorkflowSignal(result) => match result.disposition {
@@ -251,11 +238,138 @@ fn respond(frame: &[u8], state: &Path) -> Response {
         },
         ResponseBody::Error(error) => error.code().as_str(),
     };
+    record_semantic_outcome(&kind_name, &body, timing);
     log("handle", Some(&request_id), Some(&kind_name), outcome);
     Response {
         request_id: Some(request_id),
         kind: Some(kind_name),
         body,
+    }
+}
+
+fn execute_request(
+    kind: RequestKind,
+    kind_name: &str,
+    state: &Path,
+    timing: &mut HandlerTiming,
+) -> ResponseBody {
+    match kind {
+        RequestKind::Hello => ResponseBody::Hello(hello_info()),
+        RequestKind::SubmitWorkflowSignal(_) | RequestKind::ReconcileWorkflowSignal(_)
+            if !STORE_PLATFORM_SUPPORTED =>
+        {
+            ResponseBody::Error(store_capability_unsupported(kind_name))
+        }
+        RequestKind::SubmitWorkflowSignal(command) => submit_response(*command, state, timing),
+        RequestKind::ReconcileWorkflowSignal(signal) => reconcile_response(&signal, state, timing),
+    }
+}
+
+fn submit_response(
+    command: aizign_core::workflow::Command,
+    state: &Path,
+    timing: &mut HandlerTiming,
+) -> ResponseBody {
+    let open_started = Instant::now();
+    let opened = JsonlJournal::open(state);
+    timing.journal_open_ms = Some(milliseconds(open_started.elapsed()));
+    let mut journal = match opened {
+        Ok(journal) => journal,
+        Err(error) => {
+            return ResponseBody::Error(ProtocolError::new(error.code(), error.to_string()));
+        }
+    };
+    timing.journal_bytes = std::fs::metadata(journal.path())
+        .ok()
+        .map(|metadata| metadata.len());
+    let handled = {
+        let mut observer = StageTimingObserver::new(timing);
+        handle_workflow_signal_observed(&mut journal, &SystemClock, command, &mut observer)
+    };
+    match handled {
+        Ok(SignalOutcome::Accepted { entry }) => {
+            let aizign_core::workflow::WorkflowEvent::SignalAccepted { signal } = entry.event;
+            ResponseBody::WorkflowSignal(SignalResult {
+                disposition: Disposition::Accepted,
+                event_id: signal.event_id().clone(),
+            })
+        }
+        Ok(SignalOutcome::Duplicate { event_id }) => ResponseBody::WorkflowSignal(SignalResult {
+            disposition: Disposition::Duplicate,
+            event_id,
+        }),
+        Err(error) => ResponseBody::Error(handle_error(&error)),
+    }
+}
+
+fn reconcile_response(
+    signal: &aizign_core::workflow::WorkflowSignal,
+    state: &Path,
+    timing: &mut HandlerTiming,
+) -> ResponseBody {
+    let open_started = Instant::now();
+    let opened = JsonlJournalReader::open(state);
+    timing.journal_open_ms = Some(milliseconds(open_started.elapsed()));
+    let mut journal = match opened {
+        Ok(journal) => journal,
+        Err(error) => {
+            return ResponseBody::Error(ProtocolError::new(error.code(), error.to_string()));
+        }
+    };
+    timing.journal_bytes = std::fs::metadata(journal.path())
+        .ok()
+        .map(|metadata| metadata.len());
+    let reconciled = {
+        let mut observer = StageTimingObserver::new(timing);
+        reconcile_workflow_signal_observed(&mut journal, signal, &mut observer)
+    };
+    match reconciled {
+        Ok(disposition) => {
+            let disposition = match disposition {
+                SignalReconciliation::Accepted => ReconciliationDisposition::Accepted,
+                SignalReconciliation::Conflict => ReconciliationDisposition::Conflict,
+                SignalReconciliation::Absent => ReconciliationDisposition::Absent,
+            };
+            ResponseBody::WorkflowSignalReconciliation(ReconciliationResult {
+                disposition,
+                event_id: signal.event_id().clone(),
+            })
+        }
+        Err(error) => ResponseBody::Error(reconcile_error(&error)),
+    }
+}
+
+fn record_semantic_outcome(kind: &str, body: &ResponseBody, timing: &mut HandlerTiming) {
+    match body {
+        ResponseBody::Hello(_) => timing.outcome = Some("ok"),
+        ResponseBody::WorkflowSignal(result) => {
+            timing.outcome = Some(match result.disposition {
+                Disposition::Accepted => "accepted",
+                Disposition::Duplicate => "duplicate",
+            });
+        }
+        ResponseBody::WorkflowSignalReconciliation(result) => {
+            timing.outcome = Some(match result.disposition {
+                ReconciliationDisposition::Accepted => "accepted",
+                ReconciliationDisposition::Conflict => "conflict",
+                ReconciliationDisposition::Absent => "absent",
+            });
+        }
+        ResponseBody::Error(error) => {
+            let code = error.code().as_str();
+            timing.error_code = Some(code.to_owned());
+            timing.outcome = Some(
+                if kind == aizign_protocol::KIND_WORKFLOW_SIGNAL_RECONCILE
+                    || matches!(code, "JOURNAL_OUTCOME_UNKNOWN" | "HANDLER_TIMEOUT")
+                {
+                    "unknown"
+                } else if code == "EVENT_CONFLICT" {
+                    "conflict"
+                } else {
+                    "rejected"
+                },
+            );
+        }
     }
 }
 
@@ -284,6 +398,34 @@ fn log(stage: &str, request_id: Option<&str>, kind: Option<&str>, outcome: &str)
         request_id.unwrap_or("-"),
         kind.unwrap_or("-")
     );
+}
+
+fn write_measured_frame(
+    response: &Response,
+    timing: &mut HandlerTiming,
+    handler_started: Instant,
+) -> u8 {
+    let encode_started = Instant::now();
+    let mut line = encode_response(response);
+    line.push('\n');
+    timing.response_encode_ms = Some(milliseconds(encode_started.elapsed()));
+
+    let write_started = Instant::now();
+    let mut stdout = io::stdout().lock();
+    let written = stdout
+        .write_all(line.as_bytes())
+        .and_then(|()| stdout.flush());
+    timing.response_write_ms = Some(milliseconds(write_started.elapsed()));
+    timing.handler_total_ms = Some(milliseconds(handler_started.elapsed()));
+    timing.emit();
+
+    match written {
+        Ok(()) => exit::OK,
+        Err(error) => {
+            eprintln!("aizign: cannot write response frame: {error}");
+            exit::IO
+        }
+    }
 }
 
 fn write_frame(response: &Response) -> u8 {

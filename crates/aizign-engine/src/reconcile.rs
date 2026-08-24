@@ -6,6 +6,7 @@ use aizign_core::recovery::{SignalReconciliation, reconcile_workflow_signal as r
 use aizign_core::workflow::{ApplyError, WorkflowSignal, WorkflowState};
 
 use crate::journal::{JournalError, JournalReader};
+use crate::observation::{EngineObserver, EngineStage, NoopObserver};
 
 /// Why reconciliation could not obtain a trustworthy semantic result.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -43,8 +44,31 @@ pub fn reconcile_workflow_signal(
     journal: &mut impl JournalReader,
     signal: &WorkflowSignal,
 ) -> Result<SignalReconciliation, ReconcileError> {
-    let entries = journal.load_committed().map_err(ReconcileError::Journal)?;
-    let state = WorkflowState::replay(entries.iter().map(|entry| &entry.event))
-        .map_err(ReconcileError::Replay)?;
-    Ok(reconcile(&state, signal))
+    reconcile_workflow_signal_observed(journal, signal, &mut NoopObserver)
+}
+
+/// Reconciles one signal while marking the same load, replay, and decision
+/// stages used by submit. Reconciliation still receives only a reader.
+pub fn reconcile_workflow_signal_observed(
+    journal: &mut impl JournalReader,
+    signal: &WorkflowSignal,
+    observer: &mut impl EngineObserver,
+) -> Result<SignalReconciliation, ReconcileError> {
+    observer.stage_started(EngineStage::JournalLoadDecode);
+    let loaded = journal.load_committed_observed(observer);
+    observer.stage_finished(
+        EngineStage::JournalLoadDecode,
+        loaded.as_ref().ok().map(Vec::len),
+    );
+    let entries = loaded.map_err(ReconcileError::Journal)?;
+
+    observer.stage_started(EngineStage::Replay);
+    let replayed = WorkflowState::replay(entries.iter().map(|entry| &entry.event));
+    observer.stage_finished(EngineStage::Replay, None);
+    let state = replayed.map_err(ReconcileError::Replay)?;
+
+    observer.stage_started(EngineStage::Decide);
+    let disposition = reconcile(&state, signal);
+    observer.stage_finished(EngineStage::Decide, None);
+    Ok(disposition)
 }

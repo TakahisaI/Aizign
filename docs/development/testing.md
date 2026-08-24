@@ -30,6 +30,7 @@ cargo test --workspace         # Rustだけ
 cargo test -p aizign-core        # crate単位
 npm run check                  # TypeScriptだけ
 npm test -w @aizign/protocol     # package単位
+cargo xtask performance-baseline # x86_64 GNU/Linux上のmanual performance observation
 ```
 
 The `quick` profiles use the existing Cargo cache and `node_modules` without installing from the network.
@@ -41,6 +42,7 @@ See [`xtask/README.md`](../../xtask/README.md#quick-profiles) for each profile's
 - core CI（`Rust` job）はNodeやDSHがなくても単独で成功する
 - `TypeScript` jobは実 `aizign` binaryをbuildし、TypeScript client → binary → JSONL journal の往復を `@aizign/adapter-testkit` の `runCoreScenarios` で検査する
 - live smokeは `workflow_dispatch` またはlocal opt-inだけ。成否を通常releaseのrequired checkにしない
+- runtime performance baselineはscheduledまたはmanualだけで実行し、pull request gateにしない。契約とsamplingは[`benchmarks/runtime/README.md`](../../benchmarks/runtime/README.md)を参照する
 
 ## 何をtestするか
 

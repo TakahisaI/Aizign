@@ -1,0 +1,72 @@
+name: Performance baseline
+
+on:
+  schedule:
+    - cron: "23 4 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-baseline-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUSTFLAGS: -D warnings
+
+jobs:
+  baseline:
+    name: Release-profile observation
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      # setup-node runs before checkout because the runner's bundled npm can
+      # otherwise be rejected by package.json devEngines before alignment.
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Align npm with the repository pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          required_npm="$(node -p "(require('./package.json').packageManager || '').replace(/^npm@/, '')")"
+          if [[ -n "${required_npm}" && "$(npm --version)" != "${required_npm}" ]]; then
+            (cd "${RUNNER_TEMP}" && npm install --global "npm@${required_npm}")
+          fi
+          node --version
+          npm --version
+
+      - name: Install the pinned Rust toolchain
+        run: |
+          rustup toolchain install
+          rustup show
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Install TypeScript dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Fetch locked Rust dependencies
+        run: cargo fetch --locked
+
+      - name: Run release-profile baseline
+        run: cargo xtask performance-baseline --warmup 3 --samples 20
+
+      - name: Upload machine and human reports
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: aizign-performance-baseline-${{ github.sha }}
+          path: target/performance-baseline
+          if-no-files-found: error
+          retention-days: 30
