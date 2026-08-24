@@ -9,6 +9,7 @@
 #![forbid(unsafe_code)]
 
 mod journal;
+mod json_member;
 mod record;
 
 pub use journal::{JOURNAL_FILE_NAME, JsonlJournal, LOCK_FILE_NAME};

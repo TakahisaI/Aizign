@@ -124,12 +124,21 @@ impl Journal for JsonlJournal {
             self.load()?;
             self.next_seq.expect("load sets next_seq")
         };
+        // The bound is checked before anything is written. A 10001st entry
+        // must not reach the file: it would decode fine in isolation but
+        // make the very next cold read fail with `BoundExceeded`, turning
+        // an acknowledged append into a journal that can no longer load.
+        if seq > MAX_JOURNAL_ENTRIES as u64 {
+            return Err(JournalError::BoundExceeded {
+                max: MAX_JOURNAL_ENTRIES,
+            });
+        }
         let entry = JournalEntry {
             seq,
             at,
             event: event.clone(),
         };
-        let mut line = record::encode_entry(&entry);
+        let mut line = record::encode_entry(&entry)?;
         line.push('\n');
 
         // From the first byte written onward, any failure leaves the

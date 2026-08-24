@@ -17,7 +17,7 @@ adapter ──(request frame)──▶ aizu handle --state <dir> ──(response
 | Field | Request | Response |
 |---|---|---|
 | `protocol` | `"aizu"` | `"aizu"` |
-| `version` | `1` | `1` |
+| `version` | `1`（許容rangeは `0..=4294967295`。範囲外は `INVALID_ENVELOPE`） | 同左 |
 | `requestId` | `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$` | requestの値をecho（同じpattern）。復元できなければ `null` |
 | `kind` | 登録済みkind | requestの値をecho。復元できなければ `null` |
 | `payload` | kindごとのclosed object | `ok: true` のときだけ |
@@ -26,10 +26,13 @@ adapter ──(request frame)──▶ aizu handle --state <dir> ──(response
 
 - すべてclosed schema（`additionalProperties: false`）。未知fieldは `INVALID_ENVELOPE` / `INVALID_PAYLOAD`
 - **受理集合はJSON Schemaが正**: [`schemas/`](schemas/) とRust / TS decoderは同じ集合を受理する。一致は `spec/conformance` の全fixture（`.expect.json` の `schema` 判定）とexampleをschemaに通すgate（[`spec/test/schema.test.mjs`](../../test/schema.test.mjs)）がCIで検証する
-- schemaが表現できず **decoderだけが拒否する規則は2つ**（fixtureでは `schema: true` と記録する）
+- schemaが表現できず **decoderだけが拒否する規則は3つ**（fixtureでは `schema: true` と記録する）
   - frameのsize bound（`MAX_FRAME_BYTES`）→ `REQUEST_TOO_LARGE` / `INVALID_ENVELOPE`
   - **整数の字句表現**（下記）
+  - **duplicate member**（下記）
 - 整数fieldのwire表現は **canonicalな整数token** だけを許す: `0` または `-?[1-9][0-9]*`。`1.0`、`1e0`、`-0` のような表記はJSON data model上は整数1（や0）だが、frameとしては拒否する（`version` は `INVALID_ENVELOPE`、payload内は `INVALID_PAYLOAD`）。JSON Schemaはdata modelしか見ないためこの規則を書けず、両decoderが実装する（Rustは `serde_json` の整数型、TSはparse時のtoken検査）
+- envelope `version` の整数rangeは `0..=4294967295`（`PROTOCOL_VERSION` の型 `u32` に由来）。range外は `PROTOCOL_VERSION_UNSUPPORTED` ではなく **`INVALID_ENVELOPE`**。両decoderとも同じ判定（Rustはtyped field、TSは数値比較。JSON numberは2^53まで厳密なので差は出ない）
+- **同一object内でmember名の重複は拒否**（`INVALID_ENVELOPE`、journalは `JOURNAL_CORRUPT`）。`"a"` と `"\\u0061"` のようにescape表記が違っても、decode後の名前が同じなら重複とする。streaming parserとfolding parserで意味が分れるため、どの階層でも契約の外。schema外のlexical ruleとして両decoderが走査し、相関データ（`requestId` / `kind`）は最後の表記から復元する
 - optional fieldは **省略** する。`null` は許可しない
 - `message` は人向けの説明で、request本文を含めない。機械判定は `code` だけで行う
 - 互換性はpackage versionではなく `version` と `hello` の `capabilities` で判定する
@@ -61,7 +64,7 @@ structured workflow signalを、shellがbindされている `expected` assignmen
 | Code | いつ |
 |---|---|
 | `REQUEST_TOO_LARGE` | request frameが上限を超える。`requestId` / `kind` は `null` |
-| `INVALID_ENVELOPE` | JSONでない、`protocol` が違う、`version` が整数でない、未知field、`requestId` が不正、stdinに2つ目のframe。response側では上限超過もこれ |
+| `INVALID_ENVELOPE` | JSONでない、`protocol` が違う、`version` が整数でない・range外、未知field、member重複、`requestId` が不正、stdinに2つ目のframe。response側では上限超過もこれ |
 | `PROTOCOL_VERSION_UNSUPPORTED` | `version` が `1` 以外。`requestId` / `kind` は復元できれば返る |
 | `UNKNOWN_KIND` | `kind` が未登録 |
 | `INVALID_PAYLOAD` | payloadの形がkindのschemaに合わない（欠落、型違い、未知field、`null`） |

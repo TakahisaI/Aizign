@@ -6,8 +6,10 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use aizu_core::workflow::{Command, Decision, WorkflowEvent, WorkflowState, decide};
-use aizu_engine::{Journal, JournalError, MAX_JOURNAL_ENTRIES};
-use aizu_store_jsonl::{JOURNAL_FILE_NAME, JOURNAL_SCHEMA_VERSION, JsonlJournal, LOCK_FILE_NAME};
+use aizu_engine::{Journal, JournalEntry, JournalError, MAX_JOURNAL_ENTRIES};
+use aizu_store_jsonl::{
+    JOURNAL_FILE_NAME, JOURNAL_SCHEMA_VERSION, JsonlJournal, LOCK_FILE_NAME, encode_record,
+};
 use aizu_testkit::{TempDir, journal_contract, signals};
 
 fn journal_file(state: &Path) -> PathBuf {
@@ -211,6 +213,61 @@ fn cold_reads_are_bounded() {
             max: MAX_JOURNAL_ENTRIES
         })
     );
+}
+
+#[test]
+fn the_10001st_append_is_refused_without_touching_the_file() {
+    let dir = TempDir::new();
+    let state = dir.state();
+    let mut journal = JsonlJournal::open(&state).unwrap();
+    for (index, seq) in (1..=MAX_JOURNAL_ENTRIES).enumerate() {
+        journal
+            .append(&event(&format!("evt-{seq}")), signals::at(index as u64))
+            .unwrap_or_else(|error| panic!("append {seq}: {error}"));
+    }
+    let before = fs::read(journal_file(&state)).unwrap();
+
+    // The bound is enforced on append, not only on read: an acknowledged
+    // append must never create a journal the next cold read cannot load.
+    let refused = journal
+        .append(&event("evt-over"), signals::at(0))
+        .unwrap_err();
+    assert_eq!(
+        refused,
+        JournalError::BoundExceeded {
+            max: MAX_JOURNAL_ENTRIES
+        }
+    );
+    assert_eq!(
+        fs::read(journal_file(&state)).unwrap(),
+        before,
+        "a refused append changes nothing"
+    );
+
+    // And the file stays readable, with exactly the accepted entries.
+    drop(journal);
+    let mut reopened = JsonlJournal::open(&state).unwrap();
+    assert_eq!(reopened.load().unwrap().len(), MAX_JOURNAL_ENTRIES);
+}
+
+#[test]
+fn encode_record_rejects_the_seq_values_the_schema_rejects() {
+    for seq in [0, MAX_JOURNAL_ENTRIES as u64 + 1] {
+        let entry = JournalEntry {
+            seq,
+            at: signals::at(0),
+            event: event("evt-1"),
+        };
+        assert_eq!(
+            encode_record(&entry).err(),
+            Some(JournalError::Corrupt {
+                detail: format!(
+                    "entry seq {seq} is outside the record range 1..={MAX_JOURNAL_ENTRIES}"
+                )
+            }),
+            "seq {seq}"
+        );
+    }
 }
 
 #[test]

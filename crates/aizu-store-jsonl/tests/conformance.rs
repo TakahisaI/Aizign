@@ -23,8 +23,10 @@ fn valid_records_decode_and_round_trip() {
     for fixture in conformance::valid(Direction::Journal) {
         let entry = decode_record(&line(&fixture.frame))
             .unwrap_or_else(|error| panic!("{}: {error}", fixture.name));
+        let encoded =
+            encode_record(&entry).unwrap_or_else(|error| panic!("{}: {error}", fixture.name));
         assert_eq!(
-            json(&encode_record(&entry)),
+            json(&encoded),
             json(&line(&fixture.frame)),
             "{}",
             fixture.name

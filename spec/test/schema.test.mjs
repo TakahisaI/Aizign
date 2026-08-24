@@ -6,10 +6,11 @@
  * it. This gate keeps the acceptance sets identical: every valid fixture and
  * example must validate, and every invalid fixture states in its expectation
  * whether the schema rejects it too. `schema: true` on an invalid fixture
- * marks a rule a JSON Schema cannot express — the frame size bound, and the
+ * marks a rule a JSON Schema cannot express — the frame size bound, the
  * canonical integer lexemes the decoders require (`1.0` and `1e0` are the
  * integer 1 in the JSON data model a schema sees, but not tokens the wire
- * accepts).
+ * accepts), and duplicate object members (a schema sees the folded object;
+ * both decoders reject the repeated spelling lexically).
  *
  * The decoders run the same files: `crates/aizu-protocol/tests/conformance.rs`,
  * `crates/aizu-store-jsonl/tests/conformance.rs`, and

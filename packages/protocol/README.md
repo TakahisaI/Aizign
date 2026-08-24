@@ -20,7 +20,8 @@ wire contractの正本は [`spec/protocol/v1/`](../../spec/protocol/v1/README.md
 ```text
 src/
 ├── index.ts              closed exports
-├── envelope.ts           decode / encode（lenient probe → strict envelope → kind dispatch）
+├── envelope.ts           decode / encode（duplicate member走査 → lenient probe → strict envelope → kind dispatch）
+├── duplicate-member.ts   member重複のlexical走査（内部実装）
 ├── error.ts              ProtocolError、codes、SHORT_ERROR_CODE_PATTERN
 ├── hello.ts              HelloInfo、decodeHelloInfo、checkCompatibility
 ├── workflow-signal.ts    payload型、decodeWorkflowSignalSubmit（coreと同じ規則）、decodeSignalResult
