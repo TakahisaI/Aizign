@@ -59,6 +59,7 @@ Milestone `v0.1 — Foundation` の未着手Issueです。
 ## Getting started
 
 ```sh
+cargo fetch --locked
 cargo xtask check
 ```
 

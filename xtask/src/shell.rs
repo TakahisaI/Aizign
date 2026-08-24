@@ -42,6 +42,15 @@ pub(crate) fn run_with_env(
 
 /// Runs a command and returns its stdout as UTF-8, failing on non-zero exit.
 pub(crate) fn capture(root: &Path, program: &str, args: &[&str]) -> Result<String, String> {
+    capture_output(root, program, args, false)
+}
+
+fn capture_output(
+    root: &Path,
+    program: &str,
+    args: &[&str],
+    include_stdout_on_error: bool,
+) -> Result<String, String> {
     let rendered = render(program, args);
     let output = Command::new(program)
         .args(args)
@@ -49,21 +58,23 @@ pub(crate) fn capture(root: &Path, program: &str, args: &[&str]) -> Result<Strin
         .output()
         .map_err(|error| format!("failed to start `{rendered}`: {error}"))?;
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let details = failure_details(&output.stderr, &output.stdout, include_stdout_on_error);
         return Err(format!(
             "`{rendered}` exited with {}: {}",
-            output.status,
-            stderr.trim()
+            output.status, details
         ));
     }
     String::from_utf8(output.stdout)
         .map_err(|error| format!("`{rendered}` produced non-UTF-8 output: {error}"))
 }
 
-/// Like [`capture`], but logs the command before running it.
+/// Like [`capture`], but logs the command and preserves stdout on failure.
+///
+/// Cargo emits JSON diagnostics on stdout when using `--message-format=json`,
+/// so callers that parse command output need both streams when a build fails.
 pub(crate) fn capture_logged(root: &Path, program: &str, args: &[&str]) -> Result<String, String> {
     println!("$ {}", render(program, args));
-    capture(root, program, args)
+    capture_output(root, program, args, true)
 }
 
 /// Returns whether a program can be started at all (used for install hints).
@@ -92,4 +103,46 @@ fn render(program: &str, args: &[&str]) -> String {
         rendered.push_str(arg);
     }
     rendered
+}
+
+fn failure_details(stderr: &[u8], stdout: &[u8], include_stdout: bool) -> String {
+    let stderr = String::from_utf8_lossy(stderr);
+    let stderr = stderr.trim();
+    if !include_stdout {
+        return stderr.to_owned();
+    }
+
+    let stdout = String::from_utf8_lossy(stdout);
+    let stdout = stdout.trim();
+    match (stderr.is_empty(), stdout.is_empty()) {
+        (false, false) => format!("{stderr}\n{stdout}"),
+        (false, true) => stderr.to_owned(),
+        (true, false) => stdout.to_owned(),
+        (true, true) => String::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::failure_details;
+
+    #[test]
+    fn logged_capture_preserves_stdout_diagnostics_on_failure() {
+        let details = failure_details(
+            b"cargo failed\n",
+            br#"{"reason":"compiler-message","message":{"rendered":"linking failed"}}"#,
+            true,
+        );
+
+        assert!(details.contains("cargo failed"));
+        assert!(details.contains("compiler-message"));
+        assert!(details.contains("linking failed"));
+    }
+
+    #[test]
+    fn ordinary_capture_keeps_stderr_only_on_failure() {
+        let details = failure_details(b"expected setup hint\n", b"ignored stdout\n", false);
+
+        assert_eq!(details, "expected setup hint");
+    }
 }
