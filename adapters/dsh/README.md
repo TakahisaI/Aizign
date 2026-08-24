@@ -68,7 +68,7 @@ completionの正本はjournal（core側）です。adapterはそれに加えて�
 | 結果 | 意味 |
 |---|---|
 | `accepted` / `duplicate` | 対が揃い、digestが一致 |
-| `rejected { code }` | `tool/result` が error（`EVENT_CONFLICT`、`AIZU_OUTCOME_UNKNOWN` など） |
+| `unknown unverified_error { code }` | `tool/result` が error（`EVENT_CONFLICT`、`AIZU_OUTCOME_UNKNOWN` など）。DSHはerrorに`{name, code}`しか永続化せず（presentation metadataは成功valueのみ）、bindingを検証できない。`code`は診断用で、このbindingのrejectionとして採用しない |
 | `unknown no_result` | `tool/call` はあるが `tool/result` がない（crash等）。後続の発話からは推測しない |
 | `unknown meta_mismatch` | 別のidentityの結果、または metadata がない |
 | `unknown bound_exceeded` | sourceが `maxEvents`（既定 10000）を超えるeventを返した。partialな証拠は返さない |
