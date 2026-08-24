@@ -1,0 +1,225 @@
+/**
+ * Decoder-independent encoder coverage against every Protocol v1 example.
+ *
+ * Examples are loaded only as generic JSON values for expected output.
+ * Outbound values are constructed directly and passed to the production
+ * encoders. `spec/test/schema.test.mjs` validates the same examples, so JSON
+ * value equality keeps schema validation in the existing repository gate.
+ */
+
+import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import {
+  encodeRequest,
+  encodeResponse,
+  MAX_FRAME_BYTES,
+  MAX_REQUEST_BYTES,
+  type Request,
+  type Response,
+} from './envelope.ts';
+import { codes, ProtocolError } from './error.ts';
+import {
+  CAPABILITY_WORKFLOW_SIGNAL_RECONCILE,
+  CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
+  type HelloInfo,
+} from './hello.ts';
+import type { ExpectedAssignment, WorkflowSignal } from './workflow-signal.ts';
+
+const root = join(import.meta.dirname, '../../../spec/protocol/v1/examples');
+const encoder = new TextEncoder();
+const SHA256_A = 'a'.repeat(64);
+
+function example(name: string): unknown {
+  return JSON.parse(readFileSync(join(root, name), 'utf8'));
+}
+
+function exampleNames(suffix: string): string[] {
+  const names = readdirSync(root)
+    .filter((name) => name.endsWith(suffix))
+    .sort();
+  assert.ok(names.length > 0, `no examples ending in ${suffix}`);
+  return names;
+}
+
+function assertExplicitCoverage<T>(
+  suffix: string,
+  cases: ReadonlyArray<readonly [string, T]>,
+): void {
+  assert.deepEqual(
+    cases.map(([name]) => name),
+    exampleNames(suffix),
+    'every Protocol v1 example must have an explicit encoder case',
+  );
+}
+
+function assertFrame(name: string, frame: string, bound: number): void {
+  const bytes = encoder.encode(frame);
+  assert.ok(bytes.byteLength <= bound, `${name}: encoded frame exceeds ${bound} bytes`);
+  assert.notDeepEqual(
+    [...bytes.slice(0, 3)],
+    [0xef, 0xbb, 0xbf],
+    `${name}: frame must not start with a UTF-8 BOM`,
+  );
+  assert.equal(frame.includes('\n'), false, `${name}: frame contains a raw newline`);
+  assert.equal(frame.includes('\r'), false, `${name}: frame contains a raw carriage return`);
+  assert.equal(frame.trim(), frame, `${name}: frame contains surrounding whitespace`);
+
+  const encoded: unknown = JSON.parse(frame);
+  assert.ok(typeof encoded === 'object' && encoded !== null && !Array.isArray(encoded), name);
+  assert.deepEqual(encoded, example(name), `${name}: JSON value`);
+}
+
+function expectedAssignment(): ExpectedAssignment {
+  return {
+    workflowId: 'wf-example-01',
+    assignmentId: 'as-implementation-01',
+    attemptId: 'attempt-fixture',
+    role: 'implementation',
+    artifactRevision: 'rev-c0ffee',
+    candidateDigest: { algorithm: 'sha256', hex: SHA256_A },
+  };
+}
+
+function implementationReady(eventId: string): WorkflowSignal {
+  return {
+    eventId,
+    workflowId: 'wf-example-01',
+    assignmentId: 'as-implementation-01',
+    attemptId: 'attempt-fixture',
+    role: 'implementation',
+    artifactRevision: 'rev-c0ffee',
+    candidateDigest: { algorithm: 'sha256', hex: SHA256_A },
+    kind: 'implementation_ready',
+  };
+}
+
+function blocked(eventId: string): WorkflowSignal {
+  return {
+    ...implementationReady(eventId),
+    kind: 'blocked',
+    shortErrorCode: 'TOOL_UNAVAILABLE',
+  };
+}
+
+function submitRequest(requestId: string, signal: WorkflowSignal): Request {
+  return {
+    requestId,
+    kind: 'workflow.signal.submit',
+    payload: { expected: expectedAssignment(), signal },
+  };
+}
+
+function response(requestId: string | null, kind: string | null, body: Response['body']): Response {
+  return { requestId, kind, body };
+}
+
+test('request encoders match every Protocol v1 example without decoding', () => {
+  const cases = [
+    ['hello.request.json', { requestId: 'req-hello-01', kind: 'hello' }],
+    [
+      'workflow-signal-reconcile.request.json',
+      {
+        requestId: 'req-reconcile-01',
+        kind: 'workflow.signal.reconcile',
+        payload: { signal: implementationReady('evt-0001') },
+      },
+    ],
+    [
+      'workflow-signal-submit.blocked.request.json',
+      submitRequest('req-signal-03', blocked('evt-0003')),
+    ],
+    [
+      'workflow-signal-submit.request.json',
+      submitRequest('req-signal-01', implementationReady('evt-0001')),
+    ],
+  ] as const satisfies ReadonlyArray<readonly [string, Request]>;
+  assertExplicitCoverage('.request.json', cases);
+
+  for (const [name, request] of cases) {
+    assertFrame(name, encodeRequest(request), MAX_REQUEST_BYTES);
+  }
+});
+
+test('response encoders match every Protocol v1 example without decoding', () => {
+  const hello: HelloInfo = {
+    protocolVersion: 1,
+    journalSchemaVersion: 1,
+    capabilities: [
+      CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
+      CAPABILITY_WORKFLOW_SIGNAL_RECONCILE,
+    ],
+    package: { name: 'aizign', version: '0.1.0' },
+  };
+  const cases = [
+    ['hello.response.json', response('req-hello-01', 'hello', { type: 'hello', info: hello })],
+    [
+      'invalid-envelope.response.json',
+      response(null, null, {
+        type: 'error',
+        error: new ProtocolError(codes.INVALID_ENVELOPE, 'expected value at line 1 column 1'),
+      }),
+    ],
+    [
+      'version-unsupported.response.json',
+      response('req-future-01', 'hello', {
+        type: 'error',
+        error: new ProtocolError(
+          codes.PROTOCOL_VERSION_UNSUPPORTED,
+          'protocol version 2 is not supported; this binary speaks 1',
+        ),
+      }),
+    ],
+    [
+      'workflow-signal-reconcile.absent.response.json',
+      response('req-reconcile-01', 'workflow.signal.reconcile', {
+        type: 'workflow.signal.reconciliation',
+        result: { disposition: 'absent', eventId: 'evt-0001' },
+      }),
+    ],
+    [
+      'workflow-signal-reconcile.accepted.response.json',
+      response('req-reconcile-01', 'workflow.signal.reconcile', {
+        type: 'workflow.signal.reconciliation',
+        result: { disposition: 'accepted', eventId: 'evt-0001' },
+      }),
+    ],
+    [
+      'workflow-signal-reconcile.conflict.response.json',
+      response('req-reconcile-01', 'workflow.signal.reconcile', {
+        type: 'workflow.signal.reconciliation',
+        result: { disposition: 'conflict', eventId: 'evt-0001' },
+      }),
+    ],
+    [
+      'workflow-signal-submit.accepted.response.json',
+      response('req-signal-01', 'workflow.signal.submit', {
+        type: 'workflow.signal',
+        result: { disposition: 'accepted', eventId: 'evt-0001' },
+      }),
+    ],
+    [
+      'workflow-signal-submit.duplicate.response.json',
+      response('req-signal-01', 'workflow.signal.submit', {
+        type: 'workflow.signal',
+        result: { disposition: 'duplicate', eventId: 'evt-0001' },
+      }),
+    ],
+    [
+      'workflow-signal-submit.rejected.response.json',
+      response('req-signal-01', 'workflow.signal.submit', {
+        type: 'error',
+        error: new ProtocolError(
+          'REVISION_MISMATCH',
+          'revision mismatch: expected rev-c0ffee, got rev-deadbeef',
+        ),
+      }),
+    ],
+  ] as const satisfies ReadonlyArray<readonly [string, Response]>;
+  assertExplicitCoverage('.response.json', cases);
+
+  for (const [name, value] of cases) {
+    assertFrame(name, encodeResponse(value), MAX_FRAME_BYTES);
+  }
+});
