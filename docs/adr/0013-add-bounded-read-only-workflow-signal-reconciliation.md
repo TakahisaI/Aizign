@@ -114,6 +114,13 @@ The reader holds the shared lock through metadata validation and bounded decode.
 
 Directory durability is part of the store contract, not an optional optimization. The initial implementation supports only platforms on which it implements and tests equivalent file synchronization, atomic replacement, parent-directory synchronization, and state-directory synchronization. On any other platform it fails closed with `JOURNAL_UNAVAILABLE`; it must not silently downgrade the durability guarantee. The normative first implementation is the Unix barrier sequence above, with Linux covered in CI. Additional platform support requires platform-specific contract tests before it is claimed.
 
+The commit document introduces a store-layout version that is independent of Protocol v1, journal record schema v1, and the package version. Its closed schema and version become public specifications in the implementation slice. `JOURNAL_SCHEMA_UNSUPPORTED` covers an unsupported journal record schema or store-metadata version, and the error-code reference must say so. This is an intentional pre-release layout break:
+
+- A non-empty state directory without valid commit metadata is unsupported and is never adopted automatically.
+- An old binary must not open a state directory created by the new layout, because it would ignore the commit boundary and could append beyond it. Downgrade against the same state directory is unsupported.
+- Before the first release, operators may discard disposable local state. Preserving state requires a separately designed, explicit migration or effectful recovery operation; reconciliation never performs it.
+- Compatibility and recovery guidance, including the store-metadata specification, must ship with the implementation. The journal record schema stays at version 1 because its closed record shape is unchanged.
+
 Add `reconcileWorkflowSignal` to the TypeScript `CoreClient`. It is a control-plane/operator method, not a model-visible tool. The DSH adapter implements and exports the client method but does not add tool arguments, a second tool, automatic reconciliation, or automatic retry. Harness session IDs, call IDs, provider IDs, prompts, model output, reasoning, and credentials remain outside the reconciliation envelope.
 
 ## Consequences
@@ -144,6 +151,7 @@ Add `reconcileWorkflowSignal` to the TypeScript `CoreClient`. It is a control-pl
 ### Follow-up
 
 - Add language-neutral request and response fixtures for `accepted`, `conflict`, `absent`, and an error-envelope `unknown` case.
+- Before implementation, approve the concrete SHA-256 runtime dependency in a dependency ADR, including its exact version, features, dependency tree, and licenses; update `dependency-rules.md`, workspace dependency declarations, and `deny.toml` in the implementation that introduces it. Do not add a repository-local SHA-256 implementation to bypass this review.
 - Test a lost acknowledgement followed by reconciliation in a fresh process, an initialized pre-append failure followed by `absent`, and a changed signal followed by `conflict`.
 - Fault-inject `write_all` success followed by the journal `sync_all` failure with a complete newline-terminated record still readable. Assert that the commit point remains unchanged, reopen returns `unknown`, no reader-side barrier occurs, and a later unrelated submit does not append or promote the tail. This test covers the same uncertainty as the current store's `sync_data` failure path.
 - Fault-inject response loss after the journal, commit metadata, and directory barriers succeed; a fresh-process read-only reconciliation must return `accepted` without changing any state artifact.
@@ -165,6 +173,7 @@ Add `reconcileWorkflowSignal` to the TypeScript `CoreClient`. It is a control-pl
 - **Exclude only requests already known to have returned `JOURNAL_OUTCOME_UNKNOWN`.** Rejected because an outer timeout, response loss, or correlation failure can conceal the same underlying `sync_data` failure. The original caller-visible cause is not a sufficient durability proof.
 - **Run `sync_data` from `load_committed`.** Rejected because synchronization changes durability state: the reconciliation call could commit an uncertain prior append or an unrelated later submit could do so while merely loading. That violates hard invariant 9 and the Issue #51 no-state-change condition.
 - **Move synchronization into an explicit `recover` or `commit` operation.** Compatible with this decision as future work, but intentionally separate because it is effectful and requires an authorization and tail-resolution policy. `workflow.signal.reconcile` remains read-only.
+- **Implement SHA-256 locally to avoid a runtime dependency.** Rejected because cryptographic implementation and maintenance risk outweigh the small dependency surface. A concrete maintained implementation requires the normal proposal-first dependency review.
 - **Treat any completely decoded snapshot as committed without a durability barrier.** Rejected because `write_all` can make a complete record readable before `sync_data` fails. Readability alone does not satisfy the durable-acceptance contract.
 - **Weaken `accepted` to mean only present in the current snapshot.** Rejected because Issue #51 and ADR-0007 require durable acceptance; weakening the term would leave an uncertain append unresolved while presenting it as known.
 - **Add a durable state-instance identity in this slice.** Deferred. The commit document is narrowly scoped store metadata that binds a published byte prefix; it does not identify the configured control-plane state instance. A separate manifest could detect a wrong but fully initialized state directory.
