@@ -3,7 +3,7 @@
 
 use core::fmt;
 
-use crate::identity::{ArtifactRevision, AssignmentId, EventId, WorkflowId};
+use crate::identity::{ArtifactRevision, AssignmentId, AttemptId, Digest, EventId, WorkflowId};
 use crate::workflow::signal::{Role, SignalKind};
 
 /// Why a signal's parts do not form a valid [`WorkflowSignal`].
@@ -45,6 +45,23 @@ pub enum InvalidSignal {
         /// The kind that forbids a reference.
         kind: SignalKind,
     },
+    /// An external artifact reference must carry a content digest.
+    EvidenceDigestRequired {
+        /// The kind that requires the digest.
+        kind: SignalKind,
+    },
+    /// The kind does not carry an external evidence digest.
+    EvidenceDigestForbidden {
+        /// The kind that forbids the digest.
+        kind: SignalKind,
+    },
+    /// A repair must identify the review-findings event it repairs.
+    SourceEventRequired,
+    /// The kind does not carry repair causation.
+    SourceEventForbidden {
+        /// The kind that forbids causation.
+        kind: SignalKind,
+    },
     /// `Blocked` requires a short error code.
     ShortErrorCodeRequired,
     /// Only `Blocked` carries a short error code.
@@ -71,6 +88,16 @@ impl fmt::Display for InvalidSignal {
             Self::ArtifactRefRequired { kind } => write!(f, "{kind:?} requires artifact_ref"),
             Self::ArtifactRefForbidden { kind } => {
                 write!(f, "{kind:?} does not carry artifact_ref")
+            }
+            Self::EvidenceDigestRequired { kind } => {
+                write!(f, "{kind:?} requires evidence_digest with artifact_ref")
+            }
+            Self::EvidenceDigestForbidden { kind } => {
+                write!(f, "{kind:?} does not carry evidence_digest")
+            }
+            Self::SourceEventRequired => f.write_str("RepairSubmitted requires source_event_id"),
+            Self::SourceEventForbidden { kind } => {
+                write!(f, "{kind:?} does not carry source_event_id")
             }
             Self::ShortErrorCodeRequired => f.write_str("Blocked requires short_error_code"),
             Self::ShortErrorCodeForbidden { kind } => {
@@ -99,6 +126,13 @@ pub enum WorkflowError {
         /// Assignment named by the signal.
         actual: AssignmentId,
     },
+    /// The signal was produced by a different execution attempt.
+    AttemptMismatch {
+        /// Expected attempt.
+        expected: AttemptId,
+        /// Attempt named by the signal.
+        actual: AttemptId,
+    },
     /// The signal was emitted by a different role than expected.
     RoleMismatch {
         /// Expected role.
@@ -112,6 +146,35 @@ pub enum WorkflowError {
         expected: ArtifactRevision,
         /// Revision named by the signal.
         actual: ArtifactRevision,
+    },
+    /// The candidate revision identifier matched but its immutable content did not.
+    CandidateDigestMismatch {
+        /// Expected candidate content.
+        expected: Digest,
+        /// Candidate content named by the signal.
+        actual: Digest,
+    },
+    /// The same candidate revision identifier was already bound to different content.
+    CandidateConflict {
+        /// Candidate identifier whose content changed.
+        artifact_revision: ArtifactRevision,
+    },
+    /// The same external artifact reference was already bound to different content.
+    EvidenceConflict {
+        /// Contested external artifact reference.
+        artifact_ref: crate::identity::ArtifactRef,
+    },
+    /// Repair causation differs from the control-plane expectation.
+    CausationMismatch {
+        /// Expected source, when this is a repair assignment.
+        expected: Option<EventId>,
+        /// Source named by the signal.
+        actual: Option<EventId>,
+    },
+    /// The source is not an available, unconsumed review-findings event.
+    CausationUnavailable {
+        /// Source the repair tried to consume.
+        source_event_id: EventId,
     },
     /// A signal with the same event id but different content was already
     /// accepted (hard invariant 12).
@@ -129,8 +192,15 @@ impl WorkflowError {
             Self::InvalidSignal(_) => "INVALID_SIGNAL",
             Self::WorkflowMismatch { .. } => "WORKFLOW_MISMATCH",
             Self::AssignmentMismatch { .. } => "ASSIGNMENT_MISMATCH",
+            Self::AttemptMismatch { .. } => "ATTEMPT_MISMATCH",
             Self::RoleMismatch { .. } => "ROLE_MISMATCH",
             Self::RevisionMismatch { .. } => "REVISION_MISMATCH",
+            Self::CandidateDigestMismatch { .. } => "CANDIDATE_DIGEST_MISMATCH",
+            Self::CandidateConflict { .. } => "CANDIDATE_CONFLICT",
+            Self::EvidenceConflict { .. } => "EVIDENCE_CONFLICT",
+            Self::CausationMismatch { .. } | Self::CausationUnavailable { .. } => {
+                "CAUSATION_MISMATCH"
+            }
             Self::EventConflict { .. } => "EVENT_CONFLICT",
         }
     }
@@ -152,11 +222,44 @@ impl fmt::Display for WorkflowError {
             Self::AssignmentMismatch { expected, actual } => {
                 write!(f, "assignment mismatch: expected {expected}, got {actual}")
             }
+            Self::AttemptMismatch { expected, actual } => {
+                write!(f, "attempt mismatch: expected {expected}, got {actual}")
+            }
             Self::RoleMismatch { expected, actual } => {
                 write!(f, "role mismatch: expected {expected:?}, got {actual:?}")
             }
             Self::RevisionMismatch { expected, actual } => {
                 write!(f, "revision mismatch: expected {expected}, got {actual}")
+            }
+            Self::CandidateDigestMismatch { expected, actual } => {
+                write!(
+                    f,
+                    "candidate digest mismatch: expected {expected}, got {actual}"
+                )
+            }
+            Self::CandidateConflict { artifact_revision } => {
+                write!(
+                    f,
+                    "candidate {artifact_revision} was already bound to different content"
+                )
+            }
+            Self::EvidenceConflict { artifact_ref } => {
+                write!(
+                    f,
+                    "artifact {artifact_ref} was already bound to different content"
+                )
+            }
+            Self::CausationMismatch { expected, actual } => {
+                write!(
+                    f,
+                    "repair causation mismatch: expected {expected:?}, got {actual:?}"
+                )
+            }
+            Self::CausationUnavailable { source_event_id } => {
+                write!(
+                    f,
+                    "repair source {source_event_id} is not available for this workflow"
+                )
             }
             Self::EventConflict { event_id } => {
                 write!(
@@ -179,7 +282,10 @@ mod tests {
     fn every_code_is_a_valid_short_error_code() {
         let wf = WorkflowId::new("wf").unwrap();
         let asg = AssignmentId::new("as").unwrap();
+        let attempt = AttemptId::new("attempt").unwrap();
         let rev = ArtifactRevision::new("rev").unwrap();
+        let digest =
+            Digest::new(crate::identity::DigestAlgorithm::Sha256, &"a".repeat(64)).unwrap();
         let evt = EventId::new("evt").unwrap();
         let errors = [
             WorkflowError::InvalidSignal(InvalidSignal::ShortErrorCodeRequired),
@@ -191,6 +297,10 @@ mod tests {
                 expected: asg.clone(),
                 actual: asg,
             },
+            WorkflowError::AttemptMismatch {
+                expected: attempt.clone(),
+                actual: attempt,
+            },
             WorkflowError::RoleMismatch {
                 expected: Role::Review,
                 actual: Role::Implementation,
@@ -198,6 +308,23 @@ mod tests {
             WorkflowError::RevisionMismatch {
                 expected: rev.clone(),
                 actual: rev,
+            },
+            WorkflowError::CandidateDigestMismatch {
+                expected: digest.clone(),
+                actual: digest,
+            },
+            WorkflowError::CandidateConflict {
+                artifact_revision: ArtifactRevision::new("rev-conflict").unwrap(),
+            },
+            WorkflowError::EvidenceConflict {
+                artifact_ref: crate::identity::ArtifactRef::new("review:conflict").unwrap(),
+            },
+            WorkflowError::CausationMismatch {
+                expected: Some(evt.clone()),
+                actual: None,
+            },
+            WorkflowError::CausationUnavailable {
+                source_event_id: evt.clone(),
             },
             WorkflowError::EventConflict { event_id: evt },
         ];

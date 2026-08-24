@@ -32,9 +32,10 @@ pub enum Decision {
 /// Decides a command against the current state without changing it.
 ///
 /// For [`Command::SubmitSignal`] the order is fixed: the signal must match
-/// the expected assignment (workflow, assignment, role, revision), then its
+/// the expected assignment (workflow, assignment, attempt, role, candidate), then its
 /// event id is compared with accepted signals — same content is a
-/// duplicate, different content is a conflict (hard invariant 12).
+/// duplicate, different content is a conflict. New event identities then
+/// pass immutable candidate/evidence and repair-causation checks.
 #[must_use]
 pub fn decide(state: &WorkflowState, command: Command) -> Decision {
     match command {
@@ -51,9 +52,14 @@ pub fn decide(state: &WorkflowState, command: Command) -> Decision {
                         event_id: signal.event_id().clone(),
                     },
                 },
-                None => Decision::Accepted {
-                    event: WorkflowEvent::SignalAccepted { signal },
-                },
+                None => {
+                    if let Err(error) = state.check_bindings(&signal) {
+                        return Decision::Rejected { error };
+                    }
+                    Decision::Accepted {
+                        event: WorkflowEvent::SignalAccepted { signal },
+                    }
+                }
             }
         }
     }

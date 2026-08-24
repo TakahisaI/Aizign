@@ -6,7 +6,8 @@ use aizign_core::workflow::{
     Command, ExpectedAssignment, Role, SignalKind, SignalParts, WorkflowSignal,
 };
 use aizign_core::{
-    ArtifactRef, ArtifactRevision, AssignmentId, EventId, IdentityError, ShortErrorCode, WorkflowId,
+    ArtifactRef, ArtifactRevision, AssignmentId, AttemptId, Digest, DigestAlgorithm, EventId,
+    IdentityError, ShortErrorCode, WorkflowId,
 };
 use serde::de::{Deserializer, Error as _};
 use serde::{Deserialize, Serialize};
@@ -25,8 +26,16 @@ struct SubmitPayload {
 struct ExpectedDto {
     workflow_id: String,
     assignment_id: String,
+    attempt_id: String,
     role: RoleDto,
     artifact_revision: String,
+    candidate_digest: DigestDto,
+    #[serde(
+        default,
+        deserialize_with = "reject_null",
+        skip_serializing_if = "Option::is_none"
+    )]
+    source_event_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -35,8 +44,10 @@ struct SignalDto {
     event_id: String,
     workflow_id: String,
     assignment_id: String,
+    attempt_id: String,
     role: RoleDto,
     artifact_revision: String,
+    candidate_digest: DigestDto,
     kind: KindDto,
     #[serde(
         default,
@@ -50,6 +61,18 @@ struct SignalDto {
         skip_serializing_if = "Option::is_none"
     )]
     artifact_ref: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "reject_null",
+        skip_serializing_if = "Option::is_none"
+    )]
+    evidence_digest: Option<DigestDto>,
+    #[serde(
+        default,
+        deserialize_with = "reject_null",
+        skip_serializing_if = "Option::is_none"
+    )]
+    source_event_id: Option<String>,
     #[serde(
         default,
         deserialize_with = "reject_null",
@@ -73,6 +96,44 @@ enum KindDto {
     ReviewPassed,
     RepairSubmitted,
     Blocked,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct DigestDto {
+    algorithm: DigestAlgorithmDto,
+    hex: String,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum DigestAlgorithmDto {
+    Sha256,
+}
+
+impl From<DigestAlgorithmDto> for DigestAlgorithm {
+    fn from(algorithm: DigestAlgorithmDto) -> Self {
+        match algorithm {
+            DigestAlgorithmDto::Sha256 => Self::Sha256,
+        }
+    }
+}
+
+impl From<DigestAlgorithm> for DigestAlgorithmDto {
+    fn from(algorithm: DigestAlgorithm) -> Self {
+        match algorithm {
+            DigestAlgorithm::Sha256 => Self::Sha256,
+        }
+    }
+}
+
+impl From<&Digest> for DigestDto {
+    fn from(digest: &Digest) -> Self {
+        Self {
+            algorithm: digest.algorithm().into(),
+            hex: digest.hex().to_owned(),
+        }
+    }
 }
 
 /// Optional fields may be absent but never `null`: absence and `null` would
@@ -138,6 +199,10 @@ fn field<T>(code: &str, name: &str, result: Result<T, IdentityError>) -> Result<
     result.map_err(|error| ProtocolError::new(code, format!("{name}: {error}")))
 }
 
+fn digest(code: &str, name: &str, dto: &DigestDto) -> Result<Digest, ProtocolError> {
+    field(code, name, Digest::new(dto.algorithm.into(), &dto.hex))
+}
+
 /// Decodes a `workflow.signal.submit` payload into a core command.
 ///
 /// Shape problems are `INVALID_PAYLOAD`; well-shaped but invalid
@@ -159,12 +224,28 @@ pub(crate) fn decode_submit(payload: serde_json::Value) -> Result<Command, Proto
             "expected.assignmentId",
             AssignmentId::new(&payload.expected.assignment_id),
         )?,
+        attempt_id: field(
+            e,
+            "expected.attemptId",
+            AttemptId::new(&payload.expected.attempt_id),
+        )?,
         role: payload.expected.role.into(),
         artifact_revision: field(
             e,
             "expected.artifactRevision",
             ArtifactRevision::new(&payload.expected.artifact_revision),
         )?,
+        candidate_digest: digest(
+            e,
+            "expected.candidateDigest",
+            &payload.expected.candidate_digest,
+        )?,
+        source_event_id: payload
+            .expected
+            .source_event_id
+            .as_deref()
+            .map(|value| field(e, "expected.sourceEventId", EventId::new(value)))
+            .transpose()?,
     };
 
     let s = "INVALID_SIGNAL";
@@ -177,18 +258,29 @@ pub(crate) fn decode_submit(payload: serde_json::Value) -> Result<Command, Proto
             "signal.assignmentId",
             AssignmentId::new(&dto.assignment_id),
         )?,
+        attempt_id: field(s, "signal.attemptId", AttemptId::new(&dto.attempt_id))?,
         role: dto.role.into(),
         artifact_revision: field(
             s,
             "signal.artifactRevision",
             ArtifactRevision::new(&dto.artifact_revision),
         )?,
+        candidate_digest: digest(s, "signal.candidateDigest", &dto.candidate_digest)?,
         kind: dto.kind.into(),
         finding_count: dto.finding_count,
         artifact_ref: dto
             .artifact_ref
             .as_deref()
             .map(|value| field(s, "signal.artifactRef", ArtifactRef::new(value)))
+            .transpose()?,
+        evidence_digest: dto
+            .evidence_digest
+            .map(|value| digest(s, "signal.evidenceDigest", &value))
+            .transpose()?,
+        source_event_id: dto
+            .source_event_id
+            .as_deref()
+            .map(|value| field(s, "signal.sourceEventId", EventId::new(value)))
             .transpose()?,
         short_error_code: dto
             .short_error_code
@@ -208,18 +300,25 @@ pub(crate) fn encode_submit(command: &Command) -> serde_json::Value {
         expected: ExpectedDto {
             workflow_id: expected.workflow_id.to_string(),
             assignment_id: expected.assignment_id.to_string(),
+            attempt_id: expected.attempt_id.to_string(),
             role: expected.role.into(),
             artifact_revision: expected.artifact_revision.to_string(),
+            candidate_digest: (&expected.candidate_digest).into(),
+            source_event_id: expected.source_event_id.as_ref().map(ToString::to_string),
         },
         signal: SignalDto {
             event_id: parts.event_id.to_string(),
             workflow_id: parts.workflow_id.to_string(),
             assignment_id: parts.assignment_id.to_string(),
+            attempt_id: parts.attempt_id.to_string(),
             role: parts.role.into(),
             artifact_revision: parts.artifact_revision.to_string(),
+            candidate_digest: (&parts.candidate_digest).into(),
             kind: parts.kind.into(),
             finding_count: parts.finding_count,
             artifact_ref: parts.artifact_ref.as_ref().map(ToString::to_string),
+            evidence_digest: parts.evidence_digest.as_ref().map(Into::into),
+            source_event_id: parts.source_event_id.as_ref().map(ToString::to_string),
             short_error_code: parts.short_error_code.as_ref().map(ToString::to_string),
         },
     };
@@ -280,8 +379,8 @@ mod tests {
 
     fn base() -> serde_json::Value {
         json!({
-            "expected": {"workflowId": "wf-1", "assignmentId": "as-1", "role": "implementation", "artifactRevision": "rev-a"},
-            "signal": {"eventId": "evt-1", "workflowId": "wf-1", "assignmentId": "as-1", "role": "implementation", "artifactRevision": "rev-a", "kind": "implementation_ready"}
+            "expected": {"workflowId": "wf-1", "assignmentId": "as-1", "attemptId": "attempt-1", "role": "implementation", "artifactRevision": "rev-a", "candidateDigest": {"algorithm": "sha256", "hex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+            "signal": {"eventId": "evt-1", "workflowId": "wf-1", "assignmentId": "as-1", "attemptId": "attempt-1", "role": "implementation", "artifactRevision": "rev-a", "candidateDigest": {"algorithm": "sha256", "hex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, "kind": "implementation_ready"}
         })
     }
 

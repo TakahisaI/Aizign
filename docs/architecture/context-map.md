@@ -8,7 +8,7 @@
 | Context | Module | 責務 | 非責務 | v0.1 |
 |---|---|---|---|---|
 | Identity | `identity` | workflow / assignment / attempt / candidate revision / event の stable ID、digest、bounded timestampの最小語彙 | harness ID、provider ID | ✔ |
-| Workflow | `workflow/` | workflow signalのcommand、event、state、decision、duplicate / conflict、expected assignmentとの照合 | 実行、配送、integration | ✔ |
+| Workflow | `workflow/` | workflow signalのcommand、event、state、decision、duplicate / conflict、expected assignmentとの照合、candidate / evidence digestの不変性、repair causation | 実行、配送、integration | ✔ |
 | Execution | `execution/` | session / attemptのstate、effect intent、claim状態、terminal disposition、`unknown` | harness session操作そのもの | later |
 | Evidence | `evidence/` | structured evidenceのbinding検証、digest照合、evidence disposition | harness persistenceの読み取り | later |
 | Workspace | `workspace/` | writer lease、candidate revision、check evidenceのbinding | Git command、filesystem | later |

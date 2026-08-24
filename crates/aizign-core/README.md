@@ -50,6 +50,8 @@ tests/workflow_signal.rs   cross-module: accepted / duplicate / conflict / misma
 - `Decision::Duplicate` は同一 `event_id` ・同一内容。appendしない
 - `Decision::Rejected { error }` は `error.code()` のshort error codeで説明できる。appendしない
 - `WorkflowState::apply` / `replay` は同一 `event_id` の再適用を `ApplyError::DuplicateEvent` にする。journalの不整合をshellが黙って吸収しないため
+- expectationはworkflow → assignment → attempt → role → revision identifier → candidate digest → repair sourceの順で照合する
+- stateは同じcandidate revision / external artifact referenceが異なるdigestへ再bindingされることを拒否し、repair sourceをaccepted findings eventとして一度だけ消費する
 
 ## 依存規則の検査
 

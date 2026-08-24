@@ -22,8 +22,13 @@ function config(binary: string, stateDir: string): Config {
     eventId: 'evt-round-trip',
     workflowId: 'wf-round-trip',
     assignmentId: 'as-implementation',
+    attemptId: 'attempt-round-trip',
     role: 'implementation',
     artifactRevision: 'rev-a',
+    candidateDigest: {
+      algorithm: 'sha256',
+      hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    },
   };
 }
 
@@ -32,8 +37,13 @@ const binding = {
   expected: {
     workflowId: 'wf-round-trip',
     assignmentId: 'as-implementation',
+    attemptId: 'attempt-round-trip',
     role: 'implementation',
     artifactRevision: 'rev-a',
+    candidateDigest: {
+      algorithm: 'sha256',
+      hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    },
   },
 } as const;
 

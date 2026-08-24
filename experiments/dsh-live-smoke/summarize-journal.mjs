@@ -26,7 +26,7 @@ if (json) {
   process.stdout.write(`${records.length} record(s)\n`);
   for (const { seq, kind, signal } of records) {
     process.stdout.write(
-      `${String(seq).padStart(4)}  ${kind}  ${signal.kind}  workflow=${signal.workflowId} assignment=${signal.assignmentId} role=${signal.role} revision=${signal.artifactRevision} event=${signal.eventId}\n`,
+      `${String(seq).padStart(4)}  ${kind}  ${signal.kind}  workflow=${signal.workflowId} assignment=${signal.assignmentId} attempt=${signal.attemptId} role=${signal.role} revision=${signal.artifactRevision} candidate=${signal.candidateDigest.algorithm}:${signal.candidateDigest.hex} event=${signal.eventId}\n`,
     );
   }
 }

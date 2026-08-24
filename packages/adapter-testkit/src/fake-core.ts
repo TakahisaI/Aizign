@@ -104,9 +104,17 @@ function handleSubmit(
     return reject('WORKFLOW_MISMATCH', 'workflow mismatch');
   if (signal.assignmentId !== expected.assignmentId)
     return reject('ASSIGNMENT_MISMATCH', 'assignment mismatch');
+  if (signal.attemptId !== expected.attemptId)
+    return reject('ATTEMPT_MISMATCH', 'attempt mismatch');
   if (signal.role !== expected.role) return reject('ROLE_MISMATCH', 'role mismatch');
   if (signal.artifactRevision !== expected.artifactRevision) {
     return reject('REVISION_MISMATCH', 'revision mismatch');
+  }
+  if (JSON.stringify(signal.candidateDigest) !== JSON.stringify(expected.candidateDigest)) {
+    return reject('CANDIDATE_DIGEST_MISMATCH', 'candidate digest mismatch');
+  }
+  if (signal.sourceEventId !== expected.sourceEventId) {
+    return reject('CAUSATION_MISMATCH', 'repair causation mismatch');
   }
   const accepted = loadState(stateDir);
   const existing = accepted.find((candidate) => candidate.eventId === signal.eventId);
@@ -125,6 +133,31 @@ function handleSubmit(
       'EVENT_CONFLICT',
       `event ${signal.eventId} was already accepted with different content`,
     );
+  }
+  const candidate = accepted.find((prior) => prior.artifactRevision === signal.artifactRevision);
+  if (
+    candidate !== undefined &&
+    JSON.stringify(candidate.candidateDigest) !== JSON.stringify(signal.candidateDigest)
+  ) {
+    return reject('CANDIDATE_CONFLICT', 'candidate content changed');
+  }
+  if (signal.artifactRef !== undefined && signal.evidenceDigest !== undefined) {
+    const evidence = accepted.find((prior) => prior.artifactRef === signal.artifactRef);
+    if (
+      evidence !== undefined &&
+      JSON.stringify(evidence.evidenceDigest) !== JSON.stringify(signal.evidenceDigest)
+    ) {
+      return reject('EVIDENCE_CONFLICT', 'evidence content changed');
+    }
+  }
+  if (signal.kind === 'repair_submitted') {
+    const source = accepted.find((prior) => prior.eventId === signal.sourceEventId);
+    const consumed = accepted.some(
+      (prior) => prior.kind === 'repair_submitted' && prior.sourceEventId === signal.sourceEventId,
+    );
+    if (source?.kind !== 'review_findings' || source.workflowId !== signal.workflowId || consumed) {
+      return reject('CAUSATION_MISMATCH', 'repair source is not available');
+    }
   }
   accepted.push(signal);
   saveState(stateDir, accepted);

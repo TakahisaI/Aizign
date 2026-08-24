@@ -8,8 +8,13 @@ const base: Config = {
   eventId: 'evt-1',
   workflowId: 'wf-1',
   assignmentId: 'as-impl',
+  attemptId: 'attempt-1',
   role: 'implementation',
   artifactRevision: 'rev-a',
+  candidateDigest: {
+    algorithm: 'sha256',
+    hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  },
 };
 
 test('valid configuration binds identity and defaults the timeout', () => {
@@ -20,15 +25,37 @@ test('valid configuration binds identity and defaults the timeout', () => {
     expected: {
       workflowId: 'wf-1',
       assignmentId: 'as-impl',
+      attemptId: 'attempt-1',
       role: 'implementation',
       artifactRevision: 'rev-a',
+      candidateDigest: {
+        algorithm: 'sha256',
+        hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      },
     },
   });
+  assert.equal(
+    validateConfig({ ...base, sourceEventId: 'evt-findings' }).binding.expected.sourceEventId,
+    'evt-findings',
+  );
 });
 
 test('identifiers, paths, role, and timeout are validated', () => {
   assert.throws(() => validateConfig({ ...base, eventId: 'bad id' }), ConfigError);
   assert.throws(() => validateConfig({ ...base, workflowId: '' }), ConfigError);
+  assert.throws(() => validateConfig({ ...base, attemptId: '' }), ConfigError);
+  assert.throws(
+    () =>
+      validateConfig({
+        ...base,
+        candidateDigest: { algorithm: 'sha256', hex: 'ABC' },
+      }),
+    ConfigError,
+  );
+  assert.throws(
+    () => validateConfig({ ...base, role: 'review', sourceEventId: 'evt-findings' }),
+    ConfigError,
+  );
   assert.throws(() => validateConfig({ ...base, binary: '  ' }), ConfigError);
   assert.throws(() => validateConfig({ ...base, role: 'operator' as 'review' }), ConfigError);
   assert.throws(() => validateConfig({ ...base, timeoutMs: 0 }), ConfigError);

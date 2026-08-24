@@ -8,7 +8,7 @@ Append-only, metadata-only JSONL control journal. Implements `aizign_engine::Jou
 | **Non-responsibility** | 判断（duplicate / conflictは `aizign-core`）、wire format、state directoryの選択（`aizign-cli`） |
 | **Inputs** | state directory、`WorkflowEvent` + `BoundedTimestamp` |
 | **Outputs** | `JournalEntry`、`JournalError`（stable code付き） |
-| **Hard invariants** | 本文・credential・harness IDを書かない（10）、`write` / `fsync` 失敗は `OutcomeUnknown` で再送しない（3）、途中で切れたrecordや欠番を黙って捨てない、既存recordを書き換えない |
+| **Hard invariants** | attempt / candidate digest / evidence digest / repair causationをmetadata-only recordへ残す（5）、本文・credential・harness IDを書かない（10）、`write` / `fsync` 失敗は `OutcomeUnknown` で再送しない（3）、途中で切れたrecordや欠番を黙って捨てない、既存recordを書き換えない |
 | **Allowed dependencies** | `aizign-core`、`aizign-engine`、`serde`、`serde_json`。dev: `aizign-testkit` |
 | **Test command** | `cargo test -p aizign-store-jsonl` |
 | **Related ADR** | [0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md)、[0007](../../docs/adr/0007-use-metadata-only-control-journals.md)、[0009](../../docs/adr/0009-serialization-dependencies-for-the-protocol-crate.md) |

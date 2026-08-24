@@ -1,8 +1,11 @@
 //! The use case against the in-memory journal, including every way the
 //! journal can fail and the one way it can lie (acknowledgement lost).
 
-use aizign_core::EventId;
-use aizign_core::workflow::{ApplyError, Command, WorkflowError, WorkflowEvent};
+use aizign_core::workflow::{
+    ApplyError, Command, ExpectedAssignment, Role, SignalKind, SignalParts, WorkflowError,
+    WorkflowEvent, WorkflowSignal,
+};
+use aizign_core::{ArtifactRef, ArtifactRevision, AssignmentId, AttemptId, EventId, WorkflowId};
 use aizign_engine::{ClockError, HandleError, JournalError, SignalOutcome, handle_workflow_signal};
 use aizign_testkit::{FixedClock, MemoryJournal, signals};
 
@@ -11,6 +14,55 @@ fn submit(event_id: &str) -> Command {
         signal: signals::implementation_ready(event_id),
         expected: signals::expected(),
     }
+}
+
+fn findings() -> WorkflowSignal {
+    WorkflowSignal::validate(SignalParts {
+        event_id: EventId::new("evt-findings").unwrap(),
+        workflow_id: WorkflowId::new("wf-chain").unwrap(),
+        assignment_id: AssignmentId::new("as-review").unwrap(),
+        attempt_id: AttemptId::new("attempt-review").unwrap(),
+        role: Role::Review,
+        artifact_revision: ArtifactRevision::new("rev-a").unwrap(),
+        candidate_digest: signals::digest('a'),
+        kind: SignalKind::ReviewFindings,
+        finding_count: Some(1),
+        artifact_ref: Some(ArtifactRef::new("review:findings").unwrap()),
+        evidence_digest: Some(signals::digest('c')),
+        source_event_id: None,
+        short_error_code: None,
+    })
+    .unwrap()
+}
+
+fn repair(event_id: &str) -> Command {
+    let source_event_id = EventId::new("evt-findings").unwrap();
+    let expected = ExpectedAssignment {
+        workflow_id: WorkflowId::new("wf-chain").unwrap(),
+        assignment_id: AssignmentId::new("as-repair").unwrap(),
+        attempt_id: AttemptId::new("attempt-repair").unwrap(),
+        role: Role::Implementation,
+        artifact_revision: ArtifactRevision::new("rev-b").unwrap(),
+        candidate_digest: signals::digest('b'),
+        source_event_id: Some(source_event_id.clone()),
+    };
+    let signal = WorkflowSignal::validate(SignalParts {
+        event_id: EventId::new(event_id).unwrap(),
+        workflow_id: expected.workflow_id.clone(),
+        assignment_id: expected.assignment_id.clone(),
+        attempt_id: expected.attempt_id.clone(),
+        role: expected.role,
+        artifact_revision: expected.artifact_revision.clone(),
+        candidate_digest: expected.candidate_digest.clone(),
+        kind: SignalKind::RepairSubmitted,
+        finding_count: Some(1),
+        artifact_ref: Some(ArtifactRef::new("repair:result").unwrap()),
+        evidence_digest: Some(signals::digest('d')),
+        source_event_id: Some(source_event_id),
+        short_error_code: None,
+    })
+    .unwrap();
+    Command::SubmitSignal { signal, expected }
 }
 
 #[test]
@@ -128,4 +180,28 @@ fn clock_failures_prevent_the_append() {
     let error = handle_workflow_signal(&mut journal, &clock, submit("evt-1")).unwrap_err();
     assert_eq!(error, HandleError::Clock(ClockError::OutOfRange));
     assert!(journal.entries().is_empty());
+}
+
+#[test]
+fn replay_preserves_repair_causation_and_duplicate_semantics() {
+    let clock = FixedClock::default();
+    let mut journal = MemoryJournal::new();
+    let findings_event = WorkflowEvent::SignalAccepted { signal: findings() };
+    aizign_engine::Journal::append(&mut journal, &findings_event, signals::at(0)).unwrap();
+
+    assert!(matches!(
+        handle_workflow_signal(&mut journal, &clock, repair("evt-repair")),
+        Ok(SignalOutcome::Accepted { .. })
+    ));
+    assert!(matches!(
+        handle_workflow_signal(&mut journal, &clock, repair("evt-repair")),
+        Ok(SignalOutcome::Duplicate { .. })
+    ));
+    let error = handle_workflow_signal(&mut journal, &clock, repair("evt-repair-2")).unwrap_err();
+    assert!(matches!(
+        &error,
+        HandleError::Rejected(WorkflowError::CausationUnavailable { .. })
+    ));
+    assert_eq!(error.code(), "CAUSATION_MISMATCH");
+    assert_eq!(journal.entries().len(), 2);
 }

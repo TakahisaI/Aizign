@@ -21,8 +21,13 @@ const binding: SignalBinding = {
   expected: {
     workflowId: 'wf-1',
     assignmentId: 'as-review',
+    attemptId: 'attempt-review',
     role: 'review',
     artifactRevision: 'rev-a',
+    candidateDigest: {
+      algorithm: 'sha256',
+      hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    },
   },
 };
 
@@ -57,6 +62,7 @@ test('the tool schema exposes no identity fields', () => {
   };
   assert.deepEqual(Object.keys(schema.properties).sort(), [
     'artifactRef',
+    'evidenceDigest',
     'findingCount',
     'kind',
     'shortErrorCode',
@@ -64,6 +70,17 @@ test('the tool schema exposes no identity fields', () => {
   assert.equal(schema.additionalProperties, false);
   const kinds = (schema.properties.kind as { enum: string[] }).enum;
   assert.deepEqual(kinds, ['review_passed', 'review_findings', 'blocked']);
+  for (const identity of [
+    'eventId',
+    'workflowId',
+    'assignmentId',
+    'attemptId',
+    'artifactRevision',
+    'candidateDigest',
+    'sourceEventId',
+  ]) {
+    assert.ok(!Object.hasOwn(schema.properties, identity), identity);
+  }
 });
 
 test('arguments are decoded closed and bound to the configured identity', () => {
@@ -73,6 +90,7 @@ test('arguments are decoded closed and bound to the configured identity', () => 
   );
   assert.equal(payload.signal.eventId, 'evt-fixed');
   assert.equal(payload.signal.workflowId, 'wf-1');
+  assert.equal(payload.signal.attemptId, 'attempt-review');
   assert.equal(payload.signal.role, 'review');
   assert.equal(payload.signal.findingCount, 2);
   assert.deepEqual(payload.expected, binding.expected);
@@ -111,6 +129,42 @@ test('core rules are applied before any process is spawned', () => {
       return error instanceof HarnessError && error.code === 'INVALID_SIGNAL';
     },
   );
+});
+
+test('repair evidence gets control-plane causation without exposing it to the agent', () => {
+  const repairBinding: SignalBinding = {
+    eventId: 'evt-repair',
+    expected: {
+      workflowId: 'wf-1',
+      assignmentId: 'as-repair',
+      attemptId: 'attempt-repair',
+      role: 'implementation',
+      artifactRevision: 'rev-b',
+      candidateDigest: {
+        algorithm: 'sha256',
+        hex: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      },
+      sourceEventId: 'evt-findings',
+    },
+  };
+  const args = decodeArgs(
+    {
+      kind: 'repair_submitted',
+      findingCount: 1,
+      artifactRef: 'repair:result',
+      evidenceDigest: {
+        algorithm: 'sha256',
+        hex: 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+      },
+    },
+    'implementation',
+  );
+  assert.equal(Object.hasOwn(args, 'sourceEventId'), false);
+  const payload = toPayload(repairBinding, args);
+  assert.equal(payload.expected.sourceEventId, 'evt-findings');
+  assert.equal(payload.signal.sourceEventId, 'evt-findings');
+  assert.equal(payload.signal.attemptId, 'attempt-repair');
+  assert.equal(payload.signal.evidenceDigest?.algorithm, 'sha256');
 });
 
 test('request ids are adapter-owned nonces, never derived from the harness call id', () => {

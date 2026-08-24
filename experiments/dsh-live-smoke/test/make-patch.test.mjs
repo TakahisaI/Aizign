@@ -26,10 +26,14 @@ const baseArgs = [
   'wf-live',
   '--assignment-id',
   'as-live',
+  '--attempt-id',
+  'attempt-live-1',
   '--role',
   'implementation',
   '--revision',
   'rev-live-1',
+  '--candidate-digest',
+  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
 ];
 
 function generate(args) {
@@ -56,7 +60,10 @@ test('overrides the bundle-layer entry by id instead of inserting a duplicate', 
   assert.match(output, /^ {4}stateDir: "\/var\/lib\/aizign\/state"$/m);
   assert.match(output, /^ {4}timeoutMs: 15000$/m);
   assert.match(output, /^ {4}eventId: "evt-live-1"$/m);
+  assert.match(output, /^ {4}attemptId: "attempt-live-1"$/m);
   assert.match(output, /^ {4}role: implementation$/m);
+  assert.match(output, /^ {4}candidateDigest:$/m);
+  assert.match(output, /^ {6}algorithm: sha256$/m);
 });
 
 test('passes an explicit timeout through', () => {
@@ -66,7 +73,9 @@ test('passes an explicit timeout through', () => {
 test('rejects identifiers, roles, and timeouts the adapter would refuse', () => {
   const bad = [
     ['--event-id', 'evt live'],
+    ['--attempt-id', 'attempt live'],
     ['--role', 'reviewer'],
+    ['--candidate-digest', 'ABC'],
     ['--timeout-ms', '0'],
   ];
   for (const [key, value] of bad) {
@@ -82,4 +91,11 @@ test('rejects identifiers, roles, and timeouts the adapter would refuse', () => 
     assert.equal(result.stdout, '');
     assert.match(result.stderr, /^make-patch: /);
   }
+});
+
+test('passes optional repair causation through as control-plane configuration', () => {
+  assert.match(
+    generate([...baseArgs, '--source-event-id', 'evt-findings']),
+    /^ {4}sourceEventId: "evt-findings"$/m,
+  );
 });

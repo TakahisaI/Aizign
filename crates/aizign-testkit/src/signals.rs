@@ -2,8 +2,15 @@
 
 use aizign_core::workflow::{ExpectedAssignment, Role, SignalKind, SignalParts, WorkflowSignal};
 use aizign_core::{
-    ArtifactRevision, AssignmentId, BoundedTimestamp, EventId, ShortErrorCode, WorkflowId,
+    ArtifactRevision, AssignmentId, AttemptId, BoundedTimestamp, Digest, DigestAlgorithm, EventId,
+    ShortErrorCode, WorkflowId,
 };
+
+/// A deterministic SHA-256 digest for fixture content.
+#[must_use]
+pub fn digest(byte: char) -> Digest {
+    Digest::new(DigestAlgorithm::Sha256, &byte.to_string().repeat(64)).expect("valid")
+}
 
 /// The assignment every helper in this module binds to.
 #[must_use]
@@ -11,8 +18,11 @@ pub fn expected() -> ExpectedAssignment {
     ExpectedAssignment {
         workflow_id: WorkflowId::new("wf-test").expect("valid"),
         assignment_id: AssignmentId::new("as-implementation").expect("valid"),
+        attempt_id: AttemptId::new("attempt-implementation").expect("valid"),
         role: Role::Implementation,
         artifact_revision: ArtifactRevision::new("rev-a").expect("valid"),
+        candidate_digest: digest('a'),
+        source_event_id: None,
     }
 }
 
@@ -24,11 +34,15 @@ pub fn implementation_ready(event_id: &str) -> WorkflowSignal {
         event_id: EventId::new(event_id).expect("valid"),
         workflow_id: expected.workflow_id,
         assignment_id: expected.assignment_id,
+        attempt_id: expected.attempt_id,
         role: expected.role,
         artifact_revision: expected.artifact_revision,
+        candidate_digest: expected.candidate_digest,
         kind: SignalKind::ImplementationReady,
         finding_count: None,
         artifact_ref: None,
+        evidence_digest: None,
+        source_event_id: None,
         short_error_code: None,
     })
     .expect("valid")

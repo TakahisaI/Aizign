@@ -58,9 +58,13 @@ versionとcapabilityの事前確認。stateを要求しない。
 
 structured workflow signalを、shellがbindされている `expected` assignmentに対して提出する。
 
-- `ok: true` の `disposition` は `accepted`（durable appendの **後** に返る）または `duplicate`（同一 `eventId`・同一内容）
-- `ok: false` の `error.code` はprotocol code、`INVALID_EXPECTATION`、またはworkflow code（`INVALID_SIGNAL`、`WORKFLOW_MISMATCH`、`ASSIGNMENT_MISMATCH`、`ROLE_MISMATCH`、`REVISION_MISMATCH`、`EVENT_CONFLICT`）
-- 照合順はworkflow → assignment → role → revision → duplicate / conflict
+- `expected` と `signal` は `workflowId`、`assignmentId`、`attemptId`、`role`、`artifactRevision`、`candidateDigest` を持つ。`candidateDigest` は `{ "algorithm": "sha256", "hex": "<64 lowercase hex>" }`
+- `review_findings` のexternal artifactは `artifactRef` / `evidenceDigest` の組で省略可能。`repair_submitted` ではこの組が必須
+- repair assignmentはcontrol planeが固定した `sourceEventId` を `expected` と `signal` の両方に持つ。sourceは同一workflowの未消費なaccepted `review_findings` eventでなければならない
+- `ok: true` の `disposition` は `accepted`（durable appendの **後** に返る）または `duplicate`（同一 `eventId`・attempt / digest / causationを含む同一内容）
+- `ok: false` の `error.code` はprotocol code、`INVALID_EXPECTATION`、またはworkflow code（`INVALID_SIGNAL`、各`*_MISMATCH`、`CANDIDATE_CONFLICT`、`EVIDENCE_CONFLICT`、`EVENT_CONFLICT`）
+- 照合順はworkflow → assignment → attempt → role → revision identifier → candidate digest → source event → duplicate / conflict。新規eventだけがimmutable-reference / causation検査へ進む
+- Protocol v1は未releaseのためADR-0012でin-place更新した。旧shapeは互換受理しない
 
 ## Error codes
 

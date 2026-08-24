@@ -30,8 +30,13 @@ function fakeBinaryConfig(
     eventId: 'evt-1',
     workflowId: 'wf-1',
     assignmentId: 'as-impl',
+    attemptId: 'attempt-1',
     role: 'implementation',
     artifactRevision: 'rev-a',
+    candidateDigest: {
+      algorithm: 'sha256',
+      hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    },
     env,
   };
 }
@@ -58,8 +63,13 @@ test('plugin shape: name, inject, and a schemastery Config', () => {
     eventId: 'evt-1',
     workflowId: 'wf-1',
     assignmentId: 'as-impl',
+    attemptId: 'attempt-1',
     role: 'review',
     artifactRevision: 'rev-a',
+    candidateDigest: {
+      algorithm: 'sha256',
+      hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    },
   });
   assert.equal(parsed.timeoutMs, 15_000);
   assert.throws(() => ConfigSchema({ binary: '/x/aizign' } as Config));

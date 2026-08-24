@@ -12,7 +12,7 @@ code identifierは英語で固定します。日本語訳は説明用で、識�
 | **Assignment** | workflow内でroleに割り当てた作業単位。`assignmentId` で識別 |
 | **Role** | assignmentの種類。`implementation`、`review` |
 | **Attempt** | assignmentをharness上で実行した一回。`attemptId` で識別。失敗や中断のあと別attemptを作る |
-| **Candidate revision** | implementationが提出した変更の固定identity（`artifactRevision`）。review、check、authorizationはこれにbindingする |
+| **Candidate revision** | implementationが提出した変更の固定identity。人間／provider向けの`artifactRevision`と内容同一性を示す`candidateDigest`の組で、review、check、authorizationはこれにbindingする |
 | **Event** | journalへappendされるdomain event。`eventId` で識別。`State + Event -> State` |
 | **Command** | coreへの入力。`State + Command -> Decision` |
 | **Decision** | coreの出力。追加するevent、effect intent、またはrejectionを含む |

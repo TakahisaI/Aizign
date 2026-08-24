@@ -15,6 +15,23 @@
       "type": "string",
       "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
     },
+    "digest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "hex"
+      ],
+      "properties": {
+        "algorithm": {
+          "const": "sha256"
+        },
+        "hex": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
     "role": {
       "type": "string",
       "enum": [
@@ -36,8 +53,10 @@
       "required": [
         "workflowId",
         "assignmentId",
+        "attemptId",
         "role",
-        "artifactRevision"
+        "artifactRevision",
+        "candidateDigest"
       ],
       "properties": {
         "workflowId": {
@@ -46,10 +65,19 @@
         "assignmentId": {
           "$ref": "#/$defs/identifier"
         },
+        "attemptId": {
+          "$ref": "#/$defs/identifier"
+        },
         "role": {
           "$ref": "#/$defs/role"
         },
         "artifactRevision": {
+          "$ref": "#/$defs/identifier"
+        },
+        "candidateDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sourceEventId": {
           "$ref": "#/$defs/identifier"
         }
       }
@@ -61,8 +89,10 @@
         "eventId",
         "workflowId",
         "assignmentId",
+        "attemptId",
         "role",
         "artifactRevision",
+        "candidateDigest",
         "kind"
       ],
       "properties": {
@@ -75,11 +105,17 @@
         "assignmentId": {
           "$ref": "#/$defs/identifier"
         },
+        "attemptId": {
+          "$ref": "#/$defs/identifier"
+        },
         "role": {
           "$ref": "#/$defs/role"
         },
         "artifactRevision": {
           "$ref": "#/$defs/identifier"
+        },
+        "candidateDigest": {
+          "$ref": "#/$defs/digest"
         },
         "kind": {
           "type": "string",
@@ -99,9 +135,23 @@
         "artifactRef": {
           "$ref": "#/$defs/artifactRef"
         },
+        "evidenceDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sourceEventId": {
+          "$ref": "#/$defs/identifier"
+        },
         "shortErrorCode": {
           "$ref": "#/$defs/shortErrorCode"
         }
+      },
+      "dependentRequired": {
+        "artifactRef": [
+          "evidenceDigest"
+        ],
+        "evidenceDigest": [
+          "artifactRef"
+        ]
       },
       "allOf": [
         {
@@ -128,6 +178,16 @@
                 {
                   "required": [
                     "artifactRef"
+                  ]
+                },
+                {
+                  "required": [
+                    "evidenceDigest"
+                  ]
+                },
+                {
+                  "required": [
+                    "sourceEventId"
                   ]
                 },
                 {
@@ -161,8 +221,17 @@
               "findingCount"
             ],
             "not": {
-              "required": [
-                "shortErrorCode"
+              "anyOf": [
+                {
+                  "required": [
+                    "sourceEventId"
+                  ]
+                },
+                {
+                  "required": [
+                    "shortErrorCode"
+                  ]
+                }
               ]
             }
           }
@@ -197,6 +266,16 @@
                 },
                 {
                   "required": [
+                    "evidenceDigest"
+                  ]
+                },
+                {
+                  "required": [
+                    "sourceEventId"
+                  ]
+                },
+                {
+                  "required": [
                     "shortErrorCode"
                   ]
                 }
@@ -224,7 +303,9 @@
             },
             "required": [
               "findingCount",
-              "artifactRef"
+              "artifactRef",
+              "evidenceDigest",
+              "sourceEventId"
             ],
             "not": {
               "required": [
@@ -255,6 +336,11 @@
                 {
                   "required": [
                     "artifactRef"
+                  ]
+                },
+                {
+                  "required": [
+                    "evidenceDigest"
                   ]
                 }
               ]

@@ -29,8 +29,13 @@ export function samplePayload(eventId: string): WorkflowSignalSubmitPayload {
   const expected = {
     workflowId: 'wf-conformance',
     assignmentId: 'as-implementation',
+    attemptId: 'attempt-implementation',
     role: 'implementation',
     artifactRevision: 'rev-a',
+    candidateDigest: {
+      algorithm: 'sha256',
+      hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    },
   } as const;
   return { expected, signal: { ...expected, eventId, kind: 'implementation_ready' } };
 }
@@ -134,6 +139,158 @@ export async function runCoreScenarios(
     });
     assert.equal(mismatch.kind, 'rejected');
     if (mismatch.kind === 'rejected') assert.equal(mismatch.code, 'REVISION_MISMATCH');
+
+    const attemptMismatchPayload = samplePayload('evt-attempt-mismatch');
+    const attemptMismatch = await client.submitWorkflowSignal('req-5', {
+      expected: { ...attemptMismatchPayload.expected, attemptId: 'attempt-other' },
+      signal: attemptMismatchPayload.signal,
+    });
+    assert.equal(attemptMismatch.kind, 'rejected');
+    if (attemptMismatch.kind === 'rejected') {
+      assert.equal(attemptMismatch.code, 'ATTEMPT_MISMATCH');
+    }
+
+    const digestMismatchPayload = samplePayload('evt-digest-mismatch');
+    const digestMismatch = await client.submitWorkflowSignal('req-6', {
+      expected: {
+        ...digestMismatchPayload.expected,
+        candidateDigest: {
+          algorithm: 'sha256',
+          hex: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        },
+      },
+      signal: digestMismatchPayload.signal,
+    });
+    assert.equal(digestMismatch.kind, 'rejected');
+    if (digestMismatch.kind === 'rejected') {
+      assert.equal(digestMismatch.code, 'CANDIDATE_DIGEST_MISMATCH');
+    }
+
+    const changedCandidate = samplePayload('evt-candidate-conflict');
+    const candidateConflict = await client.submitWorkflowSignal('req-7', {
+      expected: {
+        ...changedCandidate.expected,
+        candidateDigest: {
+          algorithm: 'sha256',
+          hex: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        },
+      },
+      signal: {
+        ...changedCandidate.signal,
+        candidateDigest: {
+          algorithm: 'sha256',
+          hex: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        },
+      },
+    });
+    assert.equal(candidateConflict.kind, 'rejected');
+    if (candidateConflict.kind === 'rejected') {
+      assert.equal(candidateConflict.code, 'CANDIDATE_CONFLICT');
+    }
+
+    const findingsExpected = {
+      workflowId: 'wf-conformance',
+      assignmentId: 'as-review',
+      attemptId: 'attempt-review',
+      role: 'review',
+      artifactRevision: 'rev-a',
+      candidateDigest: {
+        algorithm: 'sha256',
+        hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      },
+    } as const;
+    const findings = await client.submitWorkflowSignal('req-8', {
+      expected: findingsExpected,
+      signal: {
+        ...findingsExpected,
+        eventId: 'evt-findings',
+        kind: 'review_findings',
+        findingCount: 1,
+        artifactRef: 'review:findings',
+        evidenceDigest: {
+          algorithm: 'sha256',
+          hex: 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+        },
+      },
+    });
+    assert.deepEqual(findings, { kind: 'accepted', eventId: 'evt-findings' });
+
+    const changedEvidence = await client.submitWorkflowSignal('req-9', {
+      expected: findingsExpected,
+      signal: {
+        ...findingsExpected,
+        eventId: 'evt-findings-other',
+        kind: 'review_findings',
+        findingCount: 1,
+        artifactRef: 'review:findings',
+        evidenceDigest: {
+          algorithm: 'sha256',
+          hex: 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+        },
+      },
+    });
+    assert.equal(changedEvidence.kind, 'rejected');
+    if (changedEvidence.kind === 'rejected') {
+      assert.equal(changedEvidence.code, 'EVIDENCE_CONFLICT');
+    }
+
+    const repairExpected = {
+      workflowId: 'wf-conformance',
+      assignmentId: 'as-repair',
+      attemptId: 'attempt-repair',
+      role: 'implementation',
+      artifactRevision: 'rev-b',
+      candidateDigest: {
+        algorithm: 'sha256',
+        hex: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      },
+      sourceEventId: 'evt-findings',
+    } as const;
+    const repairPayload: WorkflowSignalSubmitPayload = {
+      expected: repairExpected,
+      signal: {
+        ...repairExpected,
+        eventId: 'evt-repair',
+        kind: 'repair_submitted',
+        findingCount: 1,
+        artifactRef: 'repair:result',
+        evidenceDigest: {
+          algorithm: 'sha256',
+          hex: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+        },
+      },
+    };
+    const repaired = await client.submitWorkflowSignal('req-10', repairPayload);
+    assert.deepEqual(repaired, { kind: 'accepted', eventId: 'evt-repair' });
+    const repairDuplicate = await client.submitWorkflowSignal('req-11', repairPayload);
+    assert.deepEqual(repairDuplicate, { kind: 'duplicate', eventId: 'evt-repair' });
+
+    const consumedSource = await client.submitWorkflowSignal('req-12', {
+      expected: {
+        ...repairExpected,
+        attemptId: 'attempt-repair-2',
+        artifactRevision: 'rev-c',
+        candidateDigest: {
+          algorithm: 'sha256',
+          hex: 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
+        },
+      },
+      signal: {
+        ...repairPayload.signal,
+        eventId: 'evt-repair-2',
+        attemptId: 'attempt-repair-2',
+        artifactRevision: 'rev-c',
+        candidateDigest: {
+          algorithm: 'sha256',
+          hex: 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
+        },
+        artifactRef: 'repair:result-2',
+      },
+    });
+    assert.equal(consumedSource.kind, 'rejected');
+    if (consumedSource.kind === 'rejected') {
+      assert.equal(consumedSource.code, 'CAUSATION_MISMATCH');
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

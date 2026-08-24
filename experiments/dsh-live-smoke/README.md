@@ -111,7 +111,9 @@ operator patch（`make-patch.mjs` の出力）はその entry を **id で上書
 # operator patch を生成（stdout）。値はすべてoperatorが与える。bundle層の entry を id で上書きする形で出る
 node experiments/dsh-live-smoke/make-patch.mjs \
   --binary /abs/path/to/aizign --state /abs/path/to/state \
-  --event-id evt-live-1 --workflow-id wf-live --assignment-id as-live --role implementation --revision rev-live-1 \
+  --event-id evt-live-1 --workflow-id wf-live --assignment-id as-live --attempt-id attempt-live-1 \
+  --role implementation --revision rev-live-1 \
+  --candidate-digest aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
   > /abs/path/outside/repo/aizign-live.patch.yml
 
 # smoke後に journal を metadata だけで要約（--json で result.schema.json の journal 形式）

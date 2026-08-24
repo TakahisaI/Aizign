@@ -14,8 +14,13 @@ const binding: SignalBinding = {
   expected: {
     workflowId: 'wf-1',
     assignmentId: 'as-impl',
+    attemptId: 'attempt-impl',
     role: 'implementation',
     artifactRevision: 'rev-a',
+    candidateDigest: {
+      algorithm: 'sha256',
+      hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    },
   },
 };
 
