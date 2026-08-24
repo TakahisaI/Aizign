@@ -7,8 +7,9 @@
 | Rust unit test | 対象moduleの `#[cfg(test)] mod tests` |
 | Rust cross-module test | crateの `tests/` |
 | TypeScript unit test | 対象sourceに近接（`src/**/*.test.ts`、`node --test`） |
-| adapter conformance | `adapters/<harness>/test/conformance/`（`@aizign/adapter-testkit` の `runCoreClientConformance`） |
-| protocol fixture | `spec/conformance/valid/`、`spec/conformance/invalid/`（repository共通。RustとTypeScriptの両方が同じfileを読む） |
+| protocol fixture / wire conformance | `spec/conformance/valid/`、`spec/conformance/invalid/`（各言語のcodec runnerが同じfixtureを読む） |
+| TypeScript core-client reference conformance | `@aizign/adapter-testkit` の `runCoreClientConformance` |
+| harness-native adapter conformance | `adapters/<harness>/test/conformance/`（各harnessのfakeとnative test） |
 
 rootに巨大なtest directoryを作りません。
 

@@ -1,168 +1,83 @@
 # Adding a harness adapter
 
-This guide defines the current v0.1 behavioral minimum for a harness adapter and
-the implementation path used by the repository's TypeScript adapter. It does not
-require every harness to provide DSH-style persistence or lifecycle operations.
+This is an implementation guide. The normative, language-neutral behavior is
+defined by the
+[harness adapter contract](../architecture/harness-adapter-contract.md); the
+wire contract is defined by [`spec/protocol/v1/`](../../spec/protocol/v1/README.md).
+Do not infer generic requirements from the DSH implementation or its native
+session model.
 
-Read only the following material before starting an adapter. Reading the DSH
-Session implementation or browser smoke is not required.
+## Read first
 
 | Read | Purpose |
 |---|---|
-| `spec/protocol/v1/` | Wire contract: envelope, kinds, schemas, and examples |
-| `packages/protocol/` | TypeScript codec, compatibility helpers, and current `CoreClient` types |
-| `packages/adapter-testkit/` | TypeScript fake core, reference client, conformance runner, and metadata-only assertions |
-| This document | Current minimum behavior and capability boundaries |
-| `adapters/<your-harness>/` | The adapter being implemented |
+| [`harness-adapter-contract.md`](../architecture/harness-adapter-contract.md) | Language-neutral minimum, capability, outcome, evidence, and conformance boundaries |
+| [`spec/protocol/v1/`](../../spec/protocol/v1/README.md) | Wire envelope, kinds, schemas, bounds, and examples |
+| [`data-boundary.md`](../architecture/data-boundary.md) | Data allowed to cross the adapter/core boundary |
+| The target adapter's proposal Issue | Harness choice, native integration, support policy, and live-smoke scope |
 
-## Capability layers
+Read `packages/protocol/` and `packages/adapter-testkit/` when implementing a
+TypeScript/Node adapter. They are a reference and convenience layer, not
+runtime or development dependencies required of every adapter.
 
-Do not put the following three concepts in one field, manifest, or token
-registry.
+## Language-neutral implementation path
 
-| Layer | Authority and use | v0.1 representation |
+1. Define the harness integration in a leaf Issue. Record the native entry
+   point, supported harness version, trusted configuration source,
+   model-visible surface, optional capabilities, and validation plan.
+2. Implement Protocol v1 `hello` compatibility and the minimum
+   signal-submission behavior from the architecture contract.
+3. Inject workflow, assignment, attempt, role, artifact revision, and candidate
+   digest from trusted control-plane configuration. Do not accept them from
+   model-visible arguments.
+4. Generate adapter-owned request nonces. Keep harness session, call, thread,
+   provider, and delivery identifiers out of the complete protocol envelope.
+5. Enforce request/response bounds and correlation, and preserve all submit
+   outcome classifications. Exercise every applicable `unknown` path and prove
+   that it does not trigger a blind submit retry.
+6. Run the language-neutral wire fixtures and the applicable core-client
+   scenario groups described by the architecture contract.
+7. Test plugin registration, native input mapping, visible argument schemas,
+   persistence, lifecycle, and harness error mapping in harness-native fake
+   tests owned by the adapter.
+8. Document optional integrations and their actual durability, retention,
+   integrity, I/O-bound, and cancellation limits. Do not promote them into the
+   generic minimum.
+9. Record the supported harness version in
+   [`docs/reference/compatibility.md`](../reference/compatibility.md), then run
+   the repository checks.
+
+Core reconciliation is a separate extension. If the adapter claims it, check
+the advertised `workflow.signal.reconcile` capability and implement the full
+read-only reconciliation scenario group. Submission must remain usable when
+reconciliation or harness-native evidence is unavailable.
+
+## Conformance split
+
+Keep the following tests separate even if one test command runs all of them:
+
+| Test boundary | Shared requirement | Owned by |
 |---|---|---|
-| Core protocol capability | An operation understood by the Aizign binary. The adapter uses it for protocol compatibility. | Advertised by `hello.capabilities`; currently `workflow.signal.submit` and `workflow.signal.reconcile` |
-| Harness adapter capability | An operation or evidence source that an adapter can safely execute and verify on its harness. | Documented and tested by that adapter; no universal runtime manifest or Protocol v1 field |
-| Workflow requirement | A capability that a particular workflow would require from an adapter. | Provisional; there is no v0.1 consumer, negotiation field, or dispatch runtime |
+| Wire codec | `spec/conformance/` valid/invalid frames and Protocol v1 schemas | Each language's codec tests |
+| Core client | Minimum submission scenarios plus any claimed extension scenarios | Each language's client runner/tests |
+| Harness-native adapter | Registration, native events, model-visible schema, trusted injection, persistence, lifecycle, native errors | The adapter's fake-harness tests |
 
-The same spelling must not silently change meaning between layers. In
-particular, `hello.capabilities` reports core protocol operations, not DSH or
-other harness features.
+The scenarios are language-neutral; the executable runner is not. Do not add a
+universal adapter driver or a second process protocol for tests.
 
-## Current minimum behavior
+## TypeScript/Node reference path
 
-A v0.1 signal-submission adapter must provide the following behavior:
+For a TypeScript adapter in this repository, use:
 
-- perform protocol health and compatibility checks before exposing the
-  submission path;
-- submit a scope-bound structured workflow signal;
-- inject workflow, assignment, attempt, and candidate identity from trusted
-  control-plane configuration rather than model-visible input;
-- keep harness session, call, provider, and delivery identities out of the
-  Aizign protocol envelope, including `requestId`;
-- validate response `requestId`, `kind`, and `eventId` correlation;
-- preserve the submit outcome (`accepted`, `duplicate`, `rejected`, or
-  `unknown`) without collapsing one classification into another;
-- never infer success or rejection from `unknown`, and never blindly retry an
-  unknown submission;
-- keep raw prompts, model output, reasoning, and credentials out of the
-  protocol and control journal; and
-- bound request size, response size, frame count, and processing time.
+- [`@aizign/protocol`](../../packages/protocol/README.md) for the Protocol v1
+  codec, compatibility helpers, types, and reference `CoreClient` interface;
+- [`@aizign/adapter-testkit`](../../packages/adapter-testkit/README.md) for the
+  fake core, reference client, convenience assertions, and conformance runner;
+  and
+- the root Node/TypeScript support policy and exact harness SDK pinning from
+  ADR-0010.
 
-The minimum does **not** require an adapter to persist outcomes. Persistence
-authority and binding verification differ by harness. An adapter without
-harness-native persistence or cold read remains a valid signal-submission
-adapter when it satisfies the behavior above.
-
-## Durable evidence and absence semantics
-
-The Aizign control journal is authoritative for workflow signal acceptance.
-Durability and attribution are independent properties of harness-native
-evidence. An adapter may rely on a harness-native record only when both of these
-conditions hold:
-
-1. the source has an established durability and retention contract; and
-2. the adapter can verify attribution to the requested binding and, where it
-   claims payload integrity, to the requested payload.
-
-A durable error record without verifiable binding metadata is not evidence that
-the requested binding was rejected. It remains `unknown` with an adapter-owned
-diagnostic such as `unverified_error`. Conversely, binding verification does not
-establish that the source survives a crash or satisfies a retention policy.
-Absence of an optional harness capability must never weaken identity isolation,
-the metadata-only boundary, correlation checks, bounds, or the non-collapse of
-`unknown`.
-
-## Optional integrations demonstrated today
-
-The DSH adapter currently demonstrates these harness adapter integrations:
-
-- harness-persisted success metadata integration;
-- caller-wait timeout with a post-read event-count guard for session reads; and
-- binding-digest verification with payload-digest recording.
-
-These are examples, not the generic shape of harness evidence. Another adapter
-does not need to expose DSH `tool/call`, `tool/result`, or
-`SessionPersistence.readFrom` events. When it offers native evidence, it owns
-the interpretation of its native records as harness-native evidence
-observations.
-
-The current session-read API does not bound source-side I/O, allocation, event
-byte size, or work that continues after a source ignores cancellation. Its
-event-count guard runs after materialization and rejects partial evidence. The
-current fake-DSH tests also do not establish the durability or retention
-contract of real DSH persistence across restart. Finally, the adapter verifies
-`eventId` and `bindingDigest`, but only records and returns `payloadDigest`; it
-does not recompute the payload digest during cold read.
-
-Keep the outcome vocabularies source-qualified:
-
-| Source | Outcome vocabulary |
-|---|---|
-| Signal submission | `accepted`, `duplicate`, `rejected`, `unknown` |
-| Core journal reconciliation | `accepted`, `conflict`, `absent`, `unknown` |
-| DSH harness-native evidence observation | `accepted`, `duplicate`, `absent`, `unknown` with adapter-owned reasons |
-
-The same spelling in two rows does not imply the same authority or observation
-source.
-
-An observation operation can also fail before it produces an outcome value.
-The current DSH `readSignalEvidence` propagates a non-abort source rejection
-instead of returning `SignalEvidence`. Its caller must treat the harness
-observation as unavailable/unknown and must not infer success, rejection, or
-absence from the thrown error. Adding a closed `source_error` reason would be a
-separate runtime contract change.
-
-## Core reconciliation is not harness evidence
-
-`workflow.signal.reconcile` is a core protocol operation over the Aizign
-journal. It is not a `core-journal-only` harness evidence mode and is independent
-of whether the harness offers persistence or cold read.
-
-An adapter or control-plane client that invokes reconciliation must check its
-core protocol capability independently and preserve the bounded read-only
-`accepted`, `conflict`, `absent`, and `unknown` semantics. It must not merge a
-core journal lookup and a harness-native evidence lookup into one evidence enum,
-and it must not make submission unavailable merely because reconciliation or
-harness-native evidence is unavailable.
-
-## Provisional operations
-
-The following inventory may become useful, but there is no accepted operation
-contract, absence semantics, implementation, or consumer for it yet:
-
-- interrupt;
-- effect dispatch;
-- resource release;
-- session or agent ownership;
-- general lifecycle hooks; and
-- remote reconnect.
-
-Do not publish stable capability tokens or add placeholder dispatch for these
-operations. Define the consumer, operation contract, and absence semantics in a
-dedicated Issue or ADR when an implementation slice exists.
-
-An adapter-owned durable sidecar is also out of scope. It requires a separate
-decision covering authority, crash consistency, permissions, retention,
-metadata boundaries, tampering, and disagreement with the Aizign journal.
-
-## Data boundary
-
-Follow [data-boundary.md](../architecture/data-boundary.md). In particular:
-
-- do not use harness session or call IDs as core identity or envelope
-  `requestId`; generate an adapter-owned nonce;
-- treat a response correlation mismatch, multiple frames, or an exceeded bound
-  as `unknown`;
-- pass only stable identity, bounded opaque handles, digests, structured
-  evidence, dispositions, and stable short error codes across the boundary; and
-- use durable structured evidence as completion authority, never prose, idle
-  state, or screen state.
-
-## TypeScript package reference
-
-The current TypeScript adapter layout is:
+The reference layout is:
 
 ```text
 adapters/<harness>/
@@ -182,33 +97,35 @@ adapters/<harness>/
 ```
 
 Do not add empty `evidence/` or `lifecycle/` layers merely to match this tree.
-The DSH event shape and lifecycle are not generic adapter interfaces.
+The DSH event shape and lifecycle are not generic interfaces.
 
-Until #48 is completed, the TypeScript `CoreClient` interface and
-`runCoreClientConformance` runner are reference-layer supersets: both require
-reconciliation and therefore do not encode the minimum signal-submission
-contract defined above. A missing reconciliation method or scenario can fail
-that TypeScript interface or runner without making the adapter's submission
-behavior non-conforming to this minimum.
+The TypeScript `CoreClient` interface and `runCoreClientConformance` runner
+require submission and reconciliation, so they are reference-layer supersets
+of the minimum signal-submission contract. A TypeScript adapter choosing these
+APIs implements the full interface. A non-TypeScript adapter can satisfy only
+the minimum or claim the same extension through native types and tests.
 
-- Pin a TypeScript harness SDK to an exact version (peer and dev; ADR-0010).
-  The root `.npmrc` uses `ignore-scripts=true`.
+TypeScript repository rules:
+
+- Pin a harness SDK to an exact version as peer and development dependency
+  (ADR-0010). The root `.npmrc` uses `ignore-scripts=true`.
 - Keep the `exports` map closed and disallow deep imports.
 - Do not add runtime workspace dependencies beyond `@aizign/protocol`.
   `@aizign/adapter-testkit` is a development dependency.
 - Keep normal tests within a fake harness and fake core process. Live smoke is
   opt-in under `experiments/`.
 
-## Procedure
+## Non-TypeScript implementations
 
-1. Agree on the harness, current minimum behavior, optional capabilities, data
-   boundary, and live-smoke approach in an Adapter proposal Issue.
-2. Add the package to `docs/architecture/dependency-rules.md`.
-3. Implement the core client and exercise every applicable unknown path with
-   the protocol fixtures and conformance scenarios.
-4. Map native input to `WorkflowSignalSubmitPayload`, and prove that harness
-   identities and content do not enter the full protocol envelope or journal.
-5. Test optional harness capabilities with native fake-harness tests; do not add
-   them to the generic minimum.
-6. Record the supported harness version in
-   `docs/reference/compatibility.md`.
+A non-TypeScript adapter owns its codec, process/transport client, outcome
+types, and test runner in its language. It must:
+
+- match the Protocol v1 schemas, frame rules, stable codes, and shared fixture
+  acceptance set;
+- satisfy the minimum and each claimed extension scenario;
+- preserve the architecture and data boundaries; and
+- document its package, dependency, runtime, and harness support policy.
+
+It need not reproduce the npm package layout, implement the TypeScript
+`CoreClient` interface, or invoke `@aizign/adapter-testkit`. Do not create a new
+shared runtime or language SDK until a concrete adapter demonstrates that need.

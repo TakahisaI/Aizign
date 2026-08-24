@@ -1,7 +1,7 @@
 /**
- * The behaviour every adapter's core client must have, proven against the
- * fake core. Call {@link runCoreClientConformance} from the adapter's
- * conformance test with a factory for its client.
+ * TypeScript reference scenarios for the submit/reconcile `CoreClient`,
+ * proven against the fake core. This runner is a superset of the
+ * language-neutral minimum signal-submission contract.
  */
 
 import assert from 'node:assert/strict';
@@ -353,7 +353,8 @@ export async function runFaultScenarios(
 }
 
 /**
- * Everything an adapter's core client must satisfy, against the fake core.
+ * The complete TypeScript reference `CoreClient` scenario set, against the
+ * fake core.
  */
 export async function runCoreClientConformance(
   factory: CoreClientFactory,

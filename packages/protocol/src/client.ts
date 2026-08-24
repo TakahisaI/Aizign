@@ -1,8 +1,9 @@
 /**
- * The adapter-side contract for talking to the core. Every harness adapter
- * implements `CoreClient`; `@aizign/adapter-testkit` proves an implementation
- * behaves correctly against a fake core process, including the cases where
- * the outcome is unknown.
+ * The TypeScript reference contract for talking to the core. It includes
+ * signal submission and the reconciliation extension, so it is a superset of
+ * the language-neutral minimum adapter contract. TypeScript adapters may use
+ * `@aizign/adapter-testkit` to exercise it against a fake core process,
+ * including the cases where the outcome is unknown.
  */
 
 import type { Response } from './envelope.ts';

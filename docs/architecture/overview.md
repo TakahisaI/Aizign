@@ -33,6 +33,11 @@ Aizignは、harness（LLM agentを動かす実行環境）から来る **structu
 | `aizign-cli` | composition root。`aizign handle`、`aizign hello` | business logic |
 | adapter | harness Context / Session / Tool / native event / persistence / lifecycle / harness固有error | core内部型の参照、harness IDのcore identity化 |
 
+adapterが満たす言語中立のbehavioral boundaryは
+[`harness-adapter-contract.md`](harness-adapter-contract.md)が所有します。
+Protocol v1のwire schemaは `spec/protocol/v1/` が所有し、TypeScript packageはその
+reference / convenience layerです。
+
 ## 一つのrequestの流れ
 
 1. adapterがharnessのnative event（例: tool call）を受け取り、structured evidenceへ変換する。
@@ -65,8 +70,8 @@ restart後の照合では、adapterが同じfull signalを`workflow.signal.recon
 | `xtask` | `cargo xtask check / conformance / public-audit` |
 | `docs/`、`.github/` | governance、ADR、architecture、CI |
 | `spec/conformance/` | language-neutral fixture（件数はtreeが正。`cargo xtask conformance` が構造を検証し、Rust / TS testが全fixtureをdecoderへ通す） |
-| `packages/protocol` | `@aizign/protocol`: TypeScript codec（同じfixtureを通す）、`checkCompatibility`、submit / reconcile `CoreClient` 契約 |
-| `packages/adapter-testkit` | `@aizign/adapter-testkit`: fake core、submit / reconcile conformance runner、reference client |
+| `packages/protocol` | `@aizign/protocol`: TypeScript codec（同じfixtureを通す）、`checkCompatibility`、submit / reconcileを含むreference `CoreClient` |
+| `packages/adapter-testkit` | `@aizign/adapter-testkit`: TypeScript向けfake core、submit / reconcile reference runner、reference client |
 | `experiments/dsh-live-smoke` | opt-in live smokeのpatch生成とjournal要約（手順はoperator側） |
 | `adapters/dsh` | `@aizign/adapter-dsh`: DSH plugin（preflight、scope-bound `submit_workflow_signal`、control-plane reconciliation client、evidence cold read）。fake DSH runtime + fake core / 実binaryの往復で検証 |
 
@@ -75,4 +80,5 @@ restart後の照合では、adapterが同じfull signalを`workflow.signal.recon
 - [context-map.md](context-map.md) — bounded contextと配置
 - [dependency-rules.md](dependency-rules.md) — 依存してよいもの
 - [data-boundary.md](data-boundary.md) — core / journal / adapterの間を越えてよいデータ
+- [harness-adapter-contract.md](harness-adapter-contract.md) — adapterが満たす言語中立のbehavioral contract
 - ADR-0002、0003、0004、0005

@@ -55,6 +55,10 @@ source中に次が現れたら `public-audit` が失敗します。
 
 ## TypeScript packages
 
+この節はrepository内のTypeScript / Node packageだけに適用します。言語中立のadapter
+contractの正本は[`harness-adapter-contract.md`](harness-adapter-contract.md)です。
+非TypeScript adapterにnpm packageやこのworkspace依存を要求しません。
+
 | Package | 依存してよいworkspace package | 外部依存 |
 |---|---|---|
 | `@aizign/protocol` | なし | なし（validatorは自前。`node:` 組み込みも使わない） |
@@ -64,7 +68,9 @@ source中に次が現れたら `public-audit` が失敗します。
 - package間はworkspace依存だけを使い、相対pathで別packageのsourceをimportしない
 - 開発toolchain（`typescript`、`@biomejs/biome`、`@types/node`、`ajv`）はroot `package.json` にexact versionで置き、各packageには置かない。`ajv` は `spec/` のJSON Schema gate（`spec/test/`）専用で、publishされるpackageからは参照しない（`@aizign/protocol` の外部依存は引き続き **なし**）
 - `exports` mapはclosed。`./*` のようなwildcardを許さない
-- adapterから `aizign-core` / `aizign-engine` の型を参照しない。契約は `@aizign/protocol` だけ
+- TypeScript adapterから `aizign-core` / `aizign-engine` の型を参照しない。wire型は
+  `@aizign/protocol` を使う。全adapterのbehavioral contractは
+  `docs/architecture/harness-adapter-contract.md`、wire contractは `spec/protocol/` が所有する
 
 ## Port ownership
 
@@ -74,7 +80,8 @@ source中に次が現れたら `public-audit` が失敗します。
 | `Journal` | `aizign-engine` | `aizign-store-jsonl`、`aizign-testkit`（`MemoryJournal`） | 実装済み（`JournalReader`を拡張） |
 | `Clock` | `aizign-engine` | `aizign-cli`（system）、`aizign-testkit`（`FixedClock`） | 実装済み |
 | `EffectSink` | `aizign-engine` | `aizign-cli`（protocol responseとして返す） | 後続 |
-| Harness adapter contract | `@aizign/protocol` / `spec/protocol` | 各adapter |
+| Harness adapter behavioral contract | `docs/architecture/harness-adapter-contract.md` | 各adapter |
+| Core--adapter wire contract | `spec/protocol/` | Rust / TypeScript codec、各adapter |
 
 ## 横断的な置き場の禁止
 

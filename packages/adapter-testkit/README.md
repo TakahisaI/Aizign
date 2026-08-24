@@ -1,6 +1,8 @@
 # @aizign/adapter-testkit
 
-Prove a harness adapter's core client against a fake core — including every way an outcome can be **unknown** — without the real `aizign` binary, a harness, or a network.
+Exercise the TypeScript reference `CoreClient` against a fake core — including
+every way an outcome can be **unknown** — without the real `aizign` binary, a
+harness, or a network.
 
 | | |
 |---|---|
@@ -12,6 +14,13 @@ Prove a harness adapter's core client against a fake core — including every wa
 | **Allowed dependencies** | `@aizign/protocol` |
 | **Test command** | `npm test -w @aizign/adapter-testkit` |
 | **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md) |
+
+言語中立のscenario requirementは
+[`harness-adapter-contract.md`](../../docs/architecture/harness-adapter-contract.md)
+が所有します。このpackageはTypeScript reference / convenience layerであり、
+全adapterに共通の実行可能interfaceではありません。現在のrunnerはsubmitと
+reconcileの両方を要求するため、minimum signal-submission contractのsupersetです。
+非TypeScript adapterは同じfixtureと適用対象scenarioをその言語のrunnerで検証できます。
 
 ## Layout
 
