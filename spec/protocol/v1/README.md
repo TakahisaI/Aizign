@@ -75,7 +75,7 @@ structured workflow signalを、shellがbindされている `expected` assignmen
 | `PROTOCOL_VERSION_UNSUPPORTED` | `version` が `1` 以外。`requestId` / `kind` は復元できれば返る |
 | `UNKNOWN_KIND` | `kind` が未登録 |
 | `INVALID_PAYLOAD` | payloadの形がkindのschemaに合わない（欠落、型違い、未知field、`null`） |
-| `INVALID_EXPECTATION` | `expected` の値が不正（識別子の文字種や長さ） |
+| `INVALID_EXPECTATION` | `expected` の値が不正（識別子の文字種・長さ、またはcandidate digestのhex形式） |
 | `INVALID_SIGNAL` ほかworkflow code | `signal` の値や制約、expectationとの不一致、conflict |
 | `JOURNAL_*` | journalを開けない・読めない・書けない。`JOURNAL_OUTCOME_UNKNOWN` は再送しない |
 | `CAPABILITY_UNSUPPORTED` | kindは既知だがこのbinaryでは無効（v1では未使用） |
