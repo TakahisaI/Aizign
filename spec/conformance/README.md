@@ -1,7 +1,9 @@
-# Conformance fixtures
+# Decoder conformance fixtures
 
-Protocol v1の **全実装（Rust、TypeScript）が同じfileを読んで同じ判定をする** ためのfixture。
-wire contractの正本は [`spec/protocol/v1/`](../protocol/v1/README.md)。ここはその判定例です。
+Protocol v1のdecoder実装（現在はRust、TypeScript）が同じfileを読んで同じ
+acceptance / rejection判定をするためのfixtureです。wire contractの正本は
+[`spec/protocol/v1/`](../protocol/v1/README.md)。ここはdecoder判定例であり、
+client-side encoderのtyped inputではありません。
 
 ```text
 spec/conformance/
@@ -37,6 +39,17 @@ wireに流れるbytesそのもの（末尾の改行なし）。validなframeは1
 - `valid/response`: 同上
 - `invalid/request`: decodeが失敗し、codeが一致し、復元された `requestId` / `kind` が一致する
 - `invalid/response`: decodeが失敗し、codeが一致する
+
+上のdecode → encode比較は、request / responseの両decoderとencoderを持つfull
+codec向けround-trip検査です。request decoderを持たないclient adapterへ
+`valid/request`をencoder fixtureとして要求しません。
+
+## Encoder conformance
+
+directional client encoderは、このdirectoryのframe fixtureではなく
+[`encoder-scenarios.md`](encoder-scenarios.md)に従います。Protocol v1 exampleを
+generic test dataとして読み、production decoderなしでoutbound DTOを組み立て、
+encode結果、schema、frame bound、local pre-transport failureを検査します。
 
 ## 検査
 

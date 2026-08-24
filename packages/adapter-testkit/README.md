@@ -69,6 +69,7 @@ runnerが検査する経路:
 | 呼び出し側のabort | `unknown aborted` |
 | `requestId` / `kind` / `eventId` が送信と一致しない | `unknown correlation_mismatch` |
 | responseが `MAX_FRAME_BYTES` を超える | `unknown oversized_response`（childをkill） |
+| outbound requestが `MAX_REQUEST_BYTES` を超える | spawn前に `REQUEST_TOO_LARGE`でPromise reject。spawn 0回・request 0件・submit classificationなし |
 | reconciliationが `absent` | reconcile request 1件だけ。implicit submitなし |
 | stdoutにframeが2つ、または末尾に非whitespace | `unknown undecodable_response` |
 | binaryが存在しない | `unknown spawn_failed` |

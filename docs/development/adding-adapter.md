@@ -35,8 +35,10 @@ runtime or development dependencies required of every adapter.
 4. Generate adapter-owned request nonces. Keep harness session, call, thread,
    provider, and delivery identifiers out of the complete protocol envelope.
 5. Enforce request/response bounds and correlation, and preserve all submit
-   outcome classifications. Exercise every applicable `unknown` path and prove
-   that it does not trigger a blind submit retry.
+   outcome classifications. An outbound oversize failure happens locally
+   before transport and produces no submit classification. Exercise every
+   applicable `unknown` path and prove that it does not trigger a blind submit
+   retry.
 6. Run the language-neutral wire fixtures and the applicable core-client
    scenario groups described by the architecture contract.
 7. Test the native entrypoint/registration where applicable, native input
@@ -64,7 +66,8 @@ Keep the following tests separate even if one test command runs all of them:
 
 | Test boundary | Shared requirement | Owned by |
 |---|---|---|
-| Wire codec | Applicable directions/kinds from `spec/conformance/` and Protocol v1 schemas | Each language's codec tests |
+| Decoder / full-codec wire checks | Applicable `spec/conformance/` frame fixtures | Each language's decoder/full-codec tests |
+| Directional encoder | Applicable Protocol examples and `spec/conformance/encoder-scenarios.md` | Each language's encoder/client tests |
 | Core client | Minimum submission scenarios plus any claimed extension scenarios | Each language's client runner/tests |
 | Harness-native adapter | Native entrypoint, mapping, trusted identity, visible schema, and errors; optional persistence/lifecycle only when claimed | The adapter's fake-harness tests |
 

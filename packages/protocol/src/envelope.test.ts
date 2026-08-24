@@ -4,6 +4,7 @@ import {
   decodeResponse,
   encodeRequest,
   encodeResponse,
+  MAX_FRAME_BYTES,
   MAX_REQUEST_BYTES,
   type Request,
 } from './envelope.ts';
@@ -39,6 +40,21 @@ test('oversized requests are rejected by the encoder before transport', () => {
         kind: 'hello',
       }),
     (error: unknown) => error instanceof ProtocolError && error.code === codes.REQUEST_TOO_LARGE,
+  );
+});
+
+test('the response encoder never emits an oversized frame', () => {
+  assert.throws(
+    () =>
+      encodeResponse({
+        requestId: 'req-1',
+        kind: 'workflow.signal.submit',
+        body: {
+          type: 'error',
+          error: new ProtocolError(codes.INTERNAL, 'x'.repeat(MAX_FRAME_BYTES)),
+        },
+      }),
+    (error: unknown) => error instanceof ProtocolError && error.code === codes.INVALID_ENVELOPE,
   );
 });
 

@@ -2,8 +2,8 @@
 //! correlation data is recovered whenever it is safe to do so.
 
 use aizign_protocol::{
-    MAX_REQUEST_BYTES, PROTOCOL_VERSION, Request, RequestKind, Response, ResponseBody, codes,
-    decode_request, decode_response, encode_request, encode_response,
+    MAX_FRAME_BYTES, MAX_REQUEST_BYTES, PROTOCOL_VERSION, Request, RequestKind, Response,
+    ResponseBody, codes, decode_request, decode_response, encode_request, encode_response,
 };
 
 fn hello(extra: &str) -> String {
@@ -197,7 +197,7 @@ fn encoded_frames_carry_the_protocol_version_and_escape_newlines() {
             "line one\nline two",
         )),
     };
-    let frame = encode_response(&response);
+    let frame = encode_response(&response).unwrap();
     assert!(!frame.contains('\n'));
     assert!(frame.contains(&format!("\"version\":{PROTOCOL_VERSION}")));
     assert_eq!(decode_response(frame.as_bytes()).unwrap(), response);
@@ -210,4 +210,18 @@ fn encoded_frames_carry_the_protocol_version_and_escape_newlines() {
         decode_request(encode_request(&request).as_bytes()).unwrap(),
         request
     );
+}
+
+#[test]
+fn response_encoder_refuses_a_frame_above_the_bound() {
+    let response = Response {
+        request_id: Some("req-oversized".to_owned()),
+        kind: Some("workflow.signal.submit".to_owned()),
+        body: ResponseBody::Error(aizign_protocol::ProtocolError::new(
+            codes::INTERNAL,
+            "x".repeat(MAX_FRAME_BYTES),
+        )),
+    };
+    let error = encode_response(&response).unwrap_err();
+    assert_eq!(error.code().as_str(), codes::INVALID_ENVELOPE);
 }

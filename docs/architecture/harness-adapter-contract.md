@@ -11,7 +11,8 @@ The authorities are deliberately separate:
 |---|---|
 | Harness adapter behavior and capability boundaries | This document |
 | Core--adapter wire format, schemas, kinds, and stable codes | [`spec/protocol/v1/`](../../spec/protocol/v1/README.md) |
-| Shared decoder acceptance fixtures | [`spec/conformance/`](../../spec/conformance/README.md) |
+| Decoder acceptance and full-codec round-trip fixtures | [`spec/conformance/`](../../spec/conformance/README.md) |
+| Language-neutral directional encoder scenarios | [`spec/conformance/encoder-scenarios.md`](../../spec/conformance/encoder-scenarios.md) |
 | Harness-native behavior | The adapter's README, source, and native tests |
 | TypeScript reference APIs and runner behavior | [`packages/protocol/`](../../packages/protocol/README.md) and [`packages/adapter-testkit/`](../../packages/adapter-testkit/README.md) |
 
@@ -111,6 +112,13 @@ adapter explicitly defines a closed outcome for that failure, callers must
 treat the observation as unavailable and must not infer success, rejection, or
 absence from the thrown error.
 
+Outbound validation or encoding failure before any process or transport starts
+is a distinct local failure. It produces no submit classification: the core did
+not return `rejected`, and the not-started transport is not `unknown`. The
+language binding documents whether its API throws/rejects or returns a local
+failure value. The harness adapter maps that failure through its native error
+boundary without claiming a core decision.
+
 ## Core reconciliation
 
 `workflow.signal.reconcile` is a core protocol capability over the Aizign
@@ -182,21 +190,23 @@ Conformance has three independent parts.
 
 ### Wire conformance
 
-Every implementation must match the Protocol v1 envelope rules and the schemas
-for the directions and kinds it uses:
+Every implementation must match the Protocol v1 envelope rules and schemas for
+the directions and kinds it uses:
 
-- a client adapter applies the shared envelope requirements, request encoder
-  fixtures for each kind it sends, and response decoder fixtures for each kind
-  it receives;
+- a client adapter applies
+  [the encoder scenarios](../../spec/conformance/encoder-scenarios.md) to each
+  request kind it sends and the decoder fixtures to each response kind it
+  receives;
 - an adapter claiming the reconciliation extension also applies the
-  reconciliation request-encoder and response-decoder fixtures; and
-- a language binding claiming a full Protocol v1 codec applies every request
-  and response encode/decode fixture.
+  reconciliation request-encoder scenario and response-decoder fixtures; and
+- a language binding claiming a full Protocol v1 codec applies every decoder
+  fixture, full-codec round trip, and request/response encoder scenario.
 
 `spec/conformance/` contains the language-neutral valid and invalid frames.
-It does not require a submission-only client to implement a server-side request
-decoder, a response encoder, or an unclaimed kind. Each language may provide
-its own runner over the applicable fixtures.
+Those files remain decoder acceptance fixtures; they are not request-encoder
+inputs. A submission-only client need not implement a server-side request
+decoder, response encoder, or unclaimed kind. Each language may provide its own
+runner over the applicable fixtures and encoder scenarios.
 
 ### Core-client conformance
 
@@ -210,7 +220,8 @@ The minimum signal-submission group covers:
 - expectation mismatch and stable rejection codes;
 - timeout, no response, malformed or oversized response, spawn/transport
   failure, and correlation mismatch becoming `unknown`;
-- oversized outbound requests being rejected before transport;
+- oversized outbound requests failing locally before any process/transport,
+  with no submit classification and no emitted frame;
 - non-collapse of `unknown` and no blind submit retry; and
 - metadata-only frames with no harness or provider identifier leakage.
 
@@ -261,7 +272,7 @@ Passing one test layer does not prove requirements owned by another:
 | Requirement | Primary test owner |
 |---|---|
 | Protocol envelope, schema, stable code, and applicable encode/decode acceptance | Language codec tests over applicable `spec/conformance/` fixtures |
-| Request-size rejection, response/frame bounds, correlation, and submit outcome mapping | Protocol encoder and core-client tests, as applicable |
+| Local request-size failure before process/transport; response/frame bounds, correlation, and submit outcome mapping | Protocol encoder and core-client tests, as applicable |
 | Negative preflight for incompatible version or missing submit capability before exposing submission | Harness-native adapter tests, using a fake core/client |
 | `eventId` and other stable identity provenance; model-visible exclusion | Harness-native adapter tests |
 | Harness/provider identity exclusion from the complete emitted envelope | Harness-native adapter tests that inspect captured requests |
@@ -285,6 +296,12 @@ not establish trusted identity provenance, model-visible isolation, native
 registration/preflight behavior, or harness-evidence conformance. Failing to
 implement that TypeScript interface does not by itself make a non-TypeScript
 submission adapter non-conforming.
+
+In this TypeScript reference API, an outbound request above
+`MAX_REQUEST_BYTES` rejects the client Promise with
+`ProtocolError(REQUEST_TOO_LARGE)` before spawn and produces no
+`SubmitOutcome`. The runner verifies both that the fake-core process is not
+started and that it receives no request.
 
 TypeScript adapters in this repository follow the Node support policy,
 workspace dependency rules, and exact harness SDK pinning. An implementation

@@ -13,7 +13,10 @@ import {
   CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
   type CoreClient,
   type CoreClientConfig,
+  codes,
+  MAX_REQUEST_BYTES,
   PROTOCOL_VERSION,
+  ProtocolError,
   type WorkflowSignalSubmitPayload,
 } from '@aizign/protocol';
 import { fakeCoreCommand } from './fake-core-path.ts';
@@ -333,6 +336,33 @@ export async function runFaultScenarios(
         assert.equal(requests.length, 1, `${fault}: reconciliation must not retry`);
       }
     }
+
+    const oversizedState = join(root, 'oversized-request');
+    const oversizedInvocationLog = join(root, 'oversized-request-invocations.log');
+    const oversized = factory({
+      ...fake,
+      env: { AIZIGN_FAKE_INVOCATION_LOG: oversizedInvocationLog },
+      stateDir: oversizedState,
+      timeoutMs: 10_000,
+    });
+    await assert.rejects(
+      oversized.submitWorkflowSignal(
+        `req-${'x'.repeat(MAX_REQUEST_BYTES)}`,
+        samplePayload('evt-oversized-request'),
+      ),
+      (error: unknown) => error instanceof ProtocolError && error.code === codes.REQUEST_TOO_LARGE,
+      'an oversized outbound request fails locally before transport',
+    );
+    assert.equal(
+      existsSync(oversizedInvocationLog),
+      false,
+      'an oversized outbound request never spawns the fake core',
+    );
+    assert.equal(
+      readFakeRequests(oversizedState).length,
+      0,
+      'an oversized outbound request never reaches the core',
+    );
 
     const absentState = join(root, 'absent-no-resubmit');
     const absent = factory({ ...fake, stateDir: absentState, timeoutMs: 10_000 });

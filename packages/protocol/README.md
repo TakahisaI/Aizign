@@ -60,3 +60,8 @@ abort / correlation failureを`unknown`へ写像します。responseにvalidなe
 codeがあれば、相関しないwatchdog responseでも診断用`reportedCode`として保持
 します。TypeScriptでのclient boundary検証には
 [`@aizign/adapter-testkit`](../adapter-testkit/README.md)を使えます。
+
+outbound requestが `MAX_REQUEST_BYTES` を超える場合、`CoreClient` Promiseは
+process spawn前に `ProtocolError(REQUEST_TOO_LARGE)` でrejectします。これはcoreの
+`rejected`でもtransport後の`unknown`でもなく、`SubmitOutcome`を生成しないlocal
+failureです。

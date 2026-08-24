@@ -22,6 +22,8 @@
  * `AIZIGN_FAKE_HELLO_PROTOCOL_VERSION` overrides the advertised protocol
  * version, for compatibility-check tests.
  * `AIZIGN_FAKE_CAPABILITIES` is a comma-separated capability override.
+ * `AIZIGN_FAKE_INVOCATION_LOG` records that this process started, allowing a
+ * caller to prove that local validation failed before spawn.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -35,7 +37,9 @@ import {
   encodeResponse,
   type HelloInfo,
   KIND_HELLO,
+  MAX_FRAME_BYTES,
   MAX_REQUEST_BYTES,
+  PROTOCOL_NAME,
   PROTOCOL_VERSION,
   ProtocolError,
   type Request,
@@ -45,6 +49,11 @@ import {
 
 const STATE_FILE = 'fake-journal.json';
 const REQUEST_LOG = 'fake-requests.jsonl';
+
+const invocationLog = process.env.AIZIGN_FAKE_INVOCATION_LOG;
+if (invocationLog !== undefined) {
+  writeFileSync(invocationLog, 'started\n', { flag: 'a', mode: 0o600 });
+}
 
 const helloInfo: HelloInfo = {
   protocolVersion: Number(process.env.AIZIGN_FAKE_HELLO_PROTOCOL_VERSION ?? PROTOCOL_VERSION),
@@ -249,13 +258,17 @@ async function main(argv: readonly string[]): Promise<number> {
       });
       return 0;
     case 'oversized':
-      write(
-        errorResponse(
-          request.requestId,
-          request.kind,
-          codes.INTERNAL,
-          'x'.repeat(MAX_REQUEST_BYTES + 1),
-        ),
+      // Deliberately bypass the production encoder: this fault is an invalid
+      // peer frame, while encodeResponse must fail closed above the bound.
+      process.stdout.write(
+        `${JSON.stringify({
+          protocol: PROTOCOL_NAME,
+          version: PROTOCOL_VERSION,
+          requestId: request.requestId,
+          kind: request.kind,
+          ok: false,
+          error: { code: codes.INTERNAL, message: 'x'.repeat(MAX_FRAME_BYTES + 1) },
+        })}\n`,
       );
       return 0;
     case 'two-frames':

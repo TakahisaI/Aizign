@@ -8,7 +8,8 @@
 | Rust cross-module test | crateの `tests/` |
 | TypeScript unit test | 対象sourceに近接（`src/**/*.test.ts`、`node --test`） |
 | language-neutral adapter scenario authority | `docs/architecture/harness-adapter-contract.md` |
-| protocol fixture / wire conformance | `spec/conformance/valid/`、`spec/conformance/invalid/`（各言語が使用方向・claimしたkindのfixtureを読む） |
+| decoder fixture / full-codec round trip | `spec/conformance/valid/`、`spec/conformance/invalid/` |
+| directional encoder conformance | `spec/conformance/encoder-scenarios.md` + `spec/protocol/v1/examples/` |
 | shared TypeScript core-client runner | `packages/adapter-testkit/` の `runCoreClientConformance` |
 | adapter-specific core-client invocation | `adapters/<harness>/test/conformance/core-client.*` |
 | harness-native behavior | adapterの `test/unit/` または責務が明示されたnative-conformance test |

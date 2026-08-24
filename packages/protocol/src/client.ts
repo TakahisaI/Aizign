@@ -135,6 +135,11 @@ export type ReconcileOutcome =
 /** One-shot request/response against the core. */
 export interface CoreClient {
   hello(requestId: string, options?: CallOptions): Promise<HelloOutcome>;
+  /**
+   * An outbound frame above `MAX_REQUEST_BYTES` rejects with
+   * `ProtocolError(REQUEST_TOO_LARGE)` before spawn; it returns no
+   * `SubmitOutcome`.
+   */
   submitWorkflowSignal(
     requestId: string,
     payload: WorkflowSignalSubmitPayload,

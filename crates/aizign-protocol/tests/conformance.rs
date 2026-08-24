@@ -28,7 +28,8 @@ fn valid_responses_decode_and_round_trip() {
     for fixture in conformance::valid(Direction::Response) {
         let response = decode_response(&fixture.frame)
             .unwrap_or_else(|error| panic!("{}: {error}", fixture.name));
-        let encoded = encode_response(&response);
+        let encoded =
+            encode_response(&response).unwrap_or_else(|error| panic!("{}: {error}", fixture.name));
         assert_eq!(
             json(encoded.as_bytes()),
             json(&fixture.frame),

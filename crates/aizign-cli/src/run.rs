@@ -287,7 +287,13 @@ fn log(stage: &str, request_id: Option<&str>, kind: Option<&str>, outcome: &str)
 }
 
 fn write_frame(response: &Response) -> u8 {
-    let mut line = encode_response(response);
+    let mut line = match encode_response(response) {
+        Ok(line) => line,
+        Err(error) => {
+            eprintln!("aizign: cannot encode response frame: {error}");
+            return exit::IO;
+        }
+    };
     line.push('\n');
     let mut stdout = io::stdout().lock();
     match stdout
