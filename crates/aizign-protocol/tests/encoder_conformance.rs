@@ -71,7 +71,10 @@ fn assert_frame(name: &str, frame: &str, bound: usize) {
         !bytes.starts_with(&[0xef, 0xbb, 0xbf]),
         "{name}: frame must not start with a UTF-8 BOM"
     );
-    assert!(!frame.contains('\n'), "{name}: frame contains a raw newline");
+    assert!(
+        !frame.contains('\n'),
+        "{name}: frame contains a raw newline"
+    );
     assert!(
         !frame.contains('\r'),
         "{name}: frame contains a raw carriage return"
@@ -84,7 +87,10 @@ fn assert_frame(name: &str, frame: &str, bound: usize) {
 
     let encoded: serde_json::Value = serde_json::from_str(frame)
         .unwrap_or_else(|error| panic!("{name}: encoded frame is not one JSON value: {error}"));
-    assert!(encoded.is_object(), "{name}: encoded frame is not an object");
+    assert!(
+        encoded.is_object(),
+        "{name}: encoded frame is not an object"
+    );
     assert_eq!(encoded, example(name), "{name}: JSON value");
 }
 
@@ -95,12 +101,10 @@ fn digest() -> Digest {
 fn expected_assignment() -> ExpectedAssignment {
     ExpectedAssignment {
         workflow_id: WorkflowId::new("wf-example-01").expect("valid workflow id"),
-        assignment_id: AssignmentId::new("as-implementation-01")
-            .expect("valid assignment id"),
+        assignment_id: AssignmentId::new("as-implementation-01").expect("valid assignment id"),
         attempt_id: AttemptId::new("attempt-fixture").expect("valid attempt id"),
         role: Role::Implementation,
-        artifact_revision: ArtifactRevision::new("rev-c0ffee")
-            .expect("valid artifact revision"),
+        artifact_revision: ArtifactRevision::new("rev-c0ffee").expect("valid artifact revision"),
         candidate_digest: digest(),
     }
 }
@@ -118,9 +122,8 @@ fn signal(event_id: &str, kind: SignalKind, short_error_code: Option<&str>) -> W
         kind,
         finding_count: None,
         artifact_ref: None,
-        short_error_code: short_error_code.map(|code| {
-            ShortErrorCode::new(code).expect("valid example short error code")
-        }),
+        short_error_code: short_error_code
+            .map(|code| ShortErrorCode::new(code).expect("valid example short error code")),
     })
     .expect("valid example signal")
 }
