@@ -189,13 +189,15 @@ export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubm
   };
 
   // Values: expectation first, then the signal, in the core's order.
-  const invalidExpectation = (field: string) =>
-    new ProtocolError(codes.INVALID_EXPECTATION, `expected.${field}: not a stable identifier`);
+  const invalidExpectation = (field: string, reason: string) =>
+    new ProtocolError(codes.INVALID_EXPECTATION, `expected.${field}: ${reason}`);
   for (const field of ['workflowId', 'assignmentId', 'attemptId', 'artifactRevision'] as const) {
-    if (!isIdentifier(expectedShape[field])) throw invalidExpectation(field);
+    if (!isIdentifier(expectedShape[field])) {
+      throw invalidExpectation(field, 'not a stable identifier');
+    }
   }
   if (!validDigest(expectedShape.candidateDigest)) {
-    throw invalidExpectation('candidateDigest');
+    throw invalidExpectation('candidateDigest', 'not a supported content digest');
   }
   const invalidSignal = (message: string) => new ProtocolError(codes.INVALID_SIGNAL, message);
   for (const field of [

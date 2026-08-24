@@ -111,7 +111,10 @@ export function validateConfig(config: Config): AdapterConfig {
         attemptId: config.attemptId,
         role: config.role,
         artifactRevision: config.artifactRevision,
-        candidateDigest: config.candidateDigest,
+        candidateDigest: {
+          algorithm: 'sha256',
+          hex: config.candidateDigest.hex,
+        },
       },
     },
   };
