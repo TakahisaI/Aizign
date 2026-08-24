@@ -108,7 +108,7 @@ export function parseArgs(argv) {
 }
 
 function usage() {
-  return `usage: node benchmarks/runtime/run.mjs --binary <release-aizign> [options]
+  return `usage: node benchmarks/performance/run.mjs --binary <release-aizign> [options]
 
 options:
   --output-dir <dir>  write result.json and summary.md (default target/performance-baseline)

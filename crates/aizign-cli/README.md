@@ -40,6 +40,6 @@ request read、decode、journal open、committed-prefix read、verification hash
 値にはoperation kind、semantic outcome、stable error code、journal byte数とentry数を含められますが、request ID、state path、本文、credentialは含めません。
 timingの生成や出力に失敗してもresponseとexit codeは変わりません。
 
-fieldごとの計測区間は[`benchmarks/runtime/README.md`](../../benchmarks/runtime/README.md#計測区間)を参照してください。
+fieldごとの計測区間は[`benchmarks/performance/README.md`](../../benchmarks/performance/README.md#計測区間)を参照してください。
 
 `hello` responseの `journalSchemaVersion` は `aizign-store-jsonl` の定数から、`package.version` はこのcrateのversionから取ります。検証済みの `x86_64-unknown-linux-gnu` buildだけがsubmitとreconcileをadvertiseします。x32を含む別ABIや別architecture / libcのLinux、macOS、BSD、Windowsなどの未検証storage targetでは両capabilityをadvertiseせず、直接送られたrequestはstateへ触れず `CAPABILITY_UNSUPPORTED` を返します。

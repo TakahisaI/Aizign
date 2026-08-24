@@ -1,6 +1,6 @@
 # Runtime performance baseline
 
-このrunnerは、release profileの`aizign`とTypeScript clientを使い、runtimeの変化を説明するためのbaselineを採取します。
+このベンチマークrunnerは、release profileの`aizign`とTypeScript clientを使い、runtimeの変化を説明するためのbaselineを採取します。
 結果は観測値であり、performance budgetでもpull requestのCI gateでもありません。
 
 ## 実行環境

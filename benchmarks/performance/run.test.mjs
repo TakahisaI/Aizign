@@ -1,3 +1,4 @@
+// These tests validate fixtures and aggregation without requiring Linux storage support.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';

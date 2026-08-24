@@ -1,3 +1,4 @@
+// Purpose-specific cases keep every sweep boundary reviewable in source.
 export const JOURNAL_SCALE_CASES = [
   ...[0, 10, 100, 1_000, 9_999].map((entries) => ({
     name: `submit_accepted_${entries}`,

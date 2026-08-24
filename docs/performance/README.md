@@ -4,7 +4,7 @@
 machine-readableな生sampleは大きくなるため、scheduledまたはmanual workflowのartifactを正本とし、ここには環境、設定、代表値、解釈を残します。
 
 初回の開発観測は[2026-08-24-initial-baseline.md](2026-08-24-initial-baseline.md)です。
-runnerの契約と再実行手順は[benchmarks/runtime/README.md](../../benchmarks/runtime/README.md)を参照してください。
+runnerの契約と再実行手順は[benchmarks/performance/README.md](../../benchmarks/performance/README.md)を参照してください。
 
 reportを追加するときは、次を必ず記録します。
 

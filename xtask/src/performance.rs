@@ -20,7 +20,7 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
         .to_str()
         .ok_or_else(|| "release binary path is not UTF-8".to_owned())?;
     let mut runner_args = vec![
-        "benchmarks/runtime/run.mjs".to_owned(),
+        "benchmarks/performance/run.mjs".to_owned(),
         "--binary".to_owned(),
         binary.to_owned(),
     ];
