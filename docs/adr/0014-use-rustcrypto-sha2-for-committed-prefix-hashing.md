@@ -20,7 +20,7 @@ sha2 = { version = "=0.11.0", default-features = false }
 
 Only `aizign-store-jsonl` may depend on it. Use `Sha256` and the `Digest` trait re-exported by `sha2`; do not add `digest` as a second direct dependency unless a later decision demonstrates a separate need.
 
-RustCrypto `sha2` is a pure-Rust, `no_std`-capable implementation maintained by the RustCrypto Developers in the [RustCrypto hashes repository](https://github.com/RustCrypto/hashes). Version 0.11.0 declares Rust 1.85 and `MIT OR Apache-2.0`, which fit the workspace Rust 1.97 and license policies. Its [tagged crate manifest](https://github.com/RustCrypto/hashes/blob/sha2-v0.11.0/sha2/Cargo.toml) defines `alloc` and `oid` as default features; neither is required for incremental hashing of the bounded journal prefix, so default features remain disabled. Do not enable `zeroize`, an assembly feature, or any other optional feature.
+RustCrypto `sha2` is described upstream as a pure-Rust, `no_std`-capable implementation maintained by the RustCrypto Developers in the [RustCrypto hashes repository](https://github.com/RustCrypto/hashes). Here, pure Rust means that cryptographic computation is not delegated to an external or system cryptography library; it does not mean that the dependency graph is unsafe-free, assembly-free, or FFI-free. Version 0.11.0 declares Rust 1.85 and `MIT OR Apache-2.0`, which fit the workspace Rust 1.97 and license policies. Its [tagged crate manifest](https://github.com/RustCrypto/hashes/blob/sha2-v0.11.0/sha2/Cargo.toml) defines `alloc` and `oid` as default features; neither is required for incremental hashing of the bounded journal prefix, so default features remain disabled. Do not enable `zeroize` or any other optional feature. Disabling default features does not force the software-only backend or disable target-selected hardware intrinsics and inline assembly.
 
 The dependency was resolved from the tracked lockfile baseline with the proposed exact direct dependency. The normal dependency graph is:
 
@@ -51,9 +51,9 @@ The resolved policy metadata is:
 | `typenum` | 1.20.1 | unconditional type-level lengths | 1.41.0 | MIT OR Apache-2.0 |
 | `libc` | 0.2.189 | through `cpufeatures` on its supported target conditions | 1.65 | MIT OR Apache-2.0 |
 
-`sha2` selects `cpufeatures` only on `aarch64`, `x86`, and `x86_64`. In this graph, `libc` is reachable through `cpufeatures` on `aarch64` Android, Linux, and Apple targets; it is not an unconditional host dependency.
+`sha2` selects `cpufeatures` only on `aarch64`, `x86`, and `x86_64`. In this graph, `libc` is reachable with its default features disabled through `cpufeatures` on `aarch64` Android, Linux, and Apple targets; it is not an unconditional host dependency. On applicable `aarch64` targets, [`cpufeatures` contains target-specific `libc` FFI bindings](https://github.com/RustCrypto/utils/blob/cpufeatures-v0.3.0/cpufeatures/src/aarch64.rs) for CPU feature detection. The SHA-256 computation itself is not delegated to `libc` or another system cryptography library.
 
-`cargo tree -e features` confirms that the direct dependency does not enable `sha2/alloc`, `sha2/oid`, or `sha2/zeroize`. The transitive `digest` dependency enables its default `block-api` support, and `hybrid-array` enables the `typenum` support required for its fixed-size arrays. No random-number, hex-encoding, system crypto, or FFI dependency is introduced.
+`cargo tree -e features` confirms that no `sha2` feature is enabled: `sha2/alloc`, `sha2/oid`, and `sha2/zeroize` are all absent. The enabled transitive features are `cfg-if/default`, `cpufeatures/default`, `digest/default` and therefore `digest/block-api`, `block-buffer/default`, `crypto-common/default`, `hybrid-array/default`, and `typenum/default` plus `typenum/const-generics`. `libc` is reached with its default features disabled. No random-number, hex-encoding, or external/system cryptography implementation is introduced.
 
 The current `cargo deny check` passes with this resolved graph. Every new license is already admitted by `deny.toml`, so the implementation must not change the license allowlist unless its actual resolved graph differs and a reviewed policy reason exists. The historical [RUSTSEC-2021-0100](https://rustsec.org/advisories/RUSTSEC-2021-0100.html) miscomputation affected `sha2` 0.9.7 and is patched from 0.9.8; 0.11.0 is outside the affected range. The normal advisory gate still applies when the dependency is introduced.
 
@@ -76,7 +76,8 @@ This SHA-256 value detects mismatch between the published commit document and th
 
 - Nine runtime packages, including `sha2`, are added to the resolved lockfile graph on targets that include every conditional dependency.
 - Patch releases of transitive dependencies remain controlled by `Cargo.lock` rather than exact direct pins; dependency updates require the normal review and `cargo deny` gates.
-- CPU feature detection adds target-specific code and `libc` on the applicable targets, even though no optional assembly provider is enabled.
+- CPU feature detection adds target-specific `libc` FFI bindings on applicable `aarch64` targets, although the hash computation does not use a system cryptography provider.
+- [`sha2` backend selection](https://github.com/RustCrypto/hashes/blob/sha2-v0.11.0/sha2/src/sha256.rs) contains dependency-internal unsafe hardware-intrinsic paths on `x86` / `x86_64` and `aarch64`, and an [inline-assembly backend](https://github.com/RustCrypto/hashes/blob/sha2-v0.11.0/sha2/src/sha256/loongarch64_asm.rs) selected automatically on `loongarch64`. These paths are not controlled by the disabled Cargo default features. This decision accepts that transitive target-specific implementation surface while continuing to forbid unsafe code in Aizign-owned crates.
 - The digest provides integrity comparison, not authentication.
 
 ### Follow-up
