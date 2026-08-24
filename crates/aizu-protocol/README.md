@@ -23,6 +23,7 @@ src/
 ├── envelope.rs         Request / Response、decode_request / encode_request / decode_response / encode_response
 ├── error.rs            ProtocolError、codes::*
 ├── hello.rs            HelloInfo、PackageInfo、capability定数
+├── json_member.rs      member重複の事前検査（内部実装）
 └── workflow_signal.rs  workflow.signal.submit のDTO（private）と変換、SignalResult / Disposition
 tests/
 ├── examples.rs         spec/protocol/v1/examples の全fileをdecode → encodeで往復
@@ -33,8 +34,10 @@ tests/
 ## Decode の段階
 
 1. size（`MAX_REQUEST_BYTES`）→ `REQUEST_TOO_LARGE`
-2. lenient probe: `protocol`、`version`、`requestId`、`kind` だけを読む。versionが違えば `PROTOCOL_VERSION_UNSUPPORTED` を **requestId付きで** 返せる
-3. strict envelope（`deny_unknown_fields`、payloadはobject）→ `INVALID_ENVELOPE`
-4. kind dispatch → `UNKNOWN_KIND` / `INVALID_PAYLOAD` / `INVALID_EXPECTATION` / workflow code
+2. BOMなしUTF-8とwell-formed Unicode → 違反は `INVALID_ENVELOPE`
+3. duplicate member走査（lexical。schemaで表現できず、streaming / folding parserで意味が分れるため）。相関データはfold後の値から復元する
+4. lenient probe: `protocol`、`version`、`requestId`、`kind` だけを読む。versionが違えば `PROTOCOL_VERSION_UNSUPPORTED` を **requestId付きで** 返せる。versionが整数range `0..=u32::MAX` 外なら `INVALID_ENVELOPE`
+5. strict envelope（`deny_unknown_fields`、payloadはobject）→ `INVALID_ENVELOPE`
+6. kind dispatch → `UNKNOWN_KIND` / `INVALID_PAYLOAD` / `INVALID_EXPECTATION` / workflow code
 
 `DecodeFailure` は復元できた `request_id` / `kind` を持つので、shellは常にaddressed responseを書けます。

@@ -5,9 +5,11 @@ use aizu_core::{
     ArtifactRef, ArtifactRevision, AssignmentId, BoundedTimestamp, EventId, ShortErrorCode,
     WorkflowId,
 };
-use aizu_engine::{JournalEntry, JournalError};
+use aizu_engine::{JournalEntry, JournalError, MAX_JOURNAL_ENTRIES};
 use serde::de::{Deserializer, Error as _};
 use serde::{Deserialize, Serialize};
+
+use crate::json_member::has_duplicate_members;
 
 /// The journal schema version this crate reads and writes.
 pub const JOURNAL_SCHEMA_VERSION: u64 = 1;
@@ -133,7 +135,18 @@ fn corrupt(detail: impl Into<String>) -> JournalError {
 }
 
 /// Encodes one entry as a single line without the trailing newline.
-pub(crate) fn encode_entry(entry: &JournalEntry) -> String {
+///
+/// Fails with [`JournalError::Corrupt`] when `entry.seq` is outside the
+/// durable record range `1..=[MAX_JOURNAL_ENTRIES]`: the encoder must not
+/// be able to produce a line the decoder (and the JSON Schema) rejects,
+/// so a successful append can never be unreadable by the next cold read.
+pub(crate) fn encode_entry(entry: &JournalEntry) -> Result<String, JournalError> {
+    if entry.seq == 0 || entry.seq > MAX_JOURNAL_ENTRIES as u64 {
+        return Err(corrupt(format!(
+            "entry seq {} is outside the record range 1..={MAX_JOURNAL_ENTRIES}",
+            entry.seq
+        )));
+    }
     let WorkflowEvent::SignalAccepted { signal } = &entry.event;
     let parts = signal.parts();
     let record = RecordDto {
@@ -153,12 +166,34 @@ pub(crate) fn encode_entry(entry: &JournalEntry) -> String {
             short_error_code: parts.short_error_code.as_ref().map(ToString::to_string),
         },
     };
-    serde_json::to_string(&record).expect("records serialize without error")
+    Ok(serde_json::to_string(&record).expect("records serialize without error"))
+}
+
+/// Encodes one entry as its canonical record line, without the newline —
+/// the counterpart of [`decode_record`] for the conformance fixtures.
+///
+/// Like [`decode_record`], it accepts exactly the set the published schema
+/// accepts: an out-of-range `seq` is [`JournalError::Corrupt`], mirrored
+/// after the decoder's record-level rule.
+pub fn encode_record(entry: &JournalEntry) -> Result<String, JournalError> {
+    encode_entry(entry)
+}
+
+/// Decodes one record line by the grammar of `spec/journal/v1` — the entry
+/// point the conformance fixtures exercise. Journal-level rules (contiguous
+/// `seq`, the entry bound of a whole file) live in [`crate::JsonlJournal`].
+pub fn decode_record(line: &str) -> Result<JournalEntry, JournalError> {
+    decode_line(1, line)
 }
 
 /// Decodes one line. Shape, version, and value problems are all reported
 /// without echoing the line's contents.
 pub(crate) fn decode_line(line_number: usize, line: &str) -> Result<JournalEntry, JournalError> {
+    if has_duplicate_members(line) {
+        return Err(corrupt(format!(
+            "line {line_number}: record repeats a JSON member"
+        )));
+    }
     let version_probe: VersionProbe = serde_json::from_str(line)
         .map_err(|_| corrupt(format!("line {line_number}: not a JSON object")))?;
     match version_probe.schema_version {
@@ -178,6 +213,11 @@ pub(crate) fn decode_line(line_number: usize, line: &str) -> Result<JournalEntry
     }
     let at = BoundedTimestamp::from_unix_seconds(record.at)
         .map_err(|error| corrupt(format!("line {line_number}: at: {error}")))?;
+    if record.seq == 0 || record.seq > MAX_JOURNAL_ENTRIES as u64 {
+        return Err(corrupt(format!(
+            "line {line_number}: seq must be 1..={MAX_JOURNAL_ENTRIES}"
+        )));
+    }
 
     let dto = record.signal;
     let parts = SignalParts {
@@ -258,7 +298,7 @@ mod tests {
 
     #[test]
     fn round_trips_and_stays_on_one_line() {
-        let line = encode_entry(&entry());
+        let line = encode_entry(&entry()).unwrap();
         assert!(!line.contains('\n'));
         assert_eq!(decode_line(1, &line).unwrap(), entry());
         let value: serde_json::Value = serde_json::from_str(&line).unwrap();
@@ -281,7 +321,8 @@ mod tests {
 
     #[test]
     fn forbidden_and_unknown_fields_are_corrupt() {
-        let base: serde_json::Value = serde_json::from_str(&encode_entry(&entry())).unwrap();
+        let base: serde_json::Value =
+            serde_json::from_str(&encode_entry(&entry()).unwrap()).unwrap();
         for forbidden in [
             "prompt",
             "output",
@@ -310,7 +351,8 @@ mod tests {
 
     #[test]
     fn invalid_values_and_kinds_are_corrupt_without_echoing_contents() {
-        let base: serde_json::Value = serde_json::from_str(&encode_entry(&entry())).unwrap();
+        let base: serde_json::Value =
+            serde_json::from_str(&encode_entry(&entry()).unwrap()).unwrap();
 
         let mut record = base.clone();
         record["signal"]["role"] = serde_json::Value::String("implementation".to_owned());

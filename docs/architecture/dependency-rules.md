@@ -62,7 +62,7 @@ source中に次が現れたら `public-audit` が失敗します。
 | `@aizu/adapter-<harness>` | `@aizu/protocol`、`@aizu/adapter-testkit`（devのみ） | そのharnessのSDK（exact version、peer + dev。ADR-0010） |
 
 - package間はworkspace依存だけを使い、相対pathで別packageのsourceをimportしない
-- 開発toolchain（`typescript`、`@biomejs/biome`、`@types/node`）はroot `package.json` にexact versionで置き、各packageには置かない
+- 開発toolchain（`typescript`、`@biomejs/biome`、`@types/node`、`ajv`）はroot `package.json` にexact versionで置き、各packageには置かない。`ajv` は `spec/` のJSON Schema gate（`spec/test/`）専用で、publishされるpackageからは参照しない（`@aizu/protocol` の外部依存は引き続き **なし**）
 - `exports` mapはclosed。`./*` のようなwildcardを許さない
 - adapterから `aizu-core` / `aizu-engine` の型を参照しない。契約は `@aizu/protocol` だけ
 

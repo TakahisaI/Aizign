@@ -22,7 +22,7 @@ src/
 ├── fixed_clock.rs        FixedClock::at(ts) / failing(error)
 ├── temp_dir.rs           TempDir: 一意なdirectory。state() が未作成のstate path。dropで削除
 ├── journal_contract.rs   run(&mut impl Journal): 空、append順、seq連番、read-after-append、重複除去しないこと
-├── conformance.rs        spec/conformance のloader。raw frameと期待値だけを返す（decoderの型を知らない）
+├── conformance.rs        spec/conformance のloader（request / response / journal）。raw frameと期待値だけを返す（decoderの型を知らない）
 └── signals.rs            expected() / implementation_ready(id) / blocked(id, code) / at(offset)
 ```
 

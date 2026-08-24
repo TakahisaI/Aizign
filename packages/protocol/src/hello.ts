@@ -23,8 +23,15 @@ export interface HelloInfo {
   readonly package: PackageInfo;
 }
 
-function isNonNegativeInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+const U32_MAX = 4294967295;
+const CAPABILITY = /^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*$/;
+
+function isVersion(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= U32_MAX;
+}
+
+function isCapability(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= 128 && CAPABILITY.test(value);
 }
 
 /** Decodes a `hello` payload, rejecting anything outside the closed schema. */
@@ -36,12 +43,19 @@ export function decodeHelloInfo(payload: unknown): HelloInfo {
     if (!allowed.includes(key)) throw fail(`unknown field \`${key}\``);
   }
   const { protocolVersion, journalSchemaVersion, capabilities, package: pkg } = payload;
-  if (!isNonNegativeInteger(protocolVersion)) throw fail('protocolVersion must be an integer');
-  if (!isNonNegativeInteger(journalSchemaVersion)) {
-    throw fail('journalSchemaVersion must be an integer');
+  if (!isVersion(protocolVersion)) {
+    throw fail('protocolVersion must be an integer between 1 and 4294967295');
   }
-  if (!Array.isArray(capabilities) || !capabilities.every((c) => typeof c === 'string')) {
-    throw fail('capabilities must be an array of strings');
+  if (!isVersion(journalSchemaVersion)) {
+    throw fail('journalSchemaVersion must be an integer between 1 and 4294967295');
+  }
+  if (!Array.isArray(capabilities) || !capabilities.every(isCapability)) {
+    throw fail(
+      'capabilities must be lowercase dot-separated names (^[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)*$, at most 128 bytes)',
+    );
+  }
+  if (new Set(capabilities).size !== capabilities.length) {
+    throw fail('capabilities must not repeat');
   }
   if (!isPlainObject(pkg)) throw fail('package must be an object');
   for (const key of Object.keys(pkg)) {

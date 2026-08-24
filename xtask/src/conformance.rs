@@ -1,12 +1,14 @@
 //! Structural validation of the language-neutral fixtures under
 //! `spec/conformance`.
 //!
-//! Fixtures are shared by the Rust and TypeScript protocol implementations,
-//! so this command only checks what is true regardless of language: the
-//! directory layout, that every invalid frame has an expectation file with
-//! a well-formed code, and that valid frames are JSON. Running the frames
+//! Fixtures are shared by the Rust and TypeScript implementations of the
+//! protocol and by the journal store, so this command only checks what is
+//! true regardless of language: the directory layout, that every invalid
+//! frame has an expectation file with a well-formed code and a schema
+//! classification, and that valid frames are JSON. Running the frames
 //! through the actual decoders is the job of the protocol crates and
-//! packages; they read the same files.
+//! packages and of `aizu-store-jsonl`; validating them against the JSON
+//! Schemas is the job of the spec schema gate. They all read these files.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -15,7 +17,9 @@ use std::path::{Path, PathBuf};
 use crate::report::{self, Findings};
 
 const FIXTURE_ROOT: &str = "spec/conformance";
-const DIRECTIONS: [&str; 2] = ["request", "response"];
+/// The wire directions plus the durable journal record format; each has its
+/// own decoder and its own JSON Schema, and the fixtures keep them aligned.
+const DIRECTIONS: [&str; 3] = ["request", "response", "journal"];
 
 pub(crate) fn run(root: &Path) -> Result<(), String> {
     report::stage("conformance fixtures");
@@ -119,9 +123,9 @@ fn check_expectation(path: &Path, is_request: bool, findings: &mut Findings) -> 
     };
 
     let allowed: &[&str] = if is_request {
-        &["code", "requestId", "kind"]
+        &["code", "requestId", "kind", "schema"]
     } else {
-        &["code"]
+        &["code", "schema"]
     };
     for key in object.keys() {
         if !allowed.contains(&key.as_str()) {
@@ -133,6 +137,15 @@ fn check_expectation(path: &Path, is_request: bool, findings: &mut Findings) -> 
         _ => findings.push(format!(
             "{name}: `code` must match ^[A-Z][A-Z0-9_]{{0,63}}$"
         )),
+    }
+    if !object
+        .get("schema")
+        .is_some_and(serde_json::Value::is_boolean)
+    {
+        findings.push(format!(
+            "{name}: `schema` must state whether the frame validates against the JSON Schema \
+             (true only where the schema cannot express the rule, e.g. the size bound)"
+        ));
     }
     if is_request {
         for key in ["requestId", "kind"] {

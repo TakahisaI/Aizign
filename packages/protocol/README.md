@@ -8,7 +8,7 @@ Aizu Protocol v1 for TypeScript: closed NDJSON envelope codec, `hello` compatibi
 | **Non-responsibility** | process起動、filesystem、harness固有型、判断（coreの責務。decoderはcoreと同じ入力規則で **事前に** 拒否するだけ） |
 | **Inputs** | frame（`Uint8Array` / `string`）、payload object |
 | **Outputs** | `Request` / `Response`、`DecodeFailure`（復元した `requestId` / `kind` 付き）、`ProtocolError` |
-| **Hard invariants** | closed schema（未知field、`null`、未登録kindを拒否）、`spec/conformance` の全fixtureでRust実装と同じcodeと復元IDを返す、`JOURNAL_OUTCOME_UNKNOWN` / `HANDLER_TIMEOUT` は `rejected` ではなく `unknown` |
+| **Hard invariants** | BOMなしUTF-8、well-formed Unicode、closed schema（未知field、`null`、未登録kindを拒否）、`spec/conformance` の全fixtureでRust実装と同じcodeと復元IDを返す、`JOURNAL_OUTCOME_UNKNOWN` / `HANDLER_TIMEOUT` は `rejected` ではなく `unknown` |
 | **Allowed dependencies** | なし（runtime）。dev: workspace rootの `typescript` / `@biomejs/biome` / `@types/node` |
 | **Test command** | `npm test -w @aizu/protocol`（`node --test`、型はNodeがstripする） |
 | **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md) |
@@ -20,7 +20,8 @@ wire contractの正本は [`spec/protocol/v1/`](../../spec/protocol/v1/README.md
 ```text
 src/
 ├── index.ts              closed exports
-├── envelope.ts           decode / encode（lenient probe → strict envelope → kind dispatch）
+├── envelope.ts           decode / encode（duplicate member走査 → lenient probe → strict envelope → kind dispatch）
+├── duplicate-member.ts   member重複とUnicode stringのlexical走査（内部実装）
 ├── error.ts              ProtocolError、codes、SHORT_ERROR_CODE_PATTERN
 ├── hello.ts              HelloInfo、decodeHelloInfo、checkCompatibility
 ├── workflow-signal.ts    payload型、decodeWorkflowSignalSubmit（coreと同じ規則）、decodeSignalResult

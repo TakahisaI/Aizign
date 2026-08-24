@@ -76,6 +76,13 @@ impl Journal for MemoryJournal {
         if let Some(AppendFault::Reject(error)) = fault {
             return Err(error);
         }
+        if self.entries.len() >= MAX_JOURNAL_ENTRIES {
+            // Same contract as the durable store: the 10001st append is
+            // refused before anything is stored.
+            return Err(JournalError::BoundExceeded {
+                max: MAX_JOURNAL_ENTRIES,
+            });
+        }
         let entry = JournalEntry {
             seq: self.entries.len() as u64 + 1,
             at,

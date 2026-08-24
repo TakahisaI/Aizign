@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{ProtocolError, codes};
 use crate::hello::HelloInfo;
+use crate::json_member::has_duplicate_members;
 use crate::workflow_signal::{self, SignalResult};
 
 /// Value of the `protocol` field.
@@ -91,7 +92,7 @@ pub enum ResponseBody {
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct RequestEnvelope {
     protocol: String,
-    version: u64,
+    version: u32,
     request_id: String,
     kind: String,
     /// Always an object at the envelope level; each kind closes it further.
@@ -118,7 +119,7 @@ struct Probe {
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct ResponseEnvelope {
     protocol: String,
-    version: u64,
+    version: u32,
     /// Present on every response (possibly `null`), never omitted.
     #[serde(deserialize_with = "required_nullable")]
     request_id: Option<String>,
@@ -191,6 +192,35 @@ fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
             ),
         )));
     }
+    if has_duplicate_members(frame) {
+        // The frame repeats a member, so it never reaches interpretation.
+        // Correlation data is recovered from the folded view — the last
+        // spelling of each field wins, exactly what the TypeScript
+        // decoder's `JSON.parse` produces before any check runs. The
+        // typed `Probe` rejects duplicates itself, so the folded view is
+        // read through an untyped map instead.
+        let folded: serde_json::Value = serde_json::from_slice(frame).map_err(|error| {
+            unaddressed(ProtocolError::new(
+                codes::INVALID_ENVELOPE,
+                error.to_string(),
+            ))
+        })?;
+        let recovered = Recovered {
+            request_id: folded
+                .get("requestId")
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| valid_request_id(value))
+                .map(str::to_owned),
+            kind: folded
+                .get("kind")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned),
+        };
+        return Err(recovered.fail(ProtocolError::new(
+            codes::INVALID_ENVELOPE,
+            "frame repeats a JSON member; repeated members are not part of the contract",
+        )));
+    }
     let probe: Probe = serde_json::from_slice(frame).map_err(|error| {
         unaddressed(ProtocolError::new(
             codes::INVALID_ENVELOPE,
@@ -218,6 +248,15 @@ fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
         )));
     }
     match probe.version.as_ref().and_then(serde_json::Value::as_u64) {
+        // `PROTOCOL_VERSION` is a `u32`, so versions beyond `u32::MAX` are
+        // out of the protocol's integer range: `INVALID_ENVELOPE`, exactly
+        // like the TypeScript decoder, which parses JSON numbers as `f64`
+        // and applies the same bound. Only then can a version mismatch be
+        // reported as `PROTOCOL_VERSION_UNSUPPORTED`.
+        Some(version) if version > u64::from(u32::MAX) => Err(recovered.fail(ProtocolError::new(
+            codes::INVALID_ENVELOPE,
+            format!("version must be an integer between 0 and {}", u32::MAX),
+        ))),
         Some(version) if version == u64::from(PROTOCOL_VERSION) => Ok(recovered),
         Some(version) => Err(recovered.fail(ProtocolError::new(
             codes::PROTOCOL_VERSION_UNSUPPORTED,
@@ -252,6 +291,7 @@ pub fn decode_request(frame: &[u8]) -> Result<Request, DecodeFailure> {
             ),
         )));
     }
+    debug_assert_eq!(u64::from(envelope.version), u64::from(PROTOCOL_VERSION));
 
     let kind = match envelope.kind.as_str() {
         KIND_HELLO => {
@@ -294,7 +334,7 @@ pub fn encode_request(request: &Request) -> String {
     };
     let envelope = RequestEnvelope {
         protocol: PROTOCOL_NAME.to_owned(),
-        version: u64::from(PROTOCOL_VERSION),
+        version: PROTOCOL_VERSION,
         request_id: request.request_id.clone(),
         kind: request.kind.name().to_owned(),
         payload,
@@ -326,7 +366,7 @@ pub fn encode_response(response: &Response) -> String {
     };
     let envelope = ResponseEnvelope {
         protocol: PROTOCOL_NAME.to_owned(),
-        version: u64::from(PROTOCOL_VERSION),
+        version: PROTOCOL_VERSION,
         request_id: response.request_id.clone(),
         kind: response.kind.clone(),
         ok,
@@ -347,6 +387,14 @@ pub fn decode_response(frame: &[u8]) -> Result<Response, ProtocolError> {
             ),
         ));
     }
+    if has_duplicate_members(frame) {
+        // Same rule as requests (see `probe`): a repeated member has no
+        // single meaning, so the frame never reaches interpretation.
+        return Err(ProtocolError::new(
+            codes::INVALID_ENVELOPE,
+            "frame repeats a JSON member; repeated members are not part of the contract",
+        ));
+    }
     let envelope: ResponseEnvelope = serde_json::from_slice(frame)
         .map_err(|error| ProtocolError::new(codes::INVALID_ENVELOPE, error.to_string()))?;
     if envelope.protocol != PROTOCOL_NAME {
@@ -355,10 +403,13 @@ pub fn decode_response(frame: &[u8]) -> Result<Response, ProtocolError> {
             format!("protocol must be \"{PROTOCOL_NAME}\""),
         ));
     }
-    if envelope.version != u64::from(PROTOCOL_VERSION) {
+    if envelope.version != PROTOCOL_VERSION {
         return Err(ProtocolError::new(
             codes::PROTOCOL_VERSION_UNSUPPORTED,
-            format!("protocol version {} is not supported", envelope.version),
+            format!(
+                "protocol version {} is not supported; this binary speaks {PROTOCOL_VERSION}",
+                envelope.version
+            ),
         ));
     }
     if envelope
@@ -374,9 +425,12 @@ pub fn decode_response(frame: &[u8]) -> Result<Response, ProtocolError> {
     let body = match (envelope.ok, envelope.payload, envelope.error) {
         (true, Some(payload), None) => match envelope.kind.as_deref() {
             Some(KIND_HELLO) => {
-                ResponseBody::Hello(serde_json::from_value(payload).map_err(|error| {
+                let info: crate::HelloInfo = serde_json::from_value(payload).map_err(|error| {
                     ProtocolError::new(codes::INVALID_PAYLOAD, error.to_string())
-                })?)
+                })?;
+                info.validate()
+                    .map_err(|message| ProtocolError::new(codes::INVALID_PAYLOAD, message))?;
+                ResponseBody::Hello(info)
             }
             Some(KIND_WORKFLOW_SIGNAL_SUBMIT) => {
                 ResponseBody::WorkflowSignal(workflow_signal::decode_result(payload)?)
