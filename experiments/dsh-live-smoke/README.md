@@ -103,7 +103,7 @@ operator patch（`make-patch.mjs` の出力）はその entry を **id で上書
 }
 ```
 
-実行結果はIssueにコメントとして残します（初回: [#11](https://github.com/TakahisaI/Aizu/issues/11)、verdict `pass`。文書不足の起票: [#29](https://github.com/TakahisaI/Aizu/issues/29)）。
+実行結果はIssueにコメントとして残します（初回: [#11](https://github.com/TakahisaI/Aizign/issues/11)、verdict `pass`。文書不足の起票: [#29](https://github.com/TakahisaI/Aizign/issues/29)）。
 
 ## Scripts
 
