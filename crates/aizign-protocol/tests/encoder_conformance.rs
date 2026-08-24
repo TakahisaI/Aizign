@@ -12,8 +12,8 @@ use aizign_core::workflow::{
     Command, ExpectedAssignment, Role, SignalKind, SignalParts, WorkflowSignal,
 };
 use aizign_core::{
-    ArtifactRevision, AssignmentId, AttemptId, Digest, DigestAlgorithm, EventId, ShortErrorCode,
-    WorkflowId,
+    ArtifactRef, ArtifactRevision, AssignmentId, AttemptId, Digest, DigestAlgorithm, EventId,
+    ShortErrorCode, WorkflowId,
 };
 use aizign_protocol::{
     CAPABILITY_WORKFLOW_SIGNAL_RECONCILE, CAPABILITY_WORKFLOW_SIGNAL_SUBMIT, Disposition,
@@ -109,6 +109,17 @@ fn expected_assignment() -> ExpectedAssignment {
     }
 }
 
+fn review_expected_assignment() -> ExpectedAssignment {
+    ExpectedAssignment {
+        workflow_id: WorkflowId::new("wf-example-01").expect("valid workflow id"),
+        assignment_id: AssignmentId::new("as-review-01").expect("valid assignment id"),
+        attempt_id: AttemptId::new("attempt-fixture").expect("valid attempt id"),
+        role: Role::Review,
+        artifact_revision: ArtifactRevision::new("rev-c0ffee").expect("valid artifact revision"),
+        candidate_digest: digest(),
+    }
+}
+
 fn signal(event_id: &str, kind: SignalKind, short_error_code: Option<&str>) -> WorkflowSignal {
     let expected = expected_assignment();
     WorkflowSignal::validate(SignalParts {
@@ -136,12 +147,37 @@ fn blocked(event_id: &str) -> WorkflowSignal {
     signal(event_id, SignalKind::Blocked, Some("TOOL_UNAVAILABLE"))
 }
 
-fn submit_request(request_id: &str, signal: WorkflowSignal) -> Request {
+fn review_findings(event_id: &str) -> WorkflowSignal {
+    let expected = review_expected_assignment();
+    WorkflowSignal::validate(SignalParts {
+        event_id: EventId::new(event_id).expect("valid event id"),
+        workflow_id: expected.workflow_id,
+        assignment_id: expected.assignment_id,
+        attempt_id: expected.attempt_id,
+        role: expected.role,
+        artifact_revision: expected.artifact_revision,
+        candidate_digest: expected.candidate_digest,
+        kind: SignalKind::ReviewFindings,
+        finding_count: Some(2),
+        artifact_ref: Some(
+            ArtifactRef::new("review:0123456789abcdef")
+                .expect("valid example artifact reference"),
+        ),
+        short_error_code: None,
+    })
+    .expect("valid example review signal")
+}
+
+fn submit_request(
+    request_id: &str,
+    expected: ExpectedAssignment,
+    signal: WorkflowSignal,
+) -> Request {
     Request {
         request_id: request_id.to_owned(),
         kind: RequestKind::SubmitWorkflowSignal(Box::new(Command::SubmitSignal {
             signal,
-            expected: expected_assignment(),
+            expected,
         })),
     }
 }
@@ -179,11 +215,27 @@ fn request_encoders_match_every_protocol_example_without_decoding() {
         ),
         (
             "workflow-signal-submit.blocked.request.json",
-            submit_request("req-signal-03", blocked("evt-0003")),
+            submit_request(
+                "req-signal-03",
+                expected_assignment(),
+                blocked("evt-0003"),
+            ),
         ),
         (
             "workflow-signal-submit.request.json",
-            submit_request("req-signal-01", implementation_ready("evt-0001")),
+            submit_request(
+                "req-signal-01",
+                expected_assignment(),
+                implementation_ready("evt-0001"),
+            ),
+        ),
+        (
+            "workflow-signal-submit.review-findings.request.json",
+            submit_request(
+                "req-signal-02",
+                review_expected_assignment(),
+                review_findings("evt-0002"),
+            ),
         ),
     ];
     assert_explicit_coverage(".request.json", &cases);
