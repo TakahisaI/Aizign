@@ -26,9 +26,11 @@ export function isShortErrorCode(value: unknown): value is string {
 }
 
 /**
- * A response-level error: a stable code plus a message that never contains
- * request content. Construct with a registered code; anything else degrades
- * to `INTERNAL` so a malformed code cannot reach the wire.
+ * A protocol-boundary error carrying a stable code and a safe diagnostic. It
+ * may represent a decoded wire error, a local encode/validation failure, or a
+ * workflow rejection. The message never contains request content. Construct
+ * with a registered code; anything else degrades to `INTERNAL` so a malformed
+ * code cannot reach the wire.
  */
 export class ProtocolError extends Error {
   readonly code: string;
