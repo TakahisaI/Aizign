@@ -40,7 +40,6 @@ export interface ExpectedAssignment {
   readonly role: Role;
   readonly artifactRevision: string;
   readonly candidateDigest: ContentDigest;
-  readonly sourceEventId?: string;
 }
 
 /** A structured workflow signal. Optional fields are omitted, never `null`. */
@@ -55,8 +54,6 @@ export interface WorkflowSignal {
   readonly kind: SignalKind;
   readonly findingCount?: number;
   readonly artifactRef?: string;
-  readonly evidenceDigest?: ContentDigest;
-  readonly sourceEventId?: string;
   readonly shortErrorCode?: string;
 }
 
@@ -112,16 +109,6 @@ function requireDigest(object: Record<string, unknown>, key: string, path: strin
   return { algorithm, hex };
 }
 
-function optionalDigest(
-  object: Record<string, unknown>,
-  key: string,
-  path: string,
-): ContentDigest | undefined {
-  const value = optionalField(object, key, path);
-  if (value === undefined) return undefined;
-  return requireDigest({ [key]: value }, key, path);
-}
-
 function validDigest(digest: ContentDigest): boolean {
   return digest.algorithm === 'sha256' && SHA256_HEX_PATTERN.test(digest.hex);
 }
@@ -136,15 +123,7 @@ export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubm
 
   assertOnlyKeys(
     expected,
-    [
-      'workflowId',
-      'assignmentId',
-      'attemptId',
-      'role',
-      'artifactRevision',
-      'candidateDigest',
-      'sourceEventId',
-    ],
+    ['workflowId', 'assignmentId', 'attemptId', 'role', 'artifactRevision', 'candidateDigest'],
     invalidPayload,
   );
   const expectedShape = {
@@ -154,14 +133,7 @@ export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubm
     role: requireRole(expected, 'expected'),
     artifactRevision: requireString(expected, 'artifactRevision', 'expected'),
     candidateDigest: requireDigest(expected, 'candidateDigest', 'expected'),
-    sourceEventId: optionalField(expected, 'sourceEventId', 'expected'),
   };
-  if (
-    expectedShape.sourceEventId !== undefined &&
-    typeof expectedShape.sourceEventId !== 'string'
-  ) {
-    throw invalidPayload('expected.sourceEventId must be a string');
-  }
 
   assertOnlyKeys(
     signal,
@@ -176,8 +148,6 @@ export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubm
       'kind',
       'findingCount',
       'artifactRef',
-      'evidenceDigest',
-      'sourceEventId',
       'shortErrorCode',
     ],
     invalidPayload,
@@ -200,11 +170,6 @@ export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubm
   if (artifactRef !== undefined && typeof artifactRef !== 'string') {
     throw invalidPayload('signal.artifactRef must be a string');
   }
-  const evidenceDigest = optionalDigest(signal, 'evidenceDigest', 'signal');
-  const sourceEventId = optionalField(signal, 'sourceEventId', 'signal');
-  if (sourceEventId !== undefined && typeof sourceEventId !== 'string') {
-    throw invalidPayload('signal.sourceEventId must be a string');
-  }
   const shortErrorCode = optionalField(signal, 'shortErrorCode', 'signal');
   if (shortErrorCode !== undefined && typeof shortErrorCode !== 'string') {
     throw invalidPayload('signal.shortErrorCode must be a string');
@@ -220,8 +185,6 @@ export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubm
     kind: kind as SignalKind,
     findingCount: findingCount as number | undefined,
     artifactRef: artifactRef as string | undefined,
-    evidenceDigest,
-    sourceEventId: sourceEventId as string | undefined,
     shortErrorCode: shortErrorCode as string | undefined,
   };
 
@@ -233,12 +196,6 @@ export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubm
   }
   if (!validDigest(expectedShape.candidateDigest)) {
     throw invalidExpectation('candidateDigest');
-  }
-  if (
-    expectedShape.sourceEventId !== undefined &&
-    !isIdentifier(expectedShape.sourceEventId as string)
-  ) {
-    throw invalidExpectation('sourceEventId');
   }
   const invalidSignal = (message: string) => new ProtocolError(codes.INVALID_SIGNAL, message);
   for (const field of [
@@ -263,12 +220,6 @@ export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubm
   if (signalShape.shortErrorCode !== undefined && !isShortErrorCode(signalShape.shortErrorCode)) {
     throw invalidSignal('signal.shortErrorCode: not a short error code');
   }
-  if (signalShape.evidenceDigest !== undefined && !validDigest(signalShape.evidenceDigest)) {
-    throw invalidSignal('signal.evidenceDigest: not a supported content digest');
-  }
-  if (signalShape.sourceEventId !== undefined && !isIdentifier(signalShape.sourceEventId)) {
-    throw invalidSignal('signal.sourceEventId: not a stable identifier');
-  }
   validateSignalRules(signalShape, invalidSignal);
 
   const expectedResult: { -readonly [K in keyof ExpectedAssignment]: ExpectedAssignment[K] } = {
@@ -279,9 +230,6 @@ export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubm
     artifactRevision: expectedShape.artifactRevision,
     candidateDigest: expectedShape.candidateDigest,
   };
-  if (expectedShape.sourceEventId !== undefined) {
-    expectedResult.sourceEventId = expectedShape.sourceEventId as string;
-  }
   const result: { -readonly [K in keyof WorkflowSignal]: WorkflowSignal[K] } = {
     eventId: signalShape.eventId,
     workflowId: signalShape.workflowId,
@@ -294,8 +242,6 @@ export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubm
   };
   if (signalShape.findingCount !== undefined) result.findingCount = signalShape.findingCount;
   if (signalShape.artifactRef !== undefined) result.artifactRef = signalShape.artifactRef;
-  if (signalShape.evidenceDigest !== undefined) result.evidenceDigest = signalShape.evidenceDigest;
-  if (signalShape.sourceEventId !== undefined) result.sourceEventId = signalShape.sourceEventId;
   if (signalShape.shortErrorCode !== undefined) result.shortErrorCode = signalShape.shortErrorCode;
   return { expected: expectedResult, signal: result };
 }
@@ -307,14 +253,11 @@ function validateSignalRules(
     readonly kind: SignalKind;
     readonly findingCount: number | undefined;
     readonly artifactRef: string | undefined;
-    readonly evidenceDigest: ContentDigest | undefined;
-    readonly sourceEventId: string | undefined;
     readonly shortErrorCode: string | undefined;
   },
   fail: (message: string) => ProtocolError,
 ): void {
-  const { kind, role, findingCount, artifactRef, evidenceDigest, sourceEventId, shortErrorCode } =
-    signal;
+  const { kind, role, findingCount, artifactRef, shortErrorCode } = signal;
   const requiredRole: Role | undefined =
     kind === 'implementation_ready' || kind === 'repair_submitted'
       ? 'implementation'
@@ -341,22 +284,6 @@ function validateSignalRules(
   if (kind !== 'repair_submitted' && kind !== 'review_findings' && artifactRef !== undefined) {
     throw fail(`${kind} does not carry artifactRef`);
   }
-  if (kind === 'repair_submitted' && evidenceDigest === undefined)
-    throw fail('repair_submitted requires evidenceDigest');
-  if (kind !== 'repair_submitted' && kind !== 'review_findings' && evidenceDigest !== undefined) {
-    throw fail(`${kind} does not carry evidenceDigest`);
-  }
-  if (artifactRef !== undefined && evidenceDigest === undefined)
-    throw fail(`${kind} requires evidenceDigest with artifactRef`);
-  if (artifactRef === undefined && evidenceDigest !== undefined)
-    throw fail(`${kind} requires artifactRef with evidenceDigest`);
-
-  if (kind === 'repair_submitted' && sourceEventId === undefined)
-    throw fail('repair_submitted requires sourceEventId');
-  if (kind !== 'repair_submitted' && kind !== 'blocked' && sourceEventId !== undefined) {
-    throw fail(`${kind} does not carry sourceEventId`);
-  }
-
   if (kind === 'blocked' && shortErrorCode === undefined)
     throw fail('blocked requires shortErrorCode');
   if (kind !== 'blocked' && shortErrorCode !== undefined)
@@ -380,8 +307,6 @@ export function encodeWorkflowSignalSubmit(
   };
   if (signal.findingCount !== undefined) encodedSignal.findingCount = signal.findingCount;
   if (signal.artifactRef !== undefined) encodedSignal.artifactRef = signal.artifactRef;
-  if (signal.evidenceDigest !== undefined) encodedSignal.evidenceDigest = signal.evidenceDigest;
-  if (signal.sourceEventId !== undefined) encodedSignal.sourceEventId = signal.sourceEventId;
   if (signal.shortErrorCode !== undefined) encodedSignal.shortErrorCode = signal.shortErrorCode;
   return {
     expected: {
@@ -391,7 +316,6 @@ export function encodeWorkflowSignalSubmit(
       role: expected.role,
       artifactRevision: expected.artifactRevision,
       candidateDigest: expected.candidateDigest,
-      ...(expected.sourceEventId === undefined ? {} : { sourceEventId: expected.sourceEventId }),
     },
     signal: encodedSignal,
   };

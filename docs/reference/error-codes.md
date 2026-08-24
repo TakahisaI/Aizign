@@ -27,7 +27,7 @@ protocol fixtureが入った後は、`spec/protocol/v1/` が wire上のcodeの�
 
 | Code | 意味 | Status |
 |---|---|---|
-| `INVALID_SIGNAL` | signalがkindごとの制約（role、`findingCount`、`artifactRef` / `evidenceDigest`、`sourceEventId`、`shortErrorCode`）に合わない | implemented（`aizign-core`） |
+| `INVALID_SIGNAL` | signalがkindごとの制約（role、`findingCount`、`artifactRef`、`shortErrorCode`）に合わない | implemented（`aizign-core`） |
 | `INVALID_EXPECTATION` | `expected` の形は正しいが値が不正（識別子の文字種や長さ）。coreでは型により表現不能なため、protocol境界で返す | implemented（`aizign-protocol`） |
 | `WORKFLOW_MISMATCH` | `workflowId` が期待と異なる | implemented（`aizign-core`） |
 | `ASSIGNMENT_MISMATCH` | `assignmentId` が期待と異なる | implemented（`aizign-core`） |
@@ -35,12 +35,9 @@ protocol fixtureが入った後は、`spec/protocol/v1/` が wire上のcodeの�
 | `ROLE_MISMATCH` | `role` が期待と異なる | implemented（`aizign-core`） |
 | `REVISION_MISMATCH` | `artifactRevision` が期待と異なる | implemented（`aizign-core`） |
 | `CANDIDATE_DIGEST_MISMATCH` | `candidateDigest` が期待と異なる | implemented（`aizign-core`） |
-| `CANDIDATE_CONFLICT` | 同じ `artifactRevision` が異なるcandidate contentへ再bindingされた | implemented（`aizign-core`） |
-| `EVIDENCE_CONFLICT` | 同じ `artifactRef` が異なるevidence contentへ再bindingされた | implemented（`aizign-core`） |
-| `CAUSATION_MISMATCH` | repairの`sourceEventId`がexpectationと違う、未受理、別workflow、findings以外、または既に消費済み | implemented（`aizign-core`） |
 | `EVENT_CONFLICT` | 同一 `eventId` で内容が異なる | implemented（`aizign-core`） |
 
-照合順はworkflow → assignment → attempt → role → revision identifier → candidate digest → source eventで、expectationの照合がduplicate / conflict判定より先に行われます。新しいevent identityだけがcandidate / evidenceのimmutable-reference検査とrepair sourceの利用可能性検査へ進みます。
+照合順はworkflow → assignment → attempt → role → revision identifier → candidate digestで、expectationの照合がduplicate / conflict判定より先に行われます。異なるevent間のrevision-to-digest registryは持ちません。
 
 ## Journal
 

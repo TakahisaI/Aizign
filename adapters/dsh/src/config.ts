@@ -29,8 +29,6 @@ export interface Config {
   role: Role;
   artifactRevision: string;
   candidateDigest: ContentDigest;
-  /** Review-findings event consumed by a repair assignment. */
-  sourceEventId?: string;
 }
 
 export const Config: z<Config> = z.object({
@@ -49,7 +47,6 @@ export const Config: z<Config> = z.object({
       hex: z.string().required(),
     })
     .required(),
-  sourceEventId: z.string(),
 });
 
 /** The identity the plugin binds every submitted signal to. */
@@ -89,17 +86,11 @@ export function validateConfig(config: Config): AdapterConfig {
       throw new ConfigError(`${field} must match ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`);
     }
   }
-  if (config.sourceEventId !== undefined && !isIdentifier(config.sourceEventId)) {
-    throw new ConfigError('sourceEventId must match ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$');
-  }
   if (
     config.candidateDigest.algorithm !== 'sha256' ||
     !/^[0-9a-f]{64}$/.test(config.candidateDigest.hex)
   ) {
     throw new ConfigError('candidateDigest must be a sha256 digest with 64 lowercase hex digits');
-  }
-  if (config.role === 'review' && config.sourceEventId !== undefined) {
-    throw new ConfigError('sourceEventId is only valid for implementation repair assignments');
   }
   if (config.role !== 'implementation' && config.role !== 'review') {
     throw new ConfigError('role must be implementation or review');
@@ -121,7 +112,6 @@ export function validateConfig(config: Config): AdapterConfig {
         role: config.role,
         artifactRevision: config.artifactRevision,
         candidateDigest: config.candidateDigest,
-        ...(config.sourceEventId === undefined ? {} : { sourceEventId: config.sourceEventId }),
       },
     },
   };

@@ -30,12 +30,6 @@ struct ExpectedDto {
     role: RoleDto,
     artifact_revision: String,
     candidate_digest: DigestDto,
-    #[serde(
-        default,
-        deserialize_with = "reject_null",
-        skip_serializing_if = "Option::is_none"
-    )]
-    source_event_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -61,18 +55,6 @@ struct SignalDto {
         skip_serializing_if = "Option::is_none"
     )]
     artifact_ref: Option<String>,
-    #[serde(
-        default,
-        deserialize_with = "reject_null",
-        skip_serializing_if = "Option::is_none"
-    )]
-    evidence_digest: Option<DigestDto>,
-    #[serde(
-        default,
-        deserialize_with = "reject_null",
-        skip_serializing_if = "Option::is_none"
-    )]
-    source_event_id: Option<String>,
     #[serde(
         default,
         deserialize_with = "reject_null",
@@ -240,12 +222,6 @@ pub(crate) fn decode_submit(payload: serde_json::Value) -> Result<Command, Proto
             "expected.candidateDigest",
             &payload.expected.candidate_digest,
         )?,
-        source_event_id: payload
-            .expected
-            .source_event_id
-            .as_deref()
-            .map(|value| field(e, "expected.sourceEventId", EventId::new(value)))
-            .transpose()?,
     };
 
     let s = "INVALID_SIGNAL";
@@ -273,15 +249,6 @@ pub(crate) fn decode_submit(payload: serde_json::Value) -> Result<Command, Proto
             .as_deref()
             .map(|value| field(s, "signal.artifactRef", ArtifactRef::new(value)))
             .transpose()?,
-        evidence_digest: dto
-            .evidence_digest
-            .map(|value| digest(s, "signal.evidenceDigest", &value))
-            .transpose()?,
-        source_event_id: dto
-            .source_event_id
-            .as_deref()
-            .map(|value| field(s, "signal.sourceEventId", EventId::new(value)))
-            .transpose()?,
         short_error_code: dto
             .short_error_code
             .as_deref()
@@ -304,7 +271,6 @@ pub(crate) fn encode_submit(command: &Command) -> serde_json::Value {
             role: expected.role.into(),
             artifact_revision: expected.artifact_revision.to_string(),
             candidate_digest: (&expected.candidate_digest).into(),
-            source_event_id: expected.source_event_id.as_ref().map(ToString::to_string),
         },
         signal: SignalDto {
             event_id: parts.event_id.to_string(),
@@ -317,8 +283,6 @@ pub(crate) fn encode_submit(command: &Command) -> serde_json::Value {
             kind: parts.kind.into(),
             finding_count: parts.finding_count,
             artifact_ref: parts.artifact_ref.as_ref().map(ToString::to_string),
-            evidence_digest: parts.evidence_digest.as_ref().map(Into::into),
-            source_event_id: parts.source_event_id.as_ref().map(ToString::to_string),
             short_error_code: parts.short_error_code.as_ref().map(ToString::to_string),
         },
     };

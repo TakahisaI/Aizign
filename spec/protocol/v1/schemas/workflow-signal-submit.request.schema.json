@@ -76,9 +76,6 @@
         },
         "candidateDigest": {
           "$ref": "#/$defs/digest"
-        },
-        "sourceEventId": {
-          "$ref": "#/$defs/identifier"
         }
       }
     },
@@ -135,23 +132,9 @@
         "artifactRef": {
           "$ref": "#/$defs/artifactRef"
         },
-        "evidenceDigest": {
-          "$ref": "#/$defs/digest"
-        },
-        "sourceEventId": {
-          "$ref": "#/$defs/identifier"
-        },
         "shortErrorCode": {
           "$ref": "#/$defs/shortErrorCode"
         }
-      },
-      "dependentRequired": {
-        "artifactRef": [
-          "evidenceDigest"
-        ],
-        "evidenceDigest": [
-          "artifactRef"
-        ]
       },
       "allOf": [
         {
@@ -178,16 +161,6 @@
                 {
                   "required": [
                     "artifactRef"
-                  ]
-                },
-                {
-                  "required": [
-                    "evidenceDigest"
-                  ]
-                },
-                {
-                  "required": [
-                    "sourceEventId"
                   ]
                 },
                 {
@@ -221,17 +194,8 @@
               "findingCount"
             ],
             "not": {
-              "anyOf": [
-                {
-                  "required": [
-                    "sourceEventId"
-                  ]
-                },
-                {
-                  "required": [
-                    "shortErrorCode"
-                  ]
-                }
+              "required": [
+                "shortErrorCode"
               ]
             }
           }
@@ -266,16 +230,6 @@
                 },
                 {
                   "required": [
-                    "evidenceDigest"
-                  ]
-                },
-                {
-                  "required": [
-                    "sourceEventId"
-                  ]
-                },
-                {
-                  "required": [
                     "shortErrorCode"
                   ]
                 }
@@ -303,9 +257,7 @@
             },
             "required": [
               "findingCount",
-              "artifactRef",
-              "evidenceDigest",
-              "sourceEventId"
+              "artifactRef"
             ],
             "not": {
               "required": [
@@ -336,11 +288,6 @@
                 {
                   "required": [
                     "artifactRef"
-                  ]
-                },
-                {
-                  "required": [
-                    "evidenceDigest"
                   ]
                 }
               ]

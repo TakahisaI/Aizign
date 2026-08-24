@@ -1,14 +1,13 @@
 /**
  * The `submit_workflow_signal` tool as the agent sees it: scope-bound. The
  * agent supplies only what it can know (kind, finding count, artifact
- * reference and digest, short error code); the control plane fixed the identity in the
+ * reference, short error code); the control plane fixed the identity in the
  * plugin configuration, so it never appears in the schema, the arguments,
  * or the prompt.
  */
 
 import { randomUUID } from 'node:crypto';
 import {
-  type ContentDigest,
   type CoreClient,
   decodeWorkflowSignalSubmit,
   encodeWorkflowSignalSubmit,
@@ -51,15 +50,6 @@ export function toolParameters(role: Role): Record<string, unknown> {
       kind: { type: 'string', enum: [...kindsForRole(role)] },
       findingCount: { type: 'integer', description: 'Non-negative count of findings' },
       artifactRef: { type: 'string' },
-      evidenceDigest: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          algorithm: { type: 'string', enum: ['sha256'] },
-          hex: { type: 'string' },
-        },
-        required: ['algorithm', 'hex'],
-      },
       shortErrorCode: { type: 'string' },
     },
     required: ['kind'],
@@ -82,7 +72,6 @@ export interface SignalArgs {
   readonly kind: SignalKind;
   readonly findingCount?: number;
   readonly artifactRef?: string;
-  readonly evidenceDigest?: ContentDigest;
   readonly shortErrorCode?: string;
 }
 
@@ -90,35 +79,16 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function decodeEvidenceDigest(value: unknown): ContentDigest {
-  const fail = (message: string) => new HarnessError(message, 'INVALID_SIGNAL');
-  if (!isPlainObject(value)) throw fail('evidenceDigest must be an object');
-  for (const key of Object.keys(value)) {
-    if (!['algorithm', 'hex'].includes(key)) {
-      throw fail(`unknown evidenceDigest field \`${key}\``);
-    }
-  }
-  if (value.algorithm !== 'sha256' || typeof value.hex !== 'string') {
-    throw fail('evidenceDigest must carry sha256 and a lowercase hexadecimal value');
-  }
-  if (!/^[0-9a-f]{64}$/.test(value.hex)) {
-    throw fail('evidenceDigest.hex must contain 64 lowercase hexadecimal digits');
-  }
-  return { algorithm: 'sha256', hex: value.hex };
-}
-
 /** Closed decode of the agent's arguments; anything else is `INVALID_SIGNAL`. */
 export function decodeArgs(args: unknown, role: Role): SignalArgs {
   const fail = (message: string) => new HarnessError(message, 'INVALID_SIGNAL');
   if (!isPlainObject(args)) throw fail('arguments must be an object');
   for (const key of Object.keys(args)) {
-    if (
-      !['kind', 'findingCount', 'artifactRef', 'evidenceDigest', 'shortErrorCode'].includes(key)
-    ) {
+    if (!['kind', 'findingCount', 'artifactRef', 'shortErrorCode'].includes(key)) {
       throw fail(`unknown argument \`${key}\``);
     }
   }
-  const { kind, findingCount, artifactRef, evidenceDigest, shortErrorCode } = args;
+  const { kind, findingCount, artifactRef, shortErrorCode } = args;
   if (typeof kind !== 'string' || !(kindsForRole(role) as readonly string[]).includes(kind)) {
     throw fail(`kind must be one of ${kindsForRole(role).join(', ')}`);
   }
@@ -130,8 +100,6 @@ export function decodeArgs(args: unknown, role: Role): SignalArgs {
   }
   if (artifactRef !== undefined && typeof artifactRef !== 'string')
     throw fail('artifactRef must be a string');
-  const decodedEvidenceDigest =
-    evidenceDigest === undefined ? undefined : decodeEvidenceDigest(evidenceDigest);
   if (shortErrorCode !== undefined && typeof shortErrorCode !== 'string') {
     throw fail('shortErrorCode must be a string');
   }
@@ -140,7 +108,6 @@ export function decodeArgs(args: unknown, role: Role): SignalArgs {
   };
   if (findingCount !== undefined) decoded.findingCount = findingCount as number;
   if (artifactRef !== undefined) decoded.artifactRef = artifactRef;
-  if (decodedEvidenceDigest !== undefined) decoded.evidenceDigest = decodedEvidenceDigest;
   if (shortErrorCode !== undefined) decoded.shortErrorCode = shortErrorCode;
   return decoded;
 }

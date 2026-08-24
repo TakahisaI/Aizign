@@ -60,9 +60,13 @@ test('the tool schema exposes no identity fields', () => {
     properties: Record<string, unknown>;
     additionalProperties: boolean;
   };
+  const tool = createSubmitWorkflowSignalTool(
+    stubClient({ kind: 'accepted', eventId: 'evt-fixed' }),
+    binding,
+  );
+  const modelVisibleDefinition = JSON.stringify({ description: tool.description, schema });
   assert.deepEqual(Object.keys(schema.properties).sort(), [
     'artifactRef',
-    'evidenceDigest',
     'findingCount',
     'kind',
     'shortErrorCode',
@@ -77,9 +81,19 @@ test('the tool schema exposes no identity fields', () => {
     'attemptId',
     'artifactRevision',
     'candidateDigest',
-    'sourceEventId',
   ]) {
     assert.ok(!Object.hasOwn(schema.properties, identity), identity);
+    assert.ok(!modelVisibleDefinition.includes(identity), identity);
+  }
+  for (const configuredValue of [
+    binding.eventId,
+    binding.expected.workflowId,
+    binding.expected.assignmentId,
+    binding.expected.attemptId,
+    binding.expected.artifactRevision,
+    binding.expected.candidateDigest.hex,
+  ]) {
+    assert.ok(!modelVisibleDefinition.includes(configuredValue), configuredValue);
   }
 });
 
@@ -129,42 +143,6 @@ test('core rules are applied before any process is spawned', () => {
       return error instanceof HarnessError && error.code === 'INVALID_SIGNAL';
     },
   );
-});
-
-test('repair evidence gets control-plane causation without exposing it to the agent', () => {
-  const repairBinding: SignalBinding = {
-    eventId: 'evt-repair',
-    expected: {
-      workflowId: 'wf-1',
-      assignmentId: 'as-repair',
-      attemptId: 'attempt-repair',
-      role: 'implementation',
-      artifactRevision: 'rev-b',
-      candidateDigest: {
-        algorithm: 'sha256',
-        hex: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-      },
-      sourceEventId: 'evt-findings',
-    },
-  };
-  const args = decodeArgs(
-    {
-      kind: 'repair_submitted',
-      findingCount: 1,
-      artifactRef: 'repair:result',
-      evidenceDigest: {
-        algorithm: 'sha256',
-        hex: 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
-      },
-    },
-    'implementation',
-  );
-  assert.equal(Object.hasOwn(args, 'sourceEventId'), false);
-  const payload = toPayload(repairBinding, args);
-  assert.equal(payload.expected.sourceEventId, 'evt-findings');
-  assert.equal(payload.signal.sourceEventId, 'evt-findings');
-  assert.equal(payload.signal.attemptId, 'attempt-repair');
-  assert.equal(payload.signal.evidenceDigest?.algorithm, 'sha256');
 });
 
 test('request ids are adapter-owned nonces, never derived from the harness call id', () => {

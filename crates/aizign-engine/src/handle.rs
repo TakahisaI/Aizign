@@ -19,7 +19,7 @@ pub enum SignalOutcome {
     /// New evidence, now durable.
     Accepted {
         /// The durable entry.
-        entry: Box<JournalEntry>,
+        entry: JournalEntry,
     },
     /// Already accepted with identical content; nothing appended.
     Duplicate {
@@ -88,9 +88,7 @@ pub fn handle_workflow_signal(
         Decision::Accepted { event } => {
             let at = clock.now().map_err(HandleError::Clock)?;
             let entry = journal.append(&event, at).map_err(HandleError::Journal)?;
-            Ok(SignalOutcome::Accepted {
-                entry: Box::new(entry),
-            })
+            Ok(SignalOutcome::Accepted { entry })
         }
         Decision::Duplicate { event_id } => Ok(SignalOutcome::Duplicate { event_id }),
         Decision::Rejected { error } => Err(HandleError::Rejected(error)),

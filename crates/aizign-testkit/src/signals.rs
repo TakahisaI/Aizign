@@ -22,7 +22,6 @@ pub fn expected() -> ExpectedAssignment {
         role: Role::Implementation,
         artifact_revision: ArtifactRevision::new("rev-a").expect("valid"),
         candidate_digest: digest('a'),
-        source_event_id: None,
     }
 }
 
@@ -41,8 +40,6 @@ pub fn implementation_ready(event_id: &str) -> WorkflowSignal {
         kind: SignalKind::ImplementationReady,
         finding_count: None,
         artifact_ref: None,
-        evidence_digest: None,
-        source_event_id: None,
         short_error_code: None,
     })
     .expect("valid")

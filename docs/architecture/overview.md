@@ -54,7 +54,7 @@ Aizignは、harness（LLM agentを動かす実行環境）から来る **structu
 
 | 場所 | 状態 |
 |---|---|
-| `crates/aizign-core` | `identity` と `workflow` context（attempt / immutable candidate / evidence digest / repair causationにboundされたsignal、command、event、state、decision、error）。`execution` 以降は後続 |
+| `crates/aizign-core` | `identity` と `workflow` context（attempt / candidate pairにboundされたsignal、command、event、state、decision、error）。candidate lifecycle registry、external evidence provenance、repair causation、`execution` 以降は後続 |
 | `crates/aizign-protocol`、`spec/protocol/v1/` | Protocol v1: envelope、`hello`、`workflow.signal.submit`、closed decoder、schemaとexample |
 | `crates/aizign-engine` | `Journal` / `Clock` port、`handle_workflow_signal` use case |
 | `crates/aizign-store-jsonl`、`spec/journal/v1/` | JSONL journal: owner-only、lock、bounded cold read、fsync append、closed record |

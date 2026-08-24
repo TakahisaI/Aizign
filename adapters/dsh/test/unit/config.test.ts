@@ -34,10 +34,6 @@ test('valid configuration binds identity and defaults the timeout', () => {
       },
     },
   });
-  assert.equal(
-    validateConfig({ ...base, sourceEventId: 'evt-findings' }).binding.expected.sourceEventId,
-    'evt-findings',
-  );
 });
 
 test('identifiers, paths, role, and timeout are validated', () => {
@@ -50,10 +46,6 @@ test('identifiers, paths, role, and timeout are validated', () => {
         ...base,
         candidateDigest: { algorithm: 'sha256', hex: 'ABC' },
       }),
-    ConfigError,
-  );
-  assert.throws(
-    () => validateConfig({ ...base, role: 'review', sourceEventId: 'evt-findings' }),
     ConfigError,
   );
   assert.throws(() => validateConfig({ ...base, binary: '  ' }), ConfigError);

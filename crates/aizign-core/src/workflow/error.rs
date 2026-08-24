@@ -45,23 +45,6 @@ pub enum InvalidSignal {
         /// The kind that forbids a reference.
         kind: SignalKind,
     },
-    /// An external artifact reference must carry a content digest.
-    EvidenceDigestRequired {
-        /// The kind that requires the digest.
-        kind: SignalKind,
-    },
-    /// The kind does not carry an external evidence digest.
-    EvidenceDigestForbidden {
-        /// The kind that forbids the digest.
-        kind: SignalKind,
-    },
-    /// A repair must identify the review-findings event it repairs.
-    SourceEventRequired,
-    /// The kind does not carry repair causation.
-    SourceEventForbidden {
-        /// The kind that forbids causation.
-        kind: SignalKind,
-    },
     /// `Blocked` requires a short error code.
     ShortErrorCodeRequired,
     /// Only `Blocked` carries a short error code.
@@ -88,16 +71,6 @@ impl fmt::Display for InvalidSignal {
             Self::ArtifactRefRequired { kind } => write!(f, "{kind:?} requires artifact_ref"),
             Self::ArtifactRefForbidden { kind } => {
                 write!(f, "{kind:?} does not carry artifact_ref")
-            }
-            Self::EvidenceDigestRequired { kind } => {
-                write!(f, "{kind:?} requires evidence_digest with artifact_ref")
-            }
-            Self::EvidenceDigestForbidden { kind } => {
-                write!(f, "{kind:?} does not carry evidence_digest")
-            }
-            Self::SourceEventRequired => f.write_str("RepairSubmitted requires source_event_id"),
-            Self::SourceEventForbidden { kind } => {
-                write!(f, "{kind:?} does not carry source_event_id")
             }
             Self::ShortErrorCodeRequired => f.write_str("Blocked requires short_error_code"),
             Self::ShortErrorCodeForbidden { kind } => {
@@ -154,28 +127,6 @@ pub enum WorkflowError {
         /// Candidate content named by the signal.
         actual: Digest,
     },
-    /// The same candidate revision identifier was already bound to different content.
-    CandidateConflict {
-        /// Candidate identifier whose content changed.
-        artifact_revision: ArtifactRevision,
-    },
-    /// The same external artifact reference was already bound to different content.
-    EvidenceConflict {
-        /// Contested external artifact reference.
-        artifact_ref: crate::identity::ArtifactRef,
-    },
-    /// Repair causation differs from the control-plane expectation.
-    CausationMismatch {
-        /// Expected source, when this is a repair assignment.
-        expected: Option<EventId>,
-        /// Source named by the signal.
-        actual: Option<EventId>,
-    },
-    /// The source is not an available, unconsumed review-findings event.
-    CausationUnavailable {
-        /// Source the repair tried to consume.
-        source_event_id: EventId,
-    },
     /// A signal with the same event id but different content was already
     /// accepted (hard invariant 12).
     EventConflict {
@@ -196,11 +147,6 @@ impl WorkflowError {
             Self::RoleMismatch { .. } => "ROLE_MISMATCH",
             Self::RevisionMismatch { .. } => "REVISION_MISMATCH",
             Self::CandidateDigestMismatch { .. } => "CANDIDATE_DIGEST_MISMATCH",
-            Self::CandidateConflict { .. } => "CANDIDATE_CONFLICT",
-            Self::EvidenceConflict { .. } => "EVIDENCE_CONFLICT",
-            Self::CausationMismatch { .. } | Self::CausationUnavailable { .. } => {
-                "CAUSATION_MISMATCH"
-            }
             Self::EventConflict { .. } => "EVENT_CONFLICT",
         }
     }
@@ -235,30 +181,6 @@ impl fmt::Display for WorkflowError {
                 write!(
                     f,
                     "candidate digest mismatch: expected {expected}, got {actual}"
-                )
-            }
-            Self::CandidateConflict { artifact_revision } => {
-                write!(
-                    f,
-                    "candidate {artifact_revision} was already bound to different content"
-                )
-            }
-            Self::EvidenceConflict { artifact_ref } => {
-                write!(
-                    f,
-                    "artifact {artifact_ref} was already bound to different content"
-                )
-            }
-            Self::CausationMismatch { expected, actual } => {
-                write!(
-                    f,
-                    "repair causation mismatch: expected {expected:?}, got {actual:?}"
-                )
-            }
-            Self::CausationUnavailable { source_event_id } => {
-                write!(
-                    f,
-                    "repair source {source_event_id} is not available for this workflow"
                 )
             }
             Self::EventConflict { event_id } => {
@@ -312,19 +234,6 @@ mod tests {
             WorkflowError::CandidateDigestMismatch {
                 expected: digest.clone(),
                 actual: digest,
-            },
-            WorkflowError::CandidateConflict {
-                artifact_revision: ArtifactRevision::new("rev-conflict").unwrap(),
-            },
-            WorkflowError::EvidenceConflict {
-                artifact_ref: crate::identity::ArtifactRef::new("review:conflict").unwrap(),
-            },
-            WorkflowError::CausationMismatch {
-                expected: Some(evt.clone()),
-                actual: None,
-            },
-            WorkflowError::CausationUnavailable {
-                source_event_id: evt.clone(),
             },
             WorkflowError::EventConflict { event_id: evt },
         ];

@@ -59,11 +59,11 @@ versionとcapabilityの事前確認。stateを要求しない。
 structured workflow signalを、shellがbindされている `expected` assignmentに対して提出する。
 
 - `expected` と `signal` は `workflowId`、`assignmentId`、`attemptId`、`role`、`artifactRevision`、`candidateDigest` を持つ。`candidateDigest` は `{ "algorithm": "sha256", "hex": "<64 lowercase hex>" }`
-- `review_findings` のexternal artifactは `artifactRef` / `evidenceDigest` の組で省略可能。`repair_submitted` ではこの組が必須
-- repair assignmentはcontrol planeが固定した `sourceEventId` を `expected` と `signal` の両方に持つ。sourceは同一workflowの未消費なaccepted `review_findings` eventでなければならない
-- `ok: true` の `disposition` は `accepted`（durable appendの **後** に返る）または `duplicate`（同一 `eventId`・attempt / digest / causationを含む同一内容）
-- `ok: false` の `error.code` はprotocol code、`INVALID_EXPECTATION`、またはworkflow code（`INVALID_SIGNAL`、各`*_MISMATCH`、`CANDIDATE_CONFLICT`、`EVIDENCE_CONFLICT`、`EVENT_CONFLICT`）
-- 照合順はworkflow → assignment → attempt → role → revision identifier → candidate digest → source event → duplicate / conflict。新規eventだけがimmutable-reference / causation検査へ進む
+- `candidateDigest` はcandidate bytesを読めるcontrol plane / artifact authorityが計算する。coreはshapeを検証してcarry / compareするだけで、hashを再計算しない
+- `artifactRef` の既存規則は変更しない。external artifact digestとreview / repair causationはv1のこのsliceには含めない
+- `ok: true` の `disposition` は `accepted`（durable appendの **後** に返る）または `duplicate`（同一 `eventId`・attempt / candidate pairを含む同一内容）
+- `ok: false` の `error.code` はprotocol code、`INVALID_EXPECTATION`、またはworkflow code（`INVALID_SIGNAL`、各`*_MISMATCH`、`EVENT_CONFLICT`）
+- 照合順はworkflow → assignment → attempt → role → revision identifier → candidate digest → duplicate / conflict。異なるevent間のrevision-to-digest registryは持たない
 - Protocol v1は未releaseのためADR-0012でin-place更新した。旧shapeは互換受理しない
 
 ## Error codes

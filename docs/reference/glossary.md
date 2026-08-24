@@ -17,10 +17,10 @@ code identifierは英語で固定します。日本語訳は説明用で、識�
 | **Command** | coreへの入力。`State + Command -> Decision` |
 | **Decision** | coreの出力。追加するevent、effect intent、またはrejectionを含む |
 | **Workflow signal** | agentが提出するstructured evidence。kind: `implementation_ready`、`review_findings`、`review_passed`、`repair_submitted`、`blocked` |
-| **Expected assignment** | coreがsignalを照合する相手。workflow、assignment、role、revisionの組 |
+| **Expected assignment** | coreがsignalを照合する相手。workflow、assignment、attempt、role、candidate pairの組 |
 | **Structured evidence** | closed schemaで表現された事実。自然言語ではない |
-| **Binding** | evidenceをworkflow、assignment、attempt、candidate revisionへ結び付けること。binding digestで照合する |
-| **Digest** | 内容の固定長hash。journalには本文ではなくdigestを置く |
+| **Binding** | evidenceをworkflow、assignment、attempt、candidate revision + content digestのpairへ結び付けること |
+| **Digest** | 内容の固定長hash。candidate digestはcontrol planeが計算し、coreはcarry / compareする。DSHの`bindingDigest` / `payloadDigest`はadapter-localで別authority |
 | **Effect intent** | coreが外部作用を要求する意図。adapterがharness操作へ変換する |
 | **Claim** | effect intentを実行する前にjournalへdurableに記録すること |
 | **Disposition** | 操作やevidenceの結果分類。`accepted`、`duplicate`、`conflict`、`unknown`、terminal |

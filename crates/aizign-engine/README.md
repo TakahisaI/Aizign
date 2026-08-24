@@ -43,4 +43,4 @@ journal.load() → WorkflowState::replay → decide
 ```
 
 - `JournalError::OutcomeUnknown` は `HandleError::Journal` としてそのまま返す。engineは再送しない
-- replayの不整合（同一 `event_id` の再適用、digest再binding、不正または再消費されたrepair source）は `HandleError::Replay` → code `JOURNAL_CORRUPT`
+- replayの不整合（同一 `event_id` の再適用）は `HandleError::Replay` → code `JOURNAL_CORRUPT`

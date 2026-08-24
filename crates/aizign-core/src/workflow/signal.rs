@@ -58,8 +58,6 @@ pub struct ExpectedAssignment {
     pub artifact_revision: ArtifactRevision,
     /// Immutable content of the candidate revision.
     pub candidate_digest: Digest,
-    /// Findings event this assignment repairs, when it is a repair attempt.
-    pub source_event_id: Option<EventId>,
 }
 
 /// Unvalidated parts of a [`WorkflowSignal`]. Validate with
@@ -87,13 +85,6 @@ pub struct SignalParts {
     /// Reference to a findings or repair artifact; allowed for
     /// `ReviewFindings`, required for `RepairSubmitted`.
     pub artifact_ref: Option<ArtifactRef>,
-    /// Content digest paired with `artifact_ref`; it is present exactly when
-    /// the reference is present.
-    pub evidence_digest: Option<Digest>,
-    /// Review-findings event that caused a repair. Required for
-    /// `RepairSubmitted`, allowed for a blocked repair attempt, and forbidden
-    /// for other terminal evidence.
-    pub source_event_id: Option<EventId>,
     /// Why the role is blocked; required for `Blocked` only.
     pub short_error_code: Option<ShortErrorCode>,
 }
@@ -113,11 +104,8 @@ impl WorkflowSignal {
     /// - `finding_count` is required for `ReviewFindings` (> 0),
     ///   `ReviewPassed` (== 0), and `RepairSubmitted` (> 0), and forbidden
     ///   otherwise;
-    /// - `artifact_ref` and `evidence_digest` are an inseparable pair,
-    ///   optional for `ReviewFindings`, required for `RepairSubmitted`, and
-    ///   forbidden otherwise;
-    /// - `source_event_id` is required for `RepairSubmitted`, optional for
-    ///   `Blocked`, and forbidden otherwise;
+    /// - `artifact_ref` is optional for `ReviewFindings`, required for
+    ///   `RepairSubmitted`, and forbidden otherwise;
     /// - `short_error_code` is required for `Blocked` and forbidden otherwise.
     pub fn validate(parts: SignalParts) -> Result<Self, WorkflowError> {
         let kind = parts.kind;
@@ -159,47 +147,6 @@ impl WorkflowSignal {
                 true,
             ) => {
                 return Err(InvalidSignal::ArtifactRefForbidden { kind }.into());
-            }
-            _ => {}
-        }
-
-        match (kind, parts.evidence_digest.is_some()) {
-            (SignalKind::RepairSubmitted, false) => {
-                return Err(InvalidSignal::EvidenceDigestRequired { kind }.into());
-            }
-            (
-                SignalKind::ImplementationReady | SignalKind::ReviewPassed | SignalKind::Blocked,
-                true,
-            ) => {
-                return Err(InvalidSignal::EvidenceDigestForbidden { kind }.into());
-            }
-            _ => {}
-        }
-
-        match (
-            parts.artifact_ref.is_some(),
-            parts.evidence_digest.is_some(),
-        ) {
-            (true, false) => {
-                return Err(InvalidSignal::EvidenceDigestRequired { kind }.into());
-            }
-            (false, true) => {
-                return Err(InvalidSignal::ArtifactRefRequired { kind }.into());
-            }
-            _ => {}
-        }
-
-        match (kind, parts.source_event_id.is_some()) {
-            (SignalKind::RepairSubmitted, false) => {
-                return Err(InvalidSignal::SourceEventRequired.into());
-            }
-            (
-                SignalKind::ImplementationReady
-                | SignalKind::ReviewFindings
-                | SignalKind::ReviewPassed,
-                true,
-            ) => {
-                return Err(InvalidSignal::SourceEventForbidden { kind }.into());
             }
             _ => {}
         }
@@ -277,18 +224,6 @@ impl WorkflowSignal {
         self.parts.artifact_ref.as_ref()
     }
 
-    /// Content digest paired with the external artifact reference.
-    #[must_use]
-    pub fn evidence_digest(&self) -> Option<&Digest> {
-        self.parts.evidence_digest.as_ref()
-    }
-
-    /// Findings event that caused this repair assignment, when present.
-    #[must_use]
-    pub fn source_event_id(&self) -> Option<&EventId> {
-        self.parts.source_event_id.as_ref()
-    }
-
     /// Why the role is blocked, for `Blocked` signals.
     #[must_use]
     pub fn short_error_code(&self) -> Option<&ShortErrorCode> {
@@ -304,7 +239,7 @@ impl WorkflowSignal {
 
     /// Compares the signal with the expected assignment, in the documented
     /// order: workflow, assignment, attempt, role, candidate revision
-    /// identifier, candidate digest, causation.
+    /// identifier, candidate digest.
     pub(crate) fn check_expected(
         &self,
         expected: &ExpectedAssignment,
@@ -345,12 +280,6 @@ impl WorkflowSignal {
                 actual: self.parts.candidate_digest.clone(),
             });
         }
-        if self.parts.source_event_id != expected.source_event_id {
-            return Err(WorkflowError::CausationMismatch {
-                expected: expected.source_event_id.clone(),
-                actual: self.parts.source_event_id.clone(),
-            });
-        }
         Ok(())
     }
 }
@@ -379,8 +308,6 @@ mod tests {
             kind,
             finding_count: None,
             artifact_ref: None,
-            evidence_digest: None,
-            source_event_id: None,
             short_error_code: None,
         }
     }
@@ -420,8 +347,6 @@ mod tests {
         let mut p = parts(Role::Review, SignalKind::RepairSubmitted);
         p.finding_count = Some(1);
         p.artifact_ref = Some(ArtifactRef::new("repair:abc").unwrap());
-        p.evidence_digest = Some(digest('b'));
-        p.source_event_id = Some(EventId::new("evt-findings").unwrap());
         assert_eq!(
             invalid(WorkflowSignal::validate(p)),
             InvalidSignal::KindRequiresRole {
@@ -493,8 +418,6 @@ mod tests {
             }
         );
         p.artifact_ref = Some(ArtifactRef::new("repair:abc").unwrap());
-        p.evidence_digest = Some(digest('b'));
-        p.source_event_id = Some(EventId::new("evt-findings").unwrap());
         assert!(WorkflowSignal::validate(p).is_ok());
 
         let mut p = parts(Role::Review, SignalKind::ReviewFindings);
@@ -504,7 +427,6 @@ mod tests {
             "artifact_ref is optional for findings"
         );
         p.artifact_ref = Some(ArtifactRef::new("review:abc").unwrap());
-        p.evidence_digest = Some(digest('c'));
         assert!(WorkflowSignal::validate(p).is_ok());
 
         let mut p = parts(Role::Implementation, SignalKind::ImplementationReady);
@@ -512,50 +434,6 @@ mod tests {
         assert_eq!(
             invalid(WorkflowSignal::validate(p)),
             InvalidSignal::ArtifactRefForbidden {
-                kind: SignalKind::ImplementationReady
-            }
-        );
-    }
-
-    #[test]
-    fn artifact_references_and_evidence_digests_are_an_inseparable_pair() {
-        let mut p = parts(Role::Review, SignalKind::ReviewFindings);
-        p.finding_count = Some(1);
-        p.artifact_ref = Some(ArtifactRef::new("review:abc").unwrap());
-        assert_eq!(
-            invalid(WorkflowSignal::validate(p.clone())),
-            InvalidSignal::EvidenceDigestRequired {
-                kind: SignalKind::ReviewFindings
-            }
-        );
-        p.artifact_ref = None;
-        p.evidence_digest = Some(digest('d'));
-        assert_eq!(
-            invalid(WorkflowSignal::validate(p)),
-            InvalidSignal::ArtifactRefRequired {
-                kind: SignalKind::ReviewFindings
-            }
-        );
-    }
-
-    #[test]
-    fn repair_requires_a_source_event_and_other_terminal_evidence_forbids_it() {
-        let mut repair = parts(Role::Implementation, SignalKind::RepairSubmitted);
-        repair.finding_count = Some(1);
-        repair.artifact_ref = Some(ArtifactRef::new("repair:abc").unwrap());
-        repair.evidence_digest = Some(digest('e'));
-        assert_eq!(
-            invalid(WorkflowSignal::validate(repair.clone())),
-            InvalidSignal::SourceEventRequired
-        );
-        repair.source_event_id = Some(EventId::new("evt-findings").unwrap());
-        assert!(WorkflowSignal::validate(repair).is_ok());
-
-        let mut ready = parts(Role::Implementation, SignalKind::ImplementationReady);
-        ready.source_event_id = Some(EventId::new("evt-findings").unwrap());
-        assert_eq!(
-            invalid(WorkflowSignal::validate(ready)),
-            InvalidSignal::SourceEventForbidden {
                 kind: SignalKind::ImplementationReady
             }
         );
@@ -578,7 +456,6 @@ mod tests {
         let mut p = parts(Role::Review, SignalKind::ReviewFindings);
         p.finding_count = Some(2);
         p.artifact_ref = Some(ArtifactRef::new("review:abc").unwrap());
-        p.evidence_digest = Some(digest('f'));
         let signal = WorkflowSignal::validate(p.clone()).unwrap();
         assert_eq!(signal.event_id().as_str(), "evt-1");
         assert_eq!(signal.attempt_id().as_str(), "attempt-1");
@@ -590,8 +467,6 @@ mod tests {
             Some("review:abc")
         );
         assert_eq!(signal.candidate_digest(), &digest('a'));
-        assert_eq!(signal.evidence_digest(), Some(&digest('f')));
-        assert_eq!(signal.source_event_id(), None);
         assert_eq!(signal.short_error_code(), None);
         assert_eq!(signal.parts(), &p);
     }

@@ -92,10 +92,3 @@ test('rejects identifiers, roles, and timeouts the adapter would refuse', () => 
     assert.match(result.stderr, /^make-patch: /);
   }
 });
-
-test('passes optional repair causation through as control-plane configuration', () => {
-  assert.match(
-    generate([...baseArgs, '--source-event-id', 'evt-findings']),
-    /^ {4}sourceEventId: "evt-findings"$/m,
-  );
-});

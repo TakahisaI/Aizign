@@ -54,18 +54,6 @@ struct SignalDto {
         deserialize_with = "reject_null",
         skip_serializing_if = "Option::is_none"
     )]
-    evidence_digest: Option<DigestDto>,
-    #[serde(
-        default,
-        deserialize_with = "reject_null",
-        skip_serializing_if = "Option::is_none"
-    )]
-    source_event_id: Option<String>,
-    #[serde(
-        default,
-        deserialize_with = "reject_null",
-        skip_serializing_if = "Option::is_none"
-    )]
     short_error_code: Option<String>,
 }
 
@@ -217,8 +205,6 @@ pub(crate) fn encode_entry(entry: &JournalEntry) -> Result<String, JournalError>
             kind: parts.kind.into(),
             finding_count: parts.finding_count,
             artifact_ref: parts.artifact_ref.as_ref().map(ToString::to_string),
-            evidence_digest: parts.evidence_digest.as_ref().map(Into::into),
-            source_event_id: parts.source_event_id.as_ref().map(ToString::to_string),
             short_error_code: parts.short_error_code.as_ref().map(ToString::to_string),
         },
     };
@@ -299,15 +285,6 @@ pub(crate) fn decode_line(line_number: usize, line: &str) -> Result<JournalEntry
             .as_deref()
             .map(|value| field(line_number, "artifactRef", ArtifactRef::new(value)))
             .transpose()?,
-        evidence_digest: dto
-            .evidence_digest
-            .map(|value| digest(line_number, "evidenceDigest", &value))
-            .transpose()?,
-        source_event_id: dto
-            .source_event_id
-            .as_deref()
-            .map(|value| field(line_number, "sourceEventId", EventId::new(value)))
-            .transpose()?,
         short_error_code: dto
             .short_error_code
             .as_deref()
@@ -363,8 +340,6 @@ mod tests {
             kind: SignalKind::ReviewFindings,
             finding_count: Some(2),
             artifact_ref: Some(ArtifactRef::new("review:abc").unwrap()),
-            evidence_digest: Some(Digest::new(DigestAlgorithm::Sha256, &"b".repeat(64)).unwrap()),
-            source_event_id: None,
             short_error_code: None,
         })
         .unwrap();

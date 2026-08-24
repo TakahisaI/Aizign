@@ -114,25 +114,10 @@
           "type": "string",
           "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
         },
-        "evidenceDigest": {
-          "$ref": "#/$defs/digest"
-        },
-        "sourceEventId": {
-          "type": "string",
-          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
-        },
         "shortErrorCode": {
           "type": "string",
           "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
         }
-      },
-      "dependentRequired": {
-        "artifactRef": [
-          "evidenceDigest"
-        ],
-        "evidenceDigest": [
-          "artifactRef"
-        ]
       },
       "allOf": [
         {
@@ -159,16 +144,6 @@
                 {
                   "required": [
                     "artifactRef"
-                  ]
-                },
-                {
-                  "required": [
-                    "evidenceDigest"
-                  ]
-                },
-                {
-                  "required": [
-                    "sourceEventId"
                   ]
                 },
                 {
@@ -202,17 +177,8 @@
               "findingCount"
             ],
             "not": {
-              "anyOf": [
-                {
-                  "required": [
-                    "sourceEventId"
-                  ]
-                },
-                {
-                  "required": [
-                    "shortErrorCode"
-                  ]
-                }
+              "required": [
+                "shortErrorCode"
               ]
             }
           }
@@ -247,16 +213,6 @@
                 },
                 {
                   "required": [
-                    "evidenceDigest"
-                  ]
-                },
-                {
-                  "required": [
-                    "sourceEventId"
-                  ]
-                },
-                {
-                  "required": [
                     "shortErrorCode"
                   ]
                 }
@@ -284,9 +240,7 @@
             },
             "required": [
               "findingCount",
-              "artifactRef",
-              "evidenceDigest",
-              "sourceEventId"
+              "artifactRef"
             ],
             "not": {
               "required": [
@@ -317,11 +271,6 @@
                 {
                   "required": [
                     "artifactRef"
-                  ]
-                },
-                {
-                  "required": [
-                    "evidenceDigest"
                   ]
                 }
               ]
