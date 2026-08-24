@@ -6,6 +6,7 @@ machine-readableな生sampleは大きくなるため、scheduledまたはmanual 
 初回の開発観測は[2026-08-24-initial-baseline.md](2026-08-24-initial-baseline.md)です。
 この観測はrunner v2の履歴であり、reviewで無効と判定したparent timing、concurrency、DSH、lost-ACKの数値を現行baselineへ流用しません。
 runner v3の正本は、merge後に固定`ubuntu-24.04` workflowを手動実行して得るartifactです。
+Issue #57は、そのnative artifactの`result.json`と`summary.md`をレビューしてから閉じます。
 runnerの契約と再実行手順は[benchmarks/performance/README.md](../../benchmarks/performance/README.md)を参照してください。
 
 reportを追加するときは、次を必ず記録します。

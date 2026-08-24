@@ -23,6 +23,7 @@ export {
   type ReconcileUnknown,
   type SentRequest,
   type SubmitOutcome,
+  type TimingOutcome,
   type TimingSink,
   UNKNOWN_OUTCOME_CODES,
   type UnknownOutcome,

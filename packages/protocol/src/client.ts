@@ -38,6 +38,17 @@ export type ParentOperationKind =
   | 'workflow.signal.reconcile'
   | 'preflight';
 
+/** Closed outcome vocabulary shared by metadata-only timing observations. */
+export type TimingOutcome =
+  | 'ok'
+  | 'accepted'
+  | 'duplicate'
+  | 'conflict'
+  | 'absent'
+  | 'rejected'
+  | 'error'
+  | 'unknown';
+
 /** One metadata-only parent observation. Content, identity, and paths are excluded. */
 export interface ParentTimingMeasurement {
   readonly operation_kind: ParentOperationKind;
@@ -47,7 +58,7 @@ export interface ParentTimingMeasurement {
   readonly response_first_byte_ms?: number;
   /** Whole compatibility preflight. Present only for the `preflight` operation. */
   readonly preflight_ms?: number;
-  readonly outcome: string;
+  readonly outcome: TimingOutcome;
   readonly error_code?: string;
   readonly unknown_reason?: UnknownOutcome['reason'];
 }
@@ -71,9 +82,9 @@ export function emitBestEffort<T>(sink: TimingSink<T> | undefined, measurement: 
 /** Maps a returned semantic outcome to the closed parent timing vocabulary. */
 export function parentTimingOutcome(
   operationKind: ParentOperationKind,
-  outcomeKind: string,
+  outcomeKind: TimingOutcome,
   errorCode?: string,
-): string {
+): TimingOutcome {
   if (outcomeKind === 'unknown') return 'unknown';
   if (
     operationKind === 'workflow.signal.submit' &&

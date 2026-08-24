@@ -65,6 +65,7 @@ DSH preflightは`preflight_ms`、evidence cold readは`harness_cold_read_ms`と`
 どのsinkにもrequest ID、event ID、path、本文、credentialを渡しません。
 同期throwと非同期Promise rejectionを含むsinkの失敗、およびchild timingのencode失敗はworkflow結果を変えません。
 APIが`unknown`を返す場合、診断codeが`EVENT_CONFLICT`でもtiming outcomeは`unknown`のままです。
+公開TypeScript APIも`TimingOutcome`とsource固有のunknown reason unionを使い、timing vocabularyを型として閉じます。
 
 ## Sweep
 
@@ -91,6 +92,10 @@ fixture生成時間は計測に含みません。
 同じstate directoryへのsubmitはqueueもretryもせず、`JOURNAL_LOCKED`をそのまま数えます。
 same-stateとdifferent-stateのfixtureは、どちらも共通batch timerを開始する前にすべて生成します。
 runnerはchildの開始barrierを設けないため、batch値には`Promise.all`でspawnを順に発行する短いずれが残ります。
+concurrency sampleのfixture規模は`journal_entries_before_batch`で表します。
+same-state submitは`accepted`または`JOURNAL_LOCKED`だけを許可し、最低一件の`accepted`を要求します。
+different-state submitは全件`accepted`、reconcileは両modeとも全件`absent`を要求し、それ以外の結果ではartifactを保存せずrunを失敗させます。
+summaryはbatch latency、成功throughput、accepted数、`JOURNAL_LOCKED`数、想定外件数、error codeを専用tableへ出力します。
 
 lost acknowledgement scenarioは`ReferenceOneShotClient`をbenchmark専用proxyへ接続します。
 proxyは実binaryによるdurable appendとresponse生成を完了させてからsubmitのstdout frameだけを破棄します。
@@ -100,6 +105,10 @@ DSH sweepの`in_memory_scan`はsource I/Oを含まず、evidence classification�
 `file_backed_read`は各sampleの計測前に生成したJSON fileを`readFrom()`内で読み取り、file readとJSON decodeを含めます。
 後者もDSH session databaseそのものではないため、実harness storageのlatencyとは区別します。
 
+`rust_direct` transportもbuilt `@aizign/protocol`のone-frame抽出、response decode、request ID、operation kind、event IDの相関検査を通します。
+responseなし、malformed response、timeout、相関不一致はtransport unknownとして扱います。
+有効な相関済みerror responseがsemantic unknownを返した場合は、child timingが欠けていればrunを失敗させます。
+
 ## Sampling
 
 各pointは最初に`new_process_new_open`を一回記録し、指定回数の未記録warmup後に`warm_repeated`を採取します。
@@ -108,6 +117,8 @@ DSH sweepの`in_memory_scan`はsource I/Oを含まず、evidence classification�
 GitHub-hosted runnerでtrue cold OS page cacheを主張しません。
 
 aggregateは`warm_repeated`だけからnearest-rankのp50、p95、p99を計算し、metricごとのsample数も保存します。
+canonical scenarioはscenario全体の`aizign_end_to_end_ms`と、`preflight`、`submit`、`submit_lost_ack`、`lookup`のoperation別分布を分離します。
+submitとreconcileのparent latencyを一つの分布へ混ぜません。
 生の`new_process_new_open` observationとwarm sampleは`result.json`に残ります。
 summaryとmachine-readable resultは、全warm aggregateで最も遅い`handler_total_ms` p99を既定10,000 ms watchdogと比較し、残りのheadroomを明示します。
 
@@ -116,10 +127,13 @@ summaryとmachine-readable resultは、全warm aggregateで最も遅い`handler_
 `result.json`はmachine-readableなenvironment、GitHub runner image version、設定、aggregate、生sampleを持ちます。
 `summary.md`は同じaggregateをレビュー用tableへ変換します。
 runnerはchild、parent、DSH timingごとにexact-key allowlistを検査し、未登録fieldが一つでもあればartifactを保存しません。
+timingのschema version、時間値、byte数、entry数、event数も型と範囲を検査します。
+時間値は有限の非負数、countは非負のsafe integerだけを許可します。
 private filesystem pathとidentity keyの検査も重ねます。
 
 scheduled workflowは固定した`ubuntu-24.04` imageで毎週水曜日とmanual dispatchにより実行し、両fileを30日間artifactとして保存します。
 pull requestでは起動せず、required checkにも設定しません。
 
 reviewed baselineを更新するときは、同じcommitのartifact二点を確認し、environmentとsample設定を記録した解釈だけを`docs/performance/`へ追加します。
+Issue #57は、merge後のnative runでこの確認を終えるまでopenのまま維持します。
 環境が異なるrunの絶対値を直接比較せず、同じ環境内のjournal規模、outcome、transport、concurrencyの傾向を先に確認します。

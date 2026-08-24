@@ -15,6 +15,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import {
+  checkCorrelation,
+  decodeResponse,
+  extractFrame,
+  isUnknownOutcomeCode,
+  MAX_FRAME_BYTES,
+} from '../../packages/protocol/lib/index.js';
 import { dropsAcknowledgement, requestKind } from './lost-ack-proxy.mjs';
 import {
   JOURNAL_SCALE_CASES,
@@ -28,14 +35,47 @@ import {
 import {
   aggregateSamples,
   assertArtifactPrivacy,
+  assertConcurrencySemantics,
+  assertDirectChildTiming,
   buildRequest,
   classifyResponse,
   compareWatchdog,
+  decodeCorrelatedResponse,
   executeConcurrencyBatch,
   parseArgs,
   renderSummary,
   seedFixture,
 } from './run.mjs';
+
+const PROTOCOL = {
+  checkCorrelation,
+  decodeResponse,
+  extractFrame,
+  isUnknownOutcomeCode,
+  MAX_FRAME_BYTES,
+};
+
+function renderAggregates(aggregates, samples = 2) {
+  return renderSummary({
+    metadata: {
+      generated_at: '2026-08-25T00:00:00.000Z',
+      commit_sha: 'abc',
+      working_tree_dirty: false,
+      os: 'linux',
+      arch: 'x64',
+      cpu_model: 'test cpu',
+      filesystem: 'ext2/ext3',
+      github_runner_image: 'ubuntu24',
+      github_runner_image_version: 'test',
+      rust_version: 'rustc test',
+      node_version: 'v24',
+      runner_version: 3,
+    },
+    config: { warmup: 0, samples },
+    watchdog: compareWatchdog(aggregates),
+    aggregates,
+  });
+}
 
 test('purpose-specific matrices contain the exact valid boundaries', () => {
   assert.deepEqual(
@@ -140,11 +180,17 @@ test('request fixtures preserve operation validity and response classification',
   assert.equal(request.payload.expected.artifactRevision, 'rev-mismatch');
   assert.equal(request.payload.signal.artifactRevision, 'rev-benchmark');
   assert.deepEqual(
-    classifyResponse({ ok: false, error: { code: 'EVENT_CONFLICT' } }, 'workflow.signal.submit'),
+    classifyResponse(
+      { body: { type: 'error', error: { code: 'EVENT_CONFLICT' } } },
+      'workflow.signal.submit',
+    ),
     { outcome: 'conflict', error_code: 'EVENT_CONFLICT' },
   );
   assert.deepEqual(
-    classifyResponse({ ok: false, error: { code: 'JOURNAL_LOCKED' } }, 'workflow.signal.reconcile'),
+    classifyResponse(
+      { body: { type: 'error', error: { code: 'JOURNAL_LOCKED' } } },
+      'workflow.signal.reconcile',
+    ),
     {
       outcome: 'unknown',
       error_code: 'JOURNAL_LOCKED',
@@ -156,6 +202,58 @@ test('request fixtures preserve operation validity and response classification',
   assert.equal(nearMax.payload.signal.eventId.length, 128);
   assert.equal(nearMax.payload.signal.artifactRef.length, 256);
   assert.equal(nearMax.payload.signal.kind, 'repair_submitted');
+});
+
+test('direct transport uses the production decoder and correlation contract', () => {
+  const request = buildRequest(OUTCOME_CASES[0]);
+  const frame = (overrides = {}) =>
+    `${JSON.stringify({
+      protocol: 'aizign',
+      version: 1,
+      requestId: request.requestId,
+      kind: request.kind,
+      ok: true,
+      payload: { disposition: 'accepted', eventId: request.payload.signal.eventId },
+      ...overrides,
+    })}\n`;
+  assert.equal(
+    decodeCorrelatedResponse(frame(), request, PROTOCOL).transport_kind,
+    'correlated_response',
+  );
+  assert.deepEqual(decodeCorrelatedResponse(frame({ protocol: 'wrong' }), request, PROTOCOL), {
+    transport_kind: 'unknown',
+    unknown_reason: 'undecodable_response',
+  });
+  assert.deepEqual(decodeCorrelatedResponse(frame({ requestId: 'req-other' }), request, PROTOCOL), {
+    transport_kind: 'unknown',
+    unknown_reason: 'correlation_mismatch',
+  });
+  assert.deepEqual(
+    decodeCorrelatedResponse(
+      frame({ payload: { disposition: 'accepted', eventId: 'evt-other' } }),
+      request,
+      PROTOCOL,
+    ),
+    { transport_kind: 'unknown', unknown_reason: 'correlation_mismatch' },
+  );
+  assert.throws(
+    () =>
+      assertDirectChildTiming(
+        { name: 'lookup_unknown' },
+        {
+          transport_kind: 'correlated_response',
+          outcome: 'unknown',
+          unknown_reason: 'reported_unknown',
+        },
+      ),
+    /child timing was not emitted/,
+  );
+  assert.doesNotThrow(() =>
+    assertDirectChildTiming(
+      { name: 'transport_unknown' },
+      { transport_kind: 'unknown', outcome: 'unknown', unknown_reason: 'no_response' },
+    ),
+  );
 });
 
 test('nearest-rank summaries always carry their sample count', () => {
@@ -222,6 +320,69 @@ test('aggregation uses warm samples and summary explicitly avoids a budget claim
   assert.match(summary, /9970\.000 ms headroom/);
 });
 
+test('scenario aggregation keeps preflight, submit, and reconciliation distributions separate', () => {
+  const samples = [10, 20].map((base, index) => ({
+    sweep: 'scenarios',
+    case_name: 'assignment_unknown_reconcile',
+    sample_phase: 'warm_repeated',
+    sample_index: index,
+    aizign_end_to_end_ms: base * 10,
+    parent_timings: [
+      { operation_kind: 'hello', spawn_to_exit_ms: base - 1, outcome: 'ok' },
+      { operation_kind: 'preflight', preflight_ms: base, outcome: 'ok' },
+      {
+        operation_kind: 'workflow.signal.submit',
+        spawn_to_exit_ms: base + 20,
+        outcome: 'unknown',
+        unknown_reason: 'no_response',
+      },
+      {
+        operation_kind: 'workflow.signal.reconcile',
+        spawn_to_exit_ms: base + 40,
+        outcome: 'accepted',
+      },
+    ],
+    operations: [
+      {
+        name: 'submit_lost_ack',
+        outcome: 'unknown',
+        unknown_reason: 'no_response',
+        parent: {
+          operation_kind: 'workflow.signal.submit',
+          spawn_to_exit_ms: base + 20,
+          outcome: 'unknown',
+          unknown_reason: 'no_response',
+        },
+      },
+      {
+        name: 'lookup',
+        outcome: 'accepted',
+        parent: {
+          operation_kind: 'workflow.signal.reconcile',
+          spawn_to_exit_ms: base + 40,
+          outcome: 'accepted',
+        },
+      },
+    ],
+  }));
+  const aggregates = aggregateSamples(samples);
+  const scenario = aggregates.find((entry) => entry.sweep === 'scenarios');
+  const preflight = aggregates.find((entry) => entry.operation_name === 'preflight');
+  const submit = aggregates.find((entry) => entry.operation_name === 'submit_lost_ack');
+  const lookup = aggregates.find((entry) => entry.operation_name === 'lookup');
+  assert.equal(scenario.metrics.aizign_end_to_end_ms.sample_count, 2);
+  assert.equal(scenario.metrics.spawn_to_exit_ms, undefined);
+  assert.equal(preflight.metrics.preflight_ms.p50, 10);
+  assert.equal(submit.metrics.spawn_to_exit_ms.p50, 30);
+  assert.equal(lookup.metrics.spawn_to_exit_ms.p50, 50);
+  assert.deepEqual(submit.outcomes, { unknown: 2 });
+  assert.deepEqual(lookup.outcomes, { accepted: 2 });
+  const summary = renderAggregates(aggregates);
+  assert.match(summary, /Canonical scenario operations/);
+  assert.match(summary, /assignment_unknown_reconcile \| submit_lost_ack/);
+  assert.match(summary, /assignment_unknown_reconcile \| lookup/);
+});
+
 test('runner arguments keep sweeps independent', () => {
   const parsed = parseArgs([
     '--binary',
@@ -274,6 +435,62 @@ test('concurrency prepares every fixture before the common timed execution windo
     'spawn:concurrency-different_state_dir-workflow.signal.submit-2',
     'clock',
   ]);
+});
+
+test('concurrency rejects semantic failures instead of recording them as a baseline', () => {
+  assert.doesNotThrow(() =>
+    assertConcurrencySemantics('same_state_dir', 'workflow.signal.submit', [
+      { outcome: 'accepted' },
+      { outcome: 'rejected', error_code: 'JOURNAL_LOCKED' },
+    ]),
+  );
+  assert.throws(
+    () =>
+      assertConcurrencySemantics('different_state_dir', 'workflow.signal.submit', [
+        { outcome: 'rejected', error_code: 'JOURNAL_UNAVAILABLE' },
+      ]),
+    /unexpected semantic outcome/,
+  );
+  assert.throws(
+    () =>
+      assertConcurrencySemantics('same_state_dir', 'workflow.signal.submit', [
+        { outcome: 'rejected', error_code: 'JOURNAL_LOCKED' },
+      ]),
+    /accept at least one/,
+  );
+  assert.throws(
+    () =>
+      assertConcurrencySemantics('same_state_dir', 'workflow.signal.reconcile', [
+        { outcome: 'accepted' },
+      ]),
+    /unexpected semantic outcome/,
+  );
+  const aggregates = aggregateSamples([
+    {
+      sweep: 'concurrency',
+      case_name: 'submit_same_state_dir_2',
+      sample_phase: 'warm_repeated',
+      operation_kind: 'workflow.signal.submit',
+      mode: 'same_state_dir',
+      concurrency: 2,
+      journal_entries_before_batch: 100,
+      batch_total_ms: 20,
+      successful_operations: 1,
+      journal_locked: 1,
+      unexpected_operations: 0,
+      throughput_success_ops_per_s: 50,
+      operations: [
+        { outcome: 'accepted', parent: {} },
+        { outcome: 'rejected', error_code: 'JOURNAL_LOCKED', parent: {} },
+      ],
+    },
+  ]);
+  assert.equal(aggregates[0].metrics.throughput_success_ops_per_s.p50, 50);
+  assert.equal(aggregates[0].journal_locked, 1);
+  const summary = renderAggregates(aggregates, 1);
+  assert.match(summary, /Success throughput/);
+  assert.match(summary, /accepted:1, rejected:1/);
+  assert.match(summary, /JOURNAL_LOCKED:1/);
 });
 
 test('lost-ACK proxy drops only a submit response', () => {
@@ -349,5 +566,54 @@ test('artifact privacy validates timing with an exact key allowlist', () => {
         samples: [{ parent: { ...result.samples[0].parent, eventId: 'evt-secret' } }],
       }),
     /unregistered key eventId/,
+  );
+  for (const spawnToExit of ['arbitrary-content', -1, Number.POSITIVE_INFINITY]) {
+    assert.throws(
+      () =>
+        assertArtifactPrivacy({
+          samples: [
+            {
+              parent: {
+                operation_kind: 'workflow.signal.submit',
+                spawn_to_exit_ms: spawnToExit,
+                outcome: 'accepted',
+              },
+            },
+          ],
+        }),
+      /finite non-negative number/,
+    );
+  }
+  assert.throws(
+    () =>
+      assertArtifactPrivacy({
+        samples: [
+          {
+            child: {
+              schema_version: 2,
+              operation_kind: 'workflow.signal.submit',
+              journal_entries: 1,
+              outcome: 'accepted',
+            },
+          },
+        ],
+      }),
+    /schema_version must be integer 1/,
+  );
+  assert.throws(
+    () =>
+      assertArtifactPrivacy({
+        samples: [
+          {
+            timing: {
+              operation_kind: 'dsh.evidence.cold_read',
+              harness_cold_read_ms: 1,
+              events_returned: 1.5,
+              outcome: 'accepted',
+            },
+          },
+        ],
+      }),
+    /non-negative safe integer/,
   );
 });

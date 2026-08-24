@@ -24,6 +24,7 @@ import {
   type Response,
   type SentRequest,
   type SubmitOutcome,
+  type TimingOutcome,
   type UnknownOutcome,
   type WorkflowSignalReconcilePayload,
   type WorkflowSignalSubmitPayload,
@@ -191,14 +192,14 @@ export class OneShotCoreClient implements CoreClient {
     }
   }
 
-  #finish<T extends { readonly kind: string }>(
+  #finish<T extends { readonly kind: TimingOutcome }>(
     operation_kind: ParentOperationKind,
     timing: TransportTiming,
     outcome: T,
     reportedErrorCode?: string,
   ): T {
     const classified = outcome as {
-      readonly kind: string;
+      readonly kind: TimingOutcome;
       readonly code?: string;
       readonly reason?: UnknownOutcome['reason'];
       readonly reportedCode?: string;

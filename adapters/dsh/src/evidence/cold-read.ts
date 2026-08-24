@@ -11,7 +11,7 @@
  * input and never leave this module toward the core.
  */
 
-import { emitBestEffort, type TimingSink } from '@aizign/protocol';
+import { emitBestEffort, type TimingOutcome, type TimingSink } from '@aizign/protocol';
 import type { SignalBinding } from '../config.ts';
 import { TOOL_NAME } from '../mapping/tool.ts';
 import { bindingDigest } from './digest.ts';
@@ -54,9 +54,17 @@ export interface ColdReadTimingMeasurement {
   readonly operation_kind: 'dsh.evidence.cold_read';
   readonly harness_cold_read_ms: number;
   readonly events_returned?: number;
-  readonly outcome: string;
-  readonly unknown_reason?: string;
+  readonly outcome: TimingOutcome;
+  readonly unknown_reason?: ColdReadUnknownReason;
 }
+
+/** Closed reasons emitted by a DSH evidence cold read. */
+export type ColdReadUnknownReason =
+  | 'unverified_error'
+  | 'no_result'
+  | 'meta_mismatch'
+  | 'bound_exceeded'
+  | 'aborted';
 
 export type ColdReadTimingSink = TimingSink<ColdReadTimingMeasurement>;
 

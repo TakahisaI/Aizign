@@ -13,6 +13,7 @@ import {
   type ParentTimingMeasurement,
   type ParentTimingSink,
   PROTOCOL_VERSION,
+  type TimingOutcome,
 } from '@aizign/protocol';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import { adapterCodes } from '../mapping/tool.ts';
@@ -40,7 +41,7 @@ export async function preflight(
 ): Promise<HelloInfo> {
   const started = performance.now();
   const finish = (
-    outcome: string,
+    outcome: TimingOutcome,
     error_code?: string,
     unknown_reason?: ParentTimingMeasurement['unknown_reason'],
   ) => {

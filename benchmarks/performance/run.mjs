@@ -207,17 +207,26 @@ export function seedFixture(stateDir, entries, fixtureTarget = 'absent', fixture
   for (const path of [lockPath, journalPath, commitPath]) chmodSync(path, 0o600);
 }
 
-export function classifyResponse(response, operationKind) {
-  if (response?.ok === true) {
-    const outcome = response.payload?.disposition ?? 'ok';
-    return { outcome };
+const DEFAULT_UNKNOWN_OUTCOME_CODES = new Set([
+  'JOURNAL_OUTCOME_UNKNOWN',
+  'HANDLER_TIMEOUT',
+  'EFFECT_OUTCOME_UNKNOWN',
+]);
+
+export function classifyResponse(
+  response,
+  operationKind,
+  isUnknownOutcomeCode = (code) => DEFAULT_UNKNOWN_OUTCOME_CODES.has(code),
+) {
+  if (response.body.type !== 'error') {
+    return { outcome: response.body.type === 'hello' ? 'ok' : response.body.result.disposition };
   }
-  const errorCode = typeof response?.error?.code === 'string' ? response.error.code : undefined;
+  const errorCode = response.body.error.code;
   if (operationKind === 'workflow.signal.reconcile') {
     return { outcome: 'unknown', error_code: errorCode, unknown_reason: 'reported_unknown' };
   }
   if (errorCode === 'EVENT_CONFLICT') return { outcome: 'conflict', error_code: errorCode };
-  if (errorCode === 'JOURNAL_OUTCOME_UNKNOWN' || errorCode === 'HANDLER_TIMEOUT') {
+  if (isUnknownOutcomeCode(errorCode)) {
     return { outcome: 'unknown', error_code: errorCode, unknown_reason: 'reported_unknown' };
   }
   return { outcome: 'rejected', error_code: errorCode };
@@ -232,17 +241,45 @@ function extractChildTiming(stderr) {
   return JSON.parse(encoded);
 }
 
-function extractResponse(stdout) {
-  const lines = stdout.split('\n').filter((line) => line.trim().length > 0);
-  if (lines.length !== 1) return undefined;
-  try {
-    return JSON.parse(lines[0]);
-  } catch {
-    return undefined;
+export function decodeCorrelatedResponse(stdout, request, protocol) {
+  if (Buffer.byteLength(stdout) > protocol.MAX_FRAME_BYTES + 1) {
+    return { transport_kind: 'unknown', unknown_reason: 'oversized_response' };
   }
+  const extraction = protocol.extractFrame(stdout);
+  if (extraction.kind === 'empty') {
+    return { transport_kind: 'unknown', unknown_reason: 'no_response' };
+  }
+  if (extraction.kind === 'extra') {
+    return { transport_kind: 'unknown', unknown_reason: 'undecodable_response' };
+  }
+  let response;
+  try {
+    response = protocol.decodeResponse(extraction.frame);
+  } catch {
+    return { transport_kind: 'unknown', unknown_reason: 'undecodable_response' };
+  }
+  const mismatch = protocol.checkCorrelation(
+    {
+      requestId: request.requestId,
+      kind: request.kind,
+      eventId: request.payload?.signal?.eventId,
+    },
+    response,
+  );
+  if (mismatch !== undefined) {
+    const reportedCode = response.body.type === 'error' ? response.body.error.code : undefined;
+    return {
+      transport_kind: 'unknown',
+      unknown_reason: 'correlation_mismatch',
+      ...(request.kind === 'workflow.signal.reconcile' && reportedCode !== undefined
+        ? { error_code: reportedCode }
+        : {}),
+    };
+  }
+  return { transport_kind: 'correlated_response', response };
 }
 
-function runProcess(binary, args, frame, operationKind, timingEnabled = true) {
+function runProcess(binary, args, request, operationKind, protocol, timingEnabled = true) {
   return new Promise((resolvePromise) => {
     const started = performance.now();
     let spawnToExitMs;
@@ -267,6 +304,7 @@ function runProcess(binary, args, frame, operationKind, timingEnabled = true) {
       });
     } catch (error) {
       finish({
+        transport_kind: 'unknown',
         outcome: 'unknown',
         unknown_reason: 'spawn_failed',
         parent: {
@@ -292,6 +330,7 @@ function runProcess(binary, args, frame, operationKind, timingEnabled = true) {
     child.on('error', (error) => {
       clearTimeout(timer);
       finish({
+        transport_kind: 'unknown',
         outcome: 'unknown',
         unknown_reason: 'spawn_failed',
         parent: {
@@ -315,6 +354,7 @@ function runProcess(binary, args, frame, operationKind, timingEnabled = true) {
       };
       if (timedOut) {
         finish({
+          transport_kind: 'unknown',
           outcome: 'unknown',
           unknown_reason: 'timeout',
           parent: {
@@ -327,23 +367,31 @@ function runProcess(binary, args, frame, operationKind, timingEnabled = true) {
         });
         return;
       }
-      const response = extractResponse(stdout);
-      if (response === undefined) {
+      const decoded = decodeCorrelatedResponse(stdout, request, protocol);
+      if (decoded.transport_kind === 'unknown') {
         finish({
+          transport_kind: 'unknown',
           outcome: 'unknown',
-          unknown_reason: 'undecodable_response',
+          ...(decoded.error_code === undefined ? {} : { error_code: decoded.error_code }),
+          unknown_reason: decoded.unknown_reason,
           parent: {
             operation_kind: operationKind,
             ...transportTiming,
             outcome: 'unknown',
-            unknown_reason: 'undecodable_response',
+            ...(decoded.error_code === undefined ? {} : { error_code: decoded.error_code }),
+            unknown_reason: decoded.unknown_reason,
           },
           child: extractChildTiming(stderr),
         });
         return;
       }
-      const classified = classifyResponse(response, operationKind);
+      const classified = classifyResponse(
+        decoded.response,
+        operationKind,
+        protocol.isUnknownOutcomeCode,
+      );
       finish({
+        transport_kind: 'correlated_response',
         ...classified,
         parent: {
           operation_kind: operationKind,
@@ -354,22 +402,33 @@ function runProcess(binary, args, frame, operationKind, timingEnabled = true) {
       });
     });
     child.stdin.on('error', () => undefined);
-    child.stdin.end(frame === undefined ? undefined : `${JSON.stringify(frame)}\n`);
+    child.stdin.end(request === undefined ? undefined : `${JSON.stringify(request)}\n`);
   });
 }
 
-async function runDirectOperation(binary, stateDir, benchmarkCase, eventId = TARGET_EVENT_ID) {
+async function runDirectOperation(
+  binary,
+  stateDir,
+  benchmarkCase,
+  eventId = TARGET_EVENT_ID,
+  protocol,
+) {
   const request = buildRequest(benchmarkCase, eventId);
   const result = await runProcess(
     binary,
     ['handle', '--state', stateDir],
     request,
     benchmarkCase.operation_kind,
+    protocol,
   );
-  if (result.child === undefined && result.unknown_reason === undefined) {
+  assertDirectChildTiming(benchmarkCase, result);
+  return result;
+}
+
+export function assertDirectChildTiming(benchmarkCase, result) {
+  if (result.transport_kind === 'correlated_response' && result.child === undefined) {
     throw new Error(`${benchmarkCase.name}: child timing was not emitted`);
   }
-  return result;
 }
 
 async function runReferenceOperation(ReferenceOneShotClient, binary, stateDir, benchmarkCase) {
@@ -442,7 +501,13 @@ async function executeCase(context, sweep, benchmarkCase, transport, samplePhase
   }
   const result =
     transport === 'rust_direct'
-      ? await runDirectOperation(context.config.binary, stateDir, benchmarkCase)
+      ? await runDirectOperation(
+          context.config.binary,
+          stateDir,
+          benchmarkCase,
+          TARGET_EVENT_ID,
+          context.dependencies.protocol,
+        )
       : await runReferenceOperation(
           context.dependencies.ReferenceOneShotClient,
           context.config.binary,
@@ -494,10 +559,39 @@ function concurrencyCase(operationKind, concurrency) {
   return {
     name: `${operationKind === 'workflow.signal.submit' ? 'submit' : 'lookup'}_${concurrency}`,
     operation_kind: operationKind,
-    expected_outcome: operationKind === 'workflow.signal.submit' ? 'accepted' : 'absent',
-    journal_entries_before_operation: 100,
     fixture_target: 'absent',
   };
+}
+
+export function assertConcurrencySemantics(mode, operationKind, results) {
+  const isAllowed = (result) => {
+    if (operationKind === 'workflow.signal.reconcile') {
+      return result.outcome === 'absent' && result.error_code === undefined;
+    }
+    if (mode === 'different_state_dir') {
+      return result.outcome === 'accepted' && result.error_code === undefined;
+    }
+    return (
+      (result.outcome === 'accepted' && result.error_code === undefined) ||
+      (result.outcome === 'rejected' && result.error_code === 'JOURNAL_LOCKED')
+    );
+  };
+  const unexpected = results.filter((result) => !isAllowed(result));
+  if (unexpected.length > 0) {
+    const observed = unexpected
+      .map((result) => `${result.outcome}/${result.error_code ?? '-'}`)
+      .join(', ');
+    throw new Error(
+      `concurrency ${operationKind} ${mode}: unexpected semantic outcome(s): ${observed}`,
+    );
+  }
+  if (
+    operationKind === 'workflow.signal.submit' &&
+    mode === 'same_state_dir' &&
+    !results.some((result) => result.outcome === 'accepted')
+  ) {
+    throw new Error('same-state submit concurrency must accept at least one operation');
+  }
 }
 
 export async function executeConcurrencyBatch(
@@ -531,14 +625,16 @@ export async function executeConcurrencyBatch(
         stateDir,
         benchmarkCase,
         `evt-concurrent-${String(index)}-${String(operation)}`,
+        context.dependencies?.protocol,
       ),
     ),
   );
   const batchTotalMs = now() - started;
+  assertConcurrencySemantics(mode, operationKind, results);
   const successful = results.filter((result) =>
     operationKind === 'workflow.signal.submit'
       ? result.outcome === 'accepted'
-      : ['accepted', 'conflict', 'absent'].includes(result.outcome),
+      : result.outcome === 'absent',
   ).length;
   const locked = results.filter((result) => result.error_code === 'JOURNAL_LOCKED').length;
   return {
@@ -550,10 +646,11 @@ export async function executeConcurrencyBatch(
     operation_kind: operationKind,
     mode,
     concurrency,
-    journal_entries_before_operation: 100,
+    journal_entries_before_batch: 100,
     batch_total_ms: batchTotalMs,
     successful_operations: successful,
     journal_locked: locked,
+    unexpected_operations: 0,
     throughput_success_ops_per_s: batchTotalMs === 0 ? 0 : successful / (batchTotalMs / 1_000),
     operations: results.map((result) => ({
       outcome: result.outcome,
@@ -725,6 +822,9 @@ async function executeScenario(context, scenario, phase, index) {
       parentTimings.push(measurement);
     },
   });
+  if (parentTimings.at(-1)?.operation_kind !== 'preflight') {
+    throw new Error(`${scenario}: preflight timing was not emitted`);
+  }
   const operations = [];
   const submitCase = {
     name: `${scenario}_submit`,
@@ -822,6 +922,30 @@ function increment(counts, value) {
   if (value !== undefined) counts[value] = (counts[value] ?? 0) + 1;
 }
 
+const AGGREGATE_METRICS = [
+  'request_read_ms',
+  'decode_ms',
+  'journal_open_ms',
+  'journal_load_decode_ms',
+  'committed_prefix_read_ms',
+  'committed_prefix_hash_ms',
+  'committed_prefix_decode_ms',
+  'replay_ms',
+  'decide_us',
+  'append_sync_ms',
+  'publish_prefix_hash_ms',
+  'response_encode_ms',
+  'response_write_ms',
+  'handler_total_ms',
+  'spawn_to_exit_ms',
+  'response_first_byte_ms',
+  'preflight_ms',
+  'harness_cold_read_ms',
+  'aizign_end_to_end_ms',
+  'batch_total_ms',
+  'throughput_success_ops_per_s',
+];
+
 function metricSource(sample, name) {
   if (name === 'harness_cold_read_ms') return sample.timing?.harness_cold_read_ms;
   if (name === 'aizign_end_to_end_ms') return sample.aizign_end_to_end_ms;
@@ -838,19 +962,11 @@ function pushMetric(values, name, value) {
 
 export function aggregateSamples(samples) {
   const groups = new Map();
-  for (const sample of samples.filter((candidate) => candidate.sample_phase === 'warm_repeated')) {
-    const key = [sample.sweep, sample.case_name, sample.transport ?? '-'].join('\u0000');
+  const getGroup = (key, identity) => {
     let group = groups.get(key);
     if (group === undefined) {
       group = {
-        sweep: sample.sweep,
-        case_name: sample.case_name,
-        ...(sample.transport === undefined ? {} : { transport: sample.transport }),
-        operation_kind: sample.operation_kind,
-        journal_entries_before_operation: sample.journal_entries_before_operation,
-        ...(sample.mode === undefined ? {} : { mode: sample.mode }),
-        ...(sample.concurrency === undefined ? {} : { concurrency: sample.concurrency }),
-        ...(sample.event_count === undefined ? {} : { event_count: sample.event_count }),
+        ...identity,
         outcomes: {},
         error_codes: {},
         unknown_reasons: {},
@@ -858,45 +974,75 @@ export function aggregateSamples(samples) {
       };
       groups.set(key, group);
     }
+    return group;
+  };
+  const recordMetrics = (group, source) => {
+    for (const metric of AGGREGATE_METRICS) {
+      pushMetric(group.values, metric, metricSource(source, metric));
+    }
+  };
+  for (const sample of samples.filter((candidate) => candidate.sample_phase === 'warm_repeated')) {
+    const key = [sample.sweep, sample.case_name, sample.transport ?? '-'].join('\u0000');
+    const group = getGroup(key, {
+      sweep: sample.sweep,
+      case_name: sample.case_name,
+      ...(sample.transport === undefined ? {} : { transport: sample.transport }),
+      operation_kind: sample.operation_kind,
+      journal_entries_before_operation: sample.journal_entries_before_operation,
+      ...(sample.journal_entries_before_batch === undefined
+        ? {}
+        : { journal_entries_before_batch: sample.journal_entries_before_batch }),
+      ...(sample.mode === undefined ? {} : { mode: sample.mode }),
+      ...(sample.concurrency === undefined ? {} : { concurrency: sample.concurrency }),
+      ...(sample.event_count === undefined ? {} : { event_count: sample.event_count }),
+      ...(sample.sweep === 'concurrency'
+        ? { successful_operations: 0, journal_locked: 0, unexpected_operations: 0 }
+        : {}),
+    });
     increment(group.outcomes, sample.outcome);
     increment(group.error_codes, sample.error_code);
     increment(group.unknown_reasons, sample.unknown_reason);
-    if (Array.isArray(sample.operations)) {
+    recordMetrics(group, sample);
+    if (sample.sweep === 'concurrency') {
+      group.successful_operations += sample.successful_operations;
+      group.journal_locked += sample.journal_locked;
+      group.unexpected_operations += sample.unexpected_operations;
+    }
+    if (sample.sweep === 'scenarios') {
+      const preflight = sample.parent_timings?.find(
+        (measurement) => measurement.operation_kind === 'preflight',
+      );
+      if (preflight === undefined) {
+        throw new Error(`${sample.case_name}: preflight timing is missing from scenario sample`);
+      }
+      const scenarioMeasurements = [
+        { name: 'preflight', parent: preflight },
+        ...(sample.operations ?? []),
+      ];
+      for (const operation of scenarioMeasurements) {
+        const operationKey = ['scenario-operations', sample.case_name, operation.name].join(
+          '\u0000',
+        );
+        const operationGroup = getGroup(operationKey, {
+          sweep: 'scenario-operations',
+          case_name: sample.case_name,
+          operation_name: operation.name,
+          operation_kind: operation.parent?.operation_kind,
+        });
+        increment(operationGroup.outcomes, operation.outcome ?? operation.parent?.outcome);
+        increment(operationGroup.error_codes, operation.error_code ?? operation.parent?.error_code);
+        increment(
+          operationGroup.unknown_reasons,
+          operation.unknown_reason ?? operation.parent?.unknown_reason,
+        );
+        recordMetrics(operationGroup, operation);
+      }
+    } else if (Array.isArray(sample.operations)) {
       for (const operation of sample.operations) {
         increment(group.outcomes, operation.outcome);
         increment(group.error_codes, operation.error_code);
         increment(group.unknown_reasons, operation.unknown_reason);
-      }
-    }
-    for (const metric of [
-      'request_read_ms',
-      'decode_ms',
-      'journal_open_ms',
-      'journal_load_decode_ms',
-      'committed_prefix_read_ms',
-      'committed_prefix_hash_ms',
-      'committed_prefix_decode_ms',
-      'replay_ms',
-      'decide_us',
-      'append_sync_ms',
-      'publish_prefix_hash_ms',
-      'response_encode_ms',
-      'response_write_ms',
-      'handler_total_ms',
-      'spawn_to_exit_ms',
-      'response_first_byte_ms',
-      'harness_cold_read_ms',
-      'aizign_end_to_end_ms',
-      'batch_total_ms',
-      'throughput_success_ops_per_s',
-    ]) {
-      const value = metricSource(sample, metric);
-      pushMetric(group.values, metric, value);
-      if (Array.isArray(sample.operations)) {
-        for (const operation of sample.operations) {
-          const operationValue = operation.child?.[metric] ?? operation.parent?.[metric];
-          pushMetric(group.values, metric, operationValue);
-        }
+        recordMetrics(group, operation);
       }
     }
   }
@@ -921,6 +1067,11 @@ function metricTriplet(aggregate, name) {
     : `${round(metric.p50)} / ${round(metric.p95)} / ${round(metric.p99)} (${metric.sample_count})`;
 }
 
+function countSummary(counts) {
+  const entries = Object.entries(counts);
+  return entries.length === 0 ? '-' : entries.map(([name, count]) => `${name}:${count}`).join(', ');
+}
+
 export function renderSummary(result) {
   const lines = [
     '# Aizign runtime performance baseline',
@@ -942,9 +1093,12 @@ export function renderSummary(result) {
     '| Sweep | Case | Transport | Entries / events | handler p50 / p95 / p99 ms (n) | spawn p50 / p95 / p99 ms (n) | load p50 / p95 / p99 ms (n) | append p50 / p95 / p99 ms (n) | e2e / DSH / batch p50 / p95 / p99 ms (n) | Outcomes |',
     '|---|---|---|---:|---:|---:|---:|---:|---:|---|',
   ];
-  for (const aggregate of result.aggregates) {
+  for (const aggregate of result.aggregates.filter(
+    (candidate) => !['concurrency', 'scenario-operations'].includes(candidate.sweep),
+  )) {
     const size =
       aggregate.journal_entries_before_operation ??
+      aggregate.journal_entries_before_batch ??
       aggregate.event_count ??
       aggregate.concurrency ??
       '-';
@@ -955,11 +1109,35 @@ export function renderSummary(result) {
           ? 'harness_cold_read_ms'
           : 'batch_total_ms';
     lines.push(
-      `| ${aggregate.sweep} | ${aggregate.case_name} | ${aggregate.transport ?? '-'} | ${size} | ${metricTriplet(aggregate, 'handler_total_ms')} | ${metricTriplet(aggregate, 'spawn_to_exit_ms')} | ${metricTriplet(aggregate, 'journal_load_decode_ms')} | ${metricTriplet(aggregate, 'append_sync_ms')} | ${metricTriplet(aggregate, finalMetric)} | ${Object.entries(
-        aggregate.outcomes,
-      )
-        .map(([name, count]) => `${name}:${count}`)
-        .join(', ')} |`,
+      `| ${aggregate.sweep} | ${aggregate.case_name} | ${aggregate.transport ?? '-'} | ${size} | ${metricTriplet(aggregate, 'handler_total_ms')} | ${metricTriplet(aggregate, 'spawn_to_exit_ms')} | ${metricTriplet(aggregate, 'journal_load_decode_ms')} | ${metricTriplet(aggregate, 'append_sync_ms')} | ${metricTriplet(aggregate, finalMetric)} | ${countSummary(aggregate.outcomes)} |`,
+    );
+  }
+  lines.push(
+    '',
+    '## Concurrency semantics and throughput',
+    '',
+    '| Operation | Mode | Concurrency | Entries before batch | Batch p50 / p95 / p99 ms (n) | Success throughput p50 / p95 / p99 ops/s (n) | Accepted | JOURNAL_LOCKED | Unexpected | Outcomes | Error codes |',
+    '|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|',
+  );
+  for (const aggregate of result.aggregates.filter(
+    (candidate) => candidate.sweep === 'concurrency',
+  )) {
+    lines.push(
+      `| ${aggregate.operation_kind} | ${aggregate.mode} | ${aggregate.concurrency} | ${aggregate.journal_entries_before_batch} | ${metricTriplet(aggregate, 'batch_total_ms')} | ${metricTriplet(aggregate, 'throughput_success_ops_per_s')} | ${aggregate.outcomes.accepted ?? 0} | ${aggregate.journal_locked} | ${aggregate.unexpected_operations} | ${countSummary(aggregate.outcomes)} | ${countSummary(aggregate.error_codes)} |`,
+    );
+  }
+  lines.push(
+    '',
+    '## Canonical scenario operations',
+    '',
+    '| Scenario | Operation | Kind | preflight p50 / p95 / p99 ms (n) | spawn p50 / p95 / p99 ms (n) | first byte p50 / p95 / p99 ms (n) | Outcomes | Error codes | Unknown reasons |',
+    '|---|---|---|---:|---:|---:|---|---|---|',
+  );
+  for (const aggregate of result.aggregates.filter(
+    (candidate) => candidate.sweep === 'scenario-operations',
+  )) {
+    lines.push(
+      `| ${aggregate.case_name} | ${aggregate.operation_name} | ${aggregate.operation_kind} | ${metricTriplet(aggregate, 'preflight_ms')} | ${metricTriplet(aggregate, 'spawn_to_exit_ms')} | ${metricTriplet(aggregate, 'response_first_byte_ms')} | ${countSummary(aggregate.outcomes)} | ${countSummary(aggregate.error_codes)} | ${countSummary(aggregate.unknown_reasons)} |`,
     );
   }
   lines.push(
@@ -986,9 +1164,11 @@ export function renderSummary(result) {
     '- `handler_total_ms` is inside `aizign handle`; process spawn is excluded.',
     '- `spawn_to_exit_ms` is observed by the TypeScript/Node parent. `response_first_byte_ms` is response-ready timing because the CLI writes one complete frame, not a stream.',
     '- `journal_entries_before_operation` includes a seeded duplicate/conflict target. Invalid zero-entry duplicate and 10,000-entry accepted fixtures are never generated.',
-    '- Same-state contention preserves `JOURNAL_LOCKED`; the runner does not queue or retry. Different-state work uses independent stores.',
+    '- Concurrency uses `journal_entries_before_batch` because same-state submissions can change the journal before later contenders acquire the lock.',
+    '- Same-state submit allows only `accepted` or `JOURNAL_LOCKED` and requires at least one acceptance. Different-state submit requires all accepted; reconciliation requires all absent. Any other semantic result aborts the run.',
     '- DSH in-memory scan and deterministic file-backed read are separate auxiliary series and are not mixed with journal reconciliation authority.',
     '- `assignment_unknown_reconcile` routes the reference client through a proxy that drops the real submit response. The client must return `unknown/no_response`, issue no submit retry, and reconcile once through the same abstraction.',
+    '- Scenario-wide `aizign_end_to_end_ms`, whole-preflight `preflight_ms`, submit transport, and reconciliation transport are separate aggregate rows.',
     '- `max-payload` uses 128-byte identifiers and a 256-byte `artifactRef`; its first observation is the requested release-binary `new_process_new_open` boundary point.',
     '',
   );
@@ -1048,16 +1228,24 @@ function environmentMetadata(tempRoot) {
   };
 }
 
-function verifyReleaseBinary(binary) {
+function verifyReleaseBinary(binary, protocol) {
   const hello = spawnSync(binary, ['hello'], {
     encoding: 'utf8',
     env: { PATH: process.env.PATH ?? '' },
   });
   if (hello.status !== 0) throw new Error(`release binary hello failed: ${hello.stderr.trim()}`);
-  const response = extractResponse(hello.stdout);
-  const capabilities = response?.payload?.capabilities;
+  const extraction = protocol.extractFrame(hello.stdout);
+  let response;
+  if (extraction.kind === 'frame') {
+    try {
+      response = protocol.decodeResponse(extraction.frame);
+    } catch {
+      response = undefined;
+    }
+  }
+  const capabilities =
+    response?.body.type === 'hello' ? response.body.info.capabilities : undefined;
   if (
-    response?.ok !== true ||
     !Array.isArray(capabilities) ||
     !capabilities.includes('workflow.signal.submit') ||
     !capabilities.includes('workflow.signal.reconcile')
@@ -1070,6 +1258,9 @@ function verifyReleaseBinary(binary) {
 
 async function loadDependencies() {
   try {
+    const protocol = await import(
+      pathToFileURL(join(REPOSITORY_ROOT, 'packages/protocol/lib/index.js')).href
+    );
     const testkit = await import(
       pathToFileURL(join(REPOSITORY_ROOT, 'packages/adapter-testkit/lib/index.js')).href
     );
@@ -1077,6 +1268,13 @@ async function loadDependencies() {
       pathToFileURL(join(REPOSITORY_ROOT, 'adapters/dsh/lib/index.js')).href
     );
     return {
+      protocol: {
+        MAX_FRAME_BYTES: protocol.MAX_FRAME_BYTES,
+        checkCorrelation: protocol.checkCorrelation,
+        decodeResponse: protocol.decodeResponse,
+        extractFrame: protocol.extractFrame,
+        isUnknownOutcomeCode: protocol.isUnknownOutcomeCode,
+      },
       ReferenceOneShotClient: testkit.ReferenceOneShotClient,
       preflight: dsh.preflight,
       readSignalEvidence: dsh.readSignalEvidence,
@@ -1157,6 +1355,31 @@ const UNKNOWN_REASONS = new Set([
   'meta_mismatch',
   'bound_exceeded',
 ]);
+const NON_NEGATIVE_TIMING_FIELDS = new Set([
+  'request_read_ms',
+  'decode_ms',
+  'journal_open_ms',
+  'journal_load_decode_ms',
+  'committed_prefix_read_ms',
+  'committed_prefix_hash_ms',
+  'committed_prefix_decode_ms',
+  'replay_ms',
+  'decide_us',
+  'append_sync_ms',
+  'publish_prefix_hash_ms',
+  'response_encode_ms',
+  'response_write_ms',
+  'handler_total_ms',
+  'spawn_to_exit_ms',
+  'response_first_byte_ms',
+  'preflight_ms',
+  'harness_cold_read_ms',
+]);
+const NON_NEGATIVE_INTEGER_FIELDS = new Set([
+  'journal_physical_bytes',
+  'journal_entries',
+  'events_returned',
+]);
 
 function assertTimingShape(measurement, allowedKeys, label) {
   if (typeof measurement !== 'object' || measurement === null || Array.isArray(measurement)) {
@@ -1171,9 +1394,29 @@ function assertTimingShape(measurement, allowedKeys, label) {
   if (!TIMING_OUTCOMES.has(measurement.outcome)) {
     throw new Error(`${label} timing contains unregistered outcome`);
   }
+  if (allowedKeys.has('schema_version') && measurement.schema_version !== 1) {
+    throw new Error(`${label} timing schema_version must be integer 1`);
+  }
+  for (const key of NON_NEGATIVE_TIMING_FIELDS) {
+    if (
+      measurement[key] !== undefined &&
+      (!Number.isFinite(measurement[key]) || measurement[key] < 0)
+    ) {
+      throw new Error(`${label} timing ${key} must be a finite non-negative number`);
+    }
+  }
+  for (const key of NON_NEGATIVE_INTEGER_FIELDS) {
+    if (
+      measurement[key] !== undefined &&
+      (!Number.isSafeInteger(measurement[key]) || measurement[key] < 0)
+    ) {
+      throw new Error(`${label} timing ${key} must be a non-negative safe integer`);
+    }
+  }
   if (
     measurement.error_code !== undefined &&
-    !/^[A-Z][A-Z0-9_]{0,63}$/.test(measurement.error_code)
+    (typeof measurement.error_code !== 'string' ||
+      !/^[A-Z][A-Z0-9_]{0,63}$/.test(measurement.error_code))
   ) {
     throw new Error(`${label} timing contains an invalid error_code`);
   }
@@ -1252,8 +1495,8 @@ export async function main(argv = process.argv.slice(2)) {
     process.stdout.write(usage());
     return;
   }
-  verifyReleaseBinary(config.binary);
   const dependencies = await loadDependencies();
+  verifyReleaseBinary(config.binary, dependencies.protocol);
   const tempRoot = mkdtempSync(join(tmpdir(), 'aizign-performance-'));
   const samples = [];
   try {

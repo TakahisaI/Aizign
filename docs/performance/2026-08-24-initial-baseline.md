@@ -115,6 +115,7 @@ QEMU上でもjust-under-timeoutではなく秒単位の余裕があり、現状�
 runner v2のdifferent-state batchは、timer開始後にfixtureを逐次生成していました。
 same-state batchはtimer開始前にfixtureを生成していたため、両modeのthroughputとparallelismは比較できません。
 runner v3は全stateをtimer開始前に準備し、境界テストでseed、timer、spawnの順序を固定しました。
+同時実行結果は許可されたsemantic outcomeだけを受け付け、summaryはthroughput、`JOURNAL_LOCKED`、想定外件数、error codeを分けて表示します。
 このreportにはv2 concurrencyの数値をbaselineとして残しません。
 
 ## DSH evidenceとcanonical scenario
@@ -123,6 +124,7 @@ runner v2のDSH seriesはin-memory array走査だけを測りながらcold read�
 lost-ACK seriesも正常responseを受信した後でresult objectを書き換えており、clientの`no_response`経路を通っていませんでした。
 runner v3はin-memory scanとdeterministic file-backed readを分離し、benchmark専用proxyが実submit responseを破棄します。
 clientが`unknown/no_response`を返し、submit一回とreconcile一回だけを実行したことをrunnerがassertします。
+scenario aggregateは全体時間、preflight、submit、reconcileを別々の分布として保存します。
 このreportにはv2 DSHとcanonical scenarioの数値をbaselineとして残しません。
 
 ## Budget candidates
@@ -133,7 +135,7 @@ clientが`unknown/no_response`を返し、submit一回とreconcile一回だけ�
 - `journal_load_decode_ms` p95と`replay_ms` p95を1,000 entryと10,000 entryで追う
 - acceptedだけの`append_sync_ms` p95を小規模と上限近傍で分ける
 - `committed_prefix_decode_ms`と`publish_prefix_hash_ms`を分け、incremental hasher候補の効果を追う
-- canonical scenarioの`aizign_end_to_end_ms` p95をsubmitとunknown reconciliationで分ける
+- canonical scenarioの`aizign_end_to_end_ms` p95に加え、preflight、submit、reconcileのparent p95を別々に追う
 - DSH evidenceはevent count別の`harness_cold_read_ms` p95として、journal authorityとは別に扱う
 
 数値thresholdはこのreportでは設定しません。
