@@ -35,6 +35,7 @@ jobs:
       - name: Install the pinned toolchain (rust-toolchain.toml)
         run: |
           rustup toolchain install
+          rustup target add x86_64-unknown-linux-gnux32
           rustup show
 
       - name: Cache cargo artifacts
@@ -50,6 +51,9 @@ jobs:
 
       - name: Format, lint, test, doc, deny
         run: cargo xtask rust-check
+
+      - name: Verify the unsupported x32 ABI fails closed at compile time
+        run: cargo check --workspace --all-targets --all-features --target x86_64-unknown-linux-gnux32
 
   typescript:
     name: TypeScript

@@ -1,6 +1,11 @@
 //! Durable committed-prefix behaviour, locking, permissions, and bounds.
 
-#![cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#![cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 
 use std::fs::{self, OpenOptions};
 use std::io::Write as _;
@@ -126,12 +131,12 @@ fn creates_owner_only_durable_layout_files() {
     {
         use std::os::unix::fs::PermissionsExt as _;
         assert_eq!(
-            fs::metadata(&state).unwrap().permissions().mode() & 0o777,
+            fs::metadata(&state).unwrap().permissions().mode() & 0o7777,
             0o700
         );
         for name in [LOCK_FILE_NAME, JOURNAL_FILE_NAME, COMMIT_FILE_NAME] {
             assert_eq!(
-                fs::metadata(state.join(name)).unwrap().permissions().mode() & 0o777,
+                fs::metadata(state.join(name)).unwrap().permissions().mode() & 0o7777,
                 0o600,
                 "{name}"
             );
@@ -299,7 +304,7 @@ fn shared_readers_and_exclusive_writer_obey_nonblocking_locking() {
 
 #[cfg(unix)]
 #[test]
-fn refuses_directories_and_files_that_are_not_owner_only() {
+fn refuses_directories_and_files_without_exact_private_modes() {
     use std::os::unix::fs::PermissionsExt as _;
     let dir = TempDir::new();
     let state = dir.state();
@@ -310,9 +315,21 @@ fn refuses_directories_and_files_that_are_not_owner_only() {
         Err(JournalError::Unavailable { .. })
     ));
 
+    fs::set_permissions(&state, fs::Permissions::from_mode(0o1700)).unwrap();
+    assert!(matches!(
+        JsonlJournal::open(&state),
+        Err(JournalError::Unavailable { .. })
+    ));
+
     fs::set_permissions(&state, fs::Permissions::from_mode(0o700)).unwrap();
     initialize(&state);
     fs::set_permissions(journal_file(&state), fs::Permissions::from_mode(0o644)).unwrap();
+    assert!(matches!(
+        JsonlJournalReader::open(&state),
+        Err(JournalError::Unavailable { .. })
+    ));
+
+    fs::set_permissions(journal_file(&state), fs::Permissions::from_mode(0o4600)).unwrap();
     assert!(matches!(
         JsonlJournalReader::open(&state),
         Err(JournalError::Unavailable { .. })

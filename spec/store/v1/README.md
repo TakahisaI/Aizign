@@ -44,10 +44,10 @@ to match, and the decoded count to equal `committedEntries`.
 The initial implementation advertises this store only on
 `x86_64-unknown-linux-gnu`, where the
 barrier, atomic-replace, locking, permission, and artifact-type contract runs
-in CI and the numeric Linux open-flag ABI is fixed. Other Linux architectures
-or libc environments and non-Linux build targets do not advertise submit or
-reconciliation and reject direct requests with `CAPABILITY_UNSUPPORTED` until
-equivalent platform-specific contract tests exist.
+in CI and the numeric Linux open-flag ABI is fixed. Other Linux ABIs (including
+x32), architectures, or libc environments and non-Linux build targets do not
+advertise submit or reconciliation and reject direct requests with
+`CAPABILITY_UNSUPPORTED` until equivalent target-specific contract tests exist.
 
 The SHA-256 value detects mismatch; it is not authentication against a process
 that can rewrite both journal and commit metadata. See ADR-0013 and ADR-0014.

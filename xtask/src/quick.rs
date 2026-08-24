@@ -173,7 +173,8 @@ fn run_adapter_dsh(root: &Path) -> Result<(), String> {
     let binary = if cfg!(all(
         target_os = "linux",
         target_arch = "x86_64",
-        target_env = "gnu"
+        target_env = "gnu",
+        target_pointer_width = "64"
     )) {
         report::stage("quick/adapter-dsh: rebuild real aizign binary");
         Some(

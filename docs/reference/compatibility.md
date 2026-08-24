@@ -11,7 +11,7 @@
 
 adapterはpackage versionの完全一致ではなく、`hello` で得たprotocol versionとcapabilityで互換性を判定します
 （[ADR-0003](../adr/0003-use-a-versioned-ndjson-process-boundary.md)、[ADR-0008](../adr/0008-use-lockstep-artifact-versions-before-1-0.md)）。
-初期のcommitted-prefix JSONL storeは `x86_64-unknown-linux-gnu` だけが検証済みで、別architecture / libcのLinuxを含むその他のbuildはsubmit / reconcile capabilityをadvertiseしません。
+初期のcommitted-prefix JSONL storeは `x86_64-unknown-linux-gnu` だけが検証済みで、x32を含む別ABIや別architecture / libcのLinuxなど、その他のbuildはsubmit / reconcile capabilityをadvertiseしません。
 
 ## 互換性の規則
 

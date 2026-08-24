@@ -6,13 +6,23 @@ use std::process::{Command, Output, Stdio};
 use std::time::Duration;
 
 use aizign_core::workflow::Command as CoreCommand;
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 use aizign_protocol::{Disposition, ReconciliationDisposition};
 use aizign_protocol::{
     MAX_REQUEST_BYTES, Request, RequestKind, ResponseBody, codes, decode_response, encode_request,
 };
 use aizign_store_jsonl::JOURNAL_FILE_NAME;
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 use aizign_store_jsonl::{COMMIT_FILE_NAME, JsonlJournal, LOCK_FILE_NAME};
 use aizign_testkit::{TempDir, signals};
 
@@ -39,7 +49,12 @@ fn run_handle(state: &Path, frame: &str) -> Output {
     child.wait_with_output().expect("wait for aizign")
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn run_handle_without_observing_stdout(state: &Path, frame: &str) -> std::process::ExitStatus {
     let mut child = aizign()
         .arg("handle")
@@ -59,7 +74,12 @@ fn run_handle_without_observing_stdout(state: &Path, frame: &str) -> std::proces
     child.wait().expect("wait for aizign")
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn run_handle_with_umask(state: &Path, frame: &str, mask: &str) -> Output {
     let mut child = Command::new("/bin/sh")
         .arg("-c")
@@ -127,17 +147,32 @@ fn hello_subcommand_reports_capabilities_without_state() {
     };
     assert_eq!(info.protocol_version, 1);
     assert_eq!(info.journal_schema_version, 1);
-    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+    #[cfg(all(
+        target_os = "linux",
+        target_arch = "x86_64",
+        target_env = "gnu",
+        target_pointer_width = "64"
+    ))]
     assert_eq!(
         info.capabilities,
         ["workflow.signal.submit", "workflow.signal.reconcile"]
     );
-    #[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
+    #[cfg(not(all(
+        target_os = "linux",
+        target_arch = "x86_64",
+        target_env = "gnu",
+        target_pointer_width = "64"
+    )))]
     assert!(info.capabilities.is_empty());
     assert_eq!(info.package.name, "aizign");
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 #[test]
 fn reconciliation_is_read_only_and_classifies_the_committed_snapshot() {
     let missing = TempDir::new();
@@ -231,7 +266,12 @@ fn reconciliation_is_read_only_and_classifies_the_committed_snapshot() {
     assert_eq!(error.code().as_str(), "JOURNAL_CORRUPT");
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 #[test]
 fn lost_ack_is_reconciled_by_a_fresh_process_without_a_blind_retry() {
     let dir = TempDir::new();
@@ -260,7 +300,12 @@ fn lost_ack_is_reconciled_by_a_fresh_process_without_a_blind_retry() {
     );
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 #[test]
 fn restrictive_umask_is_normalized_before_acceptance() {
     use std::os::unix::fs::PermissionsExt as _;
@@ -271,7 +316,7 @@ fn restrictive_umask_is_normalized_before_acceptance() {
                 .unwrap()
                 .permissions()
                 .mode()
-                & 0o777,
+                & 0o7777,
             0o700
         );
         for name in [LOCK_FILE_NAME, JOURNAL_FILE_NAME, COMMIT_FILE_NAME] {
@@ -280,7 +325,7 @@ fn restrictive_umask_is_normalized_before_acceptance() {
                     .unwrap()
                     .permissions()
                     .mode()
-                    & 0o777,
+                    & 0o7777,
                 0o600,
                 "{name}"
             );
@@ -362,7 +407,12 @@ fn hello_request_frame_is_answered_with_its_request_id() {
     );
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 #[test]
 fn accepted_then_duplicate_across_processes_and_conflict() {
     let dir = TempDir::new();
@@ -382,7 +432,7 @@ fn accepted_then_duplicate_across_processes_and_conflict() {
             .unwrap()
             .permissions()
             .mode();
-        assert_eq!(mode & 0o777, 0o600);
+        assert_eq!(mode & 0o7777, 0o600);
     }
 
     // A fresh process rebuilds state from the journal alone.
@@ -416,7 +466,12 @@ fn accepted_then_duplicate_across_processes_and_conflict() {
     assert_eq!(response.kind.as_deref(), Some("workflow.signal.submit"));
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 #[test]
 fn stderr_carries_identity_and_codes_but_no_contents() {
     let dir = TempDir::new();
@@ -486,9 +541,19 @@ fn stdin_must_carry_exactly_one_frame() {
     // Trailing whitespace after the newline is fine.
     let whitespace = format!("{}\n  \n", submit_frame("evt-a", "req-ws"));
     let body = one_frame(&run_handle(&dir.state(), &whitespace)).body;
-    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+    #[cfg(all(
+        target_os = "linux",
+        target_arch = "x86_64",
+        target_env = "gnu",
+        target_pointer_width = "64"
+    ))]
     assert!(matches!(body, ResponseBody::WorkflowSignal(_)));
-    #[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
+    #[cfg(not(all(
+        target_os = "linux",
+        target_arch = "x86_64",
+        target_env = "gnu",
+        target_pointer_width = "64"
+    )))]
     assert!(matches!(
         body,
         ResponseBody::Error(error) if error.code().as_str() == codes::CAPABILITY_UNSUPPORTED
@@ -497,7 +562,12 @@ fn stdin_must_carry_exactly_one_frame() {
 
 /// Pads a frame with trailing spaces (inside the frame, before its newline)
 /// to exactly `MAX_REQUEST_BYTES`, the largest size the protocol accepts.
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn frame_at_size_bound(event_id: &str, request_id: &str) -> String {
     let frame = submit_frame(event_id, request_id);
     let body = frame.trim_end_matches('\n');
@@ -505,7 +575,12 @@ fn frame_at_size_bound(event_id: &str, request_id: &str) -> String {
     format!("{body}{}\n", " ".repeat(MAX_REQUEST_BYTES - body.len()))
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 #[test]
 fn trailing_content_is_still_rejected_at_the_frame_size_bound() {
     // Regression for the fail-open boundary (#34): with the frame at exactly
@@ -584,7 +659,12 @@ fn a_stdin_that_never_closes_ends_as_handler_timeout_not_a_hang() {
     );
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 #[test]
 fn journal_problems_are_reported_as_journal_codes() {
     let dir = TempDir::new();
@@ -610,7 +690,12 @@ fn journal_problems_are_reported_as_journal_codes() {
     }
 }
 
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
+#[cfg(not(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+)))]
 #[test]
 fn unsupported_storage_platform_advertises_no_store_capability_and_rejects_direct_requests() {
     let hello = one_frame(&aizign().arg("hello").output().unwrap());

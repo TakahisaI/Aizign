@@ -1,6 +1,11 @@
 //! The durable JSONL journal and its strictly read-only committed reader.
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 use std::fs::OpenOptions;
 use std::fs::{self, File};
 use std::io::{Read as _, Seek as _, SeekFrom, Write as _};
@@ -29,8 +34,19 @@ const COMMIT_TEMP_FILE_NAME: &str = "workflow.commit.tmp";
 pub const STORE_PLATFORM_SUPPORTED: bool = cfg!(all(
     target_os = "linux",
     target_arch = "x86_64",
-    target_env = "gnu"
+    target_env = "gnu",
+    target_pointer_width = "64"
 ));
+
+// The x32 ABI shares Linux, x86_64, and GNU cfg values with the verified
+// target. Keep the public capability gate fail-closed there.
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "32"
+))]
+const _: () = assert!(!STORE_PLATFORM_SUPPORTED);
 
 /// Upper bound on the journal file size a cold read will attempt.
 const MAX_JOURNAL_BYTES: u64 = 64 * 1024 * 1024;
@@ -60,7 +76,12 @@ struct Snapshot {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(
-    not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")),
+    not(all(
+        target_os = "linux",
+        target_arch = "x86_64",
+        target_env = "gnu",
+        target_pointer_width = "64"
+    )),
     allow(dead_code)
 )]
 enum DurabilityStep {
@@ -468,7 +489,12 @@ fn unsupported_platform() -> JournalError {
     unavailable("this platform has no verified committed-prefix durability implementation")
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn ensure_durable_state_dir<H>(dir: &Path, hook: &mut H) -> Result<(), JournalError>
 where
     H: FnMut(DurabilityStep) -> Result<(), JournalError>,
@@ -492,11 +518,9 @@ where
             .map_err(|error| unavailable(format!("cannot stat state directory: {error}")))?
             .permissions()
             .mode()
-            & 0o777;
+            & 0o7777;
         if mode != 0o700 {
-            return Err(unavailable(
-                "state directory must be owner-only (mode 0700)",
-            ));
+            return Err(unavailable("state directory must have exact mode 0700"));
         }
     }
     hook(DurabilityStep::StateDirectorySync)?;
@@ -509,7 +533,12 @@ where
     sync_directory(parent)
 }
 
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
+#[cfg(not(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+)))]
 fn ensure_durable_state_dir<H>(_dir: &Path, _hook: &mut H) -> Result<(), JournalError>
 where
     H: FnMut(DurabilityStep) -> Result<(), JournalError>,
@@ -517,7 +546,12 @@ where
     Err(unsupported_platform())
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn ensure_existing_private_dir(dir: &Path) -> Result<(), JournalError> {
     use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 
@@ -529,10 +563,8 @@ fn ensure_existing_private_dir(dir: &Path) -> Result<(), JournalError> {
     if !metadata.is_dir() {
         return Err(unavailable("state path is not a directory"));
     }
-    if metadata.permissions().mode() & 0o777 != 0o700 {
-        return Err(unavailable(
-            "state directory must be owner-only (mode 0700)",
-        ));
+    if metadata.permissions().mode() & 0o7777 != 0o700 {
+        return Err(unavailable("state directory must have exact mode 0700"));
     }
     let opened = open_directory_no_follow(dir)?;
     let opened_metadata = opened
@@ -544,12 +576,22 @@ fn ensure_existing_private_dir(dir: &Path) -> Result<(), JournalError> {
     Ok(())
 }
 
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
+#[cfg(not(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+)))]
 fn ensure_existing_private_dir(_dir: &Path) -> Result<(), JournalError> {
     Err(unsupported_platform())
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn sync_directory(dir: &Path) -> Result<(), JournalError> {
     open_directory_no_follow(dir)?.sync_all().map_err(|error| {
         unavailable(format!(
@@ -559,30 +601,65 @@ fn sync_directory(dir: &Path) -> Result<(), JournalError> {
     })
 }
 
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
+#[cfg(not(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+)))]
 fn sync_directory(_dir: &Path) -> Result<(), JournalError> {
     Err(unsupported_platform())
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 // x86_64 GNU/Linux UAPI values. The support gate and every use of these
 // constants must remain restricted to this verified target.
 const O_CLOEXEC: i32 = 0o2_000_000;
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 const O_DIRECTORY: i32 = 0o200_000;
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 const O_NOFOLLOW: i32 = 0o400_000;
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 const O_NONBLOCK: i32 = 0o4_000;
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 #[derive(Clone, Copy)]
 struct FileIdentity {
     device: u64,
     inode: u64,
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn path_entry_exists(path: &Path) -> Result<bool, JournalError> {
     match fs::symlink_metadata(path) {
         Ok(_) => Ok(true),
@@ -594,12 +671,22 @@ fn path_entry_exists(path: &Path) -> Result<bool, JournalError> {
     }
 }
 
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
+#[cfg(not(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+)))]
 fn path_entry_exists(_path: &Path) -> Result<bool, JournalError> {
     Err(unsupported_platform())
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn private_parent_owner(path: &Path) -> Result<u32, JournalError> {
     use std::os::unix::fs::MetadataExt as _;
 
@@ -612,7 +699,12 @@ fn private_parent_owner(path: &Path) -> Result<u32, JournalError> {
         .map_err(|error| unavailable(format!("cannot stat state directory: {error}")))
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn inspect_private_file(path: &Path, owner: u32) -> Result<FileIdentity, JournalError> {
     use std::os::unix::fs::MetadataExt as _;
 
@@ -637,7 +729,12 @@ fn inspect_private_file(path: &Path, owner: u32) -> Result<FileIdentity, Journal
     })
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn check_private_metadata(
     path: &Path,
     metadata: &fs::Metadata,
@@ -657,16 +754,21 @@ fn check_private_metadata(
             name_of(path)
         )));
     }
-    if metadata.permissions().mode() & 0o777 != 0o600 {
+    if metadata.permissions().mode() & 0o7777 != 0o600 {
         return Err(unavailable(format!(
-            "{} must be owner-only (mode 0600)",
+            "{} must have exact mode 0600",
             name_of(path)
         )));
     }
     Ok(())
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn configure_secure_file(options: &mut OpenOptions) {
     use std::os::unix::fs::OpenOptionsExt as _;
 
@@ -675,7 +777,12 @@ fn configure_secure_file(options: &mut OpenOptions) {
         .custom_flags(O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn check_opened_private_file(
     path: &Path,
     file: &File,
@@ -705,7 +812,12 @@ fn check_opened_private_file(
     Ok(())
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn open_private_read_file(path: &Path) -> Result<File, JournalError> {
     let owner = private_parent_owner(path)?;
     let expected = inspect_private_file(path, owner)?;
@@ -719,32 +831,62 @@ fn open_private_read_file(path: &Path) -> Result<File, JournalError> {
     Ok(file)
 }
 
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
+#[cfg(not(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+)))]
 fn open_private_read_file(_path: &Path) -> Result<File, JournalError> {
     Err(unsupported_platform())
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn open_private_update_file(path: &Path, create_new: bool) -> Result<File, JournalError> {
     open_private_writable_file(path, create_new, false)
 }
 
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
+#[cfg(not(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+)))]
 fn open_private_update_file(_path: &Path, _create_new: bool) -> Result<File, JournalError> {
     Err(unsupported_platform())
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn open_private_append_file(path: &Path, create_new: bool) -> Result<File, JournalError> {
     open_private_writable_file(path, create_new, true)
 }
 
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
+#[cfg(not(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+)))]
 fn open_private_append_file(_path: &Path, _create_new: bool) -> Result<File, JournalError> {
     Err(unsupported_platform())
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn open_private_writable_file(
     path: &Path,
     create_new: bool,
@@ -779,7 +921,12 @@ fn open_private_writable_file(
     Ok(file)
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn open_private_replace_file(path: &Path) -> Result<File, JournalError> {
     let owner = private_parent_owner(path)?;
     if path_entry_exists(path)? {
@@ -806,7 +953,12 @@ fn open_private_replace_file(path: &Path) -> Result<File, JournalError> {
     Ok(file)
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn normalize_private_file(path: &Path, file: &File) -> Result<(), JournalError> {
     use std::os::unix::fs::PermissionsExt as _;
 
@@ -819,12 +971,22 @@ fn normalize_private_file(path: &Path, file: &File) -> Result<(), JournalError> 
         })
 }
 
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
+#[cfg(not(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+)))]
 fn open_private_replace_file(_path: &Path) -> Result<File, JournalError> {
     Err(unsupported_platform())
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn open_directory_no_follow(path: &Path) -> Result<File, JournalError> {
     use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _};
 
@@ -862,14 +1024,25 @@ fn open_directory_no_follow(path: &Path) -> Result<File, JournalError> {
     Ok(directory)
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn name_of(path: &Path) -> String {
     path.file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default()
 }
 
-#[cfg(all(test, target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(
+    test,
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 mod tests {
     use std::io;
     use std::path::Path;
