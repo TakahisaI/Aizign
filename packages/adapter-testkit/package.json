@@ -1,8 +1,8 @@
 {
-  "name": "@aizu/adapter-testkit",
+  "name": "@aizign/adapter-testkit",
   "version": "0.1.0",
   "private": true,
-  "description": "Fake core process, reference one-shot client, and conformance runner for Aizu harness adapters",
+  "description": "Fake core process, reference one-shot client, and conformance runner for Aizign harness adapters",
   "license": "Apache-2.0 OR MIT",
   "repository": {
     "type": "git",
@@ -25,7 +25,7 @@
     "node": ">=24.19.0 <25"
   },
   "dependencies": {
-    "@aizu/protocol": "0.1.0"
+    "@aizign/protocol": "0.1.0"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

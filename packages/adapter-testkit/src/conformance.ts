@@ -14,7 +14,7 @@ import {
   type CoreClientConfig,
   PROTOCOL_VERSION,
   type WorkflowSignalSubmitPayload,
-} from '@aizu/protocol';
+} from '@aizign/protocol';
 import { fakeCoreCommand } from './fake-core-path.ts';
 
 export type CoreClientFactory = (config: CoreClientConfig) => CoreClient;
@@ -82,7 +82,7 @@ export function assertMetadataOnly(value: unknown, path = '$'): void {
   }
 }
 
-/** How to reach a core: the fake, or a real `aizu` binary. */
+/** How to reach a core: the fake, or a real `aizign` binary. */
 export interface CoreCommand {
   readonly command: string;
   readonly args?: readonly string[];
@@ -97,7 +97,7 @@ export async function runCoreScenarios(
   factory: CoreClientFactory,
   core: CoreCommand,
 ): Promise<void> {
-  const root = mkdtempSync(join(tmpdir(), 'aizu-core-scenarios-'));
+  const root = mkdtempSync(join(tmpdir(), 'aizign-core-scenarios-'));
   try {
     const make = (name: string) =>
       factory({
@@ -147,7 +147,7 @@ export async function runFaultScenarios(
   factory: CoreClientFactory,
   options: ConformanceOptions = {},
 ): Promise<void> {
-  const root = mkdtempSync(join(tmpdir(), 'aizu-fault-scenarios-'));
+  const root = mkdtempSync(join(tmpdir(), 'aizign-fault-scenarios-'));
   try {
     const fake = fakeCoreCommand();
     const make = (name: string, env: Record<string, string>, timeoutMs = 10_000) =>
@@ -166,16 +166,15 @@ export async function runFaultScenarios(
       ['trailing-garbage', 'undecodable_response', 'stdout carries a frame and then prose'],
     ];
     for (const [fault, reason, description] of scenarios) {
-      const outcome = await make(`fault-${fault}`, { AIZU_FAKE_FAULT: fault }).submitWorkflowSignal(
-        'req-fault',
-        samplePayload('evt-fault'),
-      );
+      const outcome = await make(`fault-${fault}`, {
+        AIZIGN_FAKE_FAULT: fault,
+      }).submitWorkflowSignal('req-fault', samplePayload('evt-fault'));
       assert.equal(outcome.kind, 'unknown', `${description}: ${JSON.stringify(outcome)}`);
       if (outcome.kind === 'unknown') assert.equal(outcome.reason, reason, description);
     }
     const hang = await make(
       'fault-hang',
-      { AIZU_FAKE_FAULT: 'hang' },
+      { AIZIGN_FAKE_FAULT: 'hang' },
       options.hangTimeoutMs ?? 500,
     ).submitWorkflowSignal('req-hang', samplePayload('evt-hang'));
     assert.equal(hang.kind, 'unknown');
@@ -184,7 +183,7 @@ export async function runFaultScenarios(
     // cancellation: the caller's abort kills the process; the outcome is unknown.
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 100);
-    const aborted = await make('fault-abort', { AIZU_FAKE_FAULT: 'hang' }).submitWorkflowSignal(
+    const aborted = await make('fault-abort', { AIZIGN_FAKE_FAULT: 'hang' }).submitWorkflowSignal(
       'req-abort',
       samplePayload('evt-abort'),
       { signal: controller.signal },

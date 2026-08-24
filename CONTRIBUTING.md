@@ -1,9 +1,9 @@
-# Contributing to Aizu
+# Contributing to Aizign
 
 この文書は、人間向けcontribution policyの正本です。
 `AGENTS.md` は自動coding agent向けのnavigationであり、人間のcontributorは読む必要がありません。
 
-Aizuは **proposal-first** で開発します。挙動、API、schema、依存境界を変える変更は、
+Aizignは **proposal-first** で開発します。挙動、API、schema、依存境界を変える変更は、
 先にIssueで契約を確定してからPRを出してください。未合意の大規模rewriteは受け付けません。
 
 ## 受け付けるもの
@@ -80,11 +80,11 @@ cargo xtask check
 
 ## 旧実装からの採用
 
-Aizuの前身となるprivate repositoryは、source of truthではなく「設計上の観測資料」です
+Aizignの前身となるprivate repositoryは、source of truthではなく「設計上の観測資料」です
 （[ADR-0006](docs/adr/0006-keep-the-legacy-repository-reference-only.md)）。
 
 - source treeを一括copyしない
-- 採用する契約はAizu側のIssueまたはADRで `Adopt / Reject / Defer` を明示する
+- 採用する契約はAizign側のIssueまたはADRで `Adopt / Reject / Defer` を明示する
 - 採用する契約は新しいtestとして書き直す
 - literal codeやpresetを持ち込む場合だけ、licenseとattributionを個別に監査する
 

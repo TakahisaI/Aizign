@@ -1,4 +1,4 @@
-# AGENTS.md — @aizu/adapter-dsh
+# AGENTS.md — @aizign/adapter-dsh
 
 This file is navigation for automated coding agents.
 Human contributors may ignore it and should follow [CONTRIBUTING.md](../../CONTRIBUTING.md).
@@ -25,6 +25,6 @@ Do not read Rust crates unless the Issue explicitly requires investigation acros
 ## Check
 
 ```sh
-npm test -w @aizu/adapter-dsh
+npm test -w @aizign/adapter-dsh
 cargo xtask check
 ```

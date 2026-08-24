@@ -1,9 +1,9 @@
 # Context map
 
-`aizu-core` と `aizu-engine` はbounded context単位でmoduleを置きます（[ADR-0005](../adr/0005-organize-the-core-by-bounded-context.md)）。
+`aizign-core` と `aizign-engine` はbounded context単位でmoduleを置きます（[ADR-0005](../adr/0005-organize-the-core-by-bounded-context.md)）。
 この表は **配置の正本** です。新しいcontextを足すときはこの表を更新し、既存contextの責務を広げないでください。
 
-## Core contexts (`crates/aizu-core/src/`)
+## Core contexts (`crates/aizign-core/src/`)
 
 | Context | Module | 責務 | 非責務 | v0.1 |
 |---|---|---|---|---|
@@ -20,7 +20,7 @@
 `later` のcontextは、最初のstructured workflow signalが縦に通った後、旧実装をcontext単位で再評価して追加します。
 そのときもこの表に行を足してからcodeを書きます。
 
-## Engine (`crates/aizu-engine/src/`)
+## Engine (`crates/aizign-engine/src/`)
 
 engineはuse caseとportを持ちます。contextの切り方はcoreと揃えます。
 
@@ -31,7 +31,7 @@ engineはuse caseとportを持ちます。contextの切り方はcoreと揃えま
 | Port | `EffectSink`（effect intentの配送） | 後続 |
 | 所有 | portはengineが定義。store、testkit、cliが実装 | — |
 
-## Protocol (`crates/aizu-protocol`, `packages/protocol`)
+## Protocol (`crates/aizign-protocol`, `packages/protocol`)
 
 | 要素 | 内容 |
 |---|---|
@@ -39,12 +39,12 @@ engineはuse caseとportを持ちます。contextの切り方はcoreと揃えま
 | Kind | `hello`、`workflow.signal.submit`、以後は新しいkindとして追加 |
 | 正本 | `spec/protocol/v1/schemas/`、`spec/protocol/v1/examples/` |
 
-## Journal (`crates/aizu-store-jsonl`)
+## Journal (`crates/aizign-store-jsonl`)
 
 | 要素 | 内容 |
 |---|---|
 | Record | schema version付きのclosed record。metadata-only。`workflow.signal.accepted` |
-| Store | `JsonlJournal`（owner-only、advisory lock、bounded cold read、fsync append）、`aizu-testkit::MemoryJournal` |
+| Store | `JsonlJournal`（owner-only、advisory lock、bounded cold read、fsync append）、`aizign-testkit::MemoryJournal` |
 | 正本 | `spec/journal/v1/` |
 
 ## Adapter (`adapters/<harness>/`)
@@ -66,7 +66,7 @@ adapter内の配置:
 
 | Directory | 内容 |
 |---|---|
-| `src/core-client/` | `aizu` binaryの起動、envelope送受信、`hello` |
+| `src/core-client/` | `aizign` binaryの起動、envelope送受信、`hello` |
 | `src/mapping/` | native event / harness型 ↔ protocol DTO |
 | `src/evidence/` | harness persistenceからのcold read（`tool/call` + `tool/result` 対）、binding / payload digest |
 | `src/lifecycle/` | connect / interrupt / release / reconcile |

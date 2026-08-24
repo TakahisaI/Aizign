@@ -1,6 +1,6 @@
 /**
- * `@aizu/adapter-dsh` — the DSH plugin. Registers one scope-bound
- * `submit_workflow_signal` tool backed by the `aizu` binary over Protocol v1.
+ * `@aizign/adapter-dsh` — the DSH plugin. Registers one scope-bound
+ * `submit_workflow_signal` tool backed by the `aizign` binary over Protocol v1.
  *
  * The plugin knows DSH; the core never does. DSH session ids, call ids, and
  * agent handles stay on this side of the process boundary.
@@ -13,7 +13,7 @@ import { OneShotCoreClient } from './core-client/one-shot-client.ts';
 import { preflight } from './lifecycle/preflight.ts';
 import { adapterCodes, createSubmitWorkflowSignalTool, TOOL_NAME } from './mapping/tool.ts';
 
-export const name = 'aizu-workflow-signal';
+export const name = 'aizign-workflow-signal';
 export const inject = ['tools'];
 export type { AdapterConfig, Config as PluginConfig, SignalBinding } from './config.ts';
 export { OneShotCoreClient } from './core-client/one-shot-client.ts';

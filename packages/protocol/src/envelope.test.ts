@@ -17,7 +17,7 @@ test('encoded frames are single lines with escaped newlines', () => {
   const request: Request = { requestId: 'req-1', kind: 'hello' };
   assert.equal(
     encodeRequest(request),
-    '{"protocol":"aizu","version":1,"requestId":"req-1","kind":"hello","payload":{}}',
+    '{"protocol":"aizign","version":1,"requestId":"req-1","kind":"hello","payload":{}}',
   );
 });
 
@@ -38,13 +38,13 @@ test('extractFrame accepts exactly one newline-terminated frame plus whitespace'
 
 test('oversized or badly addressed responses are invalid envelopes', async () => {
   const { MAX_FRAME_BYTES } = await import('./envelope.ts');
-  const big = `{"protocol":"aizu","version":1,"requestId":"r","kind":"hello","ok":false,"error":{"code":"INTERNAL","message":"${'x'.repeat(MAX_FRAME_BYTES)}"}}`;
+  const big = `{"protocol":"aizign","version":1,"requestId":"r","kind":"hello","ok":false,"error":{"code":"INTERNAL","message":"${'x'.repeat(MAX_FRAME_BYTES)}"}}`;
   assert.throws(
     () => decodeResponse(big),
     (error: unknown) => error instanceof ProtocolError && error.code === codes.INVALID_ENVELOPE,
   );
   const bad =
-    '{"protocol":"aizu","version":1,"requestId":"bad id","kind":"hello","ok":false,"error":{"code":"INTERNAL","message":"m"}}';
+    '{"protocol":"aizign","version":1,"requestId":"bad id","kind":"hello","ok":false,"error":{"code":"INTERNAL","message":"m"}}';
   assert.throws(
     () => decodeResponse(bad),
     (error: unknown) => error instanceof ProtocolError && error.code === codes.INVALID_ENVELOPE,

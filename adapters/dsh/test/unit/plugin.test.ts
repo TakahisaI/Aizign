@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { fakeCoreCommand } from '@aizu/adapter-testkit';
+import { fakeCoreCommand } from '@aizign/adapter-testkit';
 import type { Context } from '@deepseek-ai/cordis';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools';
@@ -50,10 +50,10 @@ function fakeContext(): Context & { registered: ToolDefinition[] } {
 }
 
 test('plugin shape: name, inject, and a schemastery Config', () => {
-  assert.equal(name, 'aizu-workflow-signal');
+  assert.equal(name, 'aizign-workflow-signal');
   assert.deepEqual(inject, ['tools']);
   const parsed = ConfigSchema({
-    binary: '/x/aizu',
+    binary: '/x/aizign',
     stateDir: '/x/state',
     eventId: 'evt-1',
     workflowId: 'wf-1',
@@ -62,7 +62,7 @@ test('plugin shape: name, inject, and a schemastery Config', () => {
     artifactRevision: 'rev-a',
   });
   assert.equal(parsed.timeoutMs, 15_000);
-  assert.throws(() => ConfigSchema({ binary: '/x/aizu' } as Config));
+  assert.throws(() => ConfigSchema({ binary: '/x/aizign' } as Config));
 });
 
 test('preflight accepts a compatible core and rejects an incompatible or unreachable one', async () => {
@@ -73,7 +73,7 @@ test('preflight accepts a compatible core and rejects an incompatible or unreach
 
   const future = new OneShotCoreClient({
     ...fake,
-    env: { AIZU_FAKE_HELLO_PROTOCOL_VERSION: '2' },
+    env: { AIZIGN_FAKE_HELLO_PROTOCOL_VERSION: '2' },
     stateDir: '/unused',
     timeoutMs: 5_000,
   });
@@ -83,7 +83,7 @@ test('preflight accepts a compatible core and rejects an incompatible or unreach
 
   const silent = new OneShotCoreClient({
     ...fake,
-    env: { AIZU_FAKE_FAULT: 'no-response' },
+    env: { AIZIGN_FAKE_FAULT: 'no-response' },
     stateDir: '/unused',
     timeoutMs: 5_000,
   });
@@ -93,7 +93,7 @@ test('preflight accepts a compatible core and rejects an incompatible or unreach
 });
 
 test('apply runs the preflight and registers exactly one scope-bound tool', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'aizu-dsh-plugin-'));
+  const root = mkdtempSync(join(tmpdir(), 'aizign-dsh-plugin-'));
   try {
     const ctx = fakeContext();
     const config = fakeBinaryConfig(join(root, 'state'));
@@ -121,13 +121,13 @@ test('apply runs the preflight and registers exactly one scope-bound tool', asyn
     await assert.rejects(
       apply(incompatible, {
         ...config,
-        binary: fakeBinary(join(root, 'v2'), { AIZU_FAKE_HELLO_PROTOCOL_VERSION: '2' }),
+        binary: fakeBinary(join(root, 'v2'), { AIZIGN_FAKE_HELLO_PROTOCOL_VERSION: '2' }),
       }),
       (error: unknown) => error instanceof HarnessError && error.code === codes.INCOMPATIBLE,
     );
     assert.equal(incompatible.registered.length, 0);
 
-    // Not an aizu at all: fails closed as unavailable.
+    // Not an aizign at all: fails closed as unavailable.
     const broken = fakeContext();
     await assert.rejects(
       apply(broken, { ...config, binary: process.execPath }),

@@ -11,7 +11,7 @@ const hello: HelloInfo = {
   protocolVersion: 1,
   journalSchemaVersion: 1,
   capabilities: [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT],
-  package: { name: 'aizu', version: '9.9.9' },
+  package: { name: 'aizign', version: '9.9.9' },
 };
 
 test('compatibility ignores the package version', () => {
@@ -40,7 +40,7 @@ test('hello decoding matches the schema: versions from 1, well-formed unique cap
     protocolVersion: 1,
     journalSchemaVersion: 1,
     capabilities: [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT],
-    package: { name: 'aizu', version: '0.1.0' },
+    package: { name: 'aizign', version: '0.1.0' },
   };
   assert.deepEqual(decodeHelloInfo(base), base);
   // Unknown but well-formed capabilities decode: a v1 client can still read a

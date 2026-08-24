@@ -1,4 +1,4 @@
-# Aizu Protocol v1
+# Aizign Protocol v1
 
 NDJSON over stdin / stdout。**1 request frame in、1 response frame out**。frameは改行で終わる1行のJSON objectで、
 request / response とも `65536` bytes（`MAX_FRAME_BYTES`）以下。
@@ -8,7 +8,7 @@ request / response とも `65536` bytes（`MAX_FRAME_BYTES`）以下。
 - clientはresponseの `requestId` / `kind` / （signalでは）`eventId` を送信したものと照合し、不一致は `unknown`（correlation mismatch）にする
 
 ```text
-adapter ──(request frame)──▶ aizu handle --state <dir> ──(response frame)──▶ adapter
+adapter ──(request frame)──▶ aizign handle --state <dir> ──(response frame)──▶ adapter
                                      │ stderr: 構造化log（本文なし）
 ```
 
@@ -16,7 +16,7 @@ adapter ──(request frame)──▶ aizu handle --state <dir> ──(response
 
 | Field | Request | Response |
 |---|---|---|
-| `protocol` | `"aizu"` | `"aizu"` |
+| `protocol` | `"aizign"` | `"aizign"` |
 | `version` | `1`（許容rangeは `0..=4294967295`。範囲外は `INVALID_ENVELOPE`） | 同左 |
 | `requestId` | `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$` | requestの値をecho（同じpattern）。復元できなければ `null` |
 | `kind` | 登録済みkind | requestの値をecho。復元できなければ `null` |
@@ -83,4 +83,4 @@ structured workflow signalを、shellがbindされている `expected` assignmen
 ## Files
 
 - `schemas/` — JSON Schema draft 2020-12
-- `examples/` — `*.request.json` / `*.response.json`。`crates/aizu-protocol/tests/examples.rs` がdecode → encodeの往復で検証する
+- `examples/` — `*.request.json` / `*.response.json`。`crates/aizign-protocol/tests/examples.rs` がdecode → encodeの往復で検証する

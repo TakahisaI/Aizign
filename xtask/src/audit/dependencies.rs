@@ -30,7 +30,7 @@ struct CrateRule {
 
 const RULES: &[CrateRule] = &[
     CrateRule {
-        name: "aizu-core",
+        name: "aizign-core",
         workspace: &[],
         dev_workspace: &[],
         external: &[],
@@ -38,47 +38,47 @@ const RULES: &[CrateRule] = &[
         shell_free: true,
     },
     CrateRule {
-        name: "aizu-engine",
-        workspace: &["aizu-core"],
-        dev_workspace: &["aizu-testkit"],
+        name: "aizign-engine",
+        workspace: &["aizign-core"],
+        dev_workspace: &["aizign-testkit"],
         external: &[],
         harness_neutral: true,
         shell_free: true,
     },
     CrateRule {
-        name: "aizu-protocol",
-        workspace: &["aizu-core"],
-        dev_workspace: &["aizu-testkit"],
+        name: "aizign-protocol",
+        workspace: &["aizign-core"],
+        dev_workspace: &["aizign-testkit"],
         external: &["serde", "serde_json"],
         harness_neutral: true,
         shell_free: true,
     },
     CrateRule {
-        name: "aizu-store-jsonl",
-        workspace: &["aizu-core", "aizu-engine"],
-        dev_workspace: &["aizu-testkit"],
+        name: "aizign-store-jsonl",
+        workspace: &["aizign-core", "aizign-engine"],
+        dev_workspace: &["aizign-testkit"],
         external: &["serde", "serde_json"],
         harness_neutral: true,
         shell_free: false,
     },
     CrateRule {
-        name: "aizu-testkit",
-        workspace: &["aizu-core", "aizu-engine", "aizu-protocol"],
+        name: "aizign-testkit",
+        workspace: &["aizign-core", "aizign-engine", "aizign-protocol"],
         dev_workspace: &[],
         external: &["serde_json"],
         harness_neutral: true,
         shell_free: false,
     },
     CrateRule {
-        name: "aizu-cli",
+        name: "aizign-cli",
         workspace: &[
-            "aizu-core",
-            "aizu-engine",
-            "aizu-protocol",
-            "aizu-store-jsonl",
-            "aizu-testkit",
+            "aizign-core",
+            "aizign-engine",
+            "aizign-protocol",
+            "aizign-store-jsonl",
+            "aizign-testkit",
         ],
-        dev_workspace: &["aizu-testkit"],
+        dev_workspace: &["aizign-testkit"],
         external: &["serde_json"],
         harness_neutral: true,
         shell_free: false,
@@ -94,7 +94,7 @@ const RULES: &[CrateRule] = &[
 ];
 
 /// Source patterns that must not appear in shell-free crates (core,
-/// engine, protocol). `aizu-core` is additionally `no_std`, which makes
+/// engine, protocol). `aizign-core` is additionally `no_std`, which makes
 /// most of these impossible to compile; the scan still runs so the other
 /// crates get the same rule.
 const FORBIDDEN_PATHS: &[(&str, &str)] = &[
@@ -130,7 +130,7 @@ const NAME_TOKENS: &[(&str, &str)] = &[
 
 /// Crates whose source may not mention `serde` at all (ADR-0004). The
 /// protocol and store crates own serialization and are exempt.
-const NO_SERDE_CRATES: &[&str] = &["aizu-core", "aizu-engine"];
+const NO_SERDE_CRATES: &[&str] = &["aizign-core", "aizign-engine"];
 
 pub(crate) fn run(root: &Path, tracked: &[PathBuf]) -> Result<(), String> {
     let metadata = shell::capture(

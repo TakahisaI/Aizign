@@ -1,6 +1,6 @@
-# @aizu/protocol
+# @aizign/protocol
 
-Aizu Protocol v1 for TypeScript: closed NDJSON envelope codec, `hello` compatibility, and the `CoreClient` contract every harness adapter implements.
+Aizign Protocol v1 for TypeScript: closed NDJSON envelope codec, `hello` compatibility, and the `CoreClient` contract every harness adapter implements.
 
 | | |
 |---|---|
@@ -10,7 +10,7 @@ Aizu Protocol v1 for TypeScript: closed NDJSON envelope codec, `hello` compatibi
 | **Outputs** | `Request` / `Response`、`DecodeFailure`（復元した `requestId` / `kind` 付き）、`ProtocolError` |
 | **Hard invariants** | BOMなしUTF-8、well-formed Unicode、closed schema（未知field、`null`、未登録kindを拒否）、`spec/conformance` の全fixtureでRust実装と同じcodeと復元IDを返す、`JOURNAL_OUTCOME_UNKNOWN` / `HANDLER_TIMEOUT` は `rejected` ではなく `unknown` |
 | **Allowed dependencies** | なし（runtime）。dev: workspace rootの `typescript` / `@biomejs/biome` / `@types/node` |
-| **Test command** | `npm test -w @aizu/protocol`（`node --test`、型はNodeがstripする） |
+| **Test command** | `npm test -w @aizign/protocol`（`node --test`、型はNodeがstripする） |
 | **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md) |
 
 wire contractの正本は [`spec/protocol/v1/`](../../spec/protocol/v1/README.md)。このpackageはそれに従う側です。
@@ -33,7 +33,7 @@ src/
 ## 使い方
 
 ```ts
-import { checkCompatibility, decodeResponse, encodeRequest, PROTOCOL_VERSION } from '@aizu/protocol';
+import { checkCompatibility, decodeResponse, encodeRequest, PROTOCOL_VERSION } from '@aizign/protocol';
 
 const frame = encodeRequest({ requestId: 'req-1', kind: 'hello' });
 const response = decodeResponse(lineFromStdout);
@@ -45,4 +45,4 @@ if (response.body.type === 'hello') {
 }
 ```
 
-`CoreClient` の実装は各adapterが所有します。検証には [`@aizu/adapter-testkit`](../adapter-testkit/README.md) を使います。
+`CoreClient` の実装は各adapterが所有します。検証には [`@aizign/adapter-testkit`](../adapter-testkit/README.md) を使います。

@@ -1,6 +1,6 @@
-# Aizu journal schema v1
+# Aizign journal schema v1
 
-control journalのdurable format。**metadata-only、append-only**（ADR-0007）。初期実装はJSONL（`aizu-store-jsonl`）。
+control journalのdurable format。**metadata-only、append-only**（ADR-0007）。初期実装はJSONL（`aizign-store-jsonl`）。
 
 ```text
 <state dir>/            owner-only（0700）
@@ -21,7 +21,7 @@ control journalのdurable format。**metadata-only、append-only**（ADR-0007）
 - すべてclosed schema（`additionalProperties: false`）。未知fieldは `JOURNAL_CORRUPT`
 - **同一object内でmember名の重複は `JOURNAL_CORRUPT`**（escape表記ではなくdecode後の名前で比較するprotocolと同じlexical rule。schemaでは表現できない）
 - `signal` の条件規則（kindとroleの対応、`findingCount` / `artifactRef` / `shortErrorCode` の必須・禁止）は [`record.schema.json`](schemas/record.schema.json) がprotocol v1のrequest schemaと同じ形で持つ
-- **schemaとruntime decoder（`aizu-store-jsonl`）の受理集合は同一**。`spec/conformance/{valid,invalid}/journal` の同じfixtureを、runtimeは `decode_record`（`crates/aizu-store-jsonl/tests/conformance.rs`）、schemaは [`spec/test/schema.test.mjs`](../../test/schema.test.mjs) が読み、`.expect.json` の `schema` 判定で両者を突き合わせる
+- **schemaとruntime decoder（`aizign-store-jsonl`）の受理集合は同一**。`spec/conformance/{valid,invalid}/journal` の同じfixtureを、runtimeは `decode_record`（`crates/aizign-store-jsonl/tests/conformance.rs`）、schemaは [`spec/test/schema.test.mjs`](../../test/schema.test.mjs) が読み、`.expect.json` の `schema` 判定で両者を突き合わせる
 - `seq` の範囲はschemaとruntimeで一致させる: `1..=10000`（`MAX_JOURNAL_ENTRIES`。cold readがこの件数でboundされるため、これを超えるseqを持つdurable fileは読めない）
 - 整数の字句表現はprotocolと同じくcanonical token（`1.0` などは `JOURNAL_CORRUPT`）。schemaでは表現できないのでfixtureに `schema: true` と記録する
 - optional fieldは省略する。`null` は `JOURNAL_CORRUPT`

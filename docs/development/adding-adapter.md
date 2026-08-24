@@ -6,7 +6,7 @@
 | 読む | 内容 |
 |---|---|
 | `spec/protocol/v1/` | wire contract。envelope、kind、schema、example |
-| `packages/protocol/` | `@aizu/protocol`。envelope codec、`checkCompatibility`、`CoreClient` / `SubmitOutcome` / `UnknownOutcome` の契約型 |
+| `packages/protocol/` | `@aizign/protocol`。envelope codec、`checkCompatibility`、`CoreClient` / `SubmitOutcome` / `UnknownOutcome` の契約型 |
 | `packages/adapter-testkit/` | fake core process、`runCoreClientConformance`、`ReferenceOneShotClient`（参照実装）、`assertMetadataOnly` |
 | この文書 | 契約と境界 |
 | `adapters/<your-harness>/` | 自分の実装 |
@@ -40,24 +40,24 @@ adapterだけが保持してよいもの、coreへ渡してよいものは [data
 
 ```text
 adapters/<harness>/
-├── package.json        name: @aizu/adapter-<harness>, private / publish disabled（当面）
+├── package.json        name: @aizign/adapter-<harness>, private / publish disabled（当面）
 ├── README.md           Responsibility、Non-responsibility、Inputs、Outputs、Hard invariants、Allowed dependencies、Test command、関連ADR
 ├── AGENTS.md           navigationと編集制約だけ
 ├── src/
 │   ├── index.ts        closed exports の入口
 │   ├── config.ts
-│   ├── core-client/    aizu binaryの起動、envelope送受信
+│   ├── core-client/    aizign binaryの起動、envelope送受信
 │   ├── mapping/        native event <-> protocol DTO
 │   ├── evidence/       harness persistenceのcold read、binding digest
 │   └── lifecycle/      connect / interrupt / release / reconcile
 └── test/
     ├── unit/
-    └── conformance/    @aizu/adapter-testkit を使う
+    └── conformance/    @aizign/adapter-testkit を使う
 ```
 
 - harness SDKはexact versionで固定する（peer + dev。ADR-0010）。root `.npmrc` は `ignore-scripts=true`
 - `exports` mapはclosed。deep importを許さない
-- `@aizu/protocol` 以外のworkspace packageにruntime依存しない
+- `@aizign/protocol` 以外のworkspace packageにruntime依存しない
 - 通常testはfake harnessとfake core processで完結させ、live smokeは `experiments/` のopt-inだけにする
 
 ## 手順

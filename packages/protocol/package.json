@@ -1,8 +1,8 @@
 {
-  "name": "@aizu/protocol",
+  "name": "@aizign/protocol",
   "version": "0.1.0",
   "private": true,
-  "description": "Aizu Protocol v1 for TypeScript: closed NDJSON envelope codec, hello compatibility, and the core-client contract",
+  "description": "Aizign Protocol v1 for TypeScript: closed NDJSON envelope codec, hello compatibility, and the core-client contract",
   "license": "Apache-2.0 OR MIT",
   "repository": {
     "type": "git",

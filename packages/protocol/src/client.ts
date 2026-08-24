@@ -1,6 +1,6 @@
 /**
  * The adapter-side contract for talking to the core. Every harness adapter
- * implements `CoreClient`; `@aizu/adapter-testkit` proves an implementation
+ * implements `CoreClient`; `@aizign/adapter-testkit` proves an implementation
  * behaves correctly against a fake core process, including the cases where
  * the outcome is unknown.
  */
@@ -9,9 +9,9 @@ import type { Response } from './envelope.ts';
 import type { HelloInfo } from './hello.ts';
 import type { SignalResult, WorkflowSignalSubmitPayload } from './workflow-signal.ts';
 
-/** How to reach the `aizu` binary. */
+/** How to reach the `aizign` binary. */
 export interface CoreClientConfig {
-  /** Executable to spawn (the `aizu` binary, or `node` for a fake). */
+  /** Executable to spawn (the `aizign` binary, or `node` for a fake). */
   readonly command: string;
   /** Arguments placed before the subcommand (e.g. a script path for `node`). */
   readonly args?: readonly string[];

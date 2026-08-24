@@ -1,4 +1,4 @@
-//! Repository tooling for Aizu, invoked as `cargo xtask <command>`.
+//! Repository tooling for Aizign, invoked as `cargo xtask <command>`.
 //!
 //! `xtask` is not a published artifact. It exists so that every check a
 //! pull request must pass has exactly one entry point (`cargo xtask check`)

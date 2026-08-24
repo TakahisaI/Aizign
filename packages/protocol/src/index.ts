@@ -1,5 +1,5 @@
 /**
- * `@aizu/protocol` — Aizu Protocol v1 for TypeScript.
+ * `@aizign/protocol` — Aizign Protocol v1 for TypeScript.
  *
  * Closed NDJSON envelope codec, the `hello` compatibility check, the
  * `workflow.signal.submit` payload types, and the `CoreClient` contract that

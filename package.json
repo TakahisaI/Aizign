@@ -1,8 +1,8 @@
 {
-  "name": "aizu-workspace",
+  "name": "aizign-workspace",
   "version": "0.1.0",
   "private": true,
-  "description": "npm workspace root for Aizu TypeScript packages and harness adapters (not published)",
+  "description": "npm workspace root for Aizign TypeScript packages and harness adapters (not published)",
   "license": "Apache-2.0 OR MIT",
   "repository": {
     "type": "git",
@@ -32,7 +32,7 @@
     "check": "npm run lint && npm run build && npm run typecheck && npm run test && npm run pack:check",
     "lint": "biome ci .",
     "format": "biome check --write .",
-    "build": "npm run build -w @aizu/protocol && npm run build -w @aizu/adapter-testkit && npm run build -w @aizu/adapter-dsh",
+    "build": "npm run build -w @aizign/protocol && npm run build -w @aizign/adapter-testkit && npm run build -w @aizign/adapter-dsh",
     "typecheck": "npm run typecheck --workspaces",
     "test": "npm run test --workspaces && npm run test:spec && npm run test:experiments",
     "test:spec": "node --test \"spec/test/*.test.mjs\"",

@@ -1,6 +1,6 @@
 /**
  * `workflow.signal.submit`: the payload types and their closed decoders,
- * mirroring the rules `aizu-core` enforces so that an adapter can reject
+ * mirroring the rules `aizign-core` enforces so that an adapter can reject
  * a malformed signal before spawning a process.
  */
 
@@ -190,7 +190,7 @@ export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubm
   return { expected: expectedShape, signal: result };
 }
 
-/** The kind-specific rules shared with `aizu-core`. */
+/** The kind-specific rules shared with `aizign-core`. */
 function validateSignalRules(
   signal: {
     readonly role: Role;

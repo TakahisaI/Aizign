@@ -1,5 +1,5 @@
 //! Version lockstep (#33): every crate and npm package carries the one
-//! workspace version, and internal `@aizu/*` dependencies pin exactly it.
+//! workspace version, and internal `@aizign/*` dependencies pin exactly it.
 //! Protocol and journal schema versions evolve independently; package
 //! versions do not (ADR-0008). The release workflow checks only the root
 //! versions against the tag, so this audit is what makes a partial bump
@@ -99,7 +99,7 @@ fn check_root_cargo(rendered: &str, text: &str, anchor: &str, findings: &mut Fin
     }
 }
 
-/// Package version and every internal `@aizu/*` dependency must equal the anchor.
+/// Package version and every internal `@aizign/*` dependency must equal the anchor.
 fn check_package_json(rendered: &str, text: &str, anchor: &str, findings: &mut Findings) {
     let Ok(manifest) = serde_json::from_str::<serde_json::Value>(text) else {
         return; // The package-manifest audit reports invalid JSON.
@@ -116,7 +116,7 @@ fn check_package_json(rendered: &str, text: &str, anchor: &str, findings: &mut F
             continue;
         };
         for (name, value) in entries {
-            if !name.starts_with("@aizu/") {
+            if !name.starts_with("@aizign/") {
                 continue;
             }
             if value.as_str() != Some(anchor) {
@@ -185,7 +185,7 @@ mod tests {
 version = "0.1.0"
 
 [workspace.dependencies]
-aizu-core = { path = "crates/aizu-core", version = "0.1.0" }
+aizign-core = { path = "crates/aizign-core", version = "0.1.0" }
 serde = { version = "1.0.229", default-features = false }
 "#;
 
@@ -209,7 +209,7 @@ serde = { version = "1.0.229", default-features = false }
         let mut findings = Findings::default();
         check_package_json(
             "packages/x/package.json",
-            r#"{ "version": "0.1.0", "dependencies": { "@aizu/protocol": "^0.1.0" } }"#,
+            r#"{ "version": "0.1.0", "dependencies": { "@aizign/protocol": "^0.1.0" } }"#,
             "0.1.0",
             &mut findings,
         );

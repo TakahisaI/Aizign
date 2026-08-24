@@ -1,5 +1,5 @@
 /**
- * Plugin configuration: where the `aizu` binary and its state live, and the
+ * Plugin configuration: where the `aizign` binary and its state live, and the
  * one assignment this plugin instance is bound to. The agent never sees or
  * supplies any of the identity; the control plane fixes it here.
  */
@@ -9,12 +9,12 @@ import {
   isIdentifier,
   type Role,
   type WorkflowSignalSubmitPayload,
-} from '@aizu/protocol';
+} from '@aizign/protocol';
 import z from '@deepseek-ai/schemastery';
 
 /** Raw configuration as DSH hands it to the plugin. */
 export interface Config {
-  /** Path to the `aizu` binary. */
+  /** Path to the `aizign` binary. */
   binary: string;
   /** `--state` directory for the control journal. */
   stateDir: string;

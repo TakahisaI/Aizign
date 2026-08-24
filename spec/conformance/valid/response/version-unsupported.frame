@@ -1,1 +1,1 @@
-{"protocol":"aizu","version":1,"requestId":"req-future-01","kind":"hello","ok":false,"error":{"code":"PROTOCOL_VERSION_UNSUPPORTED","message":"protocol version 2 is not supported; this binary speaks 1"}}
+{"protocol":"aizign","version":1,"requestId":"req-future-01","kind":"hello","ok":false,"error":{"code":"PROTOCOL_VERSION_UNSUPPORTED","message":"protocol version 2 is not supported; this binary speaks 1"}}

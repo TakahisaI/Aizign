@@ -7,7 +7,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fakeCoreCommand } from '@aizu/adapter-testkit';
+import { fakeCoreCommand } from '@aizign/adapter-testkit';
 import type { Context } from '@deepseek-ai/cordis';
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools';
 import type { EvidenceSource, SessionEventLike } from '../../src/evidence/cold-read.ts';
@@ -102,7 +102,7 @@ export function fakeBinary(dir: string, env: Record<string, string> = {}): strin
     .map(([key, value]) => `export ${key}=${JSON.stringify(value)}`)
     .join('\n');
   mkdirSync(dir, { recursive: true });
-  const path = join(dir, 'aizu-fake');
+  const path = join(dir, 'aizign-fake');
   const args = fake.args.map((arg) => JSON.stringify(arg)).join(' ');
   writeFileSync(
     path,

@@ -6,7 +6,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import type { ExpectedAssignment, WorkflowSignal } from '@aizu/protocol';
+import type { ExpectedAssignment, WorkflowSignal } from '@aizign/protocol';
 import type { SignalBinding } from '../config.ts';
 
 /** Deterministic JSON: object keys sorted recursively, no whitespace. */

@@ -1,6 +1,6 @@
-# @aizu/adapter-testkit
+# @aizign/adapter-testkit
 
-Prove a harness adapter's core client against a fake core — including every way an outcome can be **unknown** — without the real `aizu` binary, a harness, or a network.
+Prove a harness adapter's core client against a fake core — including every way an outcome can be **unknown** — without the real `aizign` binary, a harness, or a network.
 
 | | |
 |---|---|
@@ -9,8 +9,8 @@ Prove a harness adapter's core client against a fake core — including every wa
 | **Inputs** | `CoreClientFactory`（`CoreClientConfig` → `CoreClient`） |
 | **Outputs** | `node:assert` による検証。違反で例外 |
 | **Hard invariants** | no-response / garbage / hang / `JOURNAL_OUTCOME_UNKNOWN` / spawn失敗は **すべて `unknown`**（成功にも失敗にも縮約しない、再送しない）、accepted → duplicate → conflict が別process間で成立、harness IDや本文がframeに現れない |
-| **Allowed dependencies** | `@aizu/protocol` |
-| **Test command** | `npm test -w @aizu/adapter-testkit` |
+| **Allowed dependencies** | `@aizign/protocol` |
+| **Test command** | `npm test -w @aizign/adapter-testkit` |
 | **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md) |
 
 ## Layout
@@ -18,21 +18,21 @@ Prove a harness adapter's core client against a fake core — including every wa
 ```text
 src/
 ├── index.ts
-├── fake-core.ts           node fake-core.js hello | handle --state <dir>。AIZU_FAKE_FAULT = no-response | garbage | hang | journal-unknown | exit-2 | wrong-request-id | wrong-kind | wrong-event-id | oversized | two-frames | trailing-garbage
+├── fake-core.ts           node fake-core.js hello | handle --state <dir>。AIZIGN_FAKE_FAULT = no-response | garbage | hang | journal-unknown | exit-2 | wrong-request-id | wrong-kind | wrong-event-id | oversized | two-frames | trailing-garbage
 ├── fake-core-path.ts      fakeCoreCommand(): { command: process.execPath, args: [fake-core] }
 ├── reference-client.ts    ReferenceOneShotClient: spawn → 1 frame → 1 frame → unknownの分類
 ├── conformance.ts         runCoreScenarios / runFaultScenarios / runCoreClientConformance、samplePayload、assertMetadataOnly
 ├── reference-client.test.ts   fake coreに対する全scenario
-└── real-binary.test.ts        AIZU_BINARY が指す実binaryに対する core scenario（未設定ならskip）
+└── real-binary.test.ts        AIZIGN_BINARY が指す実binaryに対する core scenario（未設定ならskip）
 ```
 
-`cargo xtask npm-check` は `aizu` をbuildして `AIZU_BINARY` を渡すので、TypeScript client ↔ 実binary ↔ JSONL journal の往復も通常の検査に含まれます。
+`cargo xtask npm-check` は `aizign` をbuildして `AIZIGN_BINARY` を渡すので、TypeScript client ↔ 実binary ↔ JSONL journal の往復も通常の検査に含まれます。
 
 ## adapterからの使い方
 
 ```ts
 import { test } from 'node:test';
-import { runCoreClientConformance } from '@aizu/adapter-testkit';
+import { runCoreClientConformance } from '@aizign/adapter-testkit';
 import { MyCoreClient } from '../src/core-client/index.ts';
 
 test('core client conformance', async () => {

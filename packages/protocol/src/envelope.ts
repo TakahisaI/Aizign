@@ -22,7 +22,7 @@ import {
   type WorkflowSignalSubmitPayload,
 } from './workflow-signal.ts';
 
-export const PROTOCOL_NAME = 'aizu';
+export const PROTOCOL_NAME = 'aizign';
 export const PROTOCOL_VERSION = 1;
 /** Upper bound on any frame, request or response, in bytes. */
 export const MAX_FRAME_BYTES = 64 * 1024;

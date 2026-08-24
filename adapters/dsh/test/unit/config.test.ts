@@ -3,8 +3,8 @@ import { test } from 'node:test';
 import { type Config, ConfigError, validateConfig } from '../../src/config.ts';
 
 const base: Config = {
-  binary: '/opt/aizu/bin/aizu',
-  stateDir: '/var/lib/aizu/state',
+  binary: '/opt/aizign/bin/aizign',
+  stateDir: '/var/lib/aizign/state',
   eventId: 'evt-1',
   workflowId: 'wf-1',
   assignmentId: 'as-impl',

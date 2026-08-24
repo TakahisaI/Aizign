@@ -1,1 +1,1 @@
-{"protocol":"aizu","version":1,"requestId":"r","kind":"workflow.signal.submit","ok":true,"payload":false}
+{"protocol":"aizign","version":1,"requestId":"r","kind":"workflow.signal.submit","ok":true,"payload":false}

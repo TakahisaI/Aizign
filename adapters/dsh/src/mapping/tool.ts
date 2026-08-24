@@ -16,7 +16,7 @@ import {
   type SignalKind,
   type SubmitOutcome,
   type WorkflowSignalSubmitPayload,
-} from '@aizu/protocol';
+} from '@aizign/protocol';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import type { JsonSchemaNode, ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools';
 import { bindingPayload, type SignalBinding } from '../config.ts';
@@ -27,11 +27,11 @@ export const TOOL_NAME = 'submit_workflow_signal';
 /** Harness-facing codes this adapter raises, besides the protocol's own. */
 export const adapterCodes = {
   /** The core reported neither success nor rejection; do not retry. */
-  OUTCOME_UNKNOWN: 'AIZU_OUTCOME_UNKNOWN',
-  /** The `aizu` binary could not be reached for the handshake. */
-  UNAVAILABLE: 'AIZU_UNAVAILABLE',
+  OUTCOME_UNKNOWN: 'AIZIGN_OUTCOME_UNKNOWN',
+  /** The `aizign` binary could not be reached for the handshake. */
+  UNAVAILABLE: 'AIZIGN_UNAVAILABLE',
   /** The binary speaks another protocol version or lacks a capability. */
-  INCOMPATIBLE: 'AIZU_INCOMPATIBLE',
+  INCOMPATIBLE: 'AIZIGN_INCOMPATIBLE',
 } as const;
 
 /** Kinds a role may submit; `blocked` is always allowed. */

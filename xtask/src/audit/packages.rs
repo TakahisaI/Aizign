@@ -77,9 +77,9 @@ fn check_root(rendered: &str, manifest: &serde_json::Value, findings: &mut Findi
 
 fn check_workspace_package(rendered: &str, manifest: &serde_json::Value, findings: &mut Findings) {
     let name = manifest["name"].as_str().unwrap_or_default();
-    if !name.starts_with("@aizu/") {
+    if !name.starts_with("@aizign/") {
         findings.push(format!(
-            "{rendered}: workspace packages are named `@aizu/<name>`"
+            "{rendered}: workspace packages are named `@aizign/<name>`"
         ));
     }
 

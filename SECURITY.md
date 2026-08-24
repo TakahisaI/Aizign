@@ -22,7 +22,7 @@ public Issueには書かないでください。
 
 ## Data boundary
 
-Aizuが扱うデータの境界は [docs/architecture/data-boundary.md](docs/architecture/data-boundary.md) に定義しています。要点は次のとおりです。
+Aizignが扱うデータの境界は [docs/architecture/data-boundary.md](docs/architecture/data-boundary.md) に定義しています。要点は次のとおりです。
 
 - control journalにはraw prompt、model output、reasoning、credential、environmentを保存しない
 - provider / harness固有のsession ID、thread IDはadapter内に閉じ、coreのidentityにしない

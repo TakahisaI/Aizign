@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aizu.dev/spec/protocol/v1/request-envelope.schema.json",
-  "title": "Aizu Protocol v1 request envelope",
+  "$id": "https://aizign.dev/spec/protocol/v1/request-envelope.schema.json",
+  "title": "Aizign Protocol v1 request envelope",
   "type": "object",
   "additionalProperties": false,
   "required": ["protocol", "version", "requestId", "kind", "payload"],
   "properties": {
-    "protocol": { "const": "aizu" },
+    "protocol": { "const": "aizign" },
     "version": { "const": 1 },
     "requestId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
     "kind": { "type": "string", "enum": ["hello", "workflow.signal.submit"] },

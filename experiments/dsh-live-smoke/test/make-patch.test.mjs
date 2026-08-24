@@ -17,9 +17,9 @@ const bundlePatch = readFileSync(
 
 const baseArgs = [
   '--binary',
-  '/opt/aizu/bin/aizu',
+  '/opt/aizign/bin/aizign',
   '--state',
-  '/var/lib/aizu/state',
+  '/var/lib/aizign/state',
   '--event-id',
   'evt-live-1',
   '--workflow-id',
@@ -52,8 +52,8 @@ test('overrides the bundle-layer entry by id instead of inserting a duplicate', 
   assert.equal(lines[2], '  disabled: false');
   assert.equal(lines[3], '  config:');
   assert.doesNotMatch(output, /insert:/);
-  assert.match(output, /^ {4}binary: "\/opt\/aizu\/bin\/aizu"$/m);
-  assert.match(output, /^ {4}stateDir: "\/var\/lib\/aizu\/state"$/m);
+  assert.match(output, /^ {4}binary: "\/opt\/aizign\/bin\/aizign"$/m);
+  assert.match(output, /^ {4}stateDir: "\/var\/lib\/aizign\/state"$/m);
   assert.match(output, /^ {4}timeoutMs: 15000$/m);
   assert.match(output, /^ {4}eventId: "evt-live-1"$/m);
   assert.match(output, /^ {4}role: implementation$/m);

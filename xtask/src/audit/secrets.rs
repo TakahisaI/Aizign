@@ -53,7 +53,7 @@ const FORBIDDEN_BASENAMES: &[&str] = &[
     ".npmrc.local",
 ];
 const FORBIDDEN_EXTENSIONS: &[&str] = &["pem", "key", "p12", "pfx", "jks", "keystore"];
-const FORBIDDEN_COMPONENTS: &[&str] = &["node_modules", "target", ".aizu-state", "runtime"];
+const FORBIDDEN_COMPONENTS: &[&str] = &["node_modules", "target", ".aizign-state", "runtime"];
 
 pub(crate) fn run(root: &Path, tracked: &[PathBuf]) -> Result<(), String> {
     let mut findings = Findings::default();

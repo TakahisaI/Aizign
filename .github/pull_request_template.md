@@ -8,7 +8,7 @@ Closes #
 
 ## Bounded contexts touched
 
-<!-- 例: crates/aizu-core/src/workflow、adapters/dsh/src/mapping。二つ以上なら理由を書く -->
+<!-- 例: crates/aizign-core/src/workflow、adapters/dsh/src/mapping。二つ以上なら理由を書く -->
 
 ## Checklist
 

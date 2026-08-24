@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Prints a metadata-only summary of an aizu state directory's journal:
+// Prints a metadata-only summary of an aizign state directory's journal:
 // sequence, record kind, signal kind, and identity. Nothing else is in the
 // journal by construction, but this script also never prints raw lines.
 

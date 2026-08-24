@@ -2,8 +2,8 @@
 
 ## Versioning
 
-- すべてのpublishable artifactは同一のAizu versionにそろえる（lockstep、[ADR-0008](../adr/0008-use-lockstep-artifact-versions-before-1-0.md)）。
-  lockstepは `cargo xtask public-audit` の version lockstep 検査が enforce する（crateは `version.workspace = true`、`workspace.dependencies` の内部pin、全 `package.json` のversionと `@aizu/*` 依存のexact pin）
+- すべてのpublishable artifactは同一のAizign versionにそろえる（lockstep、[ADR-0008](../adr/0008-use-lockstep-artifact-versions-before-1-0.md)）。
+  lockstepは `cargo xtask public-audit` の version lockstep 検査が enforce する（crateは `version.workspace = true`、`workspace.dependencies` の内部pin、全 `package.json` のversionと `@aizign/*` 依存のexact pin）
 - wire protocol versionとjournal schema versionは独立した整数
 - `0.x` の間は最新minorだけをsupport
 
@@ -28,7 +28,7 @@
 - [ ] SECURITY、LICENSE、CONTRIBUTING
 - [ ] clean cloneからの再現性
 - [ ] version compatibility文書
-- [ ] `@aizu` npm scopeの確保
+- [ ] `@aizign` npm scopeの確保
 - [ ] 実装者以外（別maintainer、または別harness・別model）による静的review。最低限: protocol schemaとRust / TypeScript decoderの差分、adapterからprotocolへ越境するfield、response correlation、unbounded input / output / cold read、`unknown` からの暗黙retry、journalとharness evidenceのauthority重複、README / ADR / Issue / 実装の不一致
 - [ ] live smokeを実装者以外が固定commit SHAと公開文書だけで再現
 
@@ -39,7 +39,7 @@
    release gateはtagged SHAとdefault branchのtipの一致をfail closedで検証するので、古いcommitや別branchへのtagはreleaseにならない（reviewが見ていないtreeをreleaseしないため）。tagとpushの間にmainが進んだ場合は、新しいtipをre-reviewしてからtagを打ち直す
 
    ```sh
-   git tag -a v0.1.0 -m "Aizu v0.1.0" && git push origin v0.1.0
+   git tag -a v0.1.0 -m "Aizign v0.1.0" && git push origin v0.1.0
    ```
 
 3. `.github/workflows/release.yml` が、tagged SHA = main tip とtag = workspace versionを検証 → `cargo xtask check`（Rust + TypeScript + conformance + public-audit）→ GitHub Releaseを作成する（generated notes。artifactなし、registry publishなし）

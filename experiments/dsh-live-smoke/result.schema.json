@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aizu.dev/experiments/dsh-live-smoke/result.schema.json",
+  "$id": "https://aizign.dev/experiments/dsh-live-smoke/result.schema.json",
   "title": "DSH live smoke result (metadata only)",
   "type": "object",
   "additionalProperties": false,
@@ -11,11 +11,11 @@
     "versions": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["dsh", "firefox", "aizu"],
+      "required": ["dsh", "firefox", "aizign"],
       "properties": {
         "dsh": { "type": "string" },
         "firefox": { "type": "string" },
-        "aizu": { "type": "string" }
+        "aizign": { "type": "string" }
       }
     },
     "executor": {

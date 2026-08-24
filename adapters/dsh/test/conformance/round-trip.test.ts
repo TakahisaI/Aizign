@@ -1,7 +1,7 @@
 /**
  * End to end without a live harness: fake DSH runtime → plugin → core →
  * journal → result → session log → cold read. Runs against the fake core
- * always, and against the real `aizu` binary when `AIZU_BINARY` is set.
+ * always, and against the real `aizign` binary when `AIZIGN_BINARY` is set.
  */
 
 import assert from 'node:assert/strict';
@@ -9,7 +9,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { assertMetadataOnly, readFakeRequests } from '@aizu/adapter-testkit';
+import { assertMetadataOnly, readFakeRequests } from '@aizign/adapter-testkit';
 import type { Config } from '../../src/config.ts';
 import { readSignalEvidence } from '../../src/evidence/cold-read.ts';
 import { apply, codes, TOOL_NAME } from '../../src/index.ts';
@@ -38,7 +38,7 @@ const binding = {
 } as const;
 
 async function roundTrip(binary: string, journalFile: string | undefined): Promise<void> {
-  const root = mkdtempSync(join(tmpdir(), 'aizu-dsh-round-trip-'));
+  const root = mkdtempSync(join(tmpdir(), 'aizign-dsh-round-trip-'));
   try {
     const stateDir = join(root, 'state');
     const dsh = new FakeDsh();
@@ -89,7 +89,7 @@ async function roundTrip(binary: string, journalFile: string | undefined): Promi
 }
 
 test('fake DSH → plugin → fake core → result → cold read', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'aizu-dsh-fake-binary-'));
+  const root = mkdtempSync(join(tmpdir(), 'aizign-dsh-fake-binary-'));
   try {
     await roundTrip(fakeBinary(root), 'fake-journal.json');
   } finally {
@@ -97,21 +97,21 @@ test('fake DSH → plugin → fake core → result → cold read', async () => {
   }
 });
 
-const binary = process.env.AIZU_BINARY;
-test('fake DSH → plugin → real aizu binary → JSONL journal → cold read', {
-  skip: binary === undefined ? 'set AIZU_BINARY to a built aizu binary' : false,
+const binary = process.env.AIZIGN_BINARY;
+test('fake DSH → plugin → real aizign binary → JSONL journal → cold read', {
+  skip: binary === undefined ? 'set AIZIGN_BINARY to a built aizign binary' : false,
 }, async () => {
   await roundTrip(binary ?? '', 'workflow.jsonl');
 });
 
 test('a crashed core leaves an unknown outcome, one submission, and no inferred success', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'aizu-dsh-crash-'));
+  const root = mkdtempSync(join(tmpdir(), 'aizign-dsh-crash-'));
   try {
     const stateDir = join(root, 'state');
     const dsh = new FakeDsh();
     // The handshake must succeed; only the submission is sabotaged.
     await apply(dsh.context, config(fakeBinary(join(root, 'ok')), stateDir));
-    const crashing = fakeBinary(join(root, 'crash'), { AIZU_FAKE_FAULT: 'no-response' });
+    const crashing = fakeBinary(join(root, 'crash'), { AIZIGN_FAKE_FAULT: 'no-response' });
     const crashedDsh = new FakeDsh();
     // preflight hello also gets no response → fail closed, no tool.
     await assert.rejects(apply(crashedDsh.context, config(crashing, stateDir)));
@@ -121,7 +121,7 @@ test('a crashed core leaves an unknown outcome, one submission, and no inferred 
     const unknownDsh = new FakeDsh();
     await apply(
       unknownDsh.context,
-      config(fakeBinary(join(root, 'unknown'), { AIZU_FAKE_FAULT: 'journal-unknown' }), stateDir),
+      config(fakeBinary(join(root, 'unknown'), { AIZIGN_FAKE_FAULT: 'journal-unknown' }), stateDir),
     );
     const outcome = await unknownDsh.dispatch(TOOL_NAME, { kind: 'implementation_ready' });
     assert.equal(outcome.error?.code, codes.OUTCOME_UNKNOWN);

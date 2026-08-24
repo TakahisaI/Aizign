@@ -11,7 +11,7 @@ use crate::report::Findings;
 const CONTAINERS: &[&str] = &["crates", "packages", "adapters"];
 
 /// Crates that must also carry an `AGENTS.md`; every adapter must as well.
-const AGENTS_REQUIRED: &[&str] = &["crates/aizu-core", "crates/aizu-engine"];
+const AGENTS_REQUIRED: &[&str] = &["crates/aizign-core", "crates/aizign-engine"];
 
 pub(crate) fn run(root: &Path, tracked: &[PathBuf]) -> Result<(), String> {
     let mut findings = Findings::default();

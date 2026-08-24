@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aizu.dev/spec/protocol/v1/hello.response.schema.json",
+  "$id": "https://aizign.dev/spec/protocol/v1/hello.response.schema.json",
   "title": "hello response payload",
   "type": "object",
   "additionalProperties": false,

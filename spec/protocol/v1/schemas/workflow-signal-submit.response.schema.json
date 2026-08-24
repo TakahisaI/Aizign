@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aizu.dev/spec/protocol/v1/workflow-signal-submit.response.schema.json",
+  "$id": "https://aizign.dev/spec/protocol/v1/workflow-signal-submit.response.schema.json",
   "title": "workflow.signal.submit success payload",
   "type": "object",
   "additionalProperties": false,

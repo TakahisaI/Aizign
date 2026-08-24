@@ -1,11 +1,11 @@
 /**
- * A fake `aizu` binary for adapter tests. Speaks Protocol v1 over the same
+ * A fake `aizign` binary for adapter tests. Speaks Protocol v1 over the same
  * one-shot stdin/stdout contract, keeps a tiny JSON state so duplicates and
  * conflicts behave, and injects faults on request.
  *
  * Run as `node fake-core.js hello` or `node fake-core.js handle --state <dir>`.
  *
- * Faults (`AIZU_FAKE_FAULT`):
+ * Faults (`AIZIGN_FAKE_FAULT`):
  * - `no-response`       exit 0 without writing a frame
  * - `garbage`           write a non-protocol line
  * - `hang`              never answer (the client's timeout must fire)
@@ -18,7 +18,7 @@
  * - `two-frames`        answer twice
  * - `trailing-garbage`  answer, then keep talking
  *
- * `AIZU_FAKE_HELLO_PROTOCOL_VERSION` overrides the advertised protocol
+ * `AIZIGN_FAKE_HELLO_PROTOCOL_VERSION` overrides the advertised protocol
  * version, for compatibility-check tests.
  */
 
@@ -38,16 +38,16 @@ import {
   type Request,
   type Response,
   type WorkflowSignal,
-} from '@aizu/protocol';
+} from '@aizign/protocol';
 
 const STATE_FILE = 'fake-journal.json';
 const REQUEST_LOG = 'fake-requests.jsonl';
 
 const helloInfo: HelloInfo = {
-  protocolVersion: Number(process.env.AIZU_FAKE_HELLO_PROTOCOL_VERSION ?? PROTOCOL_VERSION),
+  protocolVersion: Number(process.env.AIZIGN_FAKE_HELLO_PROTOCOL_VERSION ?? PROTOCOL_VERSION),
   journalSchemaVersion: 1,
   capabilities: [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT],
-  package: { name: 'aizu-fake', version: '0.0.0' },
+  package: { name: 'aizign-fake', version: '0.0.0' },
 };
 
 function write(response: Response): void {
@@ -128,7 +128,7 @@ function handleSubmit(
   }
   accepted.push(signal);
   saveState(stateDir, accepted);
-  if (process.env.AIZU_FAKE_FAULT === 'journal-unknown') {
+  if (process.env.AIZIGN_FAKE_FAULT === 'journal-unknown') {
     return reject('JOURNAL_OUTCOME_UNKNOWN', 'append outcome unknown: acknowledgement lost');
   }
   return {
@@ -139,7 +139,7 @@ function handleSubmit(
 }
 
 async function main(argv: readonly string[]): Promise<number> {
-  const fault = process.env.AIZU_FAKE_FAULT;
+  const fault = process.env.AIZIGN_FAKE_FAULT;
   if (fault === 'exit-2') return 2;
   if (fault === 'hang') {
     // Keep the event loop alive; an idle Node process would otherwise exit.

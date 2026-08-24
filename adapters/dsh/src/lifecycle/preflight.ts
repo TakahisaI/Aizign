@@ -9,7 +9,7 @@ import {
   checkCompatibility,
   type HelloInfo,
   PROTOCOL_VERSION,
-} from '@aizu/protocol';
+} from '@aizign/protocol';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import { adapterCodes } from '../mapping/tool.ts';
 
@@ -23,13 +23,13 @@ export async function preflight(client: CoreClient): Promise<HelloInfo> {
   const outcome = await client.hello('req-preflight');
   if (outcome.kind === 'unknown') {
     throw new HarnessError(
-      `aizu binary unreachable (${outcome.reason}): ${outcome.detail}`,
+      `aizign binary unreachable (${outcome.reason}): ${outcome.detail}`,
       adapterCodes.UNAVAILABLE,
     );
   }
   if (outcome.kind === 'error') {
     throw new HarnessError(
-      `aizu hello failed: ${outcome.code}: ${outcome.message}`,
+      `aizign hello failed: ${outcome.code}: ${outcome.message}`,
       adapterCodes.UNAVAILABLE,
     );
   }
