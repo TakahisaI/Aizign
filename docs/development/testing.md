@@ -15,12 +15,18 @@ rootに巨大なtest directoryを作りません。
 ## 実行
 
 ```sh
-cargo xtask check              # PR前の全検査（Rust + TypeScript）
+cargo xtask quick              # repository-wide development baseline
+cargo xtask quick protocol     # protocol, journal, fixture, and schema checks
+cargo xtask quick adapter-dsh  # DSH adapter with a freshly built real binary
+cargo xtask check              # full Rust and TypeScript gate before a PR
 cargo test --workspace         # Rustだけ
 cargo test -p aizign-core        # crate単位
 npm run check                  # TypeScriptだけ
 npm test -w @aizign/protocol     # package単位
 ```
+
+The `quick` profiles use the existing Cargo cache and `node_modules` without installing from the network.
+See [`xtask/README.md`](../../xtask/README.md#quick-profiles) for each profile's order, guarantees, and exclusions from the full gate.
 
 ## 検査の境界
 

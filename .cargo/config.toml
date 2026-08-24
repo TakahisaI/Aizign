@@ -1,2 +1,9 @@
 [alias]
-xtask = "run --quiet --package xtask --"
+xtask = [
+  "run",
+  "--quiet",
+  "--frozen",
+  "--package",
+  "xtask",
+  "--",
+]

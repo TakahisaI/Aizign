@@ -40,6 +40,9 @@ jobs:
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
+      - name: Fetch locked Rust dependencies
+        run: cargo fetch --locked
+
       - name: Install cargo-deny
         uses: taiki-e/install-action@6cd13508893c0e7eab5f273c2575d3859bd7229a # v2.86.6
         with:
@@ -96,6 +99,44 @@ jobs:
       - name: Install
         run: npm ci --no-audit --no-fund
 
+      - name: Quick launcher refuses a missing lockfile without replacing it
+        shell: bash
+        run: |
+          set -euo pipefail
+          mv Cargo.lock Cargo.lock.quick-test
+          restore_lock() { mv Cargo.lock.quick-test Cargo.lock; }
+          trap restore_lock EXIT
+          if output="$(cargo xtask quick --help 2>&1)"; then
+            echo "::error::quick unexpectedly started without Cargo.lock"
+            exit 1
+          fi
+          [[ ! -e Cargo.lock ]] || { echo "::error::quick regenerated Cargo.lock"; exit 1; }
+          grep -F -- "--frozen" <<<"${output}"
+          restore_lock
+          trap - EXIT
+
+      - name: Quick dependency preflight reports an actionable setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          mv node_modules/@types/node node_modules/@types/node.quick-test
+          restore_node_types() { mv node_modules/@types/node.quick-test node_modules/@types/node; }
+          trap restore_node_types EXIT
+          if output="$(cargo xtask quick 2>&1)"; then
+            echo "::error::quick unexpectedly accepted an incomplete npm dependency tree"
+            exit 1
+          fi
+          grep -F -- "npm ci --no-audit --no-fund" <<<"${output}"
+          restore_node_types
+          trap - EXIT
+
+      - name: Quick profiles use shared fixtures and the Cargo-reported binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo xtask quick protocol
+          CARGO_TARGET_DIR="${RUNNER_TEMP}/quick-target" cargo xtask quick adapter-dsh
+
       - name: Lint, build, typecheck, test, pack (with the real binary)
         run: npm run check
         env:
@@ -118,6 +159,9 @@ jobs:
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Fetch locked Rust dependencies
+        run: cargo fetch --locked
 
       - name: Conformance fixtures
         run: cargo xtask conformance

@@ -8,7 +8,7 @@
 
 use std::path::Path;
 
-use crate::{report, shell};
+use crate::{cargo_build, report, shell};
 
 const NPM_INSTALL_HINT: &str = "npm is required for `cargo xtask npm-check`; install the Node version \
     pinned in .node-version (see docs/development/getting-started.md)";
@@ -22,8 +22,7 @@ pub(crate) fn run(root: &Path) -> Result<(), String> {
     if !shell::available(root, "npm", &["--version"]) {
         return Err(NPM_INSTALL_HINT.to_string());
     }
-    shell::run(root, "cargo", &["build", "--quiet", "-p", "aizign-cli"])?;
-    let binary = root.join("target").join("debug").join("aizign");
+    let binary = cargo_build::aizign_binary(root, false)?;
     let binary = binary.to_string_lossy().into_owned();
     shell::run(root, "npm", &["ci", "--no-audit", "--no-fund"])?;
     shell::run_with_env(
