@@ -20,3 +20,4 @@
 | [0008](0008-use-lockstep-artifact-versions-before-1-0.md) | Use lockstep artifact versions before 1.0 | Accepted |
 | [0009](0009-serialization-dependencies-for-the-protocol-crate.md) | Serialization dependencies for the protocol crate | Accepted |
 | [0010](0010-harness-sdk-dependencies-and-node-policy.md) | Harness SDK dependencies and the Node support policy | Accepted |
+| [0011](0011-rename-aizu-to-aizign-before-first-release.md) | Rename Aizu to Aizign before the first release | Accepted |

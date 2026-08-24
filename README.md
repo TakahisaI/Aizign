@@ -1,11 +1,11 @@
-# Aizu
+# Aizign
 
-**Aizu is a provider-neutral orchestration core for software-change workflows.**
+**Aizign is a provider-neutral orchestration core for software-change workflows.**
 A deterministic Rust core decides; harness-specific adapters act. The two talk over a
 versioned NDJSON process boundary, and every decision is backed by a metadata-only,
 append-only control journal — never by natural language, idle detection, or screen state.
 
-Aizuは、LLM harnessを使ったソフトウェア変更workflowのための、provider-neutralなorchestration coreです。
+Aizignは、LLM harnessを使ったソフトウェア変更workflowのための、provider-neutralなorchestration coreです。
 判断はRust製の決定論的coreが行い、harness固有の操作は独立したadapter packageが行います。
 両者はversion付きNDJSON protocolでprocess境界を越えて接続され、
 完了の正本は自然言語やidle検出ではなく、構造化されたdurable evidenceです。
@@ -13,7 +13,7 @@ Aizuは、LLM harnessを使ったソフトウェア変更workflowのための、
 > **Status:** `v0.1 — Foundation` を構築中です。registryへは未公開で、GitHub Releaseも未発行です。
 > 現在の到達点と残作業は、GitHub Milestone `v0.1 — Foundation` のIssueを参照してください。
 
-## Aizuが解く問題
+## Aizignが解く問題
 
 LLM agentに実装・レビュー・修正を割り当てると、次の問題が繰り返し起きます。
 
@@ -22,36 +22,36 @@ LLM agentに実装・レビュー・修正を割り当てると、次の問題�
 - harness固有のsession IDや thread IDがworkflowの識別子に混入し、harnessを差し替えられなくなる
 - promptやmodel outputが監査logへ漏れ、公開や共有ができなくなる
 
-Aizuは、これらを **core / protocol / journal / adapter の物理的な境界** と、
+Aizignは、これらを **core / protocol / journal / adapter の物理的な境界** と、
 repository全体で固定した[hard invariants](docs/architecture/invariants.md)で防ぎます。
 
 ## 構成
 
 ```text
-@aizu/adapter-dsh  (TypeScript)      ← harnessごとに独立したpackage
+@aizign/adapter-dsh  (TypeScript)      ← harnessごとに独立したpackage
         │
-        │ Aizu Protocol v1 — NDJSON over stdin/stdout
+        │ Aizign Protocol v1 — NDJSON over stdin/stdout
         ▼
-   aizu  (binary)
-     ├── aizu-protocol      wire DTO / version / capability negotiation
-     ├── aizu-store-jsonl   append-only, metadata-only control journal
-     └── aizu-engine        use case / effect claim / port definitions
+   aizign  (binary)
+     ├── aizign-protocol      wire DTO / version / capability negotiation
+     ├── aizign-store-jsonl   append-only, metadata-only control journal
+     └── aizign-engine        use case / effect claim / port definitions
              │
              ▼
-         aizu-core          pure decisions: State + Command -> Decision
+         aizign-core          pure decisions: State + Command -> Decision
 ```
 
 | 種類 | 名前 | 場所 |
 |---|---|---|
-| Rust core | `aizu-core` | `crates/aizu-core` |
-| Application engine | `aizu-engine` | `crates/aizu-engine` |
-| Protocol implementation | `aizu-protocol` | `crates/aizu-protocol` |
-| JSONL store | `aizu-store-jsonl` | `crates/aizu-store-jsonl` |
-| CLI package / binary | `aizu-cli` / `aizu` | `crates/aizu-cli` |
-| Rust testkit | `aizu-testkit` | `crates/aizu-testkit` |
-| TypeScript protocol | `@aizu/protocol` | `packages/protocol` |
-| Adapter testkit | `@aizu/adapter-testkit` | `packages/adapter-testkit` |
-| DSH adapter | `@aizu/adapter-dsh` | `adapters/dsh` |
+| Rust core | `aizign-core` | `crates/aizign-core` |
+| Application engine | `aizign-engine` | `crates/aizign-engine` |
+| Protocol implementation | `aizign-protocol` | `crates/aizign-protocol` |
+| JSONL store | `aizign-store-jsonl` | `crates/aizign-store-jsonl` |
+| CLI package / binary | `aizign-cli` / `aizign` | `crates/aizign-cli` |
+| Rust testkit | `aizign-testkit` | `crates/aizign-testkit` |
+| TypeScript protocol | `@aizign/protocol` | `packages/protocol` |
+| Adapter testkit | `@aizign/adapter-testkit` | `packages/adapter-testkit` |
+| DSH adapter | `@aizign/adapter-dsh` | `adapters/dsh` |
 
 ディレクトリは最初の実装が入る時点で追加します。上の表にあってまだ存在しない場所は、
 Milestone `v0.1 — Foundation` の未着手Issueです。

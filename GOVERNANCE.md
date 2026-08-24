@@ -45,4 +45,4 @@ adapterを別repositoryへ切り出すのは、次がすべて揃った場合だ
 - Protocol v1が安定している
 - coreと独立したrelease cadenceが必要
 - 別maintainerがownershipを持つ
-- Aizu本体と異なるsecurityまたはdistribution境界を持つ
+- Aizign本体と異なるsecurityまたはdistribution境界を持つ

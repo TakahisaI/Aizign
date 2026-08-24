@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { assertMetadataOnly } from '@aizu/adapter-testkit';
-import type { CoreClient, SubmitOutcome, WorkflowSignalSubmitPayload } from '@aizu/protocol';
+import { assertMetadataOnly } from '@aizign/adapter-testkit';
+import type { CoreClient, SubmitOutcome, WorkflowSignalSubmitPayload } from '@aizign/protocol';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools';
 import type { SignalBinding } from '../../src/config.ts';

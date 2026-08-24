@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aizu.dev/spec/protocol/v1/response-envelope.schema.json",
-  "title": "Aizu Protocol v1 response envelope",
+  "$id": "https://aizign.dev/spec/protocol/v1/response-envelope.schema.json",
+  "title": "Aizign Protocol v1 response envelope",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -13,7 +13,7 @@
   ],
   "properties": {
     "protocol": {
-      "const": "aizu"
+      "const": "aizign"
     },
     "version": {
       "const": 1

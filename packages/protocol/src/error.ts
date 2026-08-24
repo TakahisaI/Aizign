@@ -1,6 +1,6 @@
 /**
  * Protocol-level errors and the stable short codes they carry. Workflow
- * rejections reuse the codes defined by `aizu-core`.
+ * rejections reuse the codes defined by `aizign-core`.
  */
 
 /** `^[A-Z][A-Z0-9_]{0,63}$` */

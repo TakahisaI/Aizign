@@ -13,8 +13,8 @@
  * lone UTF-16 surrogates (JavaScript strings can retain them). Both decoders
  * reject those lexical forms before interpreting the frame.
  *
- * The decoders run the same files: `crates/aizu-protocol/tests/conformance.rs`,
- * `crates/aizu-store-jsonl/tests/conformance.rs`, and
+ * The decoders run the same files: `crates/aizign-protocol/tests/conformance.rs`,
+ * `crates/aizign-store-jsonl/tests/conformance.rs`, and
  * `packages/protocol/src/conformance.test.ts`.
  */
 
@@ -34,7 +34,7 @@ for (const dir of ['spec/protocol/v1/schemas', 'spec/journal/v1/schemas']) {
 }
 
 function validator(id) {
-  const compiled = ajv.getSchema(`https://aizu.dev/spec/${id}`);
+  const compiled = ajv.getSchema(`https://aizign.dev/spec/${id}`);
   assert.ok(compiled, `schema ${id} is registered`);
   return compiled;
 }

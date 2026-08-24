@@ -11,7 +11,7 @@ body:
     id: location
     attributes:
       label: Crate / package
-      placeholder: "aizu-core / @aizu/adapter-dsh / xtask"
+      placeholder: "aizign-core / @aizign/adapter-dsh / xtask"
     validations:
       required: true
   - type: input

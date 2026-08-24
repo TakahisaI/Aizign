@@ -53,7 +53,13 @@ const FORBIDDEN_BASENAMES: &[&str] = &[
     ".npmrc.local",
 ];
 const FORBIDDEN_EXTENSIONS: &[&str] = &["pem", "key", "p12", "pfx", "jks", "keystore"];
-const FORBIDDEN_COMPONENTS: &[&str] = &["node_modules", "target", ".aizu-state", "runtime"];
+const FORBIDDEN_COMPONENTS: &[&str] = &[
+    "node_modules",
+    "target",
+    ".aizu-state",
+    ".aizign-state",
+    "runtime",
+];
 
 pub(crate) fn run(root: &Path, tracked: &[PathBuf]) -> Result<(), String> {
     let mut findings = Findings::default();
@@ -129,7 +135,9 @@ fn check_line(location: &str, line: &str, findings: &mut Findings) {
 
 #[cfg(test)]
 mod tests {
-    use super::check_line;
+    use std::path::Path;
+
+    use super::{check_line, check_path};
     use crate::report::Findings;
 
     #[test]
@@ -155,6 +163,20 @@ mod tests {
     fn flags_home_directories() {
         let mut findings = Findings::default();
         check_line("f:1", "see /Users/someone/work", &mut findings);
+        assert_eq!(findings.len(), 1);
+    }
+
+    #[test]
+    fn flags_the_legacy_state_directory() {
+        let mut findings = Findings::default();
+        check_path(Path::new("foo/.aizu-state/workflow.jsonl"), &mut findings);
+        assert_eq!(findings.len(), 1);
+    }
+
+    #[test]
+    fn flags_the_current_state_directory() {
+        let mut findings = Findings::default();
+        check_path(Path::new("foo/.aizign-state/workflow.jsonl"), &mut findings);
         assert_eq!(findings.len(), 1);
     }
 }

@@ -8,4 +8,4 @@ opt-inのlive検証に使う **再現可能なscriptだけ** を置きます。�
 
 | Directory | 内容 |
 |---|---|
-| [`dsh-live-smoke/`](dsh-live-smoke/README.md) | DSH / Firefoxで `@aizu/adapter-dsh` を実際に動かすためのpatch生成とjournal要約 |
+| [`dsh-live-smoke/`](dsh-live-smoke/README.md) | DSH / Firefoxで `@aizign/adapter-dsh` を実際に動かすためのpatch生成とjournal要約 |

@@ -7,7 +7,7 @@
 //! frame has an expectation file with a well-formed code and a schema
 //! classification, and that valid frames are JSON. Running the frames
 //! through the actual decoders is the job of the protocol crates and
-//! packages and of `aizu-store-jsonl`; validating them against the JSON
+//! packages and of `aizign-store-jsonl`; validating them against the JSON
 //! Schemas is the job of the spec schema gate. They all read these files.
 
 use std::collections::BTreeMap;

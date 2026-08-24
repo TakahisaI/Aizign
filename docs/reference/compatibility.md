@@ -4,9 +4,9 @@
 
 | Version | 現在 | 管理 |
 |---|---|---|
-| Aizu package version | `0.1.0`（未release） | 全artifact lockstep。`Cargo.toml`、各 `package.json` |
-| Protocol version | `1`（`aizu-protocol` が実装。`hello` と `workflow.signal.submit`） | `spec/protocol/v1/`。envelopeの `version` |
-| Journal schema version | `1`（`aizu-store-jsonl` が実装） | `spec/journal/v1/`。recordの `schemaVersion` |
+| Aizign package version | `0.1.0`（未release） | 全artifact lockstep。`Cargo.toml`、各 `package.json` |
+| Protocol version | `1`（`aizign-protocol` が実装。`hello` と `workflow.signal.submit`） | `spec/protocol/v1/`。envelopeの `version` |
+| Journal schema version | `1`（`aizign-store-jsonl` が実装） | `spec/journal/v1/`。recordの `schemaVersion` |
 
 adapterはpackage versionの完全一致ではなく、`hello` で得たprotocol versionとcapabilityで互換性を判定します
 （[ADR-0003](../adr/0003-use-a-versioned-ndjson-process-boundary.md)、[ADR-0008](../adr/0008-use-lockstep-artifact-versions-before-1-0.md)）。
@@ -34,4 +34,4 @@ Node.jsは `24.19.0`（LTS）、npmは `12.0.2` に固定しています。DSH a
 
 | Harness | Adapter | Supported version | Status |
 |---|---|---|---|
-| DSH | `@aizu/adapter-dsh` | `0.1.1-rc.2`（`@deepseek-ai/cordis` 4.0.1、`schemastery` 3.18.1） | preflight + scope-bound tool + core client。fake harnessに加え、第三者（別harness・別model）によるDSH × Firefoxのlive smokeがpass（2026-08-23、commit `fd0e208`、[Issue #11](https://github.com/TakahisaI/Aizign/issues/11)） |
+| DSH | `@aizign/adapter-dsh` | `0.1.1-rc.2`（`@deepseek-ai/cordis` 4.0.1、`schemastery` 3.18.1） | preflight + scope-bound tool + core client。fake harnessに加え、第三者（別harness・別model）によるDSH × Firefoxのlive smokeがpass（2026-08-23、commit `fd0e208`、[Issue #11](https://github.com/TakahisaI/Aizign/issues/11)） |

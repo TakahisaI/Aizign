@@ -1,1 +1,1 @@
-{"protocol":"aizu","version":1,"requestId":"req-hello-02","kind":"hello","ok":true,"payload":{"protocolVersion":1,"journalSchemaVersion":1,"capabilities":["workflow.signal.submit","workflow.status.read"],"package":{"name":"aizu","version":"0.1.0"}}}
+{"protocol":"aizign","version":1,"requestId":"req-hello-02","kind":"hello","ok":true,"payload":{"protocolVersion":1,"journalSchemaVersion":1,"capabilities":["workflow.signal.submit","workflow.status.read"],"package":{"name":"aizign","version":"0.1.0"}}}

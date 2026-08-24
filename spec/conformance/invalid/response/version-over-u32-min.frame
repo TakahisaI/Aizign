@@ -1,1 +1,1 @@
-{"protocol":"aizu","version":4294967296,"requestId":"req-big","kind":"hello","ok":false,"error":{"code":"INTERNAL","message":"m"}}
+{"protocol":"aizign","version":4294967296,"requestId":"req-big","kind":"hello","ok":false,"error":{"code":"INTERNAL","message":"m"}}

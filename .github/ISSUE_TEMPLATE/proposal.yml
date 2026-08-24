@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Aizuはproposal-firstです。ここでscopeと契約を合意してからPRを出してください。
+        Aizignはproposal-firstです。ここでscopeと契約を合意してからPRを出してください。
         大きな目的はumbrella Issueにし、leaf Issueへ分割します。
   - type: textarea
     id: problem

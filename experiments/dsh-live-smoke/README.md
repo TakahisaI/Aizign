@@ -1,17 +1,17 @@
 # DSH live smoke (opt-in)
 
-`@aizu/adapter-dsh` を実際のDSHとFirefoxで動かし、fake harnessで検証済みの往復が実環境でも成立することを確認します。
+`@aizign/adapter-dsh` を実際のDSHとFirefoxで動かし、fake harnessで検証済みの往復が実環境でも成立することを確認します。
 **通常のtestとCIからは起動しません。** 手順そのもの（profileの準備、login、観測結果）はoperatorのlocal directoryに置き、repositoryには再現可能なscriptだけを置きます。
 
 ## 責務の分担
 
 公開repositoryだけを読んでも「何を実行し、何を成功と判定するか」が分かる状態にし、個人環境だけをoperator側に置きます。
 
-| Aizu repository（ここ） | Operator側（repositoryの外） |
+| Aizign repository（ここ） | Operator側（repositoryの外） |
 |---|---|
-| exact version（DSH、Firefox、aizu） | 実際のinstall path、profile path |
+| exact version（DSH、Firefox、aizign） | 実際のinstall path、profile path |
 | parameterizedなscript（patch生成、journal要約） | browser profileの準備、login操作 |
-| preflight（`aizu hello`、plugin起動時の `AIZU_UNAVAILABLE` / `AIZU_INCOMPATIBLE`） | 実行時の環境設定 |
+| preflight（`aizign hello`、plugin起動時の `AIZIGN_UNAVAILABLE` / `AIZIGN_INCOMPATIBLE`） | 実行時の環境設定 |
 | 成功 / 失敗の判定表（下記）と記録schema（`result.schema.json`） | privateな実測の保管場所 |
 | 再現可能なfixture（`spec/conformance`） | local起動のrunbook |
 
@@ -24,10 +24,10 @@
 
 - DSH `0.1.1-rc.2`（`docs/reference/compatibility.md` のpinと一致させる）
 - Firefox（Chromium系は対象外）
-- `cargo build -p aizu-cli` 済みの `aizu` binary
+- `cargo build -p aizign-cli` 済みの `aizign` binary
 - `npm ci && npm run build` 済みのworkspace（adapterは `lib/` から読み込まれる）
-- `stateDir` は **存在しなければ `aizu` が `0700` で作る**（親directoryは必要）。先に作るなら `mkdir -m 0700`。
-  `0700` でない既存directoryは、最初のtool callで `JOURNAL_UNAVAILABLE`（`state directory must be owner-only (mode 0700)`）になる（preflightの `aizu hello` はjournalを開かないので、そこでは検出されない）
+- `stateDir` は **存在しなければ `aizign` が `0700` で作る**（親directoryは必要）。先に作るなら `mkdir -m 0700`。
+  `0700` でない既存directoryは、最初のtool callで `JOURNAL_UNAVAILABLE`（`state directory must be owner-only (mode 0700)`）になる（preflightの `aizign hello` はjournalを開かないので、そこでは検出されない）
 - 架空のnon-confidentialなassignmentだけを使う
 
 ## DSH profile
@@ -40,14 +40,14 @@ adapterを入れたprofileでWeb UIを使うには、**専用のprofile**を作�
 # profile名と path はoperatorが決める。adapterは workspace の adapters/dsh を link する（npm pack した tarball でもよい）
 dsh plugin --profile <name> add @deepseek-ai/dsh-web-app@0.1.1-rc.2 'link:/abs/path/to/adapters/dsh'
 
-# 合成後の tree を確認: aizu-workflow-signal が disabled: false と config 付きで現れる
-dsh --profile <name> --patch /abs/path/outside/repo/aizu-live.patch.yml --dump-config
+# 合成後の tree を確認: aizign-workflow-signal が disabled: false と config 付きで現れる
+dsh --profile <name> --patch /abs/path/outside/repo/aizign-live.patch.yml --dump-config
 
 # 起動（launcher の flag が先、以降は web app の引数）
-dsh --profile <name> --patch /abs/path/outside/repo/aizu-live.patch.yml
+dsh --profile <name> --patch /abs/path/outside/repo/aizign-live.patch.yml
 ```
 
-adapterの [`cordis.patch.yml`](../../adapters/dsh/cordis.patch.yml) はbundle層で entry `aizu-workflow-signal` を `disabled: true` で挿入します。
+adapterの [`cordis.patch.yml`](../../adapters/dsh/cordis.patch.yml) はbundle層で entry `aizign-workflow-signal` を `disabled: true` で挿入します。
 operator patch（`make-patch.mjs` の出力）はその entry を **id で上書き**します。同じidを `insert` で再挿入すると `duplicate loader entry id` で起動しません。
 
 ## 観察すること
@@ -67,7 +67,7 @@ operator patch（`make-patch.mjs` の出力）はその entry を **id で上書
 
 ## DSH 0.1.1-rc.2 で観測された注意点
 
-初回の第三者実行（2026-08-23）で、Aizuの契約ではないがoperatorが躓いた点です。DSH側の挙動なので、versionが変われば再確認してください。
+初回の第三者実行（2026-08-23）で、Aizignの契約ではないがoperatorが躓いた点です。DSH側の挙動なので、versionが変われば再確認してください。
 
 - **approval policy `ask`**: 承認に応えられる状態（browser pageを開いたまま）でturnを実行すること。応答者が居ないとtool callは `interrupted` になり、UIのerror文言からは原因が分からない
 - **model選択**: 「Select model」→「Model」行→一覧の2段階。1段階目には現在のmodelしか出ない
@@ -75,7 +75,7 @@ operator patch（`make-patch.mjs` の出力）はその entry を **id で上書
 
 ## 記録してよいもの
 
-- DSH / Firefox / Aizu のversion
+- DSH / Firefox / Aizign のversion
 - disposition と error code
 - `summarize-journal.mjs` の出力（seq、record kind、signal kind、identity）
 
@@ -89,7 +89,7 @@ operator patch（`make-patch.mjs` の出力）はその entry を **id で上書
 {
   "commit": "<git SHA>",
   "date": "2026-08-23",
-  "versions": { "dsh": "0.1.1-rc.2", "firefox": "…", "aizu": "0.1.0" },
+  "versions": { "dsh": "0.1.1-rc.2", "firefox": "…", "aizign": "0.1.0" },
   "executor": "<harness / model>",
   "steps": [
     { "step": "submit implementation_ready", "expected": "accepted", "observed": "accepted" },
@@ -110,9 +110,9 @@ operator patch（`make-patch.mjs` の出力）はその entry を **id で上書
 ```sh
 # operator patch を生成（stdout）。値はすべてoperatorが与える。bundle層の entry を id で上書きする形で出る
 node experiments/dsh-live-smoke/make-patch.mjs \
-  --binary /abs/path/to/aizu --state /abs/path/to/state \
+  --binary /abs/path/to/aizign --state /abs/path/to/state \
   --event-id evt-live-1 --workflow-id wf-live --assignment-id as-live --role implementation --revision rev-live-1 \
-  > /abs/path/outside/repo/aizu-live.patch.yml
+  > /abs/path/outside/repo/aizign-live.patch.yml
 
 # smoke後に journal を metadata だけで要約（--json で result.schema.json の journal 形式）
 node experiments/dsh-live-smoke/summarize-journal.mjs /abs/path/to/state

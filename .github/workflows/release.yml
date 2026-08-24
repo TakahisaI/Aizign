@@ -107,6 +107,6 @@ jobs:
           set -euo pipefail
           gh release create "${GITHUB_REF_NAME}" \
             --repo "${GITHUB_REPOSITORY}" \
-            --title "Aizu ${GITHUB_REF_NAME}" \
+            --title "Aizign ${GITHUB_REF_NAME}" \
             --generate-notes \
             --notes "Protocol version 1, journal schema version 1. See docs/reference/compatibility.md. No registry publication (ADR-0008)."

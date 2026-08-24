@@ -22,7 +22,7 @@ import {
   type SubmitOutcome,
   type UnknownOutcome,
   type WorkflowSignalSubmitPayload,
-} from '@aizu/protocol';
+} from '@aizign/protocol';
 
 type Exchange =
   | { readonly kind: 'response'; readonly response: Response }
@@ -42,7 +42,7 @@ export class ReferenceOneShotClient implements CoreClient {
   async hello(requestId: string, options: CallOptions = {}): Promise<HelloOutcome> {
     const exchange = await this.#exchange(['hello'], undefined, options.signal);
     if (exchange.kind === 'unknown') return exchange.outcome;
-    // `aizu hello` has no request frame, so only the kind can be correlated.
+    // `aizign hello` has no request frame, so only the kind can be correlated.
     if (exchange.response.kind !== 'hello') {
       return {
         kind: 'unknown',

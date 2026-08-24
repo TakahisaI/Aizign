@@ -8,6 +8,7 @@ coverage/
 
 # Local state and runtime data (never tracked)
 /.aizu-state/
+/.aizign-state/
 /runtime/
 *.log
 

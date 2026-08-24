@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Repository tooling for Aizu, invoked as `cargo xtask <command>`"
+description = "Repository tooling for Aizign, invoked as `cargo xtask <command>`"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -2,7 +2,7 @@
 
 ## Our standard
 
-Aizuのcommunityでは、経験、背景、所属にかかわらず、誰もが安全に参加できることを優先します。
+Aizignのcommunityでは、経験、背景、所属にかかわらず、誰もが安全に参加できることを優先します。
 
 期待する行動:
 
@@ -18,7 +18,7 @@ Aizuのcommunityでは、経験、背景、所属にかかわらず、誰もが�
 
 ## Scope
 
-このrepositoryのIssue、PR、Discussion、release、およびAizuを代表して行う公の場での活動に適用します。
+このrepositoryのIssue、PR、Discussion、release、およびAizignを代表して行う公の場での活動に適用します。
 
 ## Enforcement
 

@@ -90,8 +90,8 @@ jobs:
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
-      - name: Build the aizu binary
-        run: cargo build --quiet -p aizu-cli
+      - name: Build the aizign binary
+        run: cargo build --quiet -p aizign-cli
 
       - name: Install
         run: npm ci --no-audit --no-fund
@@ -99,7 +99,7 @@ jobs:
       - name: Lint, build, typecheck, test, pack (with the real binary)
         run: npm run check
         env:
-          AIZU_BINARY: ${{ github.workspace }}/target/debug/aizu
+          AIZIGN_BINARY: ${{ github.workspace }}/target/debug/aizign
 
   repository:
     name: Repository

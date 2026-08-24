@@ -5,9 +5,9 @@ code identifierは英語で固定します。日本語訳は説明用で、識�
 | Term | 意味 |
 |---|---|
 | **Harness** | LLM agentを動かす実行環境。session、tool、persistenceを持つ。例: DSH |
-| **Adapter** | 特定のharnessとAizu protocolを接続するpackage。harness固有の型とIDはここに閉じる |
-| **Core** | `aizu-core`。純粋な判断だけを持つRust crate |
-| **Engine** | `aizu-engine`。use case、port、effect claimを持つ |
+| **Adapter** | 特定のharnessとAizign protocolを接続するpackage。harness固有の型とIDはここに閉じる |
+| **Core** | `aizign-core`。純粋な判断だけを持つRust crate |
+| **Engine** | `aizign-engine`。use case、port、effect claimを持つ |
 | **Workflow** | 一つのsoftware change全体の単位。`workflowId` で識別 |
 | **Assignment** | workflow内でroleに割り当てた作業単位。`assignmentId` で識別 |
 | **Role** | assignmentの種類。`implementation`、`review` |
@@ -36,4 +36,4 @@ code identifierは英語で固定します。日本語訳は説明用で、識�
 | **Bounded** | 上限のあること。request size、record数、処理時間、cold read範囲に上限を置く |
 | **Short error code** | `^[A-Z][A-Z0-9_]{0,63}$` の安定した識別子。[error-codes.md](error-codes.md) |
 | **Live smoke** | 実harness、browser、providerを使うopt-in検査。通常CIでは起動しない |
-| **Composition root** | 依存を束ねる唯一の場所。`aizu-cli` |
+| **Composition root** | 依存を束ねる唯一の場所。`aizign-cli` |

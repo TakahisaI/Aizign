@@ -41,7 +41,7 @@ wireに流れるbytesそのもの（末尾の改行なし）。validなframeは1
 ## 検査
 
 - `cargo xtask conformance`: 構造（`.frame` と `.expect.json` の対応、codeの形式、validがJSONであること）
-- `crates/aizu-protocol/tests/conformance.rs`: Rust decoderで全件（loaderは `aizu-testkit::conformance`）
+- `crates/aizign-protocol/tests/conformance.rs`: Rust decoderで全件（loaderは `aizign-testkit::conformance`）
 - `packages/protocol`: TypeScript decoderで全件（後続）
 
 fixtureは架空のnon-confidentialな値だけを使い、実際のpath、ID、本文を含めません。

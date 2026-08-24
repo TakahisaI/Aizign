@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aizu.dev/spec/journal/v1/record.schema.json",
-  "title": "Aizu journal record v1",
+  "$id": "https://aizign.dev/spec/journal/v1/record.schema.json",
+  "title": "Aizign journal record v1",
   "type": "object",
   "additionalProperties": false,
   "required": [

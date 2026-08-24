@@ -1,1 +1,1 @@
-{"protocol":"aizu","version":1,"requestId":"r","kind":"hello","ok":false,"error":{"code":"X","message":"\uD800"}}
+{"protocol":"aizign","version":1,"requestId":"r","kind":"hello","ok":false,"error":{"code":"X","message":"\uD800"}}

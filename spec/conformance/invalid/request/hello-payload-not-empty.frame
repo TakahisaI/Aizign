@@ -1,1 +1,1 @@
-{"protocol":"aizu","version":1,"requestId":"req-x12","kind":"hello","payload":{"x":1}}
+{"protocol":"aizign","version":1,"requestId":"req-x12","kind":"hello","payload":{"x":1}}

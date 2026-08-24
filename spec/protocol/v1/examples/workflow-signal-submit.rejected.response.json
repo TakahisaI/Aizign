@@ -1,1 +1,1 @@
-{"protocol":"aizu","version":1,"requestId":"req-signal-01","kind":"workflow.signal.submit","ok":false,"error":{"code":"REVISION_MISMATCH","message":"revision mismatch: expected rev-c0ffee, got rev-deadbeef"}}
+{"protocol":"aizign","version":1,"requestId":"req-signal-01","kind":"workflow.signal.submit","ok":false,"error":{"code":"REVISION_MISMATCH","message":"revision mismatch: expected rev-c0ffee, got rev-deadbeef"}}

@@ -8,42 +8,42 @@ protocol fixtureが入った後は、`spec/protocol/v1/` が wire上のcodeの�
 
 ## Protocol
 
-`aizu-protocol` の `codes::*`。wire上の意味は [spec/protocol/v1](../../spec/protocol/v1/README.md#error-codes)。
+`aizign-protocol` の `codes::*`。wire上の意味は [spec/protocol/v1](../../spec/protocol/v1/README.md#error-codes)。
 
 | Code | 意味 | Status |
 |---|---|---|
-| `PROTOCOL_VERSION_UNSUPPORTED` | envelopeの `version` をこのbinaryが扱えない | implemented（`aizu-protocol`） |
-| `INVALID_ENVELOPE` | envelopeがclosed schemaに合わない（JSONでない、`protocol` 違い、欠落、型違い、未知field、`requestId` 不正） | implemented（`aizu-protocol`） |
-| `UNKNOWN_KIND` | `kind` が未登録 | implemented（`aizu-protocol`） |
-| `INVALID_PAYLOAD` | payloadがkindのclosed schemaに合わない（欠落、型違い、未知field、`null`） | implemented（`aizu-protocol`） |
-| `REQUEST_TOO_LARGE` | request sizeがboundを超えた | implemented（`aizu-protocol`） |
+| `PROTOCOL_VERSION_UNSUPPORTED` | envelopeの `version` をこのbinaryが扱えない | implemented（`aizign-protocol`） |
+| `INVALID_ENVELOPE` | envelopeがclosed schemaに合わない（JSONでない、`protocol` 違い、欠落、型違い、未知field、`requestId` 不正） | implemented（`aizign-protocol`） |
+| `UNKNOWN_KIND` | `kind` が未登録 | implemented（`aizign-protocol`） |
+| `INVALID_PAYLOAD` | payloadがkindのclosed schemaに合わない（欠落、型違い、未知field、`null`） | implemented（`aizign-protocol`） |
+| `REQUEST_TOO_LARGE` | request sizeがboundを超えた | implemented（`aizign-protocol`） |
 | `CAPABILITY_UNSUPPORTED` | 要求された操作をこのbinaryまたはadapterが提供しない | reserved（定数のみ） |
-| `INTERNAL` | 分類できない内部error。詳細はstderr | implemented（`aizu-cli`: clock失敗） |
-| `HANDLER_TIMEOUT` | 処理が時間boundを超えた。進行中のappendの結果は不明。再送せずreconcileする | implemented（`aizu-cli`） |
+| `INTERNAL` | 分類できない内部error。詳細はstderr | implemented（`aizign-cli`: clock失敗） |
+| `HANDLER_TIMEOUT` | 処理が時間boundを超えた。進行中のappendの結果は不明。再送せずreconcileする | implemented（`aizign-cli`） |
 
 ## Workflow
 
-`aizu-core` の `workflow::WorkflowError::code()` が返すcodeです。
+`aizign-core` の `workflow::WorkflowError::code()` が返すcodeです。
 
 | Code | 意味 | Status |
 |---|---|---|
-| `INVALID_SIGNAL` | signalがkindごとの制約（role、`findingCount`、`artifactRef`、`shortErrorCode`）に合わない | implemented（`aizu-core`） |
-| `INVALID_EXPECTATION` | `expected` の形は正しいが値が不正（識別子の文字種や長さ）。coreでは型により表現不能なため、protocol境界で返す | implemented（`aizu-protocol`） |
-| `WORKFLOW_MISMATCH` | `workflowId` が期待と異なる | implemented（`aizu-core`） |
-| `ASSIGNMENT_MISMATCH` | `assignmentId` が期待と異なる | implemented（`aizu-core`） |
-| `ROLE_MISMATCH` | `role` が期待と異なる | implemented（`aizu-core`） |
-| `REVISION_MISMATCH` | `artifactRevision` が期待と異なる | implemented（`aizu-core`） |
-| `EVENT_CONFLICT` | 同一 `eventId` で内容が異なる | implemented（`aizu-core`） |
+| `INVALID_SIGNAL` | signalがkindごとの制約（role、`findingCount`、`artifactRef`、`shortErrorCode`）に合わない | implemented（`aizign-core`） |
+| `INVALID_EXPECTATION` | `expected` の形は正しいが値が不正（識別子の文字種や長さ）。coreでは型により表現不能なため、protocol境界で返す | implemented（`aizign-protocol`） |
+| `WORKFLOW_MISMATCH` | `workflowId` が期待と異なる | implemented（`aizign-core`） |
+| `ASSIGNMENT_MISMATCH` | `assignmentId` が期待と異なる | implemented（`aizign-core`） |
+| `ROLE_MISMATCH` | `role` が期待と異なる | implemented（`aizign-core`） |
+| `REVISION_MISMATCH` | `artifactRevision` が期待と異なる | implemented（`aizign-core`） |
+| `EVENT_CONFLICT` | 同一 `eventId` で内容が異なる | implemented（`aizign-core`） |
 
 照合順はworkflow → assignment → role → revisionで、expectationの照合がduplicate / conflict判定より先に行われます。
 
 ## Journal
 
-`aizu-engine` の `JournalError::code()`。formatの意味は [spec/journal/v1](../../spec/journal/v1/README.md)。
+`aizign-engine` の `JournalError::code()`。formatの意味は [spec/journal/v1](../../spec/journal/v1/README.md)。
 
 | Code | 意味 | Status |
 |---|---|---|
-| `JOURNAL_UNAVAILABLE` | journalを開けない（directory / fileの権限、作成失敗）。何もappendされていない | implemented（`aizu-engine`、`aizu-store-jsonl`） |
+| `JOURNAL_UNAVAILABLE` | journalを開けない（directory / fileの権限、作成失敗）。何もappendされていない | implemented（`aizign-engine`、`aizign-store-jsonl`） |
 | `JOURNAL_CORRUPT` | journalをclosed schemaで読めない（未知field、`null`、欠番、途中で切れたrecord、不正なsignal） | implemented（同上） |
 | `JOURNAL_SCHEMA_UNSUPPORTED` | journal schema versionをこのbinaryが扱えない | implemented（同上） |
 | `JOURNAL_LOCKED` | 別writerがownershipを持っている | implemented（同上） |
@@ -63,9 +63,9 @@ protocolのcodeではなく、adapterがharnessへ返す `HarnessError.code`。�
 
 | Code | 意味 | Adapter |
 |---|---|---|
-| `AIZU_UNAVAILABLE` | preflightでbinaryに到達できない | `@aizu/adapter-dsh` |
-| `AIZU_INCOMPATIBLE` | protocol version / capabilityが合わない | `@aizu/adapter-dsh` |
-| `AIZU_OUTCOME_UNKNOWN` | 提出の結果が不明。再送しない | `@aizu/adapter-dsh` |
+| `AIZIGN_UNAVAILABLE` | preflightでbinaryに到達できない | `@aizign/adapter-dsh` |
+| `AIZIGN_INCOMPATIBLE` | protocol version / capabilityが合わない | `@aizign/adapter-dsh` |
+| `AIZIGN_OUTCOME_UNKNOWN` | 提出の結果が不明。再送しない | `@aizign/adapter-dsh` |
 
 ## 追加の手順
 

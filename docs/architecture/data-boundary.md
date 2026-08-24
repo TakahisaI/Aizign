@@ -52,7 +52,7 @@ journal recordはclosed schemaで、禁止項目にあたるfield名を持つrec
 
 | 出力先 | 内容 |
 |---|---|
-| stdout（`aizu` binary） | protocol responseの一行だけ |
+| stdout（`aizign` binary） | protocol responseの一行だけ |
 | stderr | 構造化された診断。identity、kind、disposition、error code。本文なし |
 | adapter log | 同上。harness IDはadapter内のlogに限り出してよいが、coreへは渡さない |
 

@@ -25,8 +25,8 @@ cargo --version   # rust-toolchain.toml の channel と一致すること
 ## 最初の検査
 
 ```sh
-git clone <this repository> Aizu
-cd Aizu
+git clone <this repository> Aizign
+cd Aizign
 cargo xtask check
 ```
 
@@ -38,7 +38,7 @@ cargo xtask check
 | `rust-check` | `cargo fmt --all --check`、`cargo clippy --workspace --all-targets --all-features -- -D warnings`、`cargo test --workspace`、`cargo doc --workspace --no-deps`（warning deny）、`cargo deny check` |
 | `npm-check` | `npm ci` + `npm run check`（Biome、build、typecheck、`node --test`、pack inspection）。packageがなければskip |
 | `conformance` | `spec/conformance/` のfixtureを検査 |
-| `public-audit` | 依存境界、`aizu-core` の禁止import、secret / private pathの検査、closed `exports`、entry document、文書link |
+| `public-audit` | 依存境界、`aizign-core` の禁止import、secret / private pathの検査、closed `exports`、entry document、文書link |
 | `whitespace` | tracked tree全体に対する `git diff --check`（trailing whitespace、final newline） |
 
 個別に実行することもできます。
@@ -54,12 +54,12 @@ cargo xtask whitespace
 ## binaryを動かす
 
 ```sh
-cargo build -p aizu-cli
-./target/debug/aizu hello
-cat spec/protocol/v1/examples/workflow-signal-submit.request.json | ./target/debug/aizu handle --state ./.aizu-state
+cargo build -p aizign-cli
+./target/debug/aizign hello
+cat spec/protocol/v1/examples/workflow-signal-submit.request.json | ./target/debug/aizign handle --state ./.aizign-state
 ```
 
-2回目は別processでも `duplicate` が返ります（journalが正本）。`.aizu-state/` はgitignore済みです。
+2回目は別processでも `duplicate` が返ります（journalが正本）。`.aizign-state/` はgitignore済みです。
 
 ## TypeScript workspace
 
@@ -69,7 +69,7 @@ root `package.json` は `private: true` のnpm workspace rootで、`packages/*` 
 ```sh
 npm ci
 npm run check            # 全package
-npm test -w @aizu/protocol
+npm test -w @aizign/protocol
 ```
 
 - Node / npmは `.node-version` と `packageManager` に固定。`.npmrc` の `engine-strict=true` で不一致を拒否します

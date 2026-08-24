@@ -1,0 +1,20 @@
+[package]
+name = "aizign-protocol"
+description = "Aizign Protocol v1: NDJSON envelopes, closed decoders, and DTO <-> domain conversion"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+aizign-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+aizign-testkit.workspace = true
+
+[lints]
+workspace = true
