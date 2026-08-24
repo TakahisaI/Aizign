@@ -333,8 +333,12 @@ pub fn decode_request(frame: &[u8]) -> Result<Request, DecodeFailure> {
 }
 
 /// Encodes a request as one line (no trailing newline).
-#[must_use]
-pub fn encode_request(request: &Request) -> String {
+///
+/// # Errors
+///
+/// Returns `REQUEST_TOO_LARGE` rather than producing a frame above
+/// `MAX_REQUEST_BYTES`.
+pub fn encode_request(request: &Request) -> Result<String, ProtocolError> {
     let payload = match &request.kind {
         RequestKind::Hello => serde_json::Map::new(),
         RequestKind::SubmitWorkflowSignal(command) => match workflow_signal::encode_submit(command)
@@ -356,7 +360,17 @@ pub fn encode_request(request: &Request) -> String {
         kind: request.kind.name().to_owned(),
         payload,
     };
-    serde_json::to_string(&envelope).expect("envelopes serialize without error")
+    let frame = serde_json::to_string(&envelope).expect("envelopes serialize without error");
+    if frame.len() > MAX_REQUEST_BYTES {
+        return Err(ProtocolError::new(
+            codes::REQUEST_TOO_LARGE,
+            format!(
+                "request is {} bytes; at most {MAX_REQUEST_BYTES} allowed",
+                frame.len()
+            ),
+        ));
+    }
+    Ok(frame)
 }
 
 /// Encodes a response as one line (no trailing newline). The output never

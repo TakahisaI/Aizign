@@ -39,7 +39,7 @@ fn request_examples_round_trip() {
     for (name, bytes) in examples(".request.json") {
         let request =
             decode_request(&bytes).unwrap_or_else(|failure| panic!("{name}: {failure:?}"));
-        let encoded = encode_request(&request);
+        let encoded = encode_request(&request).unwrap_or_else(|error| panic!("{name}: {error}"));
         assert_eq!(json(encoded.as_bytes()), json(&bytes), "{name}");
         assert!(!encoded.contains('\n'), "{name}: frames are single lines");
     }

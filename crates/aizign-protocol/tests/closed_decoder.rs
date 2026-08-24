@@ -207,9 +207,19 @@ fn encoded_frames_carry_the_protocol_version_and_escape_newlines() {
         kind: RequestKind::Hello,
     };
     assert_eq!(
-        decode_request(encode_request(&request).as_bytes()).unwrap(),
+        decode_request(encode_request(&request).unwrap().as_bytes()).unwrap(),
         request
     );
+}
+
+#[test]
+fn request_encoder_refuses_a_frame_above_the_bound() {
+    let request = Request {
+        request_id: "r".repeat(MAX_REQUEST_BYTES),
+        kind: RequestKind::Hello,
+    };
+    let error = encode_request(&request).unwrap_err();
+    assert_eq!(error.code().as_str(), codes::REQUEST_TOO_LARGE);
 }
 
 #[test]

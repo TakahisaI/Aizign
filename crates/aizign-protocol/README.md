@@ -7,8 +7,8 @@ Aizign Protocol v1: NDJSON envelopes, closed decoders, and explicit DTO ↔ doma
 | **Responsibility** | request / response envelope、protocol version、`hello`、kindごとのpayload decode / encode、stable error code、input size制限、DTO ↔ `aizign-core` 型の変換 |
 | **Non-responsibility** | process起動、stdin / stdoutの読み書き（`aizign-cli`）、journal、判断（`aizign-core`）、harness固有型 |
 | **Inputs** | 1 request frame（bytes）、または `aizign-core` の `Command` / `Decision` 由来の結果 |
-| **Outputs** | `Request`（`RequestKind::Hello` / `SubmitWorkflowSignal(Command)` / `ReconcileWorkflowSignal(WorkflowSignal)`）、bound内の`Response` JSON、またはencode error |
-| **Hard invariants** | closed schema（未知field、`null`、未登録kindを拒否）、submitとreconcileで同じsignal DTO / validationを使う、attempt / typed candidate digest shapeをdomain型へ明示変換、encoderはboundを超えるresponseを生成しない、stdoutに出るのはresponse 1行だけ（改行をescape）、messageにrequest本文を含めない、`accepted` はwriter-published committed stateだけから作られる（engineの責務。このcrateは結果をencodeするだけ） |
+| **Outputs** | `Request`（`RequestKind::Hello` / `SubmitWorkflowSignal(Command)` / `ReconcileWorkflowSignal(WorkflowSignal)`）、bound内のrequest / response JSON、またはencode error |
+| **Hard invariants** | closed schema（未知field、`null`、未登録kindを拒否）、submitとreconcileで同じsignal DTO / validationを使う、attempt / typed candidate digest shapeをdomain型へ明示変換、encoderはboundを超えるrequest / responseを生成しない、stdoutに出るのはresponse 1行だけ（改行をescape）、messageにrequest本文を含めない、`accepted` はwriter-published committed stateだけから作られる（engineの責務。このcrateは結果をencodeするだけ） |
 | **Allowed dependencies** | `aizign-core`、`serde`、`serde_json`（ADR-0009） |
 | **Test command** | `cargo test -p aizign-protocol` |
 | **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md)、[0009](../../docs/adr/0009-serialization-dependencies-for-the-protocol-crate.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md) |
