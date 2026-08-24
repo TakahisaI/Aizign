@@ -70,8 +70,12 @@ minimum requirements.
 `hello`, `workflow.signal.submit`, and `workflow.signal.reconcile` are the
 implemented core protocol operations. Core reconciliation is a bounded
 read-only lookup of the Aizign journal, not a harness evidence capability. The
-DSH adapter separately demonstrates optional durable success evidence, bounded
-session cold read, and binding/payload digest verification.
+DSH adapter separately demonstrates optional harness-persisted success metadata
+integration, a caller-wait timeout plus post-read event-count guard, and
+binding-digest verification plus payload-digest recording. These DSH
+integrations do not by themselves establish a real-persistence durability or
+retention contract, a source-side I/O or byte bound, or payload-digest
+verification.
 
 Interrupt, effect dispatch, resource release, session or agent ownership,
 general lifecycle hooks, and remote reconnect are provisional. They have no

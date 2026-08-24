@@ -42,8 +42,8 @@ A v0.1 signal-submission adapter must provide the following behavior:
 - keep harness session, call, provider, and delivery identities out of the
   Aizign protocol envelope, including `requestId`;
 - validate response `requestId`, `kind`, and `eventId` correlation;
-- preserve accepted, duplicate, rejected, and unknown outcomes without
-  collapsing one classification into another;
+- preserve the submit outcome (`accepted`, `duplicate`, `rejected`, or
+  `unknown`) without collapsing one classification into another;
 - never infer success or rejection from `unknown`, and never blindly retry an
   unknown submission;
 - keep raw prompts, model output, reasoning, and credentials out of the
@@ -57,29 +57,55 @@ adapter when it satisfies the behavior above.
 
 ## Durable evidence and absence semantics
 
-The Aizign control journal is authoritative for workflow signal acceptance. An
-adapter may call harness-native evidence durable only when it can verify
-metadata that attributes the record to the requested binding.
+The Aizign control journal is authoritative for workflow signal acceptance.
+Durability and attribution are independent properties of harness-native
+evidence. An adapter may rely on a harness-native record only when both of these
+conditions hold:
+
+1. the source has an established durability and retention contract; and
+2. the adapter can verify attribution to the requested binding and, where it
+   claims payload integrity, to the requested payload.
 
 A durable error record without verifiable binding metadata is not evidence that
 the requested binding was rejected. It remains `unknown` with an adapter-owned
-diagnostic such as `unverified_error`. Absence of an optional harness capability
-must never weaken identity isolation, the metadata-only boundary, correlation
-checks, bounds, or the non-collapse of `unknown`.
+diagnostic such as `unverified_error`. Conversely, binding verification does not
+establish that the source survives a crash or satisfies a retention policy.
+Absence of an optional harness capability must never weaken identity isolation,
+the metadata-only boundary, correlation checks, bounds, or the non-collapse of
+`unknown`.
 
 ## Optional capabilities demonstrated today
 
-The DSH adapter currently demonstrates these harness adapter capabilities:
+The DSH adapter currently demonstrates these harness adapter integrations:
 
-- harness-native durable success evidence;
-- bounded harness session cold read; and
-- harness result verification with binding and payload digests.
+- harness-persisted success metadata integration;
+- caller-wait timeout with a post-read event-count guard for session reads; and
+- binding-digest verification with payload-digest recording.
 
 These are examples, not the generic shape of harness evidence. Another adapter
 does not need to expose DSH `tool/call`, `tool/result`, or
 `SessionPersistence.readFrom` events. When it offers native evidence, it owns
-the translation from its native records to the common dispositions described
-above.
+the interpretation of its native records as harness-native evidence
+observations.
+
+The current session-read API does not bound source-side I/O, allocation, event
+byte size, or work that continues after a source ignores cancellation. Its
+event-count guard runs after materialization and rejects partial evidence. The
+current fake-DSH tests also do not establish the durability or retention
+contract of real DSH persistence across restart. Finally, the adapter verifies
+`eventId` and `bindingDigest`, but only records and returns `payloadDigest`; it
+does not recompute the payload digest during cold read.
+
+Keep the outcome vocabularies source-qualified:
+
+| Source | Outcome vocabulary |
+|---|---|
+| Signal submission | `accepted`, `duplicate`, `rejected`, `unknown` |
+| Core journal reconciliation | `accepted`, `conflict`, `absent`, `unknown` |
+| DSH harness-native evidence observation | `accepted`, `duplicate`, `absent`, `unknown` with adapter-owned reasons |
+
+The same spelling in two rows does not imply the same authority or observation
+source.
 
 ## Core reconciliation is not harness evidence
 
@@ -150,6 +176,13 @@ adapters/<harness>/
 
 Do not add empty `evidence/` or `lifecycle/` layers merely to match this tree.
 The DSH event shape and lifecycle are not generic adapter interfaces.
+
+Until #48 is completed, the TypeScript `CoreClient` interface and
+`runCoreClientConformance` runner are reference-layer supersets: both require
+reconciliation and therefore do not encode the minimum signal-submission
+contract defined above. A missing reconciliation method or scenario can fail
+that TypeScript interface or runner without making the adapter's submission
+behavior non-conforming to this minimum.
 
 - Pin a TypeScript harness SDK to an exact version (peer and dev; ADR-0010).
   The root `.npmrc` uses `ignore-scripts=true`.
