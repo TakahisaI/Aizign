@@ -219,13 +219,14 @@ fn cold_reads_are_bounded() {
 fn the_10001st_append_is_refused_without_touching_the_file() {
     let dir = TempDir::new();
     let state = dir.state();
-    let mut journal = JsonlJournal::open(&state).unwrap();
-    for (index, seq) in (1..=MAX_JOURNAL_ENTRIES).enumerate() {
-        journal
-            .append(&event(&format!("evt-{seq}")), signals::at(index as u64))
-            .unwrap_or_else(|error| panic!("append {seq}: {error}"));
+    let mut contents = String::new();
+    for seq in 1..=MAX_JOURNAL_ENTRIES as u64 {
+        contents.push_str(&raw_line(seq, &format!("evt-{seq}")));
+        contents.push('\n');
     }
+    write_raw(&state, &contents);
     let before = fs::read(journal_file(&state)).unwrap();
+    let mut journal = JsonlJournal::open(&state).unwrap();
 
     // The bound is enforced on append, not only on read: an acknowledged
     // append must never create a journal the next cold read cannot load.

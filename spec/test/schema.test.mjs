@@ -10,7 +10,7 @@
  * canonical integer lexemes the decoders require (`1.0` and `1e0` are the
  * integer 1 in the JSON data model a schema sees, but not tokens the wire
  * accepts), and duplicate object members (a schema sees the folded object;
- * both decoders reject the repeated spelling lexically).
+ * both decoders reject a repeated decoded name lexically).
  *
  * The decoders run the same files: `crates/aizu-protocol/tests/conformance.rs`,
  * `crates/aizu-store-jsonl/tests/conformance.rs`, and
