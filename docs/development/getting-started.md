@@ -51,6 +51,31 @@ cargo xtask public-audit
 cargo xtask whitespace
 ```
 
+## Quick development checks
+
+Use a `quick` profile for the daily inner loop with the existing Cargo cache and `node_modules`.
+`quick` does not install from the network or infer affected targets from the git diff.
+
+```sh
+cargo xtask quick              # repository-wide baseline
+cargo xtask quick protocol     # protocol, journal, fixture, or schema changes
+cargo xtask quick adapter-dsh  # DSH adapter changes; always rebuilds the real binary
+```
+
+The default profile formats and compiles the Rust workspace, runs its library unit tests, and builds, lints, and type-checks the TypeScript workspace.
+The `protocol` profile adds the Rust and TypeScript protocol tests, journal tests, shared conformance fixtures, schemas, and examples.
+The `adapter-dsh` profile incrementally builds `aizign-cli`, runs DSH-only lint and type checks, then passes that binary to the protocol, adapter-testkit, and DSH adapter tests.
+It never skips the build based on the existing binary or its timestamp.
+
+If `node_modules` is missing, run this setup command first:
+
+```sh
+npm ci --no-audit --no-fund
+```
+
+`quick` does not run cargo doc, cargo deny, package-content inspection, the public audit, full workspace integration tests, or clean-install checks.
+Run the full `cargo xtask check` gate before a push or pull request.
+
 ## binaryを動かす
 
 ```sh

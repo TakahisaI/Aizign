@@ -7,6 +7,7 @@
 mod audit;
 mod conformance;
 mod npm_check;
+mod quick;
 mod report;
 mod rust_check;
 mod shell;
@@ -19,6 +20,8 @@ usage: cargo xtask <command>
 
 commands:
   check          run every pull-request gate (rust-check, npm-check, conformance, public-audit, whitespace)
+  quick [profile]
+                 run network-free cached checks (default, protocol, adapter-dsh)
   rust-check     cargo fmt / clippy / test / doc / deny
   npm-check      npm ci + npm run check (lint, build, typecheck, test, pack) for the TypeScript workspace
   conformance    validate the language-neutral fixtures under spec/conformance
@@ -26,6 +29,13 @@ commands:
                  closed package exports, entry documents, documentation links
   whitespace     git diff --check over the whole tree (trailing whitespace, missing final newline)
   help           print this message
+
+quick profiles (network-free; existing caches and node_modules only):
+  default        fmt -> Rust workspace check/library tests -> TypeScript build/lint/typecheck
+  protocol       default -> shared fixtures -> Rust/TypeScript protocol, journal, and schema tests
+  adapter-dsh    default -> fresh aizign-cli build -> targeted adapter lint/typecheck/tests
+                 with adapter-testkit fake-core and real-binary round trips
+Run `cargo xtask quick --help` for the exact order, guarantees, and exclusions.
 ";
 
 fn main() -> ExitCode {
@@ -34,6 +44,7 @@ fn main() -> ExitCode {
 
     let outcome = match args.first().map(String::as_str) {
         Some("check") => check(&root),
+        Some("quick") => quick::run(&root, &args[1..]),
         Some("rust-check") => rust_check::run(&root),
         Some("npm-check") => npm_check::run(&root),
         Some("conformance") => conformance::run(&root),

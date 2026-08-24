@@ -60,6 +60,17 @@ Accepted ADRは後からsilent rewriteしません。変更時は新しいADRで
 
 ## 検査
 
+Use an explicit profile for the development inner loop that matches the area being changed.
+
+```sh
+cargo xtask quick
+cargo xtask quick protocol
+cargo xtask quick adapter-dsh
+```
+
+`quick` reuses existing caches and `node_modules`; it does not install dependencies or run the full release checks.
+See [Getting started](docs/development/getting-started.md#quick-development-checks) for the scope of each profile.
+
 PRを出す前にrootで次を通してください。
 
 ```sh
