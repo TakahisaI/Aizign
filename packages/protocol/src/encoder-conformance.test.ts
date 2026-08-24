@@ -82,6 +82,17 @@ function expectedAssignment(): ExpectedAssignment {
   };
 }
 
+function reviewExpectedAssignment(): ExpectedAssignment {
+  return {
+    workflowId: 'wf-example-01',
+    assignmentId: 'as-review-01',
+    attemptId: 'attempt-fixture',
+    role: 'review',
+    artifactRevision: 'rev-c0ffee',
+    candidateDigest: { algorithm: 'sha256', hex: SHA256_A },
+  };
+}
+
 function implementationReady(eventId: string): WorkflowSignal {
   return {
     eventId,
@@ -103,11 +114,30 @@ function blocked(eventId: string): WorkflowSignal {
   };
 }
 
-function submitRequest(requestId: string, signal: WorkflowSignal): Request {
+function reviewFindings(eventId: string): WorkflowSignal {
+  return {
+    eventId,
+    workflowId: 'wf-example-01',
+    assignmentId: 'as-review-01',
+    attemptId: 'attempt-fixture',
+    role: 'review',
+    artifactRevision: 'rev-c0ffee',
+    candidateDigest: { algorithm: 'sha256', hex: SHA256_A },
+    kind: 'review_findings',
+    findingCount: 2,
+    artifactRef: 'review:0123456789abcdef',
+  };
+}
+
+function submitRequest(
+  requestId: string,
+  expected: ExpectedAssignment,
+  signal: WorkflowSignal,
+): Request {
   return {
     requestId,
     kind: 'workflow.signal.submit',
-    payload: { expected: expectedAssignment(), signal },
+    payload: { expected, signal },
   };
 }
 
@@ -128,11 +158,15 @@ test('request encoders match every Protocol v1 example without decoding', () => 
     ],
     [
       'workflow-signal-submit.blocked.request.json',
-      submitRequest('req-signal-03', blocked('evt-0003')),
+      submitRequest('req-signal-03', expectedAssignment(), blocked('evt-0003')),
     ],
     [
       'workflow-signal-submit.request.json',
-      submitRequest('req-signal-01', implementationReady('evt-0001')),
+      submitRequest('req-signal-01', expectedAssignment(), implementationReady('evt-0001')),
+    ],
+    [
+      'workflow-signal-submit.review-findings.request.json',
+      submitRequest('req-signal-02', reviewExpectedAssignment(), reviewFindings('evt-0002')),
     ],
   ] as const satisfies ReadonlyArray<readonly [string, Request]>;
   assertExplicitCoverage('.request.json', cases);
@@ -146,10 +180,7 @@ test('response encoders match every Protocol v1 example without decoding', () =>
   const hello: HelloInfo = {
     protocolVersion: 1,
     journalSchemaVersion: 1,
-    capabilities: [
-      CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
-      CAPABILITY_WORKFLOW_SIGNAL_RECONCILE,
-    ],
+    capabilities: [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT, CAPABILITY_WORKFLOW_SIGNAL_RECONCILE],
     package: { name: 'aizign', version: '0.1.0' },
   };
   const cases = [
