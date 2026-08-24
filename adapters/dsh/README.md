@@ -89,4 +89,4 @@ completionの正本はjournal（core側）です。adapterはそれに加えて�
 | `AIZIGN_INCOMPATIBLE` | protocol versionが違う、またはcapabilityがない |
 | `AIZIGN_OUTCOME_UNKNOWN` | 提出の結果が不明（無応答、garbage、2 frame、oversized、相関不一致、timeout、abort、`JOURNAL_OUTCOME_UNKNOWN`）。再送しない |
 | `INVALID_SIGNAL` ほか | protocol / workflow codeをそのまま転送 |
-| `INVALID_EXPECTATION` | plugin configのidentityまたはcandidate digestが不正 |
+| `INVALID_EXPECTATION` | plugin configの検証に失敗 |
