@@ -97,9 +97,11 @@ same-state submitは`accepted`または`JOURNAL_LOCKED`だけを許可し、最�
 different-state submitは全件`accepted`、reconcileは両modeとも全件`absent`を要求し、それ以外の結果ではartifactを保存せずrunを失敗させます。
 summaryはbatch latency、成功throughput、accepted数、`JOURNAL_LOCKED`数、想定外件数、error codeを専用tableへ出力します。
 
-lost acknowledgement scenarioは`ReferenceOneShotClient`をbenchmark専用proxyへ接続します。
+lost acknowledgement scenarioは、同じstate directoryを使う二つの`ReferenceOneShotClient` instanceを用意します。
+preflightとreconcileは実binaryへ直接接続し、submitだけをbenchmark専用proxyへ接続します。
 proxyは実binaryによるdurable appendとresponse生成を完了させてからsubmitのstdout frameだけを破棄します。
-clientが`unknown/no_response`を返したこと、submit invocationが一回だけであること、同じclient abstractionから一度だけreconcileして`accepted`になることをassertします。
+runnerはclientが`unknown/no_response`を返したこと、proxy経由のsubmitが一回だけであること、direct clientから一度だけreconcileして`accepted`になることをassertします。
+scenario全体のtimerはreconcile完了時に閉じ、その後でproxy invocation counterを検証します。
 
 DSH sweepの`in_memory_scan`はsource I/Oを含まず、evidence classificationだけを測ります。
 `file_backed_read`は各sampleの計測前に生成したJSON fileを`readFrom()`内で読み取り、file readとJSON decodeを含めます。
@@ -107,7 +109,12 @@ DSH sweepの`in_memory_scan`はsource I/Oを含まず、evidence classification�
 
 `rust_direct` transportもbuilt `@aizign/protocol`のone-frame抽出、response decode、request ID、operation kind、event IDの相関検査を通します。
 responseなし、malformed response、timeout、相関不一致はtransport unknownとして扱います。
-有効な相関済みerror responseがsemantic unknownを返した場合は、child timingが欠けていればrunを失敗させます。
+現在のmatrixはすべて`correlated_response`を要求するため、transport unknownは期待outcomeやerror codeと一致してもrunを失敗させます。
+raw sampleは`transport_kind`を保存し、相関済みerror responseがsemantic unknownを返した場合もchild timingを必須とします。
+
+direct runnerのstdoutはprotocol frame上限まで、stderrはtimingと診断用の256 KiBまでBufferとして保持します。
+lost-ACK proxyもchild stdoutを同じprotocol上限で打ち切ります。
+上限超過時はchildを停止し、正常なbaselineまたは意図した`no_response`として保存しません。
 
 ## Sampling
 
@@ -129,6 +136,7 @@ summaryとmachine-readable resultは、全warm aggregateで最も遅い`handler_
 runnerはchild、parent、DSH timingごとにexact-key allowlistを検査し、未登録fieldが一つでもあればartifactを保存しません。
 timingのschema version、時間値、byte数、entry数、event数も型と範囲を検査します。
 時間値は有限の非負数、countは非負のsafe integerだけを許可します。
+direct transportの`transport_kind`も`correlated_response`または`unknown`だけを許可します。
 private filesystem pathとidentity keyの検査も重ねます。
 
 scheduled workflowは固定した`ubuntu-24.04` imageで毎週水曜日とmanual dispatchにより実行し、両fileを30日間artifactとして保存します。

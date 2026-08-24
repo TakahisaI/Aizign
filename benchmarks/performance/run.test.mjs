@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
+  appendFileSync,
   chmodSync,
   existsSync,
   mkdtempSync,
@@ -22,7 +23,8 @@ import {
   isUnknownOutcomeCode,
   MAX_FRAME_BYTES,
 } from '../../packages/protocol/lib/index.js';
-import { dropsAcknowledgement, requestKind } from './lost-ack-proxy.mjs';
+import { BoundedBuffer } from './bounded-buffer.mjs';
+import { dropsAcknowledgement, proxyFailureFrame, requestKind } from './lost-ack-proxy.mjs';
 import {
   JOURNAL_SCALE_CASES,
   MAX_PAYLOAD_CASES,
@@ -37,13 +39,18 @@ import {
   assertArtifactPrivacy,
   assertConcurrencySemantics,
   assertDirectChildTiming,
+  assertDirectTransport,
+  assertLostAckInvocationCounts,
   buildRequest,
   classifyResponse,
   compareWatchdog,
   decodeCorrelatedResponse,
   executeConcurrencyBatch,
+  executeScenario,
+  MAX_BENCHMARK_STDERR_BYTES,
   parseArgs,
   renderSummary,
+  runProcess,
   seedFixture,
 } from './run.mjs';
 
@@ -254,6 +261,77 @@ test('direct transport uses the production decoder and correlation contract', ()
       { transport_kind: 'unknown', outcome: 'unknown', unknown_reason: 'no_response' },
     ),
   );
+  const lookupUnknownCase = OUTCOME_CASES.find((entry) => entry.name === 'lookup_unknown');
+  const lookupRequest = buildRequest(lookupUnknownCase);
+  const mismatchedReportedUnknown = decodeCorrelatedResponse(
+    `${JSON.stringify({
+      protocol: 'aizign',
+      version: 1,
+      requestId: 'req-wrong',
+      kind: lookupRequest.kind,
+      ok: false,
+      error: { code: 'JOURNAL_UNAVAILABLE', message: 'unavailable' },
+    })}\n`,
+    lookupRequest,
+    PROTOCOL,
+  );
+  assert.deepEqual(mismatchedReportedUnknown, {
+    transport_kind: 'unknown',
+    unknown_reason: 'correlation_mismatch',
+    error_code: 'JOURNAL_UNAVAILABLE',
+  });
+  assert.throws(
+    () => assertDirectTransport(lookupUnknownCase, mismatchedReportedUnknown),
+    /expected correlated_response, got unknown \(correlation_mismatch\)/,
+  );
+});
+
+test('bounded buffers preserve UTF-8 chunk boundaries and stop retaining after the limit', () => {
+  const encoded = Buffer.from('前後', 'utf8');
+  const buffer = new BoundedBuffer(encoded.length);
+  assert.equal(buffer.append(encoded.subarray(0, 2)), true);
+  assert.equal(buffer.append(encoded.subarray(2)), true);
+  assert.equal(buffer.toString(), '前後');
+  assert.equal(buffer.append(Buffer.from('x')), false);
+  assert.equal(buffer.overflowed, true);
+  assert.equal(buffer.receivedBytes, encoded.length + 1);
+  assert.equal(buffer.toString(), '前後');
+});
+
+test('direct runner stops children whose stdout or stderr exceeds its buffer bounds', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aizign-direct-output-bound-'));
+  try {
+    const fakeBinary = join(root, 'overflow-core.cjs');
+    writeFileSync(
+      fakeBinary,
+      `#!/usr/bin/env node
+process.stdin.resume();
+process.stdin.on('end', () => {
+  const stream = process.argv[2] === 'stderr' ? process.stderr : process.stdout;
+  stream.write(Buffer.alloc(Number(process.argv[3]), 120));
+});
+`,
+      { mode: 0o700 },
+    );
+    chmodSync(fakeBinary, 0o700);
+    const request = buildRequest(OUTCOME_CASES[0]);
+    for (const [stream, bytes] of [
+      ['stdout', MAX_FRAME_BYTES + 2],
+      ['stderr', MAX_BENCHMARK_STDERR_BYTES + 1],
+    ]) {
+      const result = await runProcess(
+        fakeBinary,
+        [stream, String(bytes)],
+        request,
+        request.kind,
+        PROTOCOL,
+      );
+      assert.equal(result.transport_kind, 'unknown');
+      assert.equal(result.unknown_reason, 'oversized_response');
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('nearest-rank summaries always carry their sample count', () => {
@@ -383,6 +461,108 @@ test('scenario aggregation keeps preflight, submit, and reconciliation distribut
   assert.match(summary, /assignment_unknown_reconcile \| lookup/);
 });
 
+test('lost-ACK scenario proxies only submit and verifies its counter outside e2e timing', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aizign-scenario-routing-'));
+  const instances = [];
+  const events = [];
+  class FakeReferenceOneShotClient {
+    constructor(config) {
+      this.config = config;
+      this.route = config.command === process.execPath ? 'proxy' : 'direct';
+      instances.push(this);
+    }
+
+    async hello() {
+      events.push(`hello:${this.route}`);
+      this.config.timingSink({
+        operation_kind: 'hello',
+        spawn_to_exit_ms: 1,
+        outcome: 'ok',
+      });
+      return { kind: 'ok', info: {} };
+    }
+
+    async submitWorkflowSignal(_requestId, payload) {
+      events.push(`submit:${this.route}`);
+      if (this.route === 'proxy') {
+        appendFileSync(this.config.env.AIZIGN_LOST_ACK_COUNTER, 'workflow.signal.submit\n', {
+          mode: 0o600,
+        });
+        this.config.timingSink({
+          operation_kind: 'workflow.signal.submit',
+          spawn_to_exit_ms: 2,
+          outcome: 'unknown',
+          unknown_reason: 'no_response',
+        });
+        return { kind: 'unknown', reason: 'no_response', detail: 'injected' };
+      }
+      return { kind: 'accepted', eventId: payload.signal.eventId };
+    }
+
+    async reconcileWorkflowSignal(_requestId, payload) {
+      events.push(`lookup:${this.route}`);
+      this.config.timingSink({
+        operation_kind: 'workflow.signal.reconcile',
+        spawn_to_exit_ms: 3,
+        outcome: 'accepted',
+      });
+      return { kind: 'accepted', eventId: payload.signal.eventId };
+    }
+  }
+  let stateSequence = 0;
+  let clock = 100;
+  try {
+    const sample = await executeScenario(
+      {
+        config: { binary: '/fake/aizign' },
+        nextState: (label) => join(root, `${++stateSequence}-${label}`),
+        dependencies: {
+          ReferenceOneShotClient: FakeReferenceOneShotClient,
+          preflight: async (client, options) => {
+            await client.hello();
+            options.timingSink({ operation_kind: 'preflight', preflight_ms: 4, outcome: 'ok' });
+          },
+          now: () => {
+            events.push(`clock:${clock}`);
+            const current = clock;
+            clock += 50;
+            return current;
+          },
+          assertLostAckInvocationCounts: (counterPath) => {
+            events.push('assert-counter');
+            assertLostAckInvocationCounts(counterPath);
+          },
+        },
+      },
+      'assignment_unknown_reconcile',
+      'warm_repeated',
+      0,
+    );
+    assert.equal(instances.length, 2);
+    assert.equal(instances[0].route, 'direct');
+    assert.equal(instances[1].route, 'proxy');
+    assert.equal(instances[0].config.stateDir, instances[1].config.stateDir);
+    assert.deepEqual(events, [
+      'clock:100',
+      'hello:direct',
+      'submit:proxy',
+      'lookup:direct',
+      'clock:150',
+      'assert-counter',
+    ]);
+    assert.equal(sample.aizign_end_to_end_ms, 50);
+    assert.deepEqual(
+      sample.operations.map((operation) => [operation.name, operation.parent.operation_kind]),
+      [
+        ['submit_lost_ack', 'workflow.signal.submit'],
+        ['lookup', 'workflow.signal.reconcile'],
+      ],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('runner arguments keep sweeps independent', () => {
   const parsed = parseArgs([
     '--binary',
@@ -501,6 +681,10 @@ test('lost-ACK proxy drops only a submit response', () => {
   );
   assert.equal(dropsAcknowledgement('workflow.signal.submit'), true);
   assert.equal(dropsAcknowledgement('workflow.signal.reconcile'), false);
+  assert.match(
+    proxyFailureFrame('{"requestId":"req-1","kind":"workflow.signal.submit"}\n'),
+    /BENCHMARK_PROXY_OUTPUT_BOUND/,
+  );
 });
 
 test('lost-ACK proxy preserves the child side effect while suppressing its submit frame', () => {
@@ -547,10 +731,47 @@ process.stdin.on('end', () => {
   }
 });
 
+test('lost-ACK proxy bounds child stdout and reports overflow instead of injecting no_response', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aizign-lost-ack-overflow-'));
+  try {
+    const fakeBinary = join(root, 'overflow-core.cjs');
+    writeFileSync(
+      fakeBinary,
+      `#!/usr/bin/env node
+process.stdin.resume();
+process.stdin.on('end', () => {
+  process.stdout.write(Buffer.alloc(${MAX_FRAME_BYTES + 2}, 120));
+});
+`,
+      { mode: 0o700 },
+    );
+    chmodSync(fakeBinary, 0o700);
+    const proxy = fileURLToPath(new URL('./lost-ack-proxy.mjs', import.meta.url));
+    const result = spawnSync(process.execPath, [proxy, fakeBinary, 'handle', '--state', root], {
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH ?? '' },
+      input: `${JSON.stringify({
+        requestId: 'req-overflow',
+        kind: 'workflow.signal.submit',
+      })}\n`,
+    });
+    assert.equal(result.status, 1, result.stderr);
+    const response = decodeResponse(result.stdout.trim());
+    assert.equal(response.requestId, 'req-overflow');
+    assert.equal(response.kind, 'workflow.signal.submit');
+    assert.equal(response.body.type, 'error');
+    assert.equal(response.body.error.code, 'BENCHMARK_PROXY_OUTPUT_BOUND');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('artifact privacy validates timing with an exact key allowlist', () => {
   const result = {
     samples: [
       {
+        transport: 'rust_direct',
+        transport_kind: 'correlated_response',
         parent: {
           operation_kind: 'workflow.signal.submit',
           spawn_to_exit_ms: 1,
@@ -566,6 +787,20 @@ test('artifact privacy validates timing with an exact key allowlist', () => {
         samples: [{ parent: { ...result.samples[0].parent, eventId: 'evt-secret' } }],
       }),
     /unregistered key eventId/,
+  );
+  assert.throws(
+    () =>
+      assertArtifactPrivacy({
+        samples: [{ ...result.samples[0], transport_kind: 'misclassified' }],
+      }),
+    /unregistered transport_kind/,
+  );
+  assert.throws(
+    () =>
+      assertArtifactPrivacy({
+        samples: [{ ...result.samples[0], transport_kind: undefined }],
+      }),
+    /rust_direct transport_kind is missing/,
   );
   for (const spawnToExit of ['arbitrary-content', -1, Number.POSITIVE_INFINITY]) {
     assert.throws(

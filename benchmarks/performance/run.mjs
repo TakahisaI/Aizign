@@ -8,6 +8,7 @@ import { cpus, platform, release, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { BoundedBuffer } from './bounded-buffer.mjs';
 import {
   CANONICAL_SCENARIOS,
   CONCURRENCY_LEVELS,
@@ -23,6 +24,7 @@ import {
 
 export const RUNNER_VERSION = 3;
 export const CORE_WATCHDOG_MS = 10_000;
+export const MAX_BENCHMARK_STDERR_BYTES = 256 * 1024;
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = resolve(HERE, '../..');
 const LOST_ACK_PROXY = join(HERE, 'lost-ack-proxy.mjs');
@@ -279,13 +281,14 @@ export function decodeCorrelatedResponse(stdout, request, protocol) {
   return { transport_kind: 'correlated_response', response };
 }
 
-function runProcess(binary, args, request, operationKind, protocol, timingEnabled = true) {
+export function runProcess(binary, args, request, operationKind, protocol, timingEnabled = true) {
   return new Promise((resolvePromise) => {
     const started = performance.now();
     let spawnToExitMs;
     let responseFirstByteMs;
-    let stdout = '';
-    let stderr = '';
+    const stdout = new BoundedBuffer(protocol.MAX_FRAME_BYTES + 1);
+    const stderr = new BoundedBuffer(MAX_BENCHMARK_STDERR_BYTES);
+    let outputOverflow = false;
     let timedOut = false;
     let settled = false;
     let child;
@@ -322,10 +325,16 @@ function runProcess(binary, args, request, operationKind, protocol, timingEnable
     }, 60_000);
     child.stdout.on('data', (chunk) => {
       responseFirstByteMs ??= performance.now() - started;
-      stdout += chunk.toString('utf8');
+      if (!stdout.append(chunk) && !outputOverflow) {
+        outputOverflow = true;
+        child.kill('SIGKILL');
+      }
     });
     child.stderr.on('data', (chunk) => {
-      stderr += chunk.toString('utf8');
+      if (!stderr.append(chunk) && !outputOverflow) {
+        outputOverflow = true;
+        child.kill('SIGKILL');
+      }
     });
     child.on('error', (error) => {
       clearTimeout(timer);
@@ -352,6 +361,20 @@ function runProcess(binary, args, request, operationKind, protocol, timingEnable
           ? {}
           : { response_first_byte_ms: responseFirstByteMs }),
       };
+      if (outputOverflow) {
+        finish({
+          transport_kind: 'unknown',
+          outcome: 'unknown',
+          unknown_reason: 'oversized_response',
+          parent: {
+            operation_kind: operationKind,
+            ...transportTiming,
+            outcome: 'unknown',
+            unknown_reason: 'oversized_response',
+          },
+        });
+        return;
+      }
       if (timedOut) {
         finish({
           transport_kind: 'unknown',
@@ -363,11 +386,11 @@ function runProcess(binary, args, request, operationKind, protocol, timingEnable
             outcome: 'unknown',
             unknown_reason: 'timeout',
           },
-          child: extractChildTiming(stderr),
+          child: extractChildTiming(stderr.toString()),
         });
         return;
       }
-      const decoded = decodeCorrelatedResponse(stdout, request, protocol);
+      const decoded = decodeCorrelatedResponse(stdout.toString(), request, protocol);
       if (decoded.transport_kind === 'unknown') {
         finish({
           transport_kind: 'unknown',
@@ -381,7 +404,7 @@ function runProcess(binary, args, request, operationKind, protocol, timingEnable
             ...(decoded.error_code === undefined ? {} : { error_code: decoded.error_code }),
             unknown_reason: decoded.unknown_reason,
           },
-          child: extractChildTiming(stderr),
+          child: extractChildTiming(stderr.toString()),
         });
         return;
       }
@@ -398,7 +421,7 @@ function runProcess(binary, args, request, operationKind, protocol, timingEnable
           ...transportTiming,
           ...classified,
         },
-        child: extractChildTiming(stderr),
+        child: extractChildTiming(stderr.toString()),
       });
     });
     child.stdin.on('error', () => undefined);
@@ -421,8 +444,18 @@ async function runDirectOperation(
     benchmarkCase.operation_kind,
     protocol,
   );
+  assertDirectTransport(benchmarkCase, result);
   assertDirectChildTiming(benchmarkCase, result);
   return result;
+}
+
+export function assertDirectTransport(benchmarkCase, result) {
+  const expected = benchmarkCase.expected_transport_kind ?? 'correlated_response';
+  if (result.transport_kind !== expected) {
+    throw new Error(
+      `${benchmarkCase.name}: expected ${expected}, got ${result.transport_kind} (${result.unknown_reason ?? 'no reason'})`,
+    );
+  }
 }
 
 export function assertDirectChildTiming(benchmarkCase, result) {
@@ -524,6 +557,7 @@ async function executeCase(context, sweep, benchmarkCase, transport, samplePhase
     transport,
     operation_kind: benchmarkCase.operation_kind,
     journal_entries_before_operation: benchmarkCase.journal_entries_before_operation,
+    ...(result.transport_kind === undefined ? {} : { transport_kind: result.transport_kind }),
     outcome: result.outcome,
     ...(result.error_code === undefined ? {} : { error_code: result.error_code }),
     ...(result.unknown_reason === undefined ? {} : { unknown_reason: result.unknown_reason }),
@@ -653,6 +687,7 @@ export async function executeConcurrencyBatch(
     unexpected_operations: 0,
     throughput_success_ops_per_s: batchTotalMs === 0 ? 0 : successful / (batchTotalMs / 1_000),
     operations: results.map((result) => ({
+      ...(result.transport_kind === undefined ? {} : { transport_kind: result.transport_kind }),
       outcome: result.outcome,
       ...(result.error_code === undefined ? {} : { error_code: result.error_code }),
       ...(result.unknown_reason === undefined ? {} : { unknown_reason: result.unknown_reason }),
@@ -794,30 +829,46 @@ async function runDshSweep(context, samples) {
   }
 }
 
-async function executeScenario(context, scenario, phase, index) {
+export function assertLostAckInvocationCounts(counterPath) {
+  const invocations = readFileSync(counterPath, 'utf8').trim().split('\n').filter(Boolean);
+  if (invocations.length !== 1 || invocations[0] !== 'workflow.signal.submit') {
+    throw new Error('lost-ACK scenario must invoke the proxy for submit exactly once');
+  }
+}
+
+export async function executeScenario(context, scenario, phase, index) {
   const stateDir = context.nextState(`scenario-${scenario}`);
   const counterPath = context.nextState(`scenario-${scenario}-invocations.txt`);
   const parentTimings = [];
   const losesSubmitAcknowledgement = scenario === 'assignment_unknown_reconcile';
-  const client = new context.dependencies.ReferenceOneShotClient({
-    command: losesSubmitAcknowledgement ? process.execPath : context.config.binary,
-    ...(losesSubmitAcknowledgement
-      ? {
-          args: [LOST_ACK_PROXY, context.config.binary],
-          env: {
-            AIZIGN_LOST_ACK_COUNTER: counterPath,
-            AIZIGN_TIMING_JSON: '1',
-          },
-        }
-      : { env: { AIZIGN_TIMING_JSON: '1' } }),
+  const clientConfig = {
     stateDir,
     timeoutMs: 60_000,
     timingSink: (measurement) => {
       parentTimings.push(measurement);
     },
+  };
+  const directClient = new context.dependencies.ReferenceOneShotClient({
+    ...clientConfig,
+    command: context.config.binary,
+    env: { AIZIGN_TIMING_JSON: '1' },
   });
-  const started = performance.now();
-  await context.dependencies.preflight(client, {
+  const lostAckClient = losesSubmitAcknowledgement
+    ? new context.dependencies.ReferenceOneShotClient({
+        ...clientConfig,
+        command: process.execPath,
+        args: [LOST_ACK_PROXY, context.config.binary],
+        env: {
+          AIZIGN_LOST_ACK_COUNTER: counterPath,
+          AIZIGN_TIMING_JSON: '1',
+        },
+      })
+    : undefined;
+  const now = context.dependencies.now ?? (() => performance.now());
+  const verifyLostAckInvocations =
+    context.dependencies.assertLostAckInvocationCounts ?? assertLostAckInvocationCounts;
+  const started = now();
+  await context.dependencies.preflight(directClient, {
     timingSink: (measurement) => {
       parentTimings.push(measurement);
     },
@@ -834,10 +885,12 @@ async function executeScenario(context, scenario, phase, index) {
     fixture_target: 'absent',
   };
   const submitRequest = buildRequest(submitCase);
-  const submitOutcome = await client.submitWorkflowSignal(
+  const submitClient = lostAckClient ?? directClient;
+  const submitOutcome = await submitClient.submitWorkflowSignal(
     submitRequest.requestId,
     submitRequest.payload,
   );
+  let aizignEndToEndMs = losesSubmitAcknowledgement ? undefined : now() - started;
   const submitted = {
     outcome: submitOutcome.kind,
     ...('code' in submitOutcome ? { error_code: submitOutcome.code } : {}),
@@ -863,9 +916,10 @@ async function executeScenario(context, scenario, phase, index) {
       journal_entries_before_operation: 1,
       fixture_target: 'exact',
     };
-    const reconcileOutcome = await client.reconcileWorkflowSignal(nextRequestId(), {
+    const reconcileOutcome = await directClient.reconcileWorkflowSignal(nextRequestId(), {
       signal: submitRequest.payload.signal,
     });
+    aizignEndToEndMs = now() - started;
     const reconciled = {
       outcome: reconcileOutcome.kind,
       ...('reportedCode' in reconcileOutcome && reconcileOutcome.reportedCode !== undefined
@@ -876,21 +930,16 @@ async function executeScenario(context, scenario, phase, index) {
     };
     assertExpected(lookupCase, reconciled);
     operations.push({ name: 'lookup', ...reconciled });
-    const invocations = readFileSync(counterPath, 'utf8').trim().split('\n');
-    if (invocations.filter((kind) => kind === 'workflow.signal.submit').length !== 1) {
-      throw new Error('lost-ACK scenario must invoke submit exactly once');
-    }
-    if (invocations.filter((kind) => kind === 'workflow.signal.reconcile').length !== 1) {
-      throw new Error('lost-ACK scenario must invoke reconciliation exactly once');
-    }
   }
+  if (losesSubmitAcknowledgement) verifyLostAckInvocations(counterPath);
+  if (aizignEndToEndMs === undefined) throw new Error(`${scenario}: scenario timing is missing`);
   return {
     sweep: 'scenarios',
     case_name: scenario,
     sample_phase: phase,
     sample_index: index,
     process_model: 'new_process_new_open',
-    aizign_end_to_end_ms: performance.now() - started,
+    aizign_end_to_end_ms: aizignEndToEndMs,
     parent_timings: parentTimings,
     operations: operations.map((operation) => ({
       name: operation.name,
@@ -1167,7 +1216,7 @@ export function renderSummary(result) {
     '- Concurrency uses `journal_entries_before_batch` because same-state submissions can change the journal before later contenders acquire the lock.',
     '- Same-state submit allows only `accepted` or `JOURNAL_LOCKED` and requires at least one acceptance. Different-state submit requires all accepted; reconciliation requires all absent. Any other semantic result aborts the run.',
     '- DSH in-memory scan and deterministic file-backed read are separate auxiliary series and are not mixed with journal reconciliation authority.',
-    '- `assignment_unknown_reconcile` routes the reference client through a proxy that drops the real submit response. The client must return `unknown/no_response`, issue no submit retry, and reconcile once through the same abstraction.',
+    '- `assignment_unknown_reconcile` uses a direct reference-client instance for preflight and reconciliation, and a second instance through the lost-ACK proxy for submit only. Counter verification runs after the scenario timer closes.',
     '- Scenario-wide `aizign_end_to_end_ms`, whole-preflight `preflight_ms`, submit transport, and reconciliation transport are separate aggregate rows.',
     '- `max-payload` uses 128-byte identifiers and a 256-byte `artifactRef`; its first observation is the requested release-binary `new_process_new_open` boundary point.',
     '',
@@ -1355,6 +1404,7 @@ const UNKNOWN_REASONS = new Set([
   'meta_mismatch',
   'bound_exceeded',
 ]);
+const TRANSPORT_KINDS = new Set(['correlated_response', 'unknown']);
 const NON_NEGATIVE_TIMING_FIELDS = new Set([
   'request_read_ms',
   'decode_ms',
@@ -1428,8 +1478,20 @@ function assertTimingShape(measurement, allowedKeys, label) {
   }
 }
 
+function assertTransportKind(value, label) {
+  if (!TRANSPORT_KINDS.has(value)) {
+    throw new Error(`${label} contains an unregistered transport_kind`);
+  }
+}
+
 export function assertArtifactPrivacy(result, forbiddenPaths = []) {
   for (const [sampleIndex, sample] of (result.samples ?? []).entries()) {
+    if (sample.transport === 'rust_direct' && sample.transport_kind === undefined) {
+      throw new Error(`samples[${sampleIndex}] rust_direct transport_kind is missing`);
+    }
+    if (sample.transport_kind !== undefined) {
+      assertTransportKind(sample.transport_kind, `samples[${sampleIndex}]`);
+    }
     if (sample.child !== undefined) {
       assertTimingShape(sample.child, CHILD_TIMING_KEYS, `samples[${sampleIndex}].child`);
     }
@@ -1447,6 +1509,17 @@ export function assertArtifactPrivacy(result, forbiddenPaths = []) {
       );
     }
     for (const [operationIndex, operation] of (sample.operations ?? []).entries()) {
+      if (sample.sweep === 'concurrency' && operation.transport_kind === undefined) {
+        throw new Error(
+          `samples[${sampleIndex}].operations[${operationIndex}] transport_kind is missing`,
+        );
+      }
+      if (operation.transport_kind !== undefined) {
+        assertTransportKind(
+          operation.transport_kind,
+          `samples[${sampleIndex}].operations[${operationIndex}]`,
+        );
+      }
       if (operation.child !== undefined) {
         assertTimingShape(
           operation.child,

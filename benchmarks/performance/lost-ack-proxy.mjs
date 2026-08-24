@@ -4,27 +4,50 @@ import { spawn } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { MAX_FRAME_BYTES } from '../../packages/protocol/lib/index.js';
+import { BoundedBuffer } from './bounded-buffer.mjs';
+
+function requestEnvelope(input) {
+  const line = input.split('\n').find((candidate) => candidate.trim().length > 0);
+  if (line === undefined) return undefined;
+  try {
+    return JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+}
 
 export function requestKind(args, input) {
   if (args[0] === 'hello') return 'hello';
-  const line = input.split('\n').find((candidate) => candidate.trim().length > 0);
-  if (line === undefined) return 'unknown';
-  try {
-    const decoded = JSON.parse(line);
-    return typeof decoded?.kind === 'string' ? decoded.kind : 'unknown';
-  } catch {
-    return 'unknown';
-  }
+  const decoded = requestEnvelope(input);
+  return typeof decoded?.kind === 'string' ? decoded.kind : 'unknown';
 }
 
 export function dropsAcknowledgement(kind) {
   return kind === 'workflow.signal.submit';
 }
 
+export function proxyFailureFrame(input) {
+  const request = requestEnvelope(input);
+  return `${JSON.stringify({
+    protocol: 'aizign',
+    version: 1,
+    requestId: typeof request?.requestId === 'string' ? request.requestId : null,
+    kind: typeof request?.kind === 'string' ? request.kind : null,
+    ok: false,
+    error: {
+      code: 'BENCHMARK_PROXY_OUTPUT_BOUND',
+      message: 'lost-ACK proxy child output exceeded its benchmark bound',
+    },
+  })}\n`;
+}
+
 async function readStdin() {
-  const chunks = [];
-  for await (const chunk of process.stdin) chunks.push(chunk);
-  return Buffer.concat(chunks).toString('utf8');
+  const input = new BoundedBuffer(MAX_FRAME_BYTES + 1);
+  for await (const chunk of process.stdin) {
+    if (!input.append(chunk)) throw new Error('request input exceeded the protocol frame bound');
+  }
+  return input.toString();
 }
 
 async function main(argv) {
@@ -43,12 +66,24 @@ async function main(argv) {
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-    const stdout = [];
-    child.stdout.on('data', (chunk) => stdout.push(chunk));
+    const stdout = new BoundedBuffer(MAX_FRAME_BYTES + 1);
+    let outputOverflow = false;
+    child.stdout.on('data', (chunk) => {
+      if (!stdout.append(chunk) && !outputOverflow) {
+        outputOverflow = true;
+        child.kill('SIGKILL');
+      }
+    });
     child.stderr.pipe(process.stderr);
     child.once('error', reject);
     child.once('close', (code, signal) => {
-      if (!dropsAcknowledgement(kind)) process.stdout.write(Buffer.concat(stdout));
+      if (outputOverflow) {
+        process.stdout.write(proxyFailureFrame(input));
+        process.exitCode = 1;
+        resolvePromise();
+        return;
+      }
+      if (!dropsAcknowledgement(kind)) process.stdout.write(stdout.toBuffer());
       if (signal !== null) process.kill(process.pid, signal);
       process.exitCode = code ?? 1;
       resolvePromise();

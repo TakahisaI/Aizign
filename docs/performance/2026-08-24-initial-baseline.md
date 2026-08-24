@@ -123,7 +123,9 @@ runner v3は全stateをtimer開始前に準備し、境界テストでseed、tim
 runner v2のDSH seriesはin-memory array走査だけを測りながらcold readと表記していました。
 lost-ACK seriesも正常responseを受信した後でresult objectを書き換えており、clientの`no_response`経路を通っていませんでした。
 runner v3はin-memory scanとdeterministic file-backed readを分離し、benchmark専用proxyが実submit responseを破棄します。
-clientが`unknown/no_response`を返し、submit一回とreconcile一回だけを実行したことをrunnerがassertします。
+preflightとreconcileはdirect client、submitだけはproxy clientを使います。
+clientが`unknown/no_response`を返し、proxy submit一回とdirect reconcile一回だけを実行したことをrunnerがassertします。
+proxy counterの検証はscenario全体の計測区間を閉じた後に行います。
 scenario aggregateは全体時間、preflight、submit、reconcileを別々の分布として保存します。
 このreportにはv2 DSHとcanonical scenarioの数値をbaselineとして残しません。
 
