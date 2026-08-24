@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-24
-- Related: ADR-0001, ADR-0003, ADR-0008, ADR-0009, ADR-0010, PR #44
+- Related: ADR-0001, ADR-0003, ADR-0008, ADR-0009, ADR-0010, Issue #46, PR #45
 
 ## Context
 
@@ -19,7 +19,8 @@ No released artifact, published package, or supported Protocol v1 peer exists un
 - Rename all TypeScript packages from `@aizu/*` to `@aizign/*`, and rename the private workspace root to `aizign-workspace`.
 - Use `"aizign"` as the Protocol v1 envelope `protocol` value. The old `"aizu"` value is rejected as `INVALID_ENVELOPE`.
 - Keep the protocol version and journal schema version at `1`. Because neither has been released, update their v1 specifications and conformance fixtures in place instead of creating a compatibility-only v2.
-- Rename project-owned environment variables, adapter identifiers, temporary paths, state-directory examples, diagnostics, and audit rules from `AIZU` / `aizu` to `AIZIGN` / `aizign`.
+- Rename project-owned environment variables, adapter identifiers, temporary paths, state-directory examples, diagnostics, and active audit identifiers from `AIZU` / `aizu` to `AIZIGN` / `aizign`.
+- Continue ignoring and rejecting tracked paths under both `.aizu-state/` and `.aizign-state/`. Retaining the old path in `.gitignore` and `public-audit` is a security quarantine for existing checkouts, not a compatibility alias for the old binary or protocol.
 - Do not provide old binary names, package aliases, npm scope aliases, protocol aliases, or environment-variable fallbacks.
 - Preserve the text and filenames of ADR-0001 through ADR-0010 as historical records. Their references to Aizu describe the name in use when those decisions were accepted; current names and contracts are defined by this ADR and the current architecture, source, tests, and `spec/` tree.
 
@@ -41,7 +42,7 @@ No released artifact, published package, or supported Protocol v1 peer exists un
 
 - Keep a negative request and response conformance fixture for the old protocol identifier.
 - Run `cargo xtask check` after the coordinated rename so Cargo, npm, schema, Rust, TypeScript, adapter, documentation, and packaging checks cover the same tree.
-- Verify that active files contain no old project identifier except the explicit negative protocol fixtures; historical ADRs are the other allowed exception.
+- Verify that active files contain no old project identifier except the explicit negative protocol fixtures and legacy state-directory quarantine; historical ADRs are the other allowed exception.
 
 ## Alternatives considered
 
