@@ -22,3 +22,4 @@
 | [0010](0010-harness-sdk-dependencies-and-node-policy.md) | Harness SDK dependencies and the Node support policy | Accepted |
 | [0011](0011-rename-aizu-to-aizign-before-first-release.md) | Rename Aizu to Aizign before the first release | Accepted |
 | [0012](0012-bind-workflow-evidence-to-attempts-and-candidate-content.md) | Bind workflow evidence to attempts and candidate content | Accepted |
+| [0013](0013-add-bounded-read-only-workflow-signal-reconciliation.md) | Add bounded read-only workflow signal reconciliation | Accepted |
