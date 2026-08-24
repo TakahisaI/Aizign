@@ -6,7 +6,7 @@
   "license": "Apache-2.0 OR MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/TakahisaI/Aizu.git",
+    "url": "git+https://github.com/TakahisaI/Aizign.git",
     "directory": "packages/protocol"
   },
   "type": "module",
