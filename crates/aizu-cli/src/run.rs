@@ -17,9 +17,21 @@ use aizu_store_jsonl::{JOURNAL_SCHEMA_VERSION, JsonlJournal};
 
 use crate::exit;
 
-/// Upper bound on processing one request. Past it, the response reports
-/// `HANDLER_TIMEOUT` and the process exits; any append in flight is unknown.
+/// Upper bound on reading and processing one request. Past it, the response
+/// reports `HANDLER_TIMEOUT` and the process exits; any append in flight is
+/// unknown.
 const HANDLER_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The watchdog bound: `HANDLER_TIMEOUT`, or `AIZU_HANDLE_TIMEOUT_MS`
+/// (1..=600000) when set — a test hook. Adapters spawn `aizu` with only
+/// `PATH` in the environment, so a harness cannot reach this knob.
+fn handler_timeout() -> Duration {
+    std::env::var("AIZU_HANDLE_TIMEOUT_MS")
+        .ok()
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .filter(|ms| (1..=600_000).contains(ms))
+        .map_or(HANDLER_TIMEOUT, Duration::from_millis)
+}
 
 struct SystemClock;
 
@@ -56,51 +68,57 @@ pub(crate) fn hello() -> u8 {
 }
 
 /// `aizu handle --state <dir>`: one request in, one response out.
+///
+/// The watchdog bounds the whole request — reading stdin included, because
+/// the one-frame check scans to EOF and a caller that never closes stdin
+/// must not hold the process open (#34).
 pub(crate) fn handle(state: &Path) -> u8 {
-    let frame = match read_stdin() {
-        Ok(Stdin::Frame(frame)) => frame,
-        Ok(Stdin::Extra) => {
-            log("decode", None, None, codes::INVALID_ENVELOPE);
-            return write_frame(&Response {
-                request_id: None,
-                kind: None,
-                body: ResponseBody::Error(ProtocolError::new(
-                    codes::INVALID_ENVELOPE,
-                    "stdin must carry exactly one frame",
-                )),
-            });
-        }
-        Err(error) => {
-            eprintln!("aizu: cannot read request frame: {error}");
-            return exit::IO;
-        }
-    };
-
+    let timeout = handler_timeout();
     let state = state.to_path_buf();
     let (sender, receiver) = mpsc::channel();
     std::thread::spawn(move || {
-        let response = respond(&frame, &state);
+        let outcome = read_stdin().map(|stdin| match stdin {
+            Stdin::Frame(frame) => respond(&frame, &state),
+            Stdin::Extra => {
+                log("decode", None, None, codes::INVALID_ENVELOPE);
+                Response {
+                    request_id: None,
+                    kind: None,
+                    body: ResponseBody::Error(ProtocolError::new(
+                        codes::INVALID_ENVELOPE,
+                        "stdin must carry exactly one frame",
+                    )),
+                }
+            }
+        });
         // The receiver is gone only if the watchdog already answered.
-        let _ = sender.send(response);
+        let _ = sender.send(outcome);
     });
 
-    let response = receiver.recv_timeout(HANDLER_TIMEOUT).unwrap_or_else(|_| {
-        eprintln!(
-            "aizu: handler exceeded {}s; any append outcome is unknown",
-            HANDLER_TIMEOUT.as_secs()
-        );
-        Response {
-            request_id: None,
-            kind: None,
-            body: ResponseBody::Error(ProtocolError::new(
-                codes::HANDLER_TIMEOUT,
-                format!(
-                    "processing exceeded {}s; the journal outcome is unknown",
-                    HANDLER_TIMEOUT.as_secs()
-                ),
-            )),
+    let response = match receiver.recv_timeout(timeout) {
+        Ok(Ok(response)) => response,
+        Ok(Err(error)) => {
+            eprintln!("aizu: cannot read request frame: {error}");
+            return exit::IO;
         }
-    });
+        Err(_) => {
+            eprintln!(
+                "aizu: request exceeded {}ms; any append outcome is unknown",
+                timeout.as_millis()
+            );
+            Response {
+                request_id: None,
+                kind: None,
+                body: ResponseBody::Error(ProtocolError::new(
+                    codes::HANDLER_TIMEOUT,
+                    format!(
+                        "processing exceeded {}ms; the journal outcome is unknown",
+                        timeout.as_millis()
+                    ),
+                )),
+            }
+        }
+    };
     write_frame(&response)
 }
 
@@ -111,20 +129,31 @@ enum Stdin {
     Extra,
 }
 
-/// Reads stdin up to the protocol bound (plus one byte to detect overflow).
-/// Exactly one frame is allowed: the first line, followed by nothing but
-/// whitespace. Anything else is not a request.
+/// Reads stdin: the first line, bounded by the protocol limit (plus one byte
+/// to detect overflow), then the rest of the stream to EOF. Exactly one frame
+/// is allowed; anything but whitespace after the first newline is not a
+/// request. The trailing scan is unbounded on purpose: bounding it would let
+/// a second frame hide beyond the bound when the first frame is exactly at
+/// the size limit. This function runs inside the watchdog thread, so a stdin
+/// that never reaches EOF ends as `HANDLER_TIMEOUT`, not as a hang.
 fn read_stdin() -> io::Result<Stdin> {
     let stdin = io::stdin();
-    let mut reader = stdin.lock().take(MAX_REQUEST_BYTES as u64 + 2);
+    let mut reader = stdin.lock();
     let mut frame = Vec::new();
-    reader.read_until(b'\n', &mut frame)?;
+    (&mut reader)
+        .take(MAX_REQUEST_BYTES as u64 + 2)
+        .read_until(b'\n', &mut frame)?;
     if frame.last() == Some(&b'\n') {
         frame.pop();
-        let mut rest = Vec::new();
-        reader.read_to_end(&mut rest)?;
-        if rest.iter().any(|byte| !byte.is_ascii_whitespace()) {
-            return Ok(Stdin::Extra);
+        let mut rest = [0_u8; 4096];
+        loop {
+            let read = reader.read(&mut rest)?;
+            if read == 0 {
+                break;
+            }
+            if rest[..read].iter().any(|byte| !byte.is_ascii_whitespace()) {
+                return Ok(Stdin::Extra);
+            }
         }
     }
     Ok(Stdin::Frame(frame))
