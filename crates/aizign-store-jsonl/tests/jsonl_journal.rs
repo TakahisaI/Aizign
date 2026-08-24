@@ -198,10 +198,11 @@ fn reader_is_observational_and_requires_every_existing_artifact() {
             .unwrap()
             .map(|entry| entry.unwrap().file_name())
             .collect();
-        assert!(matches!(
-            JsonlJournalReader::open(&state),
-            Err(JournalError::Unavailable { .. })
-        ));
+        let result = JsonlJournalReader::open(&state);
+        assert!(
+            matches!(result, Err(JournalError::Unavailable { .. })),
+            "missing {missing_name} returned {result:?}"
+        );
         let after: Vec<_> = fs::read_dir(&state)
             .unwrap()
             .map(|entry| entry.unwrap().file_name())
@@ -332,10 +333,11 @@ fn rejects_symlink_artifacts_without_reading_or_mutating_their_targets() {
         fs::remove_file(state.join(name)).unwrap();
         symlink(&target, state.join(name)).unwrap();
 
-        assert!(matches!(
-            JsonlJournalReader::open(&state),
-            Err(JournalError::Unavailable { .. })
-        ));
+        let result = JsonlJournalReader::open(&state);
+        assert!(
+            matches!(result, Err(JournalError::Unavailable { .. })),
+            "symlink {name} returned {result:?}"
+        );
         assert_eq!(
             fs::read(&target).unwrap(),
             protected,
