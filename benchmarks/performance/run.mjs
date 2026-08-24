@@ -282,13 +282,14 @@ export function decodeCorrelatedResponse(stdout, request, protocol) {
 }
 
 export function runProcess(binary, args, request, operationKind, protocol, timingEnabled = true) {
-  return new Promise((resolvePromise) => {
+  return new Promise((resolvePromise, rejectPromise) => {
     const started = performance.now();
     let spawnToExitMs;
     let responseFirstByteMs;
     const stdout = new BoundedBuffer(protocol.MAX_FRAME_BYTES + 1);
     const stderr = new BoundedBuffer(MAX_BENCHMARK_STDERR_BYTES);
-    let outputOverflow = false;
+    let stdoutOverflow = false;
+    let stderrOverflow = false;
     let timedOut = false;
     let settled = false;
     let child;
@@ -296,6 +297,11 @@ export function runProcess(binary, args, request, operationKind, protocol, timin
       if (settled) return;
       settled = true;
       resolvePromise(value);
+    };
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      rejectPromise(error);
     };
     try {
       child = spawn(binary, args, {
@@ -325,14 +331,14 @@ export function runProcess(binary, args, request, operationKind, protocol, timin
     }, 60_000);
     child.stdout.on('data', (chunk) => {
       responseFirstByteMs ??= performance.now() - started;
-      if (!stdout.append(chunk) && !outputOverflow) {
-        outputOverflow = true;
+      if (!stdout.append(chunk) && !stdoutOverflow) {
+        stdoutOverflow = true;
         child.kill('SIGKILL');
       }
     });
     child.stderr.on('data', (chunk) => {
-      if (!stderr.append(chunk) && !outputOverflow) {
-        outputOverflow = true;
+      if (!stderr.append(chunk) && !stderrOverflow) {
+        stderrOverflow = true;
         child.kill('SIGKILL');
       }
     });
@@ -361,7 +367,11 @@ export function runProcess(binary, args, request, operationKind, protocol, timin
           ? {}
           : { response_first_byte_ms: responseFirstByteMs }),
       };
-      if (outputOverflow) {
+      if (stderrOverflow) {
+        fail(new Error(`benchmark child stderr exceeded ${MAX_BENCHMARK_STDERR_BYTES} bytes`));
+        return;
+      }
+      if (stdoutOverflow) {
         finish({
           transport_kind: 'unknown',
           outcome: 'unknown',
@@ -1405,6 +1415,28 @@ const UNKNOWN_REASONS = new Set([
   'bound_exceeded',
 ]);
 const TRANSPORT_KINDS = new Set(['correlated_response', 'unknown']);
+export const FORBIDDEN_CONTENT_KEYS = new Set([
+  'requestId',
+  'eventId',
+  'workflowId',
+  'assignmentId',
+  'attemptId',
+  'artifactRevision',
+  'artifactRef',
+  'candidateDigest',
+  'stateDir',
+  'sessionId',
+  'callId',
+  'threadId',
+  'turnId',
+  'providerId',
+  'deliveryId',
+  'prompt',
+  'output',
+  'reasoning',
+  'token',
+  'credential',
+]);
 const NON_NEGATIVE_TIMING_FIELDS = new Set([
   'request_read_ms',
   'decode_ms',
@@ -1484,7 +1516,24 @@ function assertTransportKind(value, label) {
   }
 }
 
+function assertNoForbiddenContentKeys(value, path = 'artifact') {
+  if (value === null || typeof value !== 'object') return;
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      assertNoForbiddenContentKeys(item, `${path}[${index}]`);
+    }
+    return;
+  }
+  for (const [key, child] of Object.entries(value)) {
+    if (FORBIDDEN_CONTENT_KEYS.has(key)) {
+      throw new Error(`performance artifact contains forbidden content key ${key} at ${path}`);
+    }
+    assertNoForbiddenContentKeys(child, `${path}.${key}`);
+  }
+}
+
 export function assertArtifactPrivacy(result, forbiddenPaths = []) {
+  assertNoForbiddenContentKeys(result);
   for (const [sampleIndex, sample] of (result.samples ?? []).entries()) {
     if (sample.transport === 'rust_direct' && sample.transport_kind === undefined) {
       throw new Error(`samples[${sampleIndex}] rust_direct transport_kind is missing`);
@@ -1540,24 +1589,6 @@ export function assertArtifactPrivacy(result, forbiddenPaths = []) {
   for (const forbidden of forbiddenPaths) {
     if (forbidden.length > 0 && encoded.includes(forbidden)) {
       throw new Error('performance artifact contains a private filesystem path');
-    }
-  }
-  for (const forbiddenKey of [
-    'requestId',
-    'eventId',
-    'workflowId',
-    'assignmentId',
-    'attemptId',
-    'artifactRevision',
-    'artifactRef',
-    'candidateDigest',
-    'stateDir',
-    'prompt',
-    'reasoning',
-    'credential',
-  ]) {
-    if (encoded.includes(`"${forbiddenKey}"`)) {
-      throw new Error(`performance artifact contains forbidden content key ${forbiddenKey}`);
     }
   }
 }

@@ -298,7 +298,7 @@ test('bounded buffers preserve UTF-8 chunk boundaries and stop retaining after t
   assert.equal(buffer.toString(), '前後');
 });
 
-test('direct runner stops children whose stdout or stderr exceeds its buffer bounds', async () => {
+test('direct runner classifies stdout overflow and fails on stderr overflow', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aizign-direct-output-bound-'));
   try {
     const fakeBinary = join(root, 'overflow-core.cjs');
@@ -315,20 +315,26 @@ process.stdin.on('end', () => {
     );
     chmodSync(fakeBinary, 0o700);
     const request = buildRequest(OUTCOME_CASES[0]);
-    for (const [stream, bytes] of [
-      ['stdout', MAX_FRAME_BYTES + 2],
-      ['stderr', MAX_BENCHMARK_STDERR_BYTES + 1],
-    ]) {
-      const result = await runProcess(
+    const stdoutResult = await runProcess(
+      fakeBinary,
+      ['stdout', String(MAX_FRAME_BYTES + 2)],
+      request,
+      request.kind,
+      PROTOCOL,
+    );
+    assert.equal(stdoutResult.transport_kind, 'unknown');
+    assert.equal(stdoutResult.unknown_reason, 'oversized_response');
+
+    await assert.rejects(
+      runProcess(
         fakeBinary,
-        [stream, String(bytes)],
+        ['stderr', String(MAX_BENCHMARK_STDERR_BYTES + 1)],
         request,
         request.kind,
         PROTOCOL,
-      );
-      assert.equal(result.transport_kind, 'unknown');
-      assert.equal(result.unknown_reason, 'oversized_response');
-    }
+      ),
+      /benchmark child stderr exceeded 262144 bytes/,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -786,7 +792,7 @@ test('artifact privacy validates timing with an exact key allowlist', () => {
       assertArtifactPrivacy({
         samples: [{ parent: { ...result.samples[0].parent, eventId: 'evt-secret' } }],
       }),
-    /unregistered key eventId/,
+    /forbidden content key eventId/,
   );
   assert.throws(
     () =>
@@ -851,4 +857,12 @@ test('artifact privacy validates timing with an exact key allowlist', () => {
       }),
     /non-negative safe integer/,
   );
+  for (const artifact of [
+    { samples: [{ sessionId: 'session-sensitive' }] },
+    { samples: [{ callId: 'call-sensitive' }] },
+    { samples: [{ operations: [{ threadId: 'thread-sensitive' }] }] },
+    { samples: [{ parent_timings: [{ turnId: 'turn-sensitive' }] }] },
+  ]) {
+    assert.throws(() => assertArtifactPrivacy(artifact), /forbidden content key/);
+  }
 });

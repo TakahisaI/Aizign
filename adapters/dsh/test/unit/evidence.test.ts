@@ -221,3 +221,27 @@ test('caller timeout and the post-read event guard are unknown, never partial', 
   await readSignalEvidence(observing, 's', binding, { fromSeq: 1 });
   assert.ok(forwarded instanceof AbortSignal);
 });
+
+test('a pre-aborted caller returns unknown before starting the source read', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  let readStarted = false;
+  const ignoring: EvidenceSource = {
+    readFrom: () => {
+      readStarted = true;
+      return new Promise(() => undefined);
+    },
+  };
+
+  const evidence = await readSignalEvidence(ignoring, 's', binding, {
+    signal: controller.signal,
+    timeoutMs: 50,
+  });
+
+  assert.deepEqual(evidence, {
+    kind: 'unknown',
+    reason: 'aborted',
+    detail: 'cold read cancelled',
+  });
+  assert.equal(readStarted, false);
+});

@@ -181,6 +181,11 @@ export async function readSignalEvidence(
   const signal =
     options.signal === undefined ? timeout : AbortSignal.any([options.signal, timeout]);
 
+  if (signal.aborted) {
+    const reason = timeout.aborted ? 'timed out' : 'cancelled';
+    return finish({ kind: 'unknown', reason: 'aborted', detail: `cold read ${reason}` });
+  }
+
   let events: readonly SessionEventLike[];
   try {
     const read = source.readFrom(sessionId, fromSeq, signal);
