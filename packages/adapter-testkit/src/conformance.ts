@@ -1,7 +1,7 @@
 /**
- * The behaviour every adapter's core client must have, proven against the
- * fake core. Call {@link runCoreClientConformance} from the adapter's
- * conformance test with a factory for its client.
+ * TypeScript reference scenarios for the submit/reconcile `CoreClient`,
+ * proven against the fake core. Passing this runner establishes only the
+ * core-client operation boundary, not harness-adapter conformance.
  */
 
 import assert from 'node:assert/strict';
@@ -13,7 +13,10 @@ import {
   CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
   type CoreClient,
   type CoreClientConfig,
+  codes,
+  MAX_REQUEST_BYTES,
   PROTOCOL_VERSION,
+  ProtocolError,
   type WorkflowSignalSubmitPayload,
 } from '@aizign/protocol';
 import { fakeCoreCommand } from './fake-core-path.ts';
@@ -52,12 +55,15 @@ export const FORBIDDEN_KEYS: readonly string[] = [
   'threadId',
   'turnId',
   'callId',
+  'providerId',
+  'deliveryId',
 ];
 
 /**
  * Every request frame the fake core received for `stateDir`, decoded as
- * JSON. Adapters use this to prove that nothing harness-specific crossed
- * the boundary — in the payload or anywhere else in the envelope.
+ * JSON. Harness-native tests can inspect the complete envelope and compare it
+ * with actual native identifiers; the key scan alone cannot prove value
+ * provenance.
  */
 export function readFakeRequests(stateDir: string): unknown[] {
   const path = join(stateDir, 'fake-requests.jsonl');
@@ -74,7 +80,10 @@ export function readFakeRequests(stateDir: string): unknown[] {
     });
 }
 
-/** Asserts a JSON value carries none of the forbidden keys at any depth. */
+/**
+ * Asserts that a JSON value uses none of the known forbidden keys. This is a
+ * key-level convenience check, not proof of identifier or value provenance.
+ */
 export function assertMetadataOnly(value: unknown, path = '$'): void {
   if (Array.isArray(value)) {
     for (const [index, item] of value.entries()) assertMetadataOnly(item, `${path}[${index}]`);
@@ -328,6 +337,49 @@ export async function runFaultScenarios(
       }
     }
 
+    const oversizedState = join(root, 'oversized-request');
+    const oversizedInvocationLog = join(root, 'oversized-request-invocations.log');
+    const oversized = factory({
+      ...fake,
+      env: { AIZIGN_FAKE_INVOCATION_LOG: oversizedInvocationLog },
+      stateDir: oversizedState,
+      timeoutMs: 10_000,
+    });
+    await assert.rejects(
+      oversized.submitWorkflowSignal(
+        `req-${'x'.repeat(MAX_REQUEST_BYTES)}`,
+        samplePayload('evt-oversized-request'),
+      ),
+      (error: unknown) => error instanceof ProtocolError && error.code === codes.REQUEST_TOO_LARGE,
+      'an oversized outbound request fails locally before transport',
+    );
+    assert.equal(
+      existsSync(oversizedInvocationLog),
+      false,
+      'an oversized outbound request never spawns the fake core',
+    );
+    assert.equal(
+      readFakeRequests(oversizedState).length,
+      0,
+      'an oversized outbound request never reaches the core',
+    );
+
+    const absentState = join(root, 'absent-no-resubmit');
+    const absent = factory({ ...fake, stateDir: absentState, timeoutMs: 10_000 });
+    assert.deepEqual(
+      await absent.reconcileWorkflowSignal('req-absent-no-resubmit', {
+        signal: samplePayload('evt-absent-no-resubmit').signal,
+      }),
+      { kind: 'absent', eventId: 'evt-absent-no-resubmit' },
+    );
+    const absentRequests = readFakeRequests(absentState);
+    assert.equal(absentRequests.length, 1, 'absent causes no implicit resubmission');
+    assert.equal(
+      (absentRequests[0] as { kind?: unknown }).kind,
+      'workflow.signal.reconcile',
+      'the only request is the read-only reconciliation',
+    );
+
     const lostAckState = join(root, 'lost-ack-reconciliation');
     const lostAck = factory({
       ...fake,
@@ -353,7 +405,8 @@ export async function runFaultScenarios(
 }
 
 /**
- * Everything an adapter's core client must satisfy, against the fake core.
+ * The complete TypeScript reference `CoreClient` scenario set, against the
+ * fake core.
  */
 export async function runCoreClientConformance(
   factory: CoreClientFactory,

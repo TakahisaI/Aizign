@@ -1,8 +1,9 @@
 /**
- * The adapter-side contract for talking to the core. Every harness adapter
- * implements `CoreClient`; `@aizign/adapter-testkit` proves an implementation
- * behaves correctly against a fake core process, including the cases where
- * the outcome is unknown.
+ * The TypeScript reference operation surface for talking to the core. It
+ * includes signal submission and reconciliation. TypeScript adapters may use
+ * `@aizign/adapter-testkit` to exercise this client boundary against a fake
+ * core process, including the cases where the outcome is unknown. Implementing
+ * this interface does not establish harness-adapter conformance.
  */
 
 import type { Response } from './envelope.ts';
@@ -134,6 +135,11 @@ export type ReconcileOutcome =
 /** One-shot request/response against the core. */
 export interface CoreClient {
   hello(requestId: string, options?: CallOptions): Promise<HelloOutcome>;
+  /**
+   * An outbound frame above `MAX_REQUEST_BYTES` rejects with
+   * `ProtocolError(REQUEST_TOO_LARGE)` before spawn; it returns no
+   * `SubmitOutcome`.
+   */
   submitWorkflowSignal(
     requestId: string,
     payload: WorkflowSignalSubmitPayload,

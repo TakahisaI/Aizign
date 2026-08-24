@@ -1,6 +1,7 @@
 /**
- * `@aizign/adapter-testkit` — prove a harness adapter's core client against a
- * fake core, including every way an outcome can be unknown.
+ * `@aizign/adapter-testkit` — exercise the TypeScript reference `CoreClient`
+ * boundary against a fake core, including every way an outcome can be
+ * unknown. This does not prove harness-adapter conformance.
  */
 
 export {

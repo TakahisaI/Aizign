@@ -74,6 +74,7 @@ cargo xtask check
 | Wire contract | `spec/protocol/` |
 | Durable format | journal recordは`spec/journal/`、committed-prefix store metadataは`spec/store/` |
 | 現在のarchitecture | [`docs/architecture/`](docs/architecture/overview.md) |
+| Harness adapter contract | [`docs/architecture/harness-adapter-contract.md`](docs/architecture/harness-adapter-contract.md) |
 | Hard invariants | [`docs/architecture/invariants.md`](docs/architecture/invariants.md) |
 | 設計判断の履歴 | [`docs/adr/`](docs/adr/) |
 | 人間向けcontribution policy | [`CONTRIBUTING.md`](CONTRIBUTING.md) |

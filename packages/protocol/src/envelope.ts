@@ -323,13 +323,21 @@ export function encodeRequest(request: Request): string {
       : request.kind === 'workflow.signal.submit'
         ? encodeWorkflowSignalSubmit(request.payload)
         : encodeWorkflowSignalReconcile(request.payload);
-  return JSON.stringify({
+  const frame = JSON.stringify({
     protocol: PROTOCOL_NAME,
     version: PROTOCOL_VERSION,
     requestId: request.requestId,
     kind: request.kind,
     payload,
   });
+  const size = byteLength(frame);
+  if (size > MAX_REQUEST_BYTES) {
+    throw new ProtocolError(
+      codes.REQUEST_TOO_LARGE,
+      `request is ${size} bytes; at most ${MAX_REQUEST_BYTES} allowed`,
+    );
+  }
+  return frame;
 }
 
 /** Encodes a response as one line (no trailing newline). */
@@ -340,20 +348,33 @@ export function encodeResponse(response: Response): string {
     requestId: response.requestId,
     kind: response.kind,
   };
+  let frame: string;
   switch (response.body.type) {
     case 'hello':
-      return JSON.stringify({ ...base, ok: true, payload: response.body.info });
+      frame = JSON.stringify({ ...base, ok: true, payload: response.body.info });
+      break;
     case 'workflow.signal':
-      return JSON.stringify({ ...base, ok: true, payload: response.body.result });
+      frame = JSON.stringify({ ...base, ok: true, payload: response.body.result });
+      break;
     case 'workflow.signal.reconciliation':
-      return JSON.stringify({ ...base, ok: true, payload: response.body.result });
+      frame = JSON.stringify({ ...base, ok: true, payload: response.body.result });
+      break;
     case 'error':
-      return JSON.stringify({
+      frame = JSON.stringify({
         ...base,
         ok: false,
         error: { code: response.body.error.code, message: response.body.error.message },
       });
+      break;
   }
+  const size = byteLength(frame);
+  if (size > MAX_FRAME_BYTES) {
+    throw new ProtocolError(
+      codes.INVALID_ENVELOPE,
+      `response is ${size} bytes; at most ${MAX_FRAME_BYTES} allowed`,
+    );
+  }
+  return frame;
 }
 
 /** Decodes one response frame. Throws {@link ProtocolError}. */

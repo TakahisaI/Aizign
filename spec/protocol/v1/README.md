@@ -102,3 +102,7 @@ restart後に、問い合わせたsignalがwriter-published committed snapshot�
 
 - `schemas/` — JSON Schema draft 2020-12
 - `examples/` — `*.request.json` / `*.response.json`。`crates/aizign-protocol/tests/examples.rs` がdecode → encodeの往復で検証する
+- [`spec/conformance/`](../../conformance/README.md) — decoder acceptance fixture
+  とfull-codec round trip
+- [`encoder-scenarios.md`](../../conformance/encoder-scenarios.md) —
+  production decoderを要求しないdirectional encoder scenario

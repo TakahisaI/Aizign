@@ -29,8 +29,10 @@ pub mod codes {
     pub const INVALID_EXPECTATION: &str = "INVALID_EXPECTATION";
 }
 
-/// A response-level error: a stable code plus a human-readable message that
-/// never contains request content.
+/// A protocol-boundary error carrying a stable code and a safe human-readable
+/// diagnostic. It may represent a decoded wire error, a local
+/// encode/validation failure, or a workflow rejection. The message never
+/// contains request content.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProtocolError {
     code: ShortErrorCode,

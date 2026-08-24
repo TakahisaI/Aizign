@@ -1,6 +1,8 @@
 # @aizign/protocol
 
-Aizign Protocol v1 for TypeScript: closed NDJSON envelope codec, `hello` compatibility, and the `CoreClient` contract every harness adapter implements.
+Aizign Protocol v1 reference layer for TypeScript: closed NDJSON envelope
+codec, `hello` compatibility, and a submit/reconcile `CoreClient` convenience
+interface.
 
 | | |
 |---|---|
@@ -13,7 +15,10 @@ Aizign Protocol v1 for TypeScript: closed NDJSON envelope codec, `hello` compati
 | **Test command** | `npm test -w @aizign/protocol`（`node --test`、型はNodeがstripする） |
 | **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md) |
 
-wire contractの正本は [`spec/protocol/v1/`](../../spec/protocol/v1/README.md)。このpackageはそれに従う側です。
+wire contractの正本は [`spec/protocol/v1/`](../../spec/protocol/v1/README.md)、
+言語中立のadapter behaviorの正本は
+[`harness-adapter-contract.md`](../../docs/architecture/harness-adapter-contract.md)です。
+このpackageはそれらに従うTypeScript reference layerであり、全adapterの必須dependencyではありません。
 
 ## Layout
 
@@ -45,4 +50,18 @@ if (response.body.type === 'hello') {
 }
 ```
 
-`CoreClient` の実装は各adapterが所有します。`reconcileWorkflowSignal` はsuccessを`accepted | conflict | absent`へ写像し、error / transport / decode / timeout / abort / correlation failureを`unknown`へ写像します。responseにvalidなerror codeがあれば、相関しないwatchdog responseでも診断用`reportedCode`として保持します。検証には [`@aizign/adapter-testkit`](../adapter-testkit/README.md) を使います。
+TypeScript adapterがこの `CoreClient` を選ぶ場合、その実装はadapterが所有します。
+このinterfaceはsubmissionとreconciliationのoperation surfaceを含むTypeScript
+referenceです。実装したことだけでは、trusted identity provenance、model-visible
+schema、native registration / preflightを含むharness-adapter conformanceは証明
+されません。`reconcileWorkflowSignal`はsuccessを
+`accepted | conflict | absent`へ写像し、error / transport / decode / timeout /
+abort / correlation failureを`unknown`へ写像します。responseにvalidなerror
+codeがあれば、相関しないwatchdog responseでも診断用`reportedCode`として保持
+します。TypeScriptでのclient boundary検証には
+[`@aizign/adapter-testkit`](../adapter-testkit/README.md)を使えます。
+
+outbound requestが `MAX_REQUEST_BYTES` を超える場合、`CoreClient` Promiseは
+process spawn前に `ProtocolError(REQUEST_TOO_LARGE)` でrejectします。これはcoreの
+`rejected`でもtransport後の`unknown`でもなく、`SubmitOutcome`を生成しないlocal
+failureです。

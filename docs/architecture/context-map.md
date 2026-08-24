@@ -51,36 +51,10 @@ engineはuse caseとportを持ちます。contextの切り方はcoreと揃えま
 
 ## Adapter (`adapters/<harness>/`)
 
-All adapters share a current behavioral minimum, not a uniform feature set.
-Keep these capability layers separate:
-
-| Layer | Owner | Current representation |
-|---|---|---|
-| Core protocol capability | `aizign-protocol` and the binary | Request kinds advertised by `hello.capabilities` |
-| Harness adapter capability | Each adapter and its harness-native tests | Adapter documentation only; no universal manifest or Protocol v1 field |
-| Workflow requirement | Future orchestration policy | No v0.1 consumer or runtime representation |
-
-The current minimum is protocol health and compatibility checking, scope-bound
-structured signal submission, trusted identity injection, full response
-correlation, exact outcome propagation, non-collapse of `unknown`, metadata-only
-data flow, and bounded request and response handling. Persisting an outcome,
-reading harness-native evidence, and implementing lifecycle operations are not
-minimum requirements.
-
-`hello`, `workflow.signal.submit`, and `workflow.signal.reconcile` are the
-implemented core protocol operations. Core reconciliation is a bounded
-read-only lookup of the Aizign journal, not a harness evidence capability. The
-DSH adapter separately demonstrates optional harness-persisted success metadata
-integration, a caller-wait timeout plus post-read event-count guard, and
-binding-digest verification plus payload-digest recording. These DSH
-integrations do not by themselves establish a real-persistence durability or
-retention contract, a source-side I/O or byte bound, or payload-digest
-verification.
-
-Interrupt, effect dispatch, resource release, session or agent ownership,
-general lifecycle hooks, and remote reconnect are provisional. They have no
-stable capability token until a dedicated contract defines their consumer and
-absence semantics.
+The normative language-neutral behavior, capability layers, outcomes, evidence
+rules, and conformance ownership are defined in
+[Harness adapter contract](harness-adapter-contract.md). This context map owns
+code placement only; it does not require one language or a uniform feature set.
 
 Adapter code placement follows ownership rather than a mandatory directory
 template:
@@ -91,7 +65,7 @@ template:
 | Native input to protocol DTO | adapter-owned mapping boundary |
 | Harness persistence and native evidence | optional adapter-owned evidence boundary |
 | Approved harness lifecycle operations | optional adapter-owned lifecycle boundary |
-| Verification | protocol scenarios plus harness-native fake tests |
+| Verification | language-neutral wire/core-client scenarios plus harness-native fake tests |
 
-See [Adding a harness adapter](../development/adding-adapter.md) for the current
-minimum, optional capability rules, and TypeScript reference layout.
+See [Adding a harness adapter](../development/adding-adapter.md) for the
+implementation steps and TypeScript reference layout.

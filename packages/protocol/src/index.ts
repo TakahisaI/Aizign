@@ -2,8 +2,8 @@
  * `@aizign/protocol` — Aizign Protocol v1 for TypeScript.
  *
  * Closed NDJSON envelope codec, the `hello` compatibility check, the
- * workflow signal submit/reconciliation payload types, and the `CoreClient`
- * contract that every harness adapter implements. Pure: no process, no filesystem.
+ * workflow signal submit/reconciliation payload types, and a TypeScript
+ * reference `CoreClient` interface. Pure: no process, no filesystem.
  */
 
 export {

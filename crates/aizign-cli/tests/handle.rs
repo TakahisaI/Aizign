@@ -123,7 +123,8 @@ fn submit_frame(event_id: &str, request_id: &str) -> String {
     let mut frame = encode_request(&Request {
         request_id: request_id.to_owned(),
         kind: RequestKind::SubmitWorkflowSignal(Box::new(command)),
-    });
+    })
+    .unwrap();
     frame.push('\n');
     frame
 }
@@ -132,7 +133,8 @@ fn reconcile_frame(signal: aizign_core::workflow::WorkflowSignal, request_id: &s
     let mut frame = encode_request(&Request {
         request_id: request_id.to_owned(),
         kind: RequestKind::ReconcileWorkflowSignal(Box::new(signal)),
-    });
+    })
+    .unwrap();
     frame.push('\n');
     frame
 }
@@ -449,7 +451,8 @@ fn accepted_then_duplicate_across_processes_and_conflict() {
     let mut frame = encode_request(&Request {
         request_id: "req-3".to_owned(),
         kind: RequestKind::SubmitWorkflowSignal(Box::new(conflicting)),
-    });
+    })
+    .unwrap();
     frame.push('\n');
     let output = run_handle(&state, &frame);
     assert_eq!(

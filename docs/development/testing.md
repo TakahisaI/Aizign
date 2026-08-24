@@ -7,10 +7,17 @@
 | Rust unit test | 対象moduleの `#[cfg(test)] mod tests` |
 | Rust cross-module test | crateの `tests/` |
 | TypeScript unit test | 対象sourceに近接（`src/**/*.test.ts`、`node --test`） |
-| adapter conformance | `adapters/<harness>/test/conformance/`（`@aizign/adapter-testkit` の `runCoreClientConformance`） |
-| protocol fixture | `spec/conformance/valid/`、`spec/conformance/invalid/`（repository共通。RustとTypeScriptの両方が同じfileを読む） |
+| language-neutral adapter scenario authority | `docs/architecture/harness-adapter-contract.md` |
+| decoder fixture / full-codec round trip | `spec/conformance/valid/`、`spec/conformance/invalid/` |
+| directional encoder conformance | `spec/conformance/encoder-scenarios.md` + `spec/protocol/v1/examples/` |
+| shared TypeScript core-client runner | `packages/adapter-testkit/` の `runCoreClientConformance` |
+| adapter-specific core-client invocation | `adapters/<harness>/test/conformance/core-client.*` |
+| harness-native behavior | adapterの `test/unit/` または責務が明示されたnative-conformance test |
 
 rootに巨大なtest directoryを作りません。
+directory名だけでtest authorityを判断しません。例えばDSHの
+`test/conformance/core-client.test.ts`はshared runnerをadapter実装へ適用する場所で、
+harness-native persistenceやregistrationのauthorityではありません。
 
 ## 実行
 

@@ -24,6 +24,7 @@ Do not copy those contracts into `AGENTS.md`. Update the authoritative file inst
 | Code placement | [docs/architecture/context-map.md](docs/architecture/context-map.md) |
 | Dependency direction | [docs/architecture/dependency-rules.md](docs/architecture/dependency-rules.md) |
 | Data crossing boundaries | [docs/architecture/data-boundary.md](docs/architecture/data-boundary.md) |
+| Harness adapter behavior | [docs/architecture/harness-adapter-contract.md](docs/architecture/harness-adapter-contract.md) |
 | Contribution process | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
 Read the `AGENTS.md` nearest to the file being edited. The nearest file narrows this repository-level navigation.
