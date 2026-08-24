@@ -32,7 +32,7 @@ pub enum Decision {
 /// Decides a command against the current state without changing it.
 ///
 /// For [`Command::SubmitSignal`] the order is fixed: the signal must match
-/// the expected assignment (workflow, assignment, role, revision), then its
+/// the expected assignment (workflow, assignment, attempt, role, candidate), then its
 /// event id is compared with accepted signals — same content is a
 /// duplicate, different content is a conflict (hard invariant 12).
 #[must_use]

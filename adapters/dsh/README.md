@@ -6,9 +6,9 @@ The DSH harness adapter: a cordis plugin that registers one **scope-bound** `sub
 |---|---|
 | **Responsibility** | DSH plugin entry（`name` / `inject` / `Config` / `apply`）、preflight（`aizign hello` → protocol version + capability）、`OneShotCoreClient`、agentの引数 → `workflow.signal.submit` payload のmapping、coreの結果 → tool result / `HarnessError`、durable evidence（`tool/result` の `meta` に digest を記録し、session logの cold read で照合） |
 | **Non-responsibility** | 判断（core）、journal（coreのJSONL。DSH persistenceには書かない）、identityの決定（configで固定。agentは知らない）、live smokeの手順（operatorの `op/`） |
-| **Inputs** | plugin config（binary、stateDir、timeoutMs、eventId + expected assignment）、agentのtool call `{ kind, findingCount?, artifactRef?, shortErrorCode? }` |
+| **Inputs** | plugin config（binary、stateDir、timeoutMs、eventId + workflow / assignment / attempt / candidate digest）、agentのtool call `{ kind, findingCount?, artifactRef?, shortErrorCode? }` |
 | **Outputs** | tool result `{ disposition: accepted \| duplicate, eventId }`、または `HarnessError`（protocol / workflow code、`AIZIGN_OUTCOME_UNKNOWN`、`AIZIGN_UNAVAILABLE`、`AIZIGN_INCOMPATIBLE`） |
-| **Hard invariants** | identity（eventId、workflowId、assignmentId、role、artifactRevision）をtool schema・引数・promptに出さない（5、8）、DSHのcall id / session idを **envelope全体**（`requestId` 含む）に入れない（8。`requestId` はadapter所有のnonce）、responseは `requestId` / `kind` / `eventId` を送信と照合し不一致は `unknown`、stdoutは `MAX_FRAME_BYTES` と「frame 1つ」でbound、`unknown` は `AIZIGN_OUTCOME_UNKNOWN` として返し再送しない（3、4）、cold readは `maxEvents` / timeout でbound（9）、preflight失敗時はtoolを登録しない、環境変数を子processへ丸ごと渡さない（PATHのみ） |
+| **Hard invariants** | control-plane identity（eventId、workflowId、assignmentId、attemptId、role、artifactRevision、candidateDigest）をtool schema・引数・promptに出さない（5、8）、DSHのcall id / session idを **envelope全体**（`requestId` 含む）に入れない（8。`requestId` はadapter所有のnonce）、responseは `requestId` / `kind` / `eventId` を送信と照合し不一致は `unknown`、stdoutは `MAX_FRAME_BYTES` と「frame 1つ」でbound、`unknown` は `AIZIGN_OUTCOME_UNKNOWN` として返し再送しない（3、4）、cold readは `maxEvents` / timeout でbound（9）、preflight失敗時はtoolを登録しない、環境変数を子processへ丸ごと渡さない（PATHのみ） |
 | **Allowed dependencies** | `@aizign/protocol`。peer: `@deepseek-ai/cordis` 4.0.1、`dsh-llm` / `dsh-tools` 0.1.1-rc.2、`schemastery` 3.18.1（exact、ADR-0010）。dev: `@aizign/adapter-testkit` |
 | **Test command** | `npm test -w @aizign/adapter-dsh`（`AIZIGN_BINARY` を与えると実binaryにも） |
 | **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0010](../../docs/adr/0010-harness-sdk-dependencies-and-node-policy.md) |
@@ -52,8 +52,12 @@ operatorのpatchはその entry を **id で上書き**して有効化します�
     eventId: evt-0001
     workflowId: wf-example
     assignmentId: as-implementation
+    attemptId: attempt-implementation-01
     role: implementation
     artifactRevision: rev-c0ffee
+    candidateDigest:
+      algorithm: sha256
+      hex: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 ```
 
 `dsh --profile <name> --patch <file> --dump-config` で、合成後の tree に `aizign-workflow-signal` が `disabled: false` と上記 `config` で現れることを確認できます。
@@ -63,7 +67,7 @@ operatorのpatchはその entry を **id で上書き**して有効化します�
 
 completionの正本はjournal（core側）です。adapterはそれに加えて、toolの `presentationMeta` で durable な `tool/result` event の `meta` に
 `{ tool, eventId, disposition, bindingDigest, payloadDigest }` を書きます。`readSignalEvidence` はsession logを cold read し、
-最後の `tool/call`（このtool）と対になる `tool/result` を探して、`eventId` と `bindingDigest` を plugin config から再計算した値と照合します。
+最後の `tool/call`（このtool）と対になる `tool/result` を探して、`eventId` と `bindingDigest` を plugin config から再計算した値と照合します。adapter-localなbinding digestにはattemptとcandidate digestも含まれますが、Protocol v1の`candidateDigest`やcandidate bytesのauthorityとは別のsession-evidence照合値です。
 
 | 結果 | 意味 |
 |---|---|

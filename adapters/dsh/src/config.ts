@@ -5,6 +5,7 @@
  */
 
 import {
+  type ContentDigest,
   type ExpectedAssignment,
   isIdentifier,
   type Role,
@@ -24,8 +25,10 @@ export interface Config {
   eventId: string;
   workflowId: string;
   assignmentId: string;
+  attemptId: string;
   role: Role;
   artifactRevision: string;
+  candidateDigest: ContentDigest;
 }
 
 export const Config: z<Config> = z.object({
@@ -35,8 +38,15 @@ export const Config: z<Config> = z.object({
   eventId: z.string().required(),
   workflowId: z.string().required(),
   assignmentId: z.string().required(),
+  attemptId: z.string().required(),
   role: z.union(['implementation', 'review']).required(),
   artifactRevision: z.string().required(),
+  candidateDigest: z
+    .object({
+      algorithm: z.union(['sha256']).required(),
+      hex: z.string().required(),
+    })
+    .required(),
 });
 
 /** The identity the plugin binds every submitted signal to. */
@@ -65,10 +75,22 @@ export function validateConfig(config: Config): AdapterConfig {
   if (config.binary.trim().length === 0) throw new ConfigError('binary must be a non-empty path');
   if (config.stateDir.trim().length === 0)
     throw new ConfigError('stateDir must be a non-empty path');
-  for (const field of ['eventId', 'workflowId', 'assignmentId', 'artifactRevision'] as const) {
+  for (const field of [
+    'eventId',
+    'workflowId',
+    'assignmentId',
+    'attemptId',
+    'artifactRevision',
+  ] as const) {
     if (!isIdentifier(config[field])) {
       throw new ConfigError(`${field} must match ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`);
     }
+  }
+  if (
+    config.candidateDigest.algorithm !== 'sha256' ||
+    !/^[0-9a-f]{64}$/.test(config.candidateDigest.hex)
+  ) {
+    throw new ConfigError('candidateDigest must be a sha256 digest with 64 lowercase hex digits');
   }
   if (config.role !== 'implementation' && config.role !== 'review') {
     throw new ConfigError('role must be implementation or review');
@@ -86,8 +108,10 @@ export function validateConfig(config: Config): AdapterConfig {
       expected: {
         workflowId: config.workflowId,
         assignmentId: config.assignmentId,
+        attemptId: config.attemptId,
         role: config.role,
         artifactRevision: config.artifactRevision,
+        candidateDigest: config.candidateDigest,
       },
     },
   };

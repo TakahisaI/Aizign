@@ -2,8 +2,8 @@
 
 use aizign_core::workflow::{Role, SignalKind, SignalParts, WorkflowEvent, WorkflowSignal};
 use aizign_core::{
-    ArtifactRef, ArtifactRevision, AssignmentId, BoundedTimestamp, EventId, ShortErrorCode,
-    WorkflowId,
+    ArtifactRef, ArtifactRevision, AssignmentId, AttemptId, BoundedTimestamp, Digest,
+    DigestAlgorithm, EventId, ShortErrorCode, WorkflowId,
 };
 use aizign_engine::{JournalEntry, JournalError, MAX_JOURNAL_ENTRIES};
 use serde::de::{Deserializer, Error as _};
@@ -32,8 +32,10 @@ struct SignalDto {
     event_id: String,
     workflow_id: String,
     assignment_id: String,
+    attempt_id: String,
     role: RoleDto,
     artifact_revision: String,
+    candidate_digest: DigestDto,
     kind: KindDto,
     #[serde(
         default,
@@ -70,6 +72,44 @@ enum KindDto {
     ReviewPassed,
     RepairSubmitted,
     Blocked,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct DigestDto {
+    algorithm: DigestAlgorithmDto,
+    hex: String,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum DigestAlgorithmDto {
+    Sha256,
+}
+
+impl From<DigestAlgorithmDto> for DigestAlgorithm {
+    fn from(algorithm: DigestAlgorithmDto) -> Self {
+        match algorithm {
+            DigestAlgorithmDto::Sha256 => Self::Sha256,
+        }
+    }
+}
+
+impl From<DigestAlgorithm> for DigestAlgorithmDto {
+    fn from(algorithm: DigestAlgorithm) -> Self {
+        match algorithm {
+            DigestAlgorithm::Sha256 => Self::Sha256,
+        }
+    }
+}
+
+impl From<&Digest> for DigestDto {
+    fn from(digest: &Digest) -> Self {
+        Self {
+            algorithm: digest.algorithm().into(),
+            hex: digest.hex().to_owned(),
+        }
+    }
 }
 
 fn reject_null<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
@@ -158,8 +198,10 @@ pub(crate) fn encode_entry(entry: &JournalEntry) -> Result<String, JournalError>
             event_id: parts.event_id.to_string(),
             workflow_id: parts.workflow_id.to_string(),
             assignment_id: parts.assignment_id.to_string(),
+            attempt_id: parts.attempt_id.to_string(),
             role: parts.role.into(),
             artifact_revision: parts.artifact_revision.to_string(),
+            candidate_digest: (&parts.candidate_digest).into(),
             kind: parts.kind.into(),
             finding_count: parts.finding_count,
             artifact_ref: parts.artifact_ref.as_ref().map(ToString::to_string),
@@ -228,12 +270,14 @@ pub(crate) fn decode_line(line_number: usize, line: &str) -> Result<JournalEntry
             "assignmentId",
             AssignmentId::new(&dto.assignment_id),
         )?,
+        attempt_id: field(line_number, "attemptId", AttemptId::new(&dto.attempt_id))?,
         role: dto.role.into(),
         artifact_revision: field(
             line_number,
             "artifactRevision",
             ArtifactRevision::new(&dto.artifact_revision),
         )?,
+        candidate_digest: digest(line_number, "candidateDigest", &dto.candidate_digest)?,
         kind: dto.kind.into(),
         finding_count: dto.finding_count,
         artifact_ref: dto
@@ -265,6 +309,14 @@ fn field<T>(
     result.map_err(|error| corrupt(format!("line {line_number}: signal.{name}: {error}")))
 }
 
+fn digest(line_number: usize, name: &str, dto: &DigestDto) -> Result<Digest, JournalError> {
+    field(
+        line_number,
+        name,
+        Digest::new(dto.algorithm.into(), &dto.hex),
+    )
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct VersionProbe {
@@ -281,8 +333,10 @@ mod tests {
             event_id: EventId::new("evt-1").unwrap(),
             workflow_id: WorkflowId::new("wf-1").unwrap(),
             assignment_id: AssignmentId::new("as-1").unwrap(),
+            attempt_id: AttemptId::new("attempt-1").unwrap(),
             role: Role::Review,
             artifact_revision: ArtifactRevision::new("rev-a").unwrap(),
+            candidate_digest: Digest::new(DigestAlgorithm::Sha256, &"a".repeat(64)).unwrap(),
             kind: SignalKind::ReviewFindings,
             finding_count: Some(2),
             artifact_ref: Some(ArtifactRef::new("review:abc").unwrap()),

@@ -2,6 +2,25 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://aizign.dev/spec/journal/v1/record.schema.json",
   "title": "Aizign journal record v1",
+  "$defs": {
+    "digest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "hex"
+      ],
+      "properties": {
+        "algorithm": {
+          "const": "sha256"
+        },
+        "hex": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    }
+  },
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -39,8 +58,10 @@
         "eventId",
         "workflowId",
         "assignmentId",
+        "attemptId",
         "role",
         "artifactRevision",
+        "candidateDigest",
         "kind"
       ],
       "properties": {
@@ -56,6 +77,10 @@
           "type": "string",
           "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
         },
+        "attemptId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
         "role": {
           "type": "string",
           "enum": [
@@ -66,6 +91,9 @@
         "artifactRevision": {
           "type": "string",
           "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "candidateDigest": {
+          "$ref": "#/$defs/digest"
         },
         "kind": {
           "type": "string",

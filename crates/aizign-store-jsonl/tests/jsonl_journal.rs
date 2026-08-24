@@ -24,7 +24,7 @@ fn event(id: &str) -> WorkflowEvent {
 
 fn raw_line(seq: u64, event_id: &str) -> String {
     format!(
-        r#"{{"schemaVersion":{JOURNAL_SCHEMA_VERSION},"seq":{seq},"at":1724400000,"kind":"workflow.signal.accepted","signal":{{"eventId":"{event_id}","workflowId":"wf-test","assignmentId":"as-implementation","role":"implementation","artifactRevision":"rev-a","kind":"implementation_ready"}}}}"#
+        r#"{{"schemaVersion":{JOURNAL_SCHEMA_VERSION},"seq":{seq},"at":1724400000,"kind":"workflow.signal.accepted","signal":{{"eventId":"{event_id}","workflowId":"wf-test","assignmentId":"as-implementation","attemptId":"attempt-implementation","role":"implementation","artifactRevision":"rev-a","candidateDigest":{{"algorithm":"sha256","hex":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},"kind":"implementation_ready"}}}}"#
     )
 }
 
@@ -306,6 +306,8 @@ fn the_file_holds_metadata_only() {
         [
             "artifactRevision",
             "assignmentId",
+            "attemptId",
+            "candidateDigest",
             "eventId",
             "kind",
             "role",

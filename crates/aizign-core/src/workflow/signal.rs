@@ -1,7 +1,8 @@
 //! Structured workflow signals and the assignment they are expected to match.
 
 use crate::identity::{
-    ArtifactRef, ArtifactRevision, AssignmentId, EventId, ShortErrorCode, WorkflowId,
+    ArtifactRef, ArtifactRevision, AssignmentId, AttemptId, Digest, EventId, ShortErrorCode,
+    WorkflowId,
 };
 use crate::workflow::error::{InvalidSignal, WorkflowError};
 
@@ -49,10 +50,14 @@ pub struct ExpectedAssignment {
     pub workflow_id: WorkflowId,
     /// The assignment itself.
     pub assignment_id: AssignmentId,
+    /// Execution attempt the assignment is bound to.
+    pub attempt_id: AttemptId,
     /// Role the assignment was given to.
     pub role: Role,
     /// Candidate revision the assignment is bound to.
     pub artifact_revision: ArtifactRevision,
+    /// Immutable content of the candidate revision.
+    pub candidate_digest: Digest,
 }
 
 /// Unvalidated parts of a [`WorkflowSignal`]. Validate with
@@ -65,10 +70,14 @@ pub struct SignalParts {
     pub workflow_id: WorkflowId,
     /// Assignment the signal reports on.
     pub assignment_id: AssignmentId,
+    /// Execution attempt that produced the signal.
+    pub attempt_id: AttemptId,
     /// Role that emitted the signal.
     pub role: Role,
     /// Candidate revision the signal binds to (hard invariant 5).
     pub artifact_revision: ArtifactRevision,
+    /// Immutable content of the candidate revision (hard invariant 5).
+    pub candidate_digest: Digest,
     /// What the signal claims.
     pub kind: SignalKind,
     /// Number of findings; required for review and repair kinds only.
@@ -173,6 +182,12 @@ impl WorkflowSignal {
         &self.parts.assignment_id
     }
 
+    /// Execution attempt that produced the signal.
+    #[must_use]
+    pub fn attempt_id(&self) -> &AttemptId {
+        &self.parts.attempt_id
+    }
+
     /// Role that emitted the signal.
     #[must_use]
     pub fn role(&self) -> Role {
@@ -183,6 +198,12 @@ impl WorkflowSignal {
     #[must_use]
     pub fn artifact_revision(&self) -> &ArtifactRevision {
         &self.parts.artifact_revision
+    }
+
+    /// Immutable content of the candidate revision.
+    #[must_use]
+    pub fn candidate_digest(&self) -> &Digest {
+        &self.parts.candidate_digest
     }
 
     /// What the signal claims.
@@ -217,7 +238,8 @@ impl WorkflowSignal {
     }
 
     /// Compares the signal with the expected assignment, in the documented
-    /// order: workflow, assignment, role, revision.
+    /// order: workflow, assignment, attempt, role, candidate revision
+    /// identifier, candidate digest.
     pub(crate) fn check_expected(
         &self,
         expected: &ExpectedAssignment,
@@ -234,6 +256,12 @@ impl WorkflowSignal {
                 actual: self.parts.assignment_id.clone(),
             });
         }
+        if self.parts.attempt_id != expected.attempt_id {
+            return Err(WorkflowError::AttemptMismatch {
+                expected: expected.attempt_id.clone(),
+                actual: self.parts.attempt_id.clone(),
+            });
+        }
         if self.parts.role != expected.role {
             return Err(WorkflowError::RoleMismatch {
                 expected: expected.role,
@@ -246,22 +274,37 @@ impl WorkflowSignal {
                 actual: self.parts.artifact_revision.clone(),
             });
         }
+        if self.parts.candidate_digest != expected.candidate_digest {
+            return Err(WorkflowError::CandidateDigestMismatch {
+                expected: expected.candidate_digest.clone(),
+                actual: self.parts.candidate_digest.clone(),
+            });
+        }
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use alloc::string::ToString;
+
     use super::*;
+    use crate::identity::{AttemptId, DigestAlgorithm};
     use crate::workflow::error::InvalidSignal;
+
+    fn digest(byte: char) -> Digest {
+        Digest::new(DigestAlgorithm::Sha256, &byte.to_string().repeat(64)).unwrap()
+    }
 
     fn parts(role: Role, kind: SignalKind) -> SignalParts {
         SignalParts {
             event_id: EventId::new("evt-1").unwrap(),
             workflow_id: WorkflowId::new("wf-1").unwrap(),
             assignment_id: AssignmentId::new("as-1").unwrap(),
+            attempt_id: AttemptId::new("attempt-1").unwrap(),
             role,
             artifact_revision: ArtifactRevision::new("rev-1").unwrap(),
+            candidate_digest: digest('a'),
             kind,
             finding_count: None,
             artifact_ref: None,
@@ -415,6 +458,7 @@ mod tests {
         p.artifact_ref = Some(ArtifactRef::new("review:abc").unwrap());
         let signal = WorkflowSignal::validate(p.clone()).unwrap();
         assert_eq!(signal.event_id().as_str(), "evt-1");
+        assert_eq!(signal.attempt_id().as_str(), "attempt-1");
         assert_eq!(signal.role(), Role::Review);
         assert_eq!(signal.kind(), SignalKind::ReviewFindings);
         assert_eq!(signal.finding_count(), Some(2));
@@ -422,6 +466,7 @@ mod tests {
             signal.artifact_ref().map(ArtifactRef::as_str),
             Some("review:abc")
         );
+        assert_eq!(signal.candidate_digest(), &digest('a'));
         assert_eq!(signal.short_error_code(), None);
         assert_eq!(signal.parts(), &p);
     }

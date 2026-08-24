@@ -29,8 +29,13 @@ export function samplePayload(eventId: string): WorkflowSignalSubmitPayload {
   const expected = {
     workflowId: 'wf-conformance',
     assignmentId: 'as-implementation',
+    attemptId: 'attempt-implementation',
     role: 'implementation',
     artifactRevision: 'rev-a',
+    candidateDigest: {
+      algorithm: 'sha256',
+      hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    },
   } as const;
   return { expected, signal: { ...expected, eventId, kind: 'implementation_ready' } };
 }
@@ -134,6 +139,54 @@ export async function runCoreScenarios(
     });
     assert.equal(mismatch.kind, 'rejected');
     if (mismatch.kind === 'rejected') assert.equal(mismatch.code, 'REVISION_MISMATCH');
+
+    const attemptMismatchPayload = samplePayload('evt-attempt-mismatch');
+    const attemptMismatch = await client.submitWorkflowSignal('req-5', {
+      expected: { ...attemptMismatchPayload.expected, attemptId: 'attempt-other' },
+      signal: attemptMismatchPayload.signal,
+    });
+    assert.equal(attemptMismatch.kind, 'rejected');
+    if (attemptMismatch.kind === 'rejected') {
+      assert.equal(attemptMismatch.code, 'ATTEMPT_MISMATCH');
+    }
+
+    const digestMismatchPayload = samplePayload('evt-digest-mismatch');
+    const digestMismatch = await client.submitWorkflowSignal('req-6', {
+      expected: {
+        ...digestMismatchPayload.expected,
+        candidateDigest: {
+          algorithm: 'sha256',
+          hex: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        },
+      },
+      signal: digestMismatchPayload.signal,
+    });
+    assert.equal(digestMismatch.kind, 'rejected');
+    if (digestMismatch.kind === 'rejected') {
+      assert.equal(digestMismatch.code, 'CANDIDATE_DIGEST_MISMATCH');
+    }
+
+    const changedCandidate = samplePayload('evt-candidate-rebound');
+    const candidateRebinding = await client.submitWorkflowSignal('req-7', {
+      expected: {
+        ...changedCandidate.expected,
+        candidateDigest: {
+          algorithm: 'sha256',
+          hex: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        },
+      },
+      signal: {
+        ...changedCandidate.signal,
+        candidateDigest: {
+          algorithm: 'sha256',
+          hex: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        },
+      },
+    });
+    assert.deepEqual(candidateRebinding, {
+      kind: 'accepted',
+      eventId: 'evt-candidate-rebound',
+    });
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

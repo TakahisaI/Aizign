@@ -15,6 +15,23 @@
       "type": "string",
       "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
     },
+    "digest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "hex"
+      ],
+      "properties": {
+        "algorithm": {
+          "const": "sha256"
+        },
+        "hex": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
     "role": {
       "type": "string",
       "enum": [
@@ -36,8 +53,10 @@
       "required": [
         "workflowId",
         "assignmentId",
+        "attemptId",
         "role",
-        "artifactRevision"
+        "artifactRevision",
+        "candidateDigest"
       ],
       "properties": {
         "workflowId": {
@@ -46,11 +65,17 @@
         "assignmentId": {
           "$ref": "#/$defs/identifier"
         },
+        "attemptId": {
+          "$ref": "#/$defs/identifier"
+        },
         "role": {
           "$ref": "#/$defs/role"
         },
         "artifactRevision": {
           "$ref": "#/$defs/identifier"
+        },
+        "candidateDigest": {
+          "$ref": "#/$defs/digest"
         }
       }
     },
@@ -61,8 +86,10 @@
         "eventId",
         "workflowId",
         "assignmentId",
+        "attemptId",
         "role",
         "artifactRevision",
+        "candidateDigest",
         "kind"
       ],
       "properties": {
@@ -75,11 +102,17 @@
         "assignmentId": {
           "$ref": "#/$defs/identifier"
         },
+        "attemptId": {
+          "$ref": "#/$defs/identifier"
+        },
         "role": {
           "$ref": "#/$defs/role"
         },
         "artifactRevision": {
           "$ref": "#/$defs/identifier"
+        },
+        "candidateDigest": {
+          "$ref": "#/$defs/digest"
         },
         "kind": {
           "type": "string",

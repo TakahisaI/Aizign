@@ -8,7 +8,7 @@ Aizign Protocol v1 for TypeScript: closed NDJSON envelope codec, `hello` compati
 | **Non-responsibility** | process起動、filesystem、harness固有型、判断（coreの責務。decoderはcoreと同じ入力規則で **事前に** 拒否するだけ） |
 | **Inputs** | frame（`Uint8Array` / `string`）、payload object |
 | **Outputs** | `Request` / `Response`、`DecodeFailure`（復元した `requestId` / `kind` 付き）、`ProtocolError` |
-| **Hard invariants** | BOMなしUTF-8、well-formed Unicode、closed schema（未知field、`null`、未登録kindを拒否）、`spec/conformance` の全fixtureでRust実装と同じcodeと復元IDを返す、`JOURNAL_OUTCOME_UNKNOWN` / `HANDLER_TIMEOUT` は `rejected` ではなく `unknown` |
+| **Hard invariants** | BOMなしUTF-8、well-formed Unicode、closed schema（未知field、`null`、未登録kindを拒否）、attempt / typed candidate digestをRustと同じ規則でdecode、`spec/conformance` の全fixtureでRust実装と同じcodeと復元IDを返す、`JOURNAL_OUTCOME_UNKNOWN` / `HANDLER_TIMEOUT` は `rejected` ではなく `unknown` |
 | **Allowed dependencies** | なし（runtime）。dev: workspace rootの `typescript` / `@biomejs/biome` / `@types/node` |
 | **Test command** | `npm test -w @aizign/protocol`（`node --test`、型はNodeがstripする） |
 | **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md) |

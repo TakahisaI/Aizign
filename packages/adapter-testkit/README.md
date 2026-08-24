@@ -46,7 +46,8 @@ runnerが検査する経路:
 |---|---|
 | `hello` | `ok`、`protocolVersion === 1`、capabilityに `workflow.signal.submit` |
 | submit → 同じsignal → 内容違い | `accepted` → `duplicate` → `rejected EVENT_CONFLICT` |
-| expectation違い | `rejected REVISION_MISMATCH` |
+| attempt / revision / candidate digest expectation違い | 対応する`*_MISMATCH` |
+| 別eventで同じrevision identifier・異candidate digest（expected / signalは一致） | `accepted`（global registryを持たない） |
 | processがframeなしで終了 / exit 2 | `unknown no_response` |
 | stdoutがframeでない | `unknown undecodable_response` |
 | coreが `JOURNAL_OUTCOME_UNKNOWN` を返す | `unknown reported_unknown` |

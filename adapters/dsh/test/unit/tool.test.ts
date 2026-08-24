@@ -21,8 +21,13 @@ const binding: SignalBinding = {
   expected: {
     workflowId: 'wf-1',
     assignmentId: 'as-review',
+    attemptId: 'attempt-review',
     role: 'review',
     artifactRevision: 'rev-a',
+    candidateDigest: {
+      algorithm: 'sha256',
+      hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    },
   },
 };
 
@@ -55,6 +60,11 @@ test('the tool schema exposes no identity fields', () => {
     properties: Record<string, unknown>;
     additionalProperties: boolean;
   };
+  const tool = createSubmitWorkflowSignalTool(
+    stubClient({ kind: 'accepted', eventId: 'evt-fixed' }),
+    binding,
+  );
+  const modelVisibleDefinition = JSON.stringify({ description: tool.description, schema });
   assert.deepEqual(Object.keys(schema.properties).sort(), [
     'artifactRef',
     'findingCount',
@@ -64,6 +74,27 @@ test('the tool schema exposes no identity fields', () => {
   assert.equal(schema.additionalProperties, false);
   const kinds = (schema.properties.kind as { enum: string[] }).enum;
   assert.deepEqual(kinds, ['review_passed', 'review_findings', 'blocked']);
+  for (const identity of [
+    'eventId',
+    'workflowId',
+    'assignmentId',
+    'attemptId',
+    'artifactRevision',
+    'candidateDigest',
+  ]) {
+    assert.ok(!Object.hasOwn(schema.properties, identity), identity);
+    assert.ok(!modelVisibleDefinition.includes(identity), identity);
+  }
+  for (const configuredValue of [
+    binding.eventId,
+    binding.expected.workflowId,
+    binding.expected.assignmentId,
+    binding.expected.attemptId,
+    binding.expected.artifactRevision,
+    binding.expected.candidateDigest.hex,
+  ]) {
+    assert.ok(!modelVisibleDefinition.includes(configuredValue), configuredValue);
+  }
 });
 
 test('arguments are decoded closed and bound to the configured identity', () => {
@@ -73,6 +104,7 @@ test('arguments are decoded closed and bound to the configured identity', () => 
   );
   assert.equal(payload.signal.eventId, 'evt-fixed');
   assert.equal(payload.signal.workflowId, 'wf-1');
+  assert.equal(payload.signal.attemptId, 'attempt-review');
   assert.equal(payload.signal.role, 'review');
   assert.equal(payload.signal.findingCount, 2);
   assert.deepEqual(payload.expected, binding.expected);

@@ -31,11 +31,13 @@ protocol fixtureが入った後は、`spec/protocol/v1/` が wire上のcodeの�
 | `INVALID_EXPECTATION` | `expected` の形は正しいが値が不正（識別子の文字種や長さ）。coreでは型により表現不能なため、protocol境界で返す | implemented（`aizign-protocol`） |
 | `WORKFLOW_MISMATCH` | `workflowId` が期待と異なる | implemented（`aizign-core`） |
 | `ASSIGNMENT_MISMATCH` | `assignmentId` が期待と異なる | implemented（`aizign-core`） |
+| `ATTEMPT_MISMATCH` | `attemptId` が期待と異なる | implemented（`aizign-core`） |
 | `ROLE_MISMATCH` | `role` が期待と異なる | implemented（`aizign-core`） |
 | `REVISION_MISMATCH` | `artifactRevision` が期待と異なる | implemented（`aizign-core`） |
+| `CANDIDATE_DIGEST_MISMATCH` | `candidateDigest` が期待と異なる | implemented（`aizign-core`） |
 | `EVENT_CONFLICT` | 同一 `eventId` で内容が異なる | implemented（`aizign-core`） |
 
-照合順はworkflow → assignment → role → revisionで、expectationの照合がduplicate / conflict判定より先に行われます。
+照合順はworkflow → assignment → attempt → role → revision identifier → candidate digestで、expectationの照合がduplicate / conflict判定より先に行われます。異なるevent間のrevision-to-digest registryは持ちません。
 
 ## Journal
 

@@ -3,7 +3,7 @@
 
 use core::fmt;
 
-use crate::identity::{ArtifactRevision, AssignmentId, EventId, WorkflowId};
+use crate::identity::{ArtifactRevision, AssignmentId, AttemptId, Digest, EventId, WorkflowId};
 use crate::workflow::signal::{Role, SignalKind};
 
 /// Why a signal's parts do not form a valid [`WorkflowSignal`].
@@ -99,6 +99,13 @@ pub enum WorkflowError {
         /// Assignment named by the signal.
         actual: AssignmentId,
     },
+    /// The signal was produced by a different execution attempt.
+    AttemptMismatch {
+        /// Expected attempt.
+        expected: AttemptId,
+        /// Attempt named by the signal.
+        actual: AttemptId,
+    },
     /// The signal was emitted by a different role than expected.
     RoleMismatch {
         /// Expected role.
@@ -112,6 +119,13 @@ pub enum WorkflowError {
         expected: ArtifactRevision,
         /// Revision named by the signal.
         actual: ArtifactRevision,
+    },
+    /// The candidate revision identifier matched but its immutable content did not.
+    CandidateDigestMismatch {
+        /// Expected candidate content.
+        expected: Digest,
+        /// Candidate content named by the signal.
+        actual: Digest,
     },
     /// A signal with the same event id but different content was already
     /// accepted (hard invariant 12).
@@ -129,8 +143,10 @@ impl WorkflowError {
             Self::InvalidSignal(_) => "INVALID_SIGNAL",
             Self::WorkflowMismatch { .. } => "WORKFLOW_MISMATCH",
             Self::AssignmentMismatch { .. } => "ASSIGNMENT_MISMATCH",
+            Self::AttemptMismatch { .. } => "ATTEMPT_MISMATCH",
             Self::RoleMismatch { .. } => "ROLE_MISMATCH",
             Self::RevisionMismatch { .. } => "REVISION_MISMATCH",
+            Self::CandidateDigestMismatch { .. } => "CANDIDATE_DIGEST_MISMATCH",
             Self::EventConflict { .. } => "EVENT_CONFLICT",
         }
     }
@@ -152,11 +168,20 @@ impl fmt::Display for WorkflowError {
             Self::AssignmentMismatch { expected, actual } => {
                 write!(f, "assignment mismatch: expected {expected}, got {actual}")
             }
+            Self::AttemptMismatch { expected, actual } => {
+                write!(f, "attempt mismatch: expected {expected}, got {actual}")
+            }
             Self::RoleMismatch { expected, actual } => {
                 write!(f, "role mismatch: expected {expected:?}, got {actual:?}")
             }
             Self::RevisionMismatch { expected, actual } => {
                 write!(f, "revision mismatch: expected {expected}, got {actual}")
+            }
+            Self::CandidateDigestMismatch { expected, actual } => {
+                write!(
+                    f,
+                    "candidate digest mismatch: expected {expected}, got {actual}"
+                )
             }
             Self::EventConflict { event_id } => {
                 write!(
@@ -179,7 +204,10 @@ mod tests {
     fn every_code_is_a_valid_short_error_code() {
         let wf = WorkflowId::new("wf").unwrap();
         let asg = AssignmentId::new("as").unwrap();
+        let attempt = AttemptId::new("attempt").unwrap();
         let rev = ArtifactRevision::new("rev").unwrap();
+        let digest =
+            Digest::new(crate::identity::DigestAlgorithm::Sha256, &"a".repeat(64)).unwrap();
         let evt = EventId::new("evt").unwrap();
         let errors = [
             WorkflowError::InvalidSignal(InvalidSignal::ShortErrorCodeRequired),
@@ -191,6 +219,10 @@ mod tests {
                 expected: asg.clone(),
                 actual: asg,
             },
+            WorkflowError::AttemptMismatch {
+                expected: attempt.clone(),
+                actual: attempt,
+            },
             WorkflowError::RoleMismatch {
                 expected: Role::Review,
                 actual: Role::Implementation,
@@ -198,6 +230,10 @@ mod tests {
             WorkflowError::RevisionMismatch {
                 expected: rev.clone(),
                 actual: rev,
+            },
+            WorkflowError::CandidateDigestMismatch {
+                expected: digest.clone(),
+                actual: digest,
             },
             WorkflowError::EventConflict { event_id: evt },
         ];

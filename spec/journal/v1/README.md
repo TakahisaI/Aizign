@@ -16,10 +16,11 @@ control journalのdurable format。**metadata-only、append-only**（ADR-0007）
 | `seq` | integer `1..=10000` | storeが付与する連番。欠番・逆順は `JOURNAL_CORRUPT` |
 | `at` | integer | shellが与えたUnix秒。`2020-01-01` 〜 `2100-01-01` の範囲 |
 | `kind` | `"workflow.signal.accepted"` | record kind。新しいkindは追加できるが既存の意味は変えない |
-| `signal` | object | 受理されたstructured signal（closed。protocol v1の `signal` と同じ形だが別schemaとして所有） |
+| `signal` | object | 受理されたstructured signal（closed。attemptとcandidate pairをdurableに含む。protocol v1の `signal` と同じ形だが別schemaとして所有） |
 
 - すべてclosed schema（`additionalProperties: false`）。未知fieldは `JOURNAL_CORRUPT`
 - **同一object内でmember名の重複は `JOURNAL_CORRUPT`**（escape表記ではなくdecode後の名前で比較するprotocolと同じlexical rule。schemaでは表現できない）
+- `signal` は `attemptId` とtyped `candidateDigest`を必須にする。external evidence digestとrepair causationは保存しない
 - `signal` の条件規則（kindとroleの対応、`findingCount` / `artifactRef` / `shortErrorCode` の必須・禁止）は [`record.schema.json`](schemas/record.schema.json) がprotocol v1のrequest schemaと同じ形で持つ
 - **schemaとruntime decoder（`aizign-store-jsonl`）の受理集合は同一**。`spec/conformance/{valid,invalid}/journal` の同じfixtureを、runtimeは `decode_record`（`crates/aizign-store-jsonl/tests/conformance.rs`）、schemaは [`spec/test/schema.test.mjs`](../../test/schema.test.mjs) が読み、`.expect.json` の `schema` 判定で両者を突き合わせる
 - `seq` の範囲はschemaとruntimeで一致させる: `1..=10000`（`MAX_JOURNAL_ENTRIES`。cold readがこの件数でboundされるため、これを超えるseqを持つdurable fileは読めない）
@@ -33,6 +34,8 @@ control journalのdurable format。**metadata-only、append-only**（ADR-0007）
 - `schemaVersion` が違えば `JOURNAL_SCHEMA_UNSUPPORTED`
 - record数が `10000` を超えれば `JOURNAL_BOUND_EXCEEDED`
 - `signal` はcoreの検証（kind / role、`findingCount` などの制約）を通らなければ `JOURNAL_CORRUPT`
+- replayは各accepted eventのattempt / candidate pairを復元する。同じrevision identifierを持つ別event間のdigestは比較しない
+- Journal schema v1は未releaseのためADR-0012でin-place更新した。旧shapeは読み込まない
 
 ## 書き込みの規則
 

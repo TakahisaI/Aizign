@@ -104,9 +104,14 @@ function handleSubmit(
     return reject('WORKFLOW_MISMATCH', 'workflow mismatch');
   if (signal.assignmentId !== expected.assignmentId)
     return reject('ASSIGNMENT_MISMATCH', 'assignment mismatch');
+  if (signal.attemptId !== expected.attemptId)
+    return reject('ATTEMPT_MISMATCH', 'attempt mismatch');
   if (signal.role !== expected.role) return reject('ROLE_MISMATCH', 'role mismatch');
   if (signal.artifactRevision !== expected.artifactRevision) {
     return reject('REVISION_MISMATCH', 'revision mismatch');
+  }
+  if (JSON.stringify(signal.candidateDigest) !== JSON.stringify(expected.candidateDigest)) {
+    return reject('CANDIDATE_DIGEST_MISMATCH', 'candidate digest mismatch');
   }
   const accepted = loadState(stateDir);
   const existing = accepted.find((candidate) => candidate.eventId === signal.eventId);

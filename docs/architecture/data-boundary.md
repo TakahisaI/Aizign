@@ -28,7 +28,7 @@ core、journal、adapter、logの間を **越えてよいデータ** と **越�
 |---|---|
 | stable workflow identity | `workflowId`、`assignmentId`、`attemptId`、`artifactRevision`、`eventId` |
 | bounded opaque handle | adapterが発行する長さ制限付きの不透明文字列。coreは比較と保存以外に使わない |
-| digest | binding digest、payload digest。algorithmを明示 |
+| digest | candidate bytesを読めるcontrol planeが計算した`candidateDigest`。algorithmを明示。coreはcarry / compareのみ行う |
 | structured evidence | closed schemaのsignal（kind、findingCount、artifactRef、shortErrorCode など） |
 | disposition | `accepted`、`duplicate`、`conflict`、`unknown`、terminal状態 |
 | stable short error code | `^[A-Z][A-Z0-9_]{0,63}$` |
@@ -63,10 +63,10 @@ journal recordはclosed schemaで、禁止項目にあたるfield名を持つrec
 | 1. 自然言語、idle、画面表示を完了の正本にしない | coreへ渡すのはstructured evidenceだけ |
 | 2. effect前にdurable claim | claimはjournal record |
 | 3 / 4. `unknown` を推測しない | dispositionに `unknown` を持ち、adapterもcoreも縮約しない |
-| 5. evidenceのbinding | identity一式とbinding digestを必須にする |
+| 5. evidenceのbinding | workflow / assignment / attemptとcandidate revision + content digestのpairを必須にする |
 | 8. provider固有identityをcore identityにしない | adapterだけが保持 |
 | 10. journalへ本文やcredentialを保存しない | 禁止列 |
-| 12. duplicate / conflict | 同一identity・同一digestはduplicate、異digestはconflict |
+| 12. duplicate / conflict | 同一event identity・同一内容はduplicate、attempt / candidate pairを含む内容差はconflict |
 
 ## 検査
 

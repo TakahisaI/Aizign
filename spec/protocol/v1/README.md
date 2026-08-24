@@ -58,9 +58,13 @@ versionとcapabilityの事前確認。stateを要求しない。
 
 structured workflow signalを、shellがbindされている `expected` assignmentに対して提出する。
 
-- `ok: true` の `disposition` は `accepted`（durable appendの **後** に返る）または `duplicate`（同一 `eventId`・同一内容）
-- `ok: false` の `error.code` はprotocol code、`INVALID_EXPECTATION`、またはworkflow code（`INVALID_SIGNAL`、`WORKFLOW_MISMATCH`、`ASSIGNMENT_MISMATCH`、`ROLE_MISMATCH`、`REVISION_MISMATCH`、`EVENT_CONFLICT`）
-- 照合順はworkflow → assignment → role → revision → duplicate / conflict
+- `expected` と `signal` は `workflowId`、`assignmentId`、`attemptId`、`role`、`artifactRevision`、`candidateDigest` を持つ。`candidateDigest` は `{ "algorithm": "sha256", "hex": "<64 lowercase hex>" }`
+- `candidateDigest` はcandidate bytesを読めるcontrol plane / artifact authorityが計算する。coreはshapeを検証してcarry / compareするだけで、hashを再計算しない
+- `artifactRef` の既存規則は変更しない。external artifact digestとreview / repair causationはv1のこのsliceには含めない
+- `ok: true` の `disposition` は `accepted`（durable appendの **後** に返る）または `duplicate`（同一 `eventId`・attempt / candidate pairを含む同一内容）
+- `ok: false` の `error.code` はprotocol code、`INVALID_EXPECTATION`、またはworkflow code（`INVALID_SIGNAL`、各`*_MISMATCH`、`EVENT_CONFLICT`）
+- 照合順はworkflow → assignment → attempt → role → revision identifier → candidate digest → duplicate / conflict。異なるevent間のrevision-to-digest registryは持たない
+- Protocol v1は未releaseのためADR-0012でin-place更新した。旧shapeは互換受理しない
 
 ## Error codes
 

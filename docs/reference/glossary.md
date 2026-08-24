@@ -12,15 +12,15 @@ code identifierは英語で固定します。日本語訳は説明用で、識�
 | **Assignment** | workflow内でroleに割り当てた作業単位。`assignmentId` で識別 |
 | **Role** | assignmentの種類。`implementation`、`review` |
 | **Attempt** | assignmentをharness上で実行した一回。`attemptId` で識別。失敗や中断のあと別attemptを作る |
-| **Candidate revision** | implementationが提出した変更の固定identity（`artifactRevision`）。review、check、authorizationはこれにbindingする |
+| **Candidate revision** | implementationが提出した変更の固定identity。人間／provider向けの`artifactRevision`と内容同一性を示す`candidateDigest`の組で、review、check、authorizationはこれにbindingする |
 | **Event** | journalへappendされるdomain event。`eventId` で識別。`State + Event -> State` |
 | **Command** | coreへの入力。`State + Command -> Decision` |
 | **Decision** | coreの出力。追加するevent、effect intent、またはrejectionを含む |
 | **Workflow signal** | agentが提出するstructured evidence。kind: `implementation_ready`、`review_findings`、`review_passed`、`repair_submitted`、`blocked` |
-| **Expected assignment** | coreがsignalを照合する相手。workflow、assignment、role、revisionの組 |
+| **Expected assignment** | coreがsignalを照合する相手。workflow、assignment、attempt、role、candidate pairの組 |
 | **Structured evidence** | closed schemaで表現された事実。自然言語ではない |
-| **Binding** | evidenceをworkflow、assignment、attempt、candidate revisionへ結び付けること。binding digestで照合する |
-| **Digest** | 内容の固定長hash。journalには本文ではなくdigestを置く |
+| **Binding** | evidenceをworkflow、assignment、attempt、candidate revision + content digestのpairへ結び付けること |
+| **Digest** | 内容の固定長hash。candidate digestはcontrol planeが計算し、coreはcarry / compareする。DSHの`bindingDigest` / `payloadDigest`はadapter-localで別authority |
 | **Effect intent** | coreが外部作用を要求する意図。adapterがharness操作へ変換する |
 | **Claim** | effect intentを実行する前にjournalへdurableに記録すること |
 | **Disposition** | 操作やevidenceの結果分類。`accepted`、`duplicate`、`conflict`、`unknown`、terminal |

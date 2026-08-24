@@ -4,14 +4,23 @@ use aizign_core::workflow::{
     ApplyError, Command, Decision, ExpectedAssignment, Role, SignalKind, SignalParts,
     WorkflowError, WorkflowEvent, WorkflowSignal, WorkflowState, decide,
 };
-use aizign_core::{ArtifactRevision, AssignmentId, EventId, ShortErrorCode, WorkflowId};
+use aizign_core::{
+    ArtifactRevision, AssignmentId, AttemptId, Digest, DigestAlgorithm, EventId, ShortErrorCode,
+    WorkflowId,
+};
+
+fn digest(byte: char) -> Digest {
+    Digest::new(DigestAlgorithm::Sha256, &byte.to_string().repeat(64)).unwrap()
+}
 
 fn expected() -> ExpectedAssignment {
     ExpectedAssignment {
         workflow_id: WorkflowId::new("wf-1").unwrap(),
         assignment_id: AssignmentId::new("as-impl").unwrap(),
+        attempt_id: AttemptId::new("attempt-1").unwrap(),
         role: Role::Implementation,
         artifact_revision: ArtifactRevision::new("rev-a").unwrap(),
+        candidate_digest: digest('a'),
     }
 }
 
@@ -21,8 +30,10 @@ fn ready(event_id: &str) -> WorkflowSignal {
         event_id: EventId::new(event_id).unwrap(),
         workflow_id: expected.workflow_id,
         assignment_id: expected.assignment_id,
+        attempt_id: expected.attempt_id,
         role: expected.role,
         artifact_revision: expected.artifact_revision,
+        candidate_digest: expected.candidate_digest,
         kind: SignalKind::ImplementationReady,
         finding_count: None,
         artifact_ref: None,
@@ -43,6 +54,18 @@ fn submit(signal: WorkflowSignal) -> Command {
         signal,
         expected: expected(),
     }
+}
+
+fn submit_matching(signal: WorkflowSignal) -> Command {
+    let expected = ExpectedAssignment {
+        workflow_id: signal.workflow_id().clone(),
+        assignment_id: signal.assignment_id().clone(),
+        attempt_id: signal.attempt_id().clone(),
+        role: signal.role(),
+        artifact_revision: signal.artifact_revision().clone(),
+        candidate_digest: signal.candidate_digest().clone(),
+    };
+    Command::SubmitSignal { signal, expected }
 }
 
 fn accept(state: &mut WorkflowState, signal: WorkflowSignal) {
@@ -134,10 +157,12 @@ fn expectation_is_checked_in_order_before_duplicates() {
     let mut parts = ready("evt-1").parts().clone();
     parts.workflow_id = WorkflowId::new("wf-2").unwrap();
     parts.assignment_id = AssignmentId::new("as-2").unwrap();
+    parts.attempt_id = AttemptId::new("attempt-2").unwrap();
     parts.role = Role::Review;
     parts.kind = SignalKind::ReviewPassed;
     parts.finding_count = Some(0);
     parts.artifact_revision = ArtifactRevision::new("rev-b").unwrap();
+    parts.candidate_digest = digest('b');
     let all_wrong = WorkflowSignal::validate(parts.clone()).unwrap();
     assert!(matches!(
         decide(&state, submit(all_wrong)),
@@ -164,6 +189,17 @@ fn expectation_is_checked_in_order_before_duplicates() {
             submit(WorkflowSignal::validate(parts.clone()).unwrap())
         ),
         Decision::Rejected {
+            error: WorkflowError::AttemptMismatch { .. }
+        }
+    ));
+
+    parts.attempt_id = AttemptId::new("attempt-1").unwrap();
+    assert!(matches!(
+        decide(
+            &state,
+            submit(WorkflowSignal::validate(parts.clone()).unwrap())
+        ),
+        Decision::Rejected {
             error: WorkflowError::RoleMismatch { .. }
         }
     ));
@@ -184,8 +220,62 @@ fn expectation_is_checked_in_order_before_duplicates() {
     // With the expectation satisfied, the duplicate check finally runs.
     parts.artifact_revision = ArtifactRevision::new("rev-a").unwrap();
     assert!(matches!(
+        decide(
+            &state,
+            submit(WorkflowSignal::validate(parts.clone()).unwrap())
+        ),
+        Decision::Rejected {
+            error: WorkflowError::CandidateDigestMismatch { .. }
+        }
+    ));
+
+    parts.candidate_digest = digest('a');
+    assert!(matches!(
         decide(&state, submit(WorkflowSignal::validate(parts).unwrap())),
         Decision::Duplicate { .. }
+    ));
+}
+
+#[test]
+fn candidate_pair_is_not_a_global_revision_registry() {
+    let mut state = WorkflowState::new();
+    accept(&mut state, ready("evt-ready"));
+
+    let mut changed_candidate = ready("evt-other").parts().clone();
+    changed_candidate.candidate_digest = digest('b');
+    let changed_candidate = WorkflowSignal::validate(changed_candidate).unwrap();
+    let Decision::Accepted { event } = decide(&state, submit_matching(changed_candidate)) else {
+        panic!("a different event may bind the same revision identifier to another digest")
+    };
+    state.apply(&event).unwrap();
+    assert_eq!(state.len(), 2);
+}
+
+#[test]
+fn duplicate_identity_compares_attempt_and_digest_content_after_replay() {
+    let accepted = WorkflowEvent::SignalAccepted {
+        signal: ready("evt-1"),
+    };
+    let state = WorkflowState::replay([&accepted]).unwrap();
+
+    let mut changed = ready("evt-1").parts().clone();
+    changed.attempt_id = AttemptId::new("attempt-2").unwrap();
+    let changed = WorkflowSignal::validate(changed).unwrap();
+    assert!(matches!(
+        decide(&state, submit_matching(changed)),
+        Decision::Rejected {
+            error: WorkflowError::EventConflict { .. }
+        }
+    ));
+
+    let mut changed = ready("evt-1").parts().clone();
+    changed.candidate_digest = digest('b');
+    let changed = WorkflowSignal::validate(changed).unwrap();
+    assert!(matches!(
+        decide(&state, submit_matching(changed)),
+        Decision::Rejected {
+            error: WorkflowError::EventConflict { .. }
+        }
     ));
 }
 
@@ -216,6 +306,20 @@ fn replay_rebuilds_state_and_refuses_repeated_events() {
             event_id: EventId::new("evt-1").unwrap()
         })
     );
+}
+
+#[test]
+fn replay_keeps_candidate_pairs_event_local() {
+    let first = WorkflowEvent::SignalAccepted {
+        signal: ready("evt-1"),
+    };
+    let mut changed_candidate = ready("evt-2").parts().clone();
+    changed_candidate.candidate_digest = digest('b');
+    let changed_candidate = WorkflowEvent::SignalAccepted {
+        signal: WorkflowSignal::validate(changed_candidate).unwrap(),
+    };
+    let replayed = WorkflowState::replay([&first, &changed_candidate]).unwrap();
+    assert_eq!(replayed.len(), 2);
 }
 
 #[test]

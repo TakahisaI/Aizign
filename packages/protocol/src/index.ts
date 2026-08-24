@@ -48,6 +48,7 @@ export {
 } from './hello.ts';
 export { IDENTIFIER_PATTERN, isIdentifier } from './shape.ts';
 export {
+  type ContentDigest,
   type Disposition,
   decodeSignalResult,
   decodeWorkflowSignalSubmit,
