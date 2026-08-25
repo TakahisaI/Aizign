@@ -40,7 +40,7 @@ change does not cross the corresponding boundary.
 ## Checklist
 
 - [ ] The pull request title uses Conventional Commits format (`feat(core): ...`).
-- [ ] `cargo xtask check` passes locally, or the reason it could not run is recorded with equivalent candidate evidence.
+- [ ] `cargo xtask check` passes locally.
 - [ ] Changes to behavior, API, schema, dependency boundaries, or repository process were agreed in an Issue before implementation.
 - [ ] Changes requiring an ADR include one, or the ADR field is not applicable under `CONTRIBUTING.md`.
 - [ ] Boundary/Milestone work links an approved checkpoint and exact evidence; Routine work uses only the documented exceptions.
