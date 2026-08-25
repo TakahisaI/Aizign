@@ -8,7 +8,10 @@ body:
       value: |
         Aizign is proposal-first. Agree on the scope and contract before opening an implementation pull request.
         Use an umbrella Issue for a large goal and divide it into reviewable leaf Issues.
-        Routine changes remain lightweight; Boundary changes and Milestone reviews follow the conductor-led workflow.
+
+        Routine is allowed only when the change remains within an accepted owner-local contract and satisfies none of the Boundary-change predicates. A bug fix may change observed behavior only to restore that accepted contract; changing the contract or public claim is Boundary work.
+
+        Boundary predicates include normative authority, accepted contract/public claim, Protocol/API/stable code/schema/durable state, hard invariant, architecture/package/dependency direction, security/data, support/compatibility/retry/unknown/lifecycle/release/migration, adapter/process, contribution/review/merge/automation, and repository-governance changes.
   - type: textarea
     id: problem
     attributes:
@@ -19,7 +22,7 @@ body:
     id: change_class
     attributes:
       label: Change class
-      description: Select by authority and commitment impact, not by diff size. Routine is allowed only when no normative authority, public behavior, support, durable state, or process policy changes.
+      description: Routine is allowed only when the change remains within an accepted owner-local contract and satisfies none of the Boundary-change predicates. A bug fix may change observed behavior only to restore that accepted contract; changing the contract or public claim is Boundary work.
       options:
         - Routine change
         - Boundary change
@@ -37,7 +40,7 @@ body:
     id: contexts
     attributes:
       label: Bounded contexts or process surfaces touched
-      description: For product/runtime work, name entries from docs/architecture/context-map.md. For repository/process work, name the affected governance, contribution, review, merge, release, template, skill, or tooling surfaces. Explain why more than one is required.
+      description: For product/runtime work, name entries from docs/architecture/context-map.md. For repository/process work, name the affected governance, contribution, review, merge, release, template, skill, automation, or tooling surfaces. Explain why more than one is required.
       placeholder: "Product/runtime: <context and path>\nRepository/process: <surface and path>\nNot applicable — Routine prose-only change; no product context or process authority changes."
     validations:
       required: true
@@ -58,11 +61,19 @@ body:
     validations:
       required: true
   - type: textarea
-    id: ranges
+    id: claims_and_ranges
     attributes:
-      label: Commitment, lifecycle, and consumer ranges
-      description: Use the vocabulary from docs/development/change-workflow.md. Record included areas, explicit exclusions with reasons/owners, and evidence gaps. A Routine change may use the exact Not applicable form shown below.
-      placeholder: "Commitment included: <WIRE | DURABLE | SUPPORT | PROVISIONAL | INTERNAL | PROCESS>\nLifecycle included: <scopes>\nConsumers included: <consumers>\nExplicitly out of range: <area, reason, owner>\nEvidence gaps: <gap and owner or none>\nNot applicable — Routine change remains within one accepted owner-local contract."
+      label: Claims and commitment, lifecycle, and consumer ranges
+      description: For Boundary/Milestone work, assign stable IDs to claims and range entries using docs/development/change-workflow.md. Record included areas, explicit exclusions with reasons/owners, and evidence gaps.
+      placeholder: "Claim IDs: <CLM-... and statement>\nCommitment: <RNG-...; WIRE | DURABLE | SUPPORT | PROVISIONAL | INTERNAL | PROCESS; disposition>\nLifecycle: <RNG-...; scope; disposition>\nConsumers: <RNG-...; consumer; disposition>\nNot applicable — Routine change remains within one accepted owner-local contract."
+    validations:
+      required: true
+  - type: textarea
+    id: evidence_and_review
+    attributes:
+      label: Evidence requirements and targeted review
+      description: For Boundary/Milestone work, assign stable IDs to falsifying evidence and review perspectives. Map every claim, included/evidence-gap range, and evidence requirement to at least one perspective. Routine work may use the exact Not applicable form shown below.
+      placeholder: "Evidence: <EVD-...; subject IDs; mutation/failure sequence; expected detection>\nReview: <perspective ID; subject IDs; failure model>\nNot applicable — Routine change; no independent Breaker required."
     validations:
       required: true
   - type: dropdown
@@ -72,28 +83,15 @@ body:
       description: ADRs are required for architecture, boundary, contribution/review/merge policy, Protocol or journal shape, runtime dependency, data boundary, retry policy, toolchain support, and release or compatibility policy.
       options:
         - "No"
-        - "Yes — the ADR decision will be completed in this Issue"
+        - "Yes — an ADR must be added and accepted before the corresponding implementation transition"
     validations:
       required: true
   - type: textarea
     id: invariants
     attributes:
       label: Related hard invariants
-      description: Reference numbered entries in docs/architecture/invariants.md and explain why the proposed contract preserves or changes them. Use Not applicable only when no hard invariant is implicated.
-  - type: textarea
-    id: falsifying_evidence
-    attributes:
-      label: Falsifying evidence
-      description: State one concrete mutation, counterexample, or failure sequence that would make the proposed claim false, and name the test, fixture, or observation that must detect it. Not applicable is allowed only for a typo or prose-only change with no executable behavior or claim change.
-      placeholder: "<claim> would be false if <mutation or sequence>; <test, fixture, or observation> must detect it."
-    validations:
-      required: true
-  - type: textarea
-    id: targeted_review
-    attributes:
-      label: Required targeted review
-      description: For a Boundary change, name the affected range and failure model an independent Breaker must inspect. For a Milestone review, reference the milestone-specific plan. A Routine change may use the exact Not applicable form shown below.
-      placeholder: "Required — <range and failure model>\nNot applicable — Routine change; no independent Breaker required."
+      description: Reference numbered entries in docs/architecture/invariants.md and explain why the proposed contract preserves or changes them. When none apply, write `Not applicable — <reason>`.
+      placeholder: "Invariant <number> — <preserved or changed and why>\nNot applicable — <reason>."
     validations:
       required: true
   - type: textarea
