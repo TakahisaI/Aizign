@@ -4,6 +4,7 @@ import {
   checkCorrelation,
   emitBestEffort,
   isSubmitRejectionCode,
+  isTimingErrorCode,
   parentTimingOutcome,
 } from './client.ts';
 import type { Response } from './envelope.ts';
@@ -85,6 +86,13 @@ test('submit rejection classification is closed and fails unknown codes safely',
   assert.equal(isSubmitRejectionCode('JOURNAL_OUTCOME_UNKNOWN'), false);
   assert.equal(isSubmitRejectionCode('INTERNAL'), false);
   assert.equal(isSubmitRejectionCode('FUTURE_OUTCOME_UNKNOWN'), false);
+});
+
+test('metadata-only timing admits only fixed recognized error codes', () => {
+  assert.equal(isTimingErrorCode('EVENT_CONFLICT'), true);
+  assert.equal(isTimingErrorCode('JOURNAL_OUTCOME_UNKNOWN'), true);
+  assert.equal(isTimingErrorCode('INTERNAL'), true);
+  assert.equal(isTimingErrorCode('FUTURE_OUTCOME_UNKNOWN'), false);
 });
 
 test('best-effort timing isolates synchronous throws and asynchronous rejection', async () => {

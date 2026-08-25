@@ -15,6 +15,7 @@ import {
   extractFrame,
   type HelloOutcome,
   isSubmitRejectionCode,
+  isTimingErrorCode,
   isUnknownOutcomeCode,
   MAX_FRAME_BYTES,
   type ParentOperationKind,
@@ -117,12 +118,15 @@ export class OneShotCoreClient implements CoreClient {
       kind: 'workflow.signal.submit',
       eventId: payload.signal.eventId,
     };
+    const reportedCode =
+      exchange.response.body.type === 'error' ? exchange.response.body.error.code : undefined;
     const mismatch = checkCorrelation(sent, exchange.response);
     if (mismatch !== undefined) {
       return finish({
         kind: 'unknown',
         reason: 'correlation_mismatch',
         detail: `${mismatch.field}: expected ${mismatch.expected}, got ${String(mismatch.actual)}`,
+        ...(reportedCode === undefined ? {} : { reportedCode }),
       });
     }
     const { body } = exchange.response;
@@ -210,7 +214,9 @@ export class OneShotCoreClient implements CoreClient {
       readonly reason?: UnknownOutcome['reason'];
       readonly reportedCode?: string;
     };
-    const errorCode = reportedErrorCode ?? classified.code ?? classified.reportedCode;
+    const reportedError = reportedErrorCode ?? classified.code ?? classified.reportedCode;
+    const errorCode =
+      reportedError !== undefined && isTimingErrorCode(reportedError) ? reportedError : undefined;
     const measurement: ParentTimingMeasurement = {
       operation_kind,
       ...timing,

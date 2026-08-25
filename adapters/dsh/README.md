@@ -153,6 +153,8 @@ completionの正本はjournal（core側）です。adapterはそれに加えて�
 `OneShotCoreClient`は`CoreClientConfig.timingSink`、`preflight`は`PreflightOptions.timingSink`、`readSignalEvidence`は`ColdReadOptions.timingSink`がある場合だけmetadata-only timingを通知します。
 preflightは全体の`preflight_ms`、evidence cold readは`harness_cold_read_ms`と返されたevent数を記録します。
 どのmeasurementにもsession ID、signal identity、path、本文を含めません。
+`error_code`は固定された認識済みcodeのallowlistに限り、正形式でも未認識のpeer
+codeは返却outcomeのcontrol-plane診断にだけ保持してtimingから除外します。
 同期throwと非同期Promise rejectionを共通helperで隔離するため、sink failureはtool登録、submit、reconcile、evidence classificationを変えません。
 
 ## Harness-facing codes
@@ -161,6 +163,6 @@ preflightは全体の`preflight_ms`、evidence cold readは`harness_cold_read_ms
 |---|---|
 | `AIZIGN_UNAVAILABLE` | preflightでbinaryに到達できない、または `hello` がerror |
 | `AIZIGN_INCOMPATIBLE` | protocol versionが違う、またはcapabilityがない |
-| `AIZIGN_OUTCOME_UNKNOWN` | 提出の結果が不明（無応答、garbage、2 frame、oversized、相関不一致、timeout、abort、`JOURNAL_OUTCOME_UNKNOWN`、正形式だが未認識のpeer code）。peer codeはcontrol-plane診断にのみ保持し、この固定adapter codeへ正規化してmodelへ返す。再送しない |
-| `INVALID_SIGNAL` ほか | protocol / workflow codeをそのまま転送 |
+| `AIZIGN_OUTCOME_UNKNOWN` | 提出の結果が不明（無応答、garbage、2 frame、oversized、相関不一致、timeout、abort、`JOURNAL_OUTCOME_UNKNOWN`、`HANDLER_TIMEOUT`、`INTERNAL`、正形式だが未認識のpeer code）。peer codeはcontrol-plane診断にのみ保持し、この固定adapter codeへ正規化してmodelへ返す。再送しない |
+| `INVALID_SIGNAL` ほか | operation-specific allowlist上の確定的なprotocol / workflow / journal rejection codeだけを保持 |
 | `INVALID_EXPECTATION` | plugin configの検証に失敗 |

@@ -275,6 +275,41 @@ export async function runFaultScenarios(
         }
       }
     }
+
+    const uncorrelatedCodeState = join(root, 'fault-unknown-code-wrong-request-id');
+    const uncorrelatedCodeMeasurements: ParentTimingMeasurement[] = [];
+    const uncorrelatedCodeClient = factory({
+      ...fake,
+      env: { AIZIGN_FAKE_FAULT: 'unknown-valid-error-code-wrong-request-id' },
+      stateDir: uncorrelatedCodeState,
+      timeoutMs: 10_000,
+      timingSink: (measurement) => {
+        uncorrelatedCodeMeasurements.push(measurement);
+      },
+    });
+    const uncorrelatedCode = await uncorrelatedCodeClient.submitWorkflowSignal(
+      'req-unknown-code-wrong-request-id',
+      samplePayload('evt-unknown-code-wrong-request-id'),
+    );
+    assert.equal(uncorrelatedCode.kind, 'unknown');
+    if (uncorrelatedCode.kind === 'unknown') {
+      assert.equal(uncorrelatedCode.reason, 'correlation_mismatch');
+      assert.equal(uncorrelatedCode.reportedCode, 'FUTURE_OUTCOME_UNKNOWN');
+    }
+    assert.equal(
+      readFakeRequests(uncorrelatedCodeState).length,
+      1,
+      'an uncorrelated error response never causes a retry',
+    );
+    assert.equal(uncorrelatedCodeMeasurements.length, 1);
+    assert.equal(uncorrelatedCodeMeasurements[0]?.outcome, 'unknown');
+    assert.equal(uncorrelatedCodeMeasurements[0]?.unknown_reason, 'correlation_mismatch');
+    assert.equal(uncorrelatedCodeMeasurements[0]?.error_code, undefined);
+    assert.ok(
+      !JSON.stringify(uncorrelatedCodeMeasurements).includes('FUTURE_OUTCOME_UNKNOWN'),
+      'an unrecognized peer code stays out of metadata-only timing',
+    );
+
     const hang = await make(
       'fault-hang',
       { AIZIGN_FAKE_FAULT: 'hang' },

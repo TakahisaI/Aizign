@@ -59,6 +59,7 @@ export interface ParentTimingMeasurement {
   /** Whole compatibility preflight. Present only for the `preflight` operation. */
   readonly preflight_ms?: number;
   readonly outcome: TimingOutcome;
+  /** A fixed code from {@link TIMING_ERROR_CODES}; unrecognized peer codes are omitted. */
   readonly error_code?: string;
   readonly unknown_reason?: UnknownOutcome['reason'];
 }
@@ -100,11 +101,11 @@ export function parentTimingOutcome(
  * Error codes that mean "the outcome is unknown", not "the request was
  * rejected". A client must surface them as {@link UnknownOutcome}.
  */
-export const UNKNOWN_OUTCOME_CODES: readonly string[] = [
+export const UNKNOWN_OUTCOME_CODES: readonly string[] = Object.freeze([
   'JOURNAL_OUTCOME_UNKNOWN',
   'HANDLER_TIMEOUT',
   'EFFECT_OUTCOME_UNKNOWN',
-];
+]);
 
 export function isUnknownOutcomeCode(code: string): boolean {
   return UNKNOWN_OUTCOME_CODES.includes(code);
@@ -115,7 +116,7 @@ export function isUnknownOutcomeCode(code: string): boolean {
  * This set is intentionally closed: a well-formed but unrecognized peer code
  * is an unknown outcome until this client understands its semantics.
  */
-export const SUBMIT_REJECTION_CODES: readonly string[] = [
+export const SUBMIT_REJECTION_CODES: readonly string[] = Object.freeze([
   'PROTOCOL_VERSION_UNSUPPORTED',
   'INVALID_ENVELOPE',
   'UNKNOWN_KIND',
@@ -136,11 +137,27 @@ export const SUBMIT_REJECTION_CODES: readonly string[] = [
   'JOURNAL_SCHEMA_UNSUPPORTED',
   'JOURNAL_LOCKED',
   'JOURNAL_BOUND_EXCEEDED',
-];
+]);
 
 /** Whether `code` is a known definitive rejection for signal submission. */
 export function isSubmitRejectionCode(code: string): boolean {
   return SUBMIT_REJECTION_CODES.includes(code);
+}
+
+/**
+ * Exact fixed-code allowlist eligible for metadata-only parent timing.
+ * Unrecognized peer codes remain on the returned outcome only; their value
+ * semantics are not trusted enough for a content-excluding timing channel.
+ */
+export const TIMING_ERROR_CODES: readonly string[] = Object.freeze([
+  ...SUBMIT_REJECTION_CODES,
+  ...UNKNOWN_OUTCOME_CODES,
+  'INTERNAL',
+]);
+
+/** Whether `code` may be emitted as parent timing metadata. */
+export function isTimingErrorCode(code: string): boolean {
+  return TIMING_ERROR_CODES.includes(code);
 }
 
 /** A result whose truth the adapter could not establish. Never retry it blindly. */

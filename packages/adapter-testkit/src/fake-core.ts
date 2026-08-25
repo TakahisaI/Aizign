@@ -20,6 +20,7 @@
  * - `handler-timeout`   report HANDLER_TIMEOUT without correlation ids
  * - `event-conflict-error` report EVENT_CONFLICT as a correlated error
  * - `unknown-valid-error-code` report an unrecognized, well-formed correlated error code
+ * - `unknown-valid-error-code-wrong-request-id` report that code without request correlation
  *
  * `AIZIGN_FAKE_HELLO_PROTOCOL_VERSION` overrides the advertised protocol
  * version, for compatibility-check tests.
@@ -248,6 +249,16 @@ async function main(argv: readonly string[]): Promise<number> {
       write(
         errorResponse(
           request.requestId,
+          request.kind,
+          'FUTURE_OUTCOME_UNKNOWN',
+          'the write result could not be established',
+        ),
+      );
+      return 0;
+    case 'unknown-valid-error-code-wrong-request-id':
+      write(
+        errorResponse(
+          'req-someone-else',
           request.kind,
           'FUTURE_OUTCOME_UNKNOWN',
           'the write result could not be established',

@@ -96,7 +96,7 @@ v0.1 while model-supplied `artifactRef` or `shortErrorCode` remains supported.
 | Human-readable Protocol error message | Operational control-plane diagnostic. Store and OS failures can include the configured state path or platform detail. It is not a model-safe field. |
 | DSH model-facing `HarnessError` | Stable code plus a fixed safe message for argument decoding, local Protocol validation, submit rejection, or unknown outcome. Raw argument keys, Protocol messages, and unknown detail are not forwarded; local Protocol errors are not retained as causes. |
 | Adapter log | Adapter-owned metadata under its documented policy; native IDs do not cross into the core |
-| Adapter/parent timing sink | Closed metadata-only timing values when explicitly configured. Sink failure is isolated from workflow outcomes; sink retention/access remain caller-owned. |
+| Adapter/parent timing sink | Closed metadata-only timing values when explicitly configured. `error_code` is restricted to an exact fixed allowlist; a well-formed but unrecognized peer code remains on the returned control-plane outcome and is omitted from timing. Sink failure is isolated from workflow outcomes; sink retention/access remain caller-owned. |
 | DSH child environment | `PATH` and explicitly configured client variables only; the parent harness environment is not inherited wholesale |
 
 Operational identity can itself be sensitive metadata. Log retention and sink
