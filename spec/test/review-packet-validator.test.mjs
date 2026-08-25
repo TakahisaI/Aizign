@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -190,10 +190,7 @@ function makeBatch() {
       base_ref: 'main',
       base_sha: baseSha,
       merge_base_sha: baseSha,
-      changed_files: [
-        '.github/ISSUE_TEMPLATE/proposal.yml',
-        'docs/development/change-workflow.md',
-      ],
+      changed_files: ['.github/ISSUE_TEMPLATE/proposal.yml', 'docs/development/change-workflow.md'],
     },
     checkpoint: {
       checkpoint_content: checkpointContent,
@@ -312,8 +309,7 @@ test('review batch validator rejects a digest-valid but structurally empty packe
         batch_context: {},
         batch_context_sha256:
           'sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a',
-        packet_sha256:
-          'sha256:60c7dd85a6e2625176952ab8321e532c087dac349a619261e1ab64b930d0bc21',
+        packet_sha256: 'sha256:60c7dd85a6e2625176952ab8321e532c087dac349a619261e1ab64b930d0bc21',
       })}\n`,
     );
     const result = run([file]);
