@@ -5,6 +5,7 @@
     "includes": [
       "packages/**",
       "adapters/**",
+      "benchmarks/**",
       "experiments/**",
       "spec/test/**",
       "*.json",

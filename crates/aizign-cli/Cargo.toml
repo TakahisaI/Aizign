@@ -17,6 +17,7 @@ aizign-core.workspace = true
 aizign-engine.workspace = true
 aizign-protocol.workspace = true
 aizign-store-jsonl.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 aizign-testkit.workspace = true

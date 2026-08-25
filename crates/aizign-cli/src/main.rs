@@ -13,6 +13,7 @@
 #![forbid(unsafe_code)]
 
 mod run;
+mod timing;
 
 use std::process::ExitCode;
 

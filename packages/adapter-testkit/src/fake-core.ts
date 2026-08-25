@@ -18,6 +18,7 @@
  * - `two-frames`        answer twice
  * - `trailing-garbage`  answer, then keep talking
  * - `handler-timeout`   report HANDLER_TIMEOUT without correlation ids
+ * - `event-conflict-error` report EVENT_CONFLICT as a correlated error
  *
  * `AIZIGN_FAKE_HELLO_PROTOCOL_VERSION` overrides the advertised protocol
  * version, for compatibility-check tests.
@@ -238,6 +239,9 @@ async function main(argv: readonly string[]): Promise<number> {
   switch (fault) {
     case 'handler-timeout':
       write(errorResponse(null, null, codes.HANDLER_TIMEOUT, 'processing exceeded its bound'));
+      return 0;
+    case 'event-conflict-error':
+      write(errorResponse(request.requestId, request.kind, 'EVENT_CONFLICT', 'reported conflict'));
       return 0;
     case 'wrong-request-id':
       write({ ...response, requestId: 'req-someone-else' });

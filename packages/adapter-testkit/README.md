@@ -90,3 +90,6 @@ fake coreは受け取ったframeを `<state>/fake-requests.jsonl` に残しま�
 provenanceまでは証明しません。adapter側は、実際のnative ID値がcaptured envelope
 のどこにも現れないことと、`requestId`がadapter-owned nonceであることを別途検査
 します。
+
+`ReferenceOneShotClient`は`CoreClientConfig.timingSink`がある場合だけparent timingを通知します。
+計測を無効にした既定動作は変わらず、sinkがthrowしてもcore-client scenarioのoutcomeは変わりません。

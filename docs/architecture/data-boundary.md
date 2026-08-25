@@ -92,8 +92,9 @@ v0.1 while model-supplied `artifactRef` remains supported.
 | Boundary | Allowed output |
 |---|---|
 | `aizign` stdout | Exactly one Protocol v1 response frame |
-| `aizign` stderr | Stage, stable identity, kind, disposition, and stable code; no raw content |
+| `aizign` stderr | Normal diagnostics: stage, stable identity, kind, disposition, and stable code. Opt-in `aizign_timing:` JSON: allowlisted operation kind, durations/counts, semantic outcome, stable code, and unknown reason without request/event ID, path, or raw content. |
 | Adapter log | Adapter-owned metadata under its documented policy; native IDs do not cross into the core |
+| Adapter/parent timing sink | Closed metadata-only timing values when explicitly configured. Sink failure is isolated from workflow outcomes; sink retention/access remain caller-owned. |
 | DSH child environment | `PATH` and explicitly configured client variables only; the parent harness environment is not inherited wholesale |
 
 Operational identity can itself be sensitive metadata. Log retention and sink

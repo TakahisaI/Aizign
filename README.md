@@ -79,6 +79,7 @@ cargo xtask check
 | Security assumptions and guarantees | [`docs/security/threat-model.md`](docs/security/threat-model.md) |
 | 設計判断の履歴 | [`docs/adr/`](docs/adr/) |
 | 人間向けcontribution policy | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
+| Runtime performance | [`benchmarks/performance/README.md`](benchmarks/performance/README.md)、review済みreportは[`docs/performance/`](docs/performance/README.md) |
 | package固有の契約 | 各package内の `README.md` |
 | 自動coding agent向けnavigation | 最寄りの `AGENTS.md` |
 | 作業状況 | GitHub Issue / PR |

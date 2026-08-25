@@ -8,8 +8,12 @@ import {
   CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
   type CoreClient,
   checkCompatibility,
+  emitBestEffort,
   type HelloInfo,
+  type ParentTimingMeasurement,
+  type ParentTimingSink,
   PROTOCOL_VERSION,
+  type TimingOutcome,
 } from '@aizign/protocol';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import { adapterCodes } from '../mapping/tool.ts';
@@ -25,16 +29,40 @@ export const RECONCILIATION_REQUIRED = {
   capabilities: [CAPABILITY_WORKFLOW_SIGNAL_RECONCILE],
 } as const;
 
+export interface PreflightOptions {
+  /** Optional metadata-only timing sink. Sink failures never fail preflight. */
+  readonly timingSink?: ParentTimingSink;
+}
+
 /** Resolves with the binary's `hello` info or throws a harness error. */
-export async function preflight(client: CoreClient): Promise<HelloInfo> {
+export async function preflight(
+  client: CoreClient,
+  options: PreflightOptions = {},
+): Promise<HelloInfo> {
+  const started = performance.now();
+  const finish = (
+    outcome: TimingOutcome,
+    error_code?: string,
+    unknown_reason?: ParentTimingMeasurement['unknown_reason'],
+  ) => {
+    emitBestEffort(options.timingSink, {
+      operation_kind: 'preflight',
+      preflight_ms: performance.now() - started,
+      outcome,
+      ...(error_code === undefined ? {} : { error_code }),
+      ...(unknown_reason === undefined ? {} : { unknown_reason }),
+    });
+  };
   const outcome = await client.hello('req-preflight');
   if (outcome.kind === 'unknown') {
+    finish('unknown', undefined, outcome.reason);
     throw new HarnessError(
       `aizign binary unreachable (${outcome.reason}): ${outcome.detail}`,
       adapterCodes.UNAVAILABLE,
     );
   }
   if (outcome.kind === 'error') {
+    finish('error', outcome.code);
     throw new HarnessError(
       `aizign hello failed: ${outcome.code}: ${outcome.message}`,
       adapterCodes.UNAVAILABLE,
@@ -42,7 +70,9 @@ export async function preflight(client: CoreClient): Promise<HelloInfo> {
   }
   const problem = checkCompatibility(outcome.info, REQUIRED);
   if (problem !== undefined) {
+    finish('rejected', adapterCodes.INCOMPATIBLE);
     throw new HarnessError(problem.detail, adapterCodes.INCOMPATIBLE);
   }
+  finish('ok');
   return outcome.info;
 }

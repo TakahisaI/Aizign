@@ -8,6 +8,7 @@ mod audit;
 mod cargo_build;
 mod conformance;
 mod npm_check;
+mod performance;
 mod quick;
 mod report;
 mod rust_check;
@@ -28,6 +29,8 @@ commands:
   conformance    validate the language-neutral fixtures under spec/conformance
   public-audit   dependency boundaries, forbidden imports, secrets and private paths,
                  closed package exports, entry documents, documentation links
+  performance-baseline [runner options]
+                 build release binary + TypeScript clients, then run manual/scheduled sweeps
   whitespace     git diff --check over the whole tree (trailing whitespace, missing final newline)
   help           print this message
 
@@ -50,6 +53,7 @@ fn main() -> ExitCode {
         Some("npm-check") => npm_check::run(&root),
         Some("conformance") => conformance::run(&root),
         Some("public-audit") => audit::run(&root),
+        Some("performance-baseline") => performance::run(&root, &args[1..]),
         Some("whitespace") => whitespace(&root),
         Some("help" | "--help" | "-h") | None => {
             print!("{USAGE}");

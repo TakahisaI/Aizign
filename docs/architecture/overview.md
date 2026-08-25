@@ -63,11 +63,11 @@ restart後の照合では、adapterが同じfull signalを`workflow.signal.recon
 |---|---|
 | `crates/aizign-core` | `identity`、`workflow`、pureな`recovery` context（full signalのaccepted / conflict / absent分類）。candidate lifecycle registry、external evidence provenance、repair causation、`execution` 以降は後続 |
 | `crates/aizign-protocol`、`spec/protocol/v1/` | Protocol v1: envelope、`hello`、signal submit / reconcile、closed decoder、schemaとexample |
-| `crates/aizign-engine` | `JournalReader` / `Journal` / `Clock` port、submit / reconcile use case |
+| `crates/aizign-engine` | `JournalReader` / `Journal` / `Clock` / best-effort stage observation port、submit / reconcile use case |
 | `crates/aizign-store-jsonl`、`spec/journal/v1/`、`spec/store/v1/` | JSONL journal: owner-only、shared / exclusive lock、writer-published committed prefix、bounded read-only cold read、closed record / metadata |
 | `crates/aizign-testkit` | `MemoryJournal`（fault injection）、`FixedClock`、`TempDir`、journal contract、signal helper |
 | `crates/aizign-cli` | `aizign hello`、`aizign handle --state <dir>`: one-shot process、watchdog、stderr log |
-| `xtask` | `cargo xtask check / conformance / public-audit` |
+| `xtask` | `cargo xtask check / conformance / public-audit / performance-baseline` |
 | `docs/`、`.github/` | governance、ADR、architecture、CI |
 | `spec/conformance/` | language-neutral fixture（件数はtreeが正。`cargo xtask conformance` が構造を検証し、Rust / TS testが全fixtureをdecoderへ通す） |
 | `packages/protocol` | `@aizign/protocol`: TypeScript codec（同じfixtureを通す）、`checkCompatibility`、submit / reconcileを含むreference `CoreClient` |

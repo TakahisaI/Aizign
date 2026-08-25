@@ -5,6 +5,8 @@ use core::fmt;
 use aizign_core::BoundedTimestamp;
 use aizign_core::workflow::WorkflowEvent;
 
+use crate::observation::EngineObserver;
+
 /// Upper bound on entries a single cold read may return. Exceeding it is an
 /// error, not a truncation: a journal that large needs a different store.
 pub const MAX_JOURNAL_ENTRIES: usize = 10_000;
@@ -98,6 +100,16 @@ pub trait JournalReader {
     /// Implementations must not initialize, write, synchronize, repair, or
     /// promote journal state while serving this operation.
     fn load_committed(&mut self) -> Result<Vec<JournalEntry>, JournalError>;
+
+    /// Loads the same snapshot while allowing a store implementation to
+    /// expose finer metadata-only stages. The default preserves existing
+    /// implementations without manufacturing store-specific observations.
+    fn load_committed_observed(
+        &mut self,
+        _observer: &mut dyn EngineObserver,
+    ) -> Result<Vec<JournalEntry>, JournalError> {
+        self.load_committed()
+    }
 }
 
 /// The append-capable control journal as the engine sees it.
@@ -113,6 +125,16 @@ pub trait Journal: JournalReader {
         event: &WorkflowEvent,
         at: BoundedTimestamp,
     ) -> Result<JournalEntry, JournalError>;
+
+    /// Appends with optional store-specific stage observation.
+    fn append_observed(
+        &mut self,
+        event: &WorkflowEvent,
+        at: BoundedTimestamp,
+        _observer: &mut dyn EngineObserver,
+    ) -> Result<JournalEntry, JournalError> {
+        self.append(event, at)
+    }
 }
 
 #[cfg(test)]
