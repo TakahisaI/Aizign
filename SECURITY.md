@@ -66,8 +66,12 @@ In particular:
 - Fork pull requests do not receive secrets.
 - Normal CI does not invoke an external model, live harness, browser, or
   provider login.
-- `cargo xtask public-audit` scans tracked repository files for known secret and
-  private-path patterns, rejects tracked runtime directories, and validates
-  package manifests/dependency boundaries. Separate `cargo package --list` and
-  `npm pack --dry-run` gates inspect intended package file lists; package
-  artifact contents and generated/untracked files are not secret-scanned.
+- `cargo xtask public-audit` checks every tracked path against forbidden
+  names/components. Its fixed known-secret/private-path content patterns scan
+  only tracked UTF-8 text without NUL bytes and exempt the rule-definition
+  source itself. Binary, NUL-containing, and non-UTF-8 contents are skipped.
+- The manifest audit validates its documented package metadata rules.
+  `cargo package --list` and `npm pack --dry-run` prove that the package
+  managers can enumerate a packable file set; the resulting lists are not
+  evaluated against a repository safety policy, and package artifact contents
+  and generated/untracked files are not secret-scanned.

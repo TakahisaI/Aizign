@@ -94,7 +94,7 @@ v0.1 while model-supplied `artifactRef` remains supported.
 | `aizign` stdout | Exactly one Protocol v1 response frame |
 | `aizign` stderr | Normal diagnostics: stage, stable identity, kind, disposition, and stable code. Opt-in `aizign_timing:` JSON: allowlisted operation kind, durations/counts, semantic outcome, stable code, and unknown reason without request/event ID, path, or raw content. |
 | Human-readable Protocol error message | Operational control-plane diagnostic. Store and OS failures can include the configured state path or platform detail. It is not a model-safe field. |
-| DSH model-facing `HarnessError` | Stable code plus a fixed safe message for submit rejection or unknown outcome. The raw Protocol message/unknown detail is not forwarded. |
+| DSH model-facing `HarnessError` | Stable code plus a fixed safe message for local input rejection, submit rejection, or unknown outcome. The raw Protocol message/unknown detail is not forwarded and local Protocol errors are not retained as causes. |
 | Adapter log | Adapter-owned metadata under its documented policy; native IDs do not cross into the core |
 | Adapter/parent timing sink | Closed metadata-only timing values when explicitly configured. Sink failure is isolated from workflow outcomes; sink retention/access remain caller-owned. |
 | DSH child environment | `PATH` and explicitly configured client variables only; the parent harness environment is not inherited wholesale |
@@ -122,11 +122,15 @@ access remain operator responsibilities.
   permission, path, locking, corruption, and read-only behavior.
 - Adapter-native tests verify model-visible exclusion and compare actual native
   identifiers against the complete emitted envelope.
-- `cargo xtask public-audit` scans tracked repository files for known secret and
-  private-path patterns, rejects tracked state directories, and validates
-  package manifests/dependency rules. Separate package gates enumerate intended
-  files, but package contents and generated/untracked files are not
-  secret-scanned. No gate scans runtime memory, arbitrary logs, opaque-field
-  semantics, or all history.
+- `cargo xtask public-audit` checks all tracked paths for forbidden
+  names/components. Its fixed known-secret/private-path patterns content-scan
+  only tracked UTF-8 text without NUL bytes, excluding the rule-definition
+  source. Binary, NUL-containing, non-UTF-8, generated, and untracked contents
+  are not scanned.
+- Package gates validate documented manifest rules and require
+  `cargo package --list` / `npm pack --dry-run` enumeration to succeed. They do
+  not evaluate each enumerated file against a repository safety policy or
+  secret-scan package artifacts. No gate scans runtime memory, arbitrary logs,
+  opaque-field semantics, or all history.
 - Live smoke evidence is separate from normal CI and proves only the tested
   integration run.

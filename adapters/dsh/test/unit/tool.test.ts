@@ -146,6 +146,25 @@ test('core rules are applied before any process is spawned', () => {
       return error instanceof HarnessError && error.code === 'INVALID_SIGNAL';
     },
   );
+
+  const privateMarker = 'synthetic-private-state/operator/workflow.jsonl';
+  assert.throws(
+    () =>
+      toPayload(binding, {
+        kind: 'review_findings',
+        findingCount: 1,
+        artifactRef: privateMarker,
+      }),
+    (error: unknown) => {
+      return (
+        error instanceof HarnessError &&
+        error.code === 'INVALID_SIGNAL' &&
+        error.message === 'Aizign rejected invalid workflow signal input' &&
+        !('cause' in error) &&
+        !JSON.stringify(error).includes(privateMarker)
+      );
+    },
+  );
 });
 
 test('request ids are adapter-owned nonces, never derived from the harness call id', () => {

@@ -36,6 +36,7 @@ export const adapterCodes = {
 
 const REJECTED_TOOL_MESSAGE = 'Aizign rejected the workflow signal';
 const UNKNOWN_TOOL_MESSAGE = 'Aizign could not determine the workflow signal outcome';
+const INVALID_TOOL_INPUT_MESSAGE = 'Aizign rejected invalid workflow signal input';
 
 /** Kinds a role may submit; `blocked` is always allowed. */
 export function kindsForRole(role: Role): readonly SignalKind[] {
@@ -124,8 +125,12 @@ export function toPayload(binding: SignalBinding, args: SignalArgs): WorkflowSig
   try {
     return decodeWorkflowSignalSubmit(encodeWorkflowSignalSubmit(payload));
   } catch (error) {
-    if (error instanceof ProtocolError)
-      throw new HarnessError(error.message, error.code, { cause: error });
+    if (error instanceof ProtocolError) {
+      // Local protocol diagnostics follow the same model-facing rule as peer
+      // diagnostics. Do not retain a cause: DSH's diagnostic renderer follows
+      // cause chains and would otherwise recover the original message.
+      throw new HarnessError(INVALID_TOOL_INPUT_MESSAGE, error.code);
+    }
     throw error;
   }
 }

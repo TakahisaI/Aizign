@@ -26,9 +26,11 @@ from a malicious adapter. The ordinary model can also supply `artifactRef` and
 is not scanned for credentials, prompts, or encoded content. End-to-end
 semantic exclusion is therefore not guaranteed. Protocol diagnostic messages
 are control-plane data and may contain state-path or operating-system detail;
-the tool mapping retains the stable code but replaces rejected/unknown detail
-with fixed model-safe messages. DSH persistence remains auxiliary evidence
-with the limits below. See the
+the tool mapping retains the stable code but replaces local validation,
+rejected, and unknown detail with fixed model-safe messages. It deliberately
+does not attach the original local `ProtocolError` as a cause because DSH's
+diagnostic renderer follows cause chains. DSH persistence remains auxiliary
+evidence with the limits below. See the
 [v0.1 threat model](../../docs/security/threat-model.md).
 
 ## Layout
