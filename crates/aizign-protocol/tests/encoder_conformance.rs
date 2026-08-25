@@ -21,8 +21,10 @@ use aizign_protocol::{
     ReconciliationDisposition, ReconciliationResult, Request, RequestKind, Response, ResponseBody,
     SignalResult, codes, encode_request, encode_response,
 };
+use serde_json::json;
 
 const SHA256_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const SHA256_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 fn examples_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spec/protocol/v1/examples")
@@ -95,7 +97,11 @@ fn assert_frame(name: &str, frame: &str, bound: usize) {
 }
 
 fn digest() -> Digest {
-    Digest::new(DigestAlgorithm::Sha256, SHA256_A).expect("valid example digest")
+    digest_from(SHA256_A)
+}
+
+fn digest_from(hex: &str) -> Digest {
+    Digest::new(DigestAlgorithm::Sha256, hex).expect("valid example digest")
 }
 
 fn expected_assignment() -> ExpectedAssignment {
@@ -165,6 +171,44 @@ fn review_findings(event_id: &str) -> WorkflowSignal {
         short_error_code: None,
     })
     .expect("valid example review signal")
+}
+
+fn review_passed(event_id: &str) -> WorkflowSignal {
+    let expected = review_expected_assignment();
+    WorkflowSignal::validate(SignalParts {
+        event_id: EventId::new(event_id).expect("valid event id"),
+        workflow_id: expected.workflow_id,
+        assignment_id: expected.assignment_id,
+        attempt_id: expected.attempt_id,
+        role: expected.role,
+        artifact_revision: expected.artifact_revision,
+        candidate_digest: expected.candidate_digest,
+        kind: SignalKind::ReviewPassed,
+        finding_count: Some(0),
+        artifact_ref: None,
+        short_error_code: None,
+    })
+    .expect("valid review-passed signal")
+}
+
+fn repair_submitted(event_id: &str) -> WorkflowSignal {
+    let expected = expected_assignment();
+    WorkflowSignal::validate(SignalParts {
+        event_id: EventId::new(event_id).expect("valid event id"),
+        workflow_id: expected.workflow_id,
+        assignment_id: expected.assignment_id,
+        attempt_id: expected.attempt_id,
+        role: expected.role,
+        artifact_revision: expected.artifact_revision,
+        candidate_digest: expected.candidate_digest,
+        kind: SignalKind::RepairSubmitted,
+        finding_count: Some(1),
+        artifact_ref: Some(
+            ArtifactRef::new("repair:0123456789abcdef").expect("valid example artifact reference"),
+        ),
+        short_error_code: None,
+    })
+    .expect("valid repair-submitted signal")
 }
 
 fn submit_request(
@@ -239,6 +283,127 @@ fn request_encoders_match_every_protocol_example_without_decoding() {
         let frame =
             encode_request(&request).unwrap_or_else(|error| panic!("{name}: encode: {error}"));
         assert_frame(name, &frame, MAX_REQUEST_BYTES);
+    }
+}
+
+#[test]
+fn submit_request_encoder_preserves_expected_and_signal_field_provenance() {
+    let expected = ExpectedAssignment {
+        workflow_id: WorkflowId::new("wf-expected").expect("valid workflow id"),
+        assignment_id: AssignmentId::new("as-expected").expect("valid assignment id"),
+        attempt_id: AttemptId::new("attempt-expected").expect("valid attempt id"),
+        role: Role::Review,
+        artifact_revision: ArtifactRevision::new("rev-expected").expect("valid artifact revision"),
+        candidate_digest: digest_from(SHA256_B),
+    };
+    let signal = WorkflowSignal::validate(SignalParts {
+        event_id: EventId::new("evt-provenance").expect("valid event id"),
+        workflow_id: WorkflowId::new("wf-signal").expect("valid workflow id"),
+        assignment_id: AssignmentId::new("as-signal").expect("valid assignment id"),
+        attempt_id: AttemptId::new("attempt-signal").expect("valid attempt id"),
+        role: Role::Implementation,
+        artifact_revision: ArtifactRevision::new("rev-signal").expect("valid artifact revision"),
+        candidate_digest: digest_from(SHA256_A),
+        kind: SignalKind::ImplementationReady,
+        finding_count: None,
+        artifact_ref: None,
+        short_error_code: None,
+    })
+    .expect("valid provenance signal");
+    let request = submit_request("req-provenance", expected, signal);
+    let frame = encode_request(&request).expect("provenance request encodes");
+    let encoded: serde_json::Value = serde_json::from_str(&frame).expect("encoded JSON");
+
+    assert_eq!(
+        encoded["payload"]["expected"],
+        json!({
+            "workflowId": "wf-expected",
+            "assignmentId": "as-expected",
+            "attemptId": "attempt-expected",
+            "role": "review",
+            "artifactRevision": "rev-expected",
+            "candidateDigest": { "algorithm": "sha256", "hex": SHA256_B },
+        })
+    );
+    assert_eq!(
+        encoded["payload"]["signal"],
+        json!({
+            "eventId": "evt-provenance",
+            "workflowId": "wf-signal",
+            "assignmentId": "as-signal",
+            "attemptId": "attempt-signal",
+            "role": "implementation",
+            "artifactRevision": "rev-signal",
+            "candidateDigest": { "algorithm": "sha256", "hex": SHA256_A },
+            "kind": "implementation_ready",
+        })
+    );
+}
+
+#[test]
+fn request_encoder_covers_every_workflow_signal_kind_and_its_optional_fields() {
+    let cases = [
+        (implementation_ready("evt-kind-01"), None, None, None),
+        (
+            review_findings("evt-kind-02"),
+            Some(2),
+            Some("review:0123456789abcdef"),
+            None,
+        ),
+        (review_passed("evt-kind-03"), Some(0), None, None),
+        (
+            repair_submitted("evt-kind-04"),
+            Some(1),
+            Some("repair:0123456789abcdef"),
+            None,
+        ),
+        (blocked("evt-kind-05"), None, None, Some("TOOL_UNAVAILABLE")),
+    ];
+
+    for (signal, finding_count, artifact_ref, short_error_code) in cases {
+        let kind = match signal.kind() {
+            SignalKind::ImplementationReady => "implementation_ready",
+            SignalKind::ReviewFindings => "review_findings",
+            SignalKind::ReviewPassed => "review_passed",
+            SignalKind::RepairSubmitted => "repair_submitted",
+            SignalKind::Blocked => "blocked",
+        };
+        let request = Request {
+            request_id: format!("req-{kind}"),
+            kind: RequestKind::ReconcileWorkflowSignal(Box::new(signal)),
+        };
+        let frame = encode_request(&request).expect("signal kind request encodes");
+        let encoded: serde_json::Value = serde_json::from_str(&frame).expect("encoded JSON");
+        let wire_signal = encoded["payload"]["signal"]
+            .as_object()
+            .expect("signal is an object");
+
+        assert_eq!(wire_signal["kind"], json!(kind));
+        assert_eq!(
+            wire_signal
+                .get("findingCount")
+                .and_then(serde_json::Value::as_u64),
+            finding_count
+        );
+        assert_eq!(
+            wire_signal
+                .get("artifactRef")
+                .and_then(serde_json::Value::as_str),
+            artifact_ref
+        );
+        assert_eq!(
+            wire_signal
+                .get("shortErrorCode")
+                .and_then(serde_json::Value::as_str),
+            short_error_code
+        );
+        assert_eq!(
+            wire_signal.len(),
+            8 + usize::from(finding_count.is_some())
+                + usize::from(artifact_ref.is_some())
+                + usize::from(short_error_code.is_some()),
+            "{kind}: unexpected signal fields"
+        );
     }
 }
 
@@ -377,5 +542,38 @@ fn response_encoders_match_every_protocol_example_without_decoding() {
         let frame =
             encode_response(&response).unwrap_or_else(|error| panic!("{name}: encode: {error}"));
         assert_frame(name, &frame, MAX_FRAME_BYTES);
+    }
+}
+
+#[test]
+fn response_encoder_preserves_event_id_provenance() {
+    let cases = [
+        response(
+            Some("req-submit-provenance"),
+            Some("workflow.signal.submit"),
+            ResponseBody::WorkflowSignal(SignalResult {
+                disposition: Disposition::Accepted,
+                event_id: EventId::new("evt-submit-provenance").expect("valid event id"),
+            }),
+        ),
+        response(
+            Some("req-reconcile-provenance"),
+            Some("workflow.signal.reconcile"),
+            ResponseBody::WorkflowSignalReconciliation(ReconciliationResult {
+                disposition: ReconciliationDisposition::Conflict,
+                event_id: EventId::new("evt-reconcile-provenance").expect("valid event id"),
+            }),
+        ),
+    ];
+
+    for response in cases {
+        let expected_event_id = match &response.body {
+            ResponseBody::WorkflowSignal(result) => result.event_id.to_string(),
+            ResponseBody::WorkflowSignalReconciliation(result) => result.event_id.to_string(),
+            _ => unreachable!("provenance cases carry event ids"),
+        };
+        let frame = encode_response(&response).expect("provenance response encodes");
+        let encoded: serde_json::Value = serde_json::from_str(&frame).expect("encoded JSON");
+        assert_eq!(encoded["payload"]["eventId"], json!(expected_event_id));
     }
 }

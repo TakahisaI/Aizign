@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { findInvalidUnicode } from './duplicate-member.ts';
 import {
   encodeRequest,
   encodeResponse,
@@ -30,6 +31,7 @@ import type { ExpectedAssignment, WorkflowSignal } from './workflow-signal.ts';
 const root = join(import.meta.dirname, '../../../spec/protocol/v1/examples');
 const encoder = new TextEncoder();
 const SHA256_A = 'a'.repeat(64);
+const SHA256_B = 'b'.repeat(64);
 
 function example(name: string): unknown {
   return JSON.parse(readFileSync(join(root, name), 'utf8'));
@@ -65,6 +67,7 @@ function assertFrame(name: string, frame: string, bound: number): void {
   assert.equal(frame.includes('\n'), false, `${name}: frame contains a raw newline`);
   assert.equal(frame.includes('\r'), false, `${name}: frame contains a raw carriage return`);
   assert.equal(frame.trim(), frame, `${name}: frame contains surrounding whitespace`);
+  assert.equal(findInvalidUnicode(frame), null, `${name}: frame contains ill-formed Unicode`);
 
   const encoded: unknown = JSON.parse(frame);
   assert.ok(typeof encoded === 'object' && encoded !== null && !Array.isArray(encoded), name);
@@ -129,6 +132,29 @@ function reviewFindings(eventId: string): WorkflowSignal {
   };
 }
 
+function reviewPassed(eventId: string): WorkflowSignal {
+  return {
+    eventId,
+    workflowId: 'wf-example-01',
+    assignmentId: 'as-review-01',
+    attemptId: 'attempt-fixture',
+    role: 'review',
+    artifactRevision: 'rev-c0ffee',
+    candidateDigest: { algorithm: 'sha256', hex: SHA256_A },
+    kind: 'review_passed',
+    findingCount: 0,
+  };
+}
+
+function repairSubmitted(eventId: string): WorkflowSignal {
+  return {
+    ...implementationReady(eventId),
+    kind: 'repair_submitted',
+    findingCount: 1,
+    artifactRef: 'repair:0123456789abcdef',
+  };
+}
+
 function submitRequest(
   requestId: string,
   expected: ExpectedAssignment,
@@ -173,6 +199,90 @@ test('request encoders match every Protocol v1 example without decoding', () => 
 
   for (const [name, request] of cases) {
     assertFrame(name, encodeRequest(request), MAX_REQUEST_BYTES);
+  }
+});
+
+test('submit request encoder preserves expected and signal field provenance', () => {
+  const expected: ExpectedAssignment = {
+    workflowId: 'wf-expected',
+    assignmentId: 'as-expected',
+    attemptId: 'attempt-expected',
+    role: 'review',
+    artifactRevision: 'rev-expected',
+    candidateDigest: { algorithm: 'sha256', hex: SHA256_B },
+  };
+  const signal: WorkflowSignal = {
+    eventId: 'evt-provenance',
+    workflowId: 'wf-signal',
+    assignmentId: 'as-signal',
+    attemptId: 'attempt-signal',
+    role: 'implementation',
+    artifactRevision: 'rev-signal',
+    candidateDigest: { algorithm: 'sha256', hex: SHA256_A },
+    kind: 'implementation_ready',
+  };
+  const frame = encodeRequest(submitRequest('req-provenance', expected, signal));
+  const encoded = JSON.parse(frame) as { payload: unknown };
+
+  assert.deepEqual(encoded.payload, { expected, signal });
+});
+
+test('request encoder covers every workflow signal kind and its optional fields', () => {
+  const cases = [
+    {
+      signal: implementationReady('evt-kind-01'),
+      findingCount: undefined,
+      artifactRef: undefined,
+      shortErrorCode: undefined,
+    },
+    {
+      signal: reviewFindings('evt-kind-02'),
+      findingCount: 2,
+      artifactRef: 'review:0123456789abcdef',
+      shortErrorCode: undefined,
+    },
+    {
+      signal: reviewPassed('evt-kind-03'),
+      findingCount: 0,
+      artifactRef: undefined,
+      shortErrorCode: undefined,
+    },
+    {
+      signal: repairSubmitted('evt-kind-04'),
+      findingCount: 1,
+      artifactRef: 'repair:0123456789abcdef',
+      shortErrorCode: undefined,
+    },
+    {
+      signal: blocked('evt-kind-05'),
+      findingCount: undefined,
+      artifactRef: undefined,
+      shortErrorCode: 'TOOL_UNAVAILABLE',
+    },
+  ] as const;
+
+  for (const { signal, findingCount, artifactRef, shortErrorCode } of cases) {
+    const frame = encodeRequest({
+      requestId: `req-${signal.kind}`,
+      kind: 'workflow.signal.reconcile',
+      payload: { signal },
+    });
+    const encoded = JSON.parse(frame) as {
+      payload: { signal: Record<string, unknown> };
+    };
+    const wireSignal = encoded.payload.signal;
+    assert.equal(wireSignal.kind, signal.kind);
+    assert.equal(wireSignal.findingCount, findingCount);
+    assert.equal(wireSignal.artifactRef, artifactRef);
+    assert.equal(wireSignal.shortErrorCode, shortErrorCode);
+    assert.equal(
+      Object.keys(wireSignal).length,
+      8 +
+        Number(findingCount !== undefined) +
+        Number(artifactRef !== undefined) +
+        Number(shortErrorCode !== undefined),
+      `${signal.kind}: unexpected signal fields`,
+    );
   }
 });
 
@@ -252,5 +362,31 @@ test('response encoders match every Protocol v1 example without decoding', () =>
 
   for (const [name, value] of cases) {
     assertFrame(name, encodeResponse(value), MAX_FRAME_BYTES);
+  }
+});
+
+test('response encoder preserves event id provenance', () => {
+  const cases = [
+    [
+      response('req-submit-provenance', 'workflow.signal.submit', {
+        type: 'workflow.signal',
+        result: { disposition: 'accepted', eventId: 'evt-submit-provenance' },
+      }),
+      'evt-submit-provenance',
+    ],
+    [
+      response('req-reconcile-provenance', 'workflow.signal.reconcile', {
+        type: 'workflow.signal.reconciliation',
+        result: { disposition: 'conflict', eventId: 'evt-reconcile-provenance' },
+      }),
+      'evt-reconcile-provenance',
+    ],
+  ] as const satisfies ReadonlyArray<readonly [Response, string]>;
+
+  for (const [value, expectedEventId] of cases) {
+    const encoded = JSON.parse(encodeResponse(value)) as {
+      payload: { eventId: unknown };
+    };
+    assert.equal(encoded.payload.eventId, expectedEventId);
   }
 });

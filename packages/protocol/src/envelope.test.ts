@@ -58,6 +58,32 @@ test('the response encoder never emits an oversized frame', () => {
   );
 });
 
+test('encoders reject ill-formed Unicode before returning a frame', () => {
+  const isInvalidEnvelope = (error: unknown) =>
+    error instanceof ProtocolError &&
+    error.code === codes.INVALID_ENVELOPE &&
+    error.message.includes('well-formed Unicode');
+
+  assert.throws(
+    () => encodeRequest({ requestId: '\ud800', kind: 'hello' }),
+    isInvalidEnvelope,
+    'request encoder returned a frame containing a lone surrogate',
+  );
+  assert.throws(
+    () =>
+      encodeResponse({
+        requestId: null,
+        kind: null,
+        body: {
+          type: 'error',
+          error: new ProtocolError(codes.INTERNAL, '\ud800'),
+        },
+      }),
+    isInvalidEnvelope,
+    'response encoder returned a frame containing a lone surrogate',
+  );
+});
+
 test('extractFrame accepts exactly one newline-terminated frame plus whitespace', async () => {
   const { extractFrame } = await import('./envelope.ts');
   assert.deepEqual(extractFrame('{"a":1}\n'), { kind: 'frame', frame: '{"a":1}' });
