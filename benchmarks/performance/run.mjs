@@ -1515,12 +1515,22 @@ function environmentMetadata(tempRoot) {
   };
 }
 
-function verifyReleaseBinary(binary, protocol) {
+export function verifyReleaseBinary(binary, protocol, timeoutMs = OPERATION_TIMEOUT_MS) {
   const hello = spawnSync(binary, ['hello'], {
     encoding: 'utf8',
     env: { PATH: process.env.PATH ?? '' },
+    timeout: timeoutMs,
+    killSignal: 'SIGKILL',
   });
-  if (hello.status !== 0) throw new Error(`release binary hello failed: ${hello.stderr.trim()}`);
+  if (hello.error?.code === 'ETIMEDOUT') {
+    throw runError('release_binary_hello_timeout', 'release binary hello timed out');
+  }
+  if (hello.error !== undefined) {
+    throw runError('release_binary_spawn_failed', 'release binary hello could not be started');
+  }
+  if (hello.status !== 0) {
+    throw runError('release_binary_hello_failed', 'release binary hello failed');
+  }
   const extraction = protocol.extractFrame(hello.stdout);
   let response;
   if (extraction.kind === 'frame') {
@@ -1530,14 +1540,17 @@ function verifyReleaseBinary(binary, protocol) {
       response = undefined;
     }
   }
-  const capabilities =
-    response?.body.type === 'hello' ? response.body.info.capabilities : undefined;
+  if (response?.body.type !== 'hello') {
+    throw runError('release_binary_hello_failed', 'release binary hello was not decodable');
+  }
+  const capabilities = response.body.info.capabilities;
   if (
     !Array.isArray(capabilities) ||
     !capabilities.includes('workflow.signal.submit') ||
     !capabilities.includes('workflow.signal.reconcile')
   ) {
-    throw new Error(
+    throw runError(
+      'release_binary_capability_mismatch',
       'the baseline requires the verified x86_64-unknown-linux-gnu store capabilities',
     );
   }
@@ -1888,20 +1901,26 @@ export function writeSmokeFailure(config, tempRoot, samples, current, error) {
   writeFileSync(join(config.outputDir, 'summary.md'), renderFailureSummary(status));
 }
 
-export async function main(argv = process.argv.slice(2)) {
+export async function main(
+  argv = process.argv.slice(2),
+  { releaseBinaryTimeoutMs = OPERATION_TIMEOUT_MS } = {},
+) {
   const config = parseArgs(argv);
   if (config.help) {
     process.stdout.write(usage());
     return;
   }
-  const dependencies = await loadDependencies();
-  verifyReleaseBinary(config.binary, dependencies.protocol);
   const tempRoot = mkdtempSync(join(tmpdir(), 'aizign-performance-'));
   const samples = [];
-  const context = createContext(config, dependencies, tempRoot);
   const isSmoke = config.profile === 'pr-smoke';
   let resultWritten = false;
+  let current = { phase: 'setup' };
+  let context;
   try {
+    const dependencies = await loadDependencies();
+    current = { phase: 'release-binary-verification', case_name: 'hello' };
+    verifyReleaseBinary(config.binary, dependencies.protocol, releaseBinaryTimeoutMs);
+    context = createContext(config, dependencies, tempRoot);
     if (config.sweeps.includes('journal-scale')) {
       await runMatrixSweep(context, samples, 'journal-scale', JOURNAL_SCALE_CASES, ['rust_direct']);
     }
@@ -1960,7 +1979,7 @@ export async function main(argv = process.argv.slice(2)) {
     }
   } catch (error) {
     if (isSmoke && !resultWritten) {
-      writeSmokeFailure(config, tempRoot, samples, context.current, error);
+      writeSmokeFailure(config, tempRoot, samples, context?.current ?? current, error);
     }
     throw error;
   } finally {

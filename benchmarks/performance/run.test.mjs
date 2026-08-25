@@ -60,6 +60,7 @@ import {
   executeConcurrencyBatch,
   executeScenario,
   MAX_BENCHMARK_STDERR_BYTES,
+  main,
   parseArgs,
   renderStageAttribution,
   renderSummary,
@@ -534,6 +535,93 @@ process.stdin.on('end', () => {
     assert.equal(status.failure.error_kind, 'timing_decode_failed');
     assert.doesNotMatch(statusText, /aizign_timing|malformed-timing-core|private/);
     assert.match(readFileSync(join(outputDir, 'summary.md'), 'utf8'), /No performance PASS/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('release binary hello timeout is bounded and writes a safe setup failure manifest', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aizign-release-timeout-'));
+  const outputDir = join(root, 'report');
+  try {
+    const fakeBinary = join(root, 'hanging-core.cjs');
+    writeFileSync(fakeBinary, '#!/usr/bin/env node\nsetInterval(() => undefined, 1_000);\n', {
+      mode: 0o700,
+    });
+    chmodSync(fakeBinary, 0o700);
+    const started = Date.now();
+    await assert.rejects(
+      main(
+        [
+          '--binary',
+          fakeBinary,
+          '--profile',
+          'pr-smoke',
+          '--output-dir',
+          outputDir,
+          '--sweeps',
+          'transport,concurrency,scenarios',
+        ],
+        { releaseBinaryTimeoutMs: 50 },
+      ),
+      (error) => error.errorKind === 'release_binary_hello_timeout',
+    );
+    assert.ok(Date.now() - started < 2_000);
+    const statusText = readFileSync(join(outputDir, 'status.json'), 'utf8');
+    const status = JSON.parse(statusText);
+    assert.equal(status.failure.phase, 'release-binary-verification');
+    assert.equal(status.failure.case_name, 'hello');
+    assert.equal(status.failure.error_kind, 'release_binary_hello_timeout');
+    assert.doesNotMatch(statusText, /hanging-core|aizign-release-timeout/);
+    assert.match(readFileSync(join(outputDir, 'summary.md'), 'utf8'), /No performance PASS/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('release binary capability mismatch uses the same safe failure manifest path', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aizign-release-capability-'));
+  const outputDir = join(root, 'report');
+  try {
+    const fakeBinary = join(root, 'incomplete-core.cjs');
+    writeFileSync(
+      fakeBinary,
+      `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({
+  protocol: 'aizign',
+  version: 1,
+  requestId: 'req-hello-01',
+  kind: 'hello',
+  ok: true,
+  payload: {
+    protocolVersion: 1,
+    journalSchemaVersion: 1,
+    capabilities: ['workflow.signal.submit'],
+    package: { name: 'aizign', version: '0.1.0' },
+  },
+}) + '\\n');
+`,
+      { mode: 0o700 },
+    );
+    chmodSync(fakeBinary, 0o700);
+    await assert.rejects(
+      main([
+        '--binary',
+        fakeBinary,
+        '--profile',
+        'pr-smoke',
+        '--output-dir',
+        outputDir,
+        '--sweeps',
+        'transport,concurrency,scenarios',
+      ]),
+      (error) => error.errorKind === 'release_binary_capability_mismatch',
+    );
+    const statusText = readFileSync(join(outputDir, 'status.json'), 'utf8');
+    const status = JSON.parse(statusText);
+    assert.equal(status.failure.phase, 'release-binary-verification');
+    assert.equal(status.failure.error_kind, 'release_binary_capability_mismatch');
+    assert.doesNotMatch(statusText, /incomplete-core|aizign-release-capability/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
