@@ -1,23 +1,21 @@
 # Performance reports
 
-このdirectoryは、review済みのruntime performance reportを保存します。
-machine-readableな生sampleは大きくなるため、scheduledまたはmanual workflowのartifactを正本とし、ここには環境、設定、代表値、解釈を残します。
+This directory stores reviewed interpretations of runtime performance observations. Machine-readable raw samples remain in scheduled or manual workflow artifacts; reports here record the environment, configuration, representative values, and interpretation.
 
-初回の開発観測は[2026-08-24-initial-baseline.md](2026-08-24-initial-baseline.md)です。
-この観測はrunner v2の履歴であり、reviewで無効と判定したparent timing、concurrency、DSH、lost-ACKの数値を現行baselineへ流用しません。
-runner v3の正本は、merge後に固定`ubuntu-24.04` workflowを手動実行して得るartifactです。
-Issue #57は、そのnative artifactの`result.json`と`summary.md`をレビューしてから閉じます。
-runnerの契約と再実行手順は[benchmarks/performance/README.md](../../benchmarks/performance/README.md)を参照してください。
+The [initial development observation](2026-08-24-initial-baseline.md) is runner v2 history. Its parent timing, concurrency, DSH, and lost-ACK values are not compatible with the corrected runner v3 baseline.
 
-reportを追加するときは、次を必ず記録します。
+The [initial performance budgets and PR smoke policy](2026-08-25-performance-budgets.md) reference three fixed `ubuntu-24.04` runner v3 artifacts. That report records the provisional gross-regression ceilings, canonical scenario operation counts, informational period, required-gate promotion criteria, and optimization triggers introduced by Issue #58.
 
-- 対象commitとdirty treeの有無
-- OS、architecture、CPU、filesystem、Rust、Node、build profile
-- warmup数、sample数、percentile方式
-- core watchdogとの比較とheadroom
-- `result.json`と`summary.md`を取得したworkflow run
-- 数値から読める傾向と、環境差やsample数による解釈の限界
-- budget候補を変更する場合は、その根拠となる複数run
+See the [performance runner documentation](../../benchmarks/performance/README.md) for measurement contracts and reproduction commands.
 
-単一runの値をそのままCI thresholdにしません。
-budgetを導入する変更は、安定したnative runnerで複数回採取し、noise allowanceとregression時の運用を別Issueで合意してから行います。
+Every new report must record:
+
+- commit and dirty-tree status;
+- OS, architecture, CPU, filesystem, Rust, Node, and build profile;
+- warmup count, sample count, and percentile method;
+- core watchdog comparison and headroom;
+- workflow runs containing `result.json` and `summary.md`;
+- observed trends and interpretation limits caused by environment or sample count;
+- multiple comparable runs when proposing a budget change.
+
+Do not turn one run into a fine-grained CI threshold. Budget changes require comparable observations, explicit noise allowance, and documented regression triage. GitHub-hosted runs may support generous gross-regression ceilings but are not a stable microbenchmark environment.
