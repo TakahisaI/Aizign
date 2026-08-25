@@ -6,37 +6,62 @@ This file is the required fixed-context interface delegated by
 [`change-workflow.md`](change-workflow.md) for Boundary and Milestone reviews.
 It defines workflow evidence, not product or runtime authority.
 
-A review packet prevents each reviewer from independently reconstructing
-mutable Issue, pull-request, CI, milestone, or release context. It does not
-prove that a claim is correct. Breakers still inspect the exact source and a
-separate Adjudicator still verifies their findings.
+A review packet prevents reviewers from independently reconstructing mutable
+Issue, pull-request, CI, milestone, or release context. It does not prove that a
+claim is correct. Breakers still inspect exact source and a separate
+Adjudicator still verifies their findings.
+
+The complete batch is validated with:
+
+```sh
+node scripts/validate-review-batch.mjs <packet-1.json> <packet-2.json> ...
+```
+
+Digest agreement alone is not packet validity. The validator checks the closed
+interface, nested content digests, cross-field consistency, shared context,
+coverage, and perspective uniqueness before a review begins.
 
 ## Batch model
 
 A targeted review has:
 
 - one frozen shared `batch_context`;
-- one coverage map for the declared claims and ranges;
-- one packet per perspective; and
-- one fresh Breaker session per packet.
+- structured checkpoint claims, ranges, evidence requirements, and review
+  assignments;
+- one packet file per perspective; and
+- one fresh Breaker session per validated packet.
 
 All packets in a batch contain byte-equivalent canonical `batch_context` data
 and the same `batch_context_sha256`. Only `packet_id`, `packet_sha256`, and the
 single `assignment` differ.
 
-The packet is frozen when the first Breaker session begins.
+The batch is frozen after all packet files pass the batch validator and before
+the first Breaker session begins.
 
 ## Required binding
 
-### Repository and workflow
+### Controlling authorities
 
-Record:
+Record each controlling authority with:
 
-- repository identity;
-- `GOVERNANCE.md` path;
-- `CONTRIBUTING.md` path;
-- workflow and review-packet paths; and
-- exact workflow revision.
+- stable authority ID;
+- repository path;
+- exact revision;
+- relevant section; and
+- purpose.
+
+For the initial workflow bootstrap, controlling governance and contribution
+authorities are read from the base SHA. Candidate workflow files are review
+evidence, not controlling authority.
+
+### Workflow mode
+
+Record either:
+
+- `merged`: the last merged workflow and review-packet paths at one exact
+  revision; or
+- `bootstrap`: no candidate workflow is used as authority, and the workflow
+  revision equals the target base SHA.
 
 ### Target and comparison base
 
@@ -46,11 +71,12 @@ Record:
 - target tree SHA;
 - pull-request number and head SHA when applicable;
 - base ref;
-- base SHA; and
-- merge-base SHA.
+- base SHA;
+- merge-base SHA; and
+- the exact changed-file path list.
 
 A pull-request review uses the merge base to define the changed range. A target
-SHA alone is insufficient when the base branch can move.
+SHA or changed-file count alone is insufficient.
 
 Useful read-only commands include:
 
@@ -58,177 +84,256 @@ Useful read-only commands include:
 git rev-parse <target-sha>
 git rev-parse '<target-sha>^{tree}'
 git merge-base <base-sha> <target-sha>
+git diff --name-only <merge-base-sha>..<target-sha>
 git diff <merge-base-sha>..<target-sha>
-git show --stat --oneline <target-sha>
 ```
 
-### Approved checkpoint
+### Checkpoint content and approval
 
 Record:
 
-- checkpoint ID;
-- exact checkpoint snapshot or retained artifact;
-- checkpoint SHA-256;
-- accepted contract or decision revision;
-- approving Maintainer identity;
-- approval reference; and
-- approval timestamp.
+- exact `checkpoint_content`;
+- `checkpoint_sha256`, calculated from canonical `checkpoint_content` only;
+- an approval envelope outside the hash input; and
+- the approval envelope's `approved_checkpoint_sha256`, which must equal the
+  calculated checkpoint digest when approved.
 
-A GitHub comment permalink is provenance, not immutability. The digest binds
-the exact checkpoint content. Editing an approved checkpoint creates a new
-checkpoint ID, digest, approval, and review batch where applicable.
-
-### Authority and external constraints
-
-For repository authorities, record path, exact revision, relevant section, and
-purpose.
-
-When a review depends on an external format or official tool contract, record
-the official source identity, capture time, retained snapshot or artifact,
-snapshot digest, and purpose. A live web page is not silently substituted for
-the frozen constraint during a review.
+Do not hash a field that contains its own digest. Adding approval metadata does
+not change checkpoint content or its digest.
 
 ### Frozen mutable context
 
-Freeze the Issue and pull-request statements that define the claim under
-review. Each snapshot records:
+Freeze Issue and pull-request bodies that define the reviewed claim. Each
+snapshot has:
 
+- stable snapshot ID;
 - kind and number;
 - source reference;
 - capture time;
-- inline content or retained artifact; and
-- SHA-256 digest.
+- exactly one of inline `content` or repository-relative `artifact_path`; and
+- SHA-256 of the exact inline UTF-8 bytes or artifact bytes.
 
-A later comment or status update is not injected into an active review without
-an explicit supplemental review or a new batch when it changes binding
-context.
+A later comment or body edit is not injected into an active batch. Create a new
+batch when it changes binding context.
 
-### Evidence, ranges, and coverage
+### External constraints and retained artifacts
 
-Record:
+External constraints use the same content envelope: source, capture time,
+exactly one of inline content or artifact path, and a verified SHA-256.
 
-- evidence paths or retained artifacts and their purpose;
-- included commitment, lifecycle, and consumer ranges;
-- global out-of-range areas;
-- known evidence gaps; and
-- a coverage map from every included claim/range to one or more perspective
-  IDs.
+Repository evidence records path and exact revision. Retained evidence uses an
+artifact envelope whose bytes are rehashed by the validator.
 
-An included claim or range with no perspective is `INCOMPLETE` and prevents the
-batch from starting.
+### Subjects and coverage
+
+The checkpoint defines stable IDs for:
+
+- claims;
+- ranges; and
+- evidence requirements.
+
+The validator requires every claim, every range whose disposition is not
+`out_of_range`, and every evidence requirement to appear in one or more review
+assignments.
+
+The batch `coverage` table uses only those stable IDs. Free-text claims are not
+accepted as coverage keys. Every perspective in coverage must have exactly one
+packet, and every packet assignment must exactly match the checkpoint's review
+assignment with that perspective ID.
 
 ## Packet interface
 
-Use this JSON interface:
+Each packet uses `aizign.review-packet/v1`:
 
 ```json
 {
   "schema": "aizign.review-packet/v1",
-  "packet_id": "issue-94-pr-123-0123456789ab-pa1",
-  "packet_sha256": "sha256:<digest>",
-  "batch_id": "issue-94-pr-123-0123456789ab",
-  "batch_context_sha256": "sha256:<digest>",
+  "packet_id": "issue-94-pr-95-0123456789ab-pa1",
+  "packet_sha256": "sha256:<packet digest>",
+  "batch_id": "issue-94-pr-95-0123456789ab-v3",
+  "batch_context_sha256": "sha256:<batch context digest>",
   "batch_context": {
-    "context_id": "issue-94-pr-123-0123456789ab-context-v1",
+    "schema": "aizign.review-batch-context/v1",
+    "context_id": "issue-94-pr-95-0123456789ab-context-v3",
     "created_at": "2026-08-25T00:00:00Z",
     "repository": "TakahisaI/Aizign",
     "workflow": {
-      "governance_path": "GOVERNANCE.md",
-      "contribution_policy_path": "CONTRIBUTING.md",
-      "procedure_path": "docs/development/change-workflow.md",
-      "review_packet_path": "docs/development/review-packet.md",
-      "revision": "0123456789abcdef0123456789abcdef01234567"
+      "mode": "bootstrap",
+      "procedure_path": null,
+      "review_packet_path": null,
+      "revision": "fedcba9876543210fedcba9876543210fedcba98"
     },
+    "controlling_authorities": [
+      {
+        "authority_id": "AUTH-GOVERNANCE",
+        "path": "GOVERNANCE.md",
+        "revision": "fedcba9876543210fedcba9876543210fedcba98",
+        "section": "Roles and decisions",
+        "purpose": "Controls Maintainer, merge, and release authority"
+      }
+    ],
     "target": {
       "sha": "0123456789abcdef0123456789abcdef01234567",
       "tree_sha": "89abcdef0123456789abcdef0123456789abcdef",
-      "pull_request_number": 123,
+      "pull_request_number": 95,
       "pull_request_head_sha": "0123456789abcdef0123456789abcdef01234567",
       "base_ref": "main",
       "base_sha": "fedcba9876543210fedcba9876543210fedcba98",
-      "merge_base_sha": "fedcba9876543210fedcba9876543210fedcba98"
+      "merge_base_sha": "fedcba9876543210fedcba9876543210fedcba98",
+      "changed_files": [
+        ".github/ISSUE_TEMPLATE/proposal.yml",
+        ".github/pull_request_template.md"
+      ]
     },
-    "contract_checkpoint": {
-      "checkpoint_id": "issue-94-checkpoint-v1",
-      "accepted_contract_revision": "<immutable reference>",
-      "snapshot": {
-        "source_reference": "<provenance permalink>",
-        "content": "<exact checkpoint content>",
-        "artifact_ref": null,
-        "sha256": "sha256:<digest>"
+    "checkpoint": {
+      "checkpoint_content": {
+        "schema": "aizign.checkpoint/v1",
+        "checkpoint_id": "issue-94-checkpoint-v1",
+        "workflow_revision": "fedcba9876543210fedcba9876543210fedcba98",
+        "change_class": "Boundary change",
+        "contract_revision": "issue-94-body-v3",
+        "normative_authorities": [
+          {
+            "authority_id": "AUTH-GOVERNANCE",
+            "path": "GOVERNANCE.md",
+            "revision": "fedcba9876543210fedcba9876543210fedcba98",
+            "section": "Roles and decisions",
+            "purpose": "Controls Maintainer authority"
+          }
+        ],
+        "canonical_owners": [
+          {
+            "owner_id": "OWNER-WORKFLOW",
+            "surface": "Boundary change operating procedure",
+            "path": "docs/development/change-workflow.md"
+          }
+        ],
+        "duplicate_owners_to_remove": [],
+        "old_path_dispositions": [],
+        "claims": [
+          {
+            "claim_id": "CLM-MAINTAINER-AUTHORITY",
+            "statement": "Maintainer approval, merge, and release authority remain separate from Conductor assessment.",
+            "authority_ids": ["AUTH-GOVERNANCE"],
+            "falsification": "The candidate would be false if a Conductor could approve or merge without a separately recorded Maintainer decision."
+          }
+        ],
+        "ranges": [
+          {
+            "range_id": "RNG-PROCESS",
+            "kind": "commitment",
+            "value": "PROCESS",
+            "disposition": "included",
+            "reason": "The candidate changes repository review procedure.",
+            "owner_or_follow_up": "OWNER-WORKFLOW"
+          }
+        ],
+        "evidence_requirements": [
+          {
+            "evidence_id": "EVD-AUTHORITY-SEPARATION",
+            "subject_ids": ["CLM-MAINTAINER-AUTHORITY", "RNG-PROCESS"],
+            "method": "Inspect governance, contribution policy, ADR, workflow, and templates at the exact revisions.",
+            "expected_detection": "A role crossover must produce an established finding.",
+            "owner": "PA-1"
+          }
+        ],
+        "review_assignments": [
+          {
+            "perspective_id": "PA-1",
+            "title": "Governance and authority",
+            "question": "Does the candidate preserve Maintainer authority and prevent Conductor role crossover?",
+            "failure_models": [
+              "The Conductor can edit the candidate artifacts or approve the resulting change."
+            ],
+            "subject_ids": [
+              "CLM-MAINTAINER-AUTHORITY",
+              "RNG-PROCESS",
+              "EVD-AUTHORITY-SEPARATION"
+            ],
+            "required_checks": [
+              "GOVERNANCE.md",
+              "CONTRIBUTING.md",
+              "docs/adr/0016-adopt-the-conductor-led-boundary-change-workflow.md",
+              "docs/development/change-workflow.md"
+            ],
+            "assignment_out_of_range": [
+              "product implementation correctness"
+            ]
+          }
+        ],
+        "implementation_scope": "review-only",
+        "known_evidence_gaps": []
       },
-      "approved_by": "<Maintainer identity>",
-      "approval_reference": "<approval permalink or immutable record>",
-      "approved_at": "2026-08-25T00:00:00Z"
+      "checkpoint_sha256": "sha256:<checkpoint content digest>",
+      "approval": {
+        "decision": "approved",
+        "approved_checkpoint_sha256": "sha256:<same checkpoint content digest>",
+        "maintainer_identity": "TakahisaI",
+        "approved_at": "2026-08-25T00:00:00Z",
+        "approval_reference": "https://github.com/TakahisaI/Aizign/issues/94"
+      }
     },
-    "normative_authorities": [
+    "issue_pr_snapshots": [
       {
-        "path": "docs/architecture/invariants.md",
-        "revision": "0123456789abcdef0123456789abcdef01234567",
-        "section": "Invariant 10",
-        "purpose": "Defines the affected hard invariant"
+        "snapshot_id": "SNAP-ISSUE-94",
+        "kind": "issue",
+        "number": 94,
+        "source_reference": "https://github.com/TakahisaI/Aizign/issues/94",
+        "captured_at": "2026-08-25T00:00:00Z",
+        "content": "<exact Issue body>",
+        "artifact_path": null,
+        "sha256": "sha256:<exact UTF-8 content digest>"
       }
     ],
     "external_constraints": [],
-    "issue_pr_snapshots": [
-      {
-        "kind": "issue",
-        "number": 94,
-        "source_reference": "<source permalink>",
-        "captured_at": "2026-08-25T00:00:00Z",
-        "content": "<exact frozen content>",
-        "artifact_ref": null,
-        "sha256": "sha256:<digest>"
-      }
-    ],
     "evidence": [
       {
-        "path": "<repository path, test, fixture, or artifact>",
+        "evidence_id": "EVIDENCE-WORKFLOW",
+        "kind": "repository",
+        "path": "docs/development/change-workflow.md",
         "revision": "0123456789abcdef0123456789abcdef01234567",
-        "purpose": "<why this evidence is relevant>"
+        "purpose": "Candidate procedure under review"
       }
     ],
-    "declared_ranges": {
-      "commitment": ["PROCESS"],
-      "lifecycle": ["review batch", "adjudication"],
-      "consumer": ["coding agents", "repository documentation"]
-    },
-    "coverage_map": [
+    "coverage": [
       {
-        "claim_or_range": "Maintainer authority is preserved",
+        "subject_id": "CLM-MAINTAINER-AUTHORITY",
+        "perspective_ids": ["PA-1"]
+      },
+      {
+        "subject_id": "RNG-PROCESS",
+        "perspective_ids": ["PA-1"]
+      },
+      {
+        "subject_id": "EVD-AUTHORITY-SEPARATION",
         "perspective_ids": ["PA-1"]
       }
     ],
     "global_out_of_range": [
       {
         "area": "product/runtime behavior",
-        "reason": "The candidate changes process documents only",
+        "reason": "The candidate changes process artifacts only.",
         "owner_or_follow_up": "none"
       }
     ],
-    "known_evidence_gaps": [],
-    "session_requirements": {
-      "fresh_session_required": true,
-      "other_breaker_reports_visible": false,
-      "repository_writes_allowed": false,
-      "github_writes_allowed": false
-    }
+    "known_evidence_gaps": []
   },
   "assignment": {
     "perspective_id": "PA-1",
     "title": "Governance and authority",
-    "question": "Does the candidate preserve Maintainer authority and avoid hidden product authority?",
+    "question": "Does the candidate preserve Maintainer authority and prevent Conductor role crossover?",
     "failure_models": [
-      "A model Conductor can be read as approving or merging the change"
+      "The Conductor can edit the candidate artifacts or approve the resulting change."
     ],
-    "ranges": {
-      "commitment": ["PROCESS"],
-      "lifecycle": ["Maintainer approval", "merge authorization"],
-      "consumer": ["Maintainers", "coding agents"]
-    },
+    "subject_ids": [
+      "CLM-MAINTAINER-AUTHORITY",
+      "RNG-PROCESS",
+      "EVD-AUTHORITY-SEPARATION"
+    ],
     "required_checks": [
       "GOVERNANCE.md",
       "CONTRIBUTING.md",
+      "docs/adr/0016-adopt-the-conductor-led-boundary-change-workflow.md",
       "docs/development/change-workflow.md"
     ],
     "assignment_out_of_range": [
@@ -238,96 +343,93 @@ Use this JSON interface:
 }
 ```
 
-`content` and `artifact_ref` are mutually exclusive. Use inline content when it
-is reasonably bounded and available to every reviewer. Use a retained artifact
-only when every required session can resolve the same immutable bytes.
+The example uses placeholders and is not a valid review packet until all
+content, digests, revisions, and assignments are complete and the batch
+validator succeeds.
 
-A nullable pull-request field is allowed only when the target is not a pull
-request. Any absence that affects the assigned claim is also recorded as a
-known evidence gap.
+## Closed interface rules
 
-## Canonical JSON and digest verification
+The validator rejects:
+
+- missing required fields;
+- unknown fields at every defined object level;
+- unknown schema identifiers;
+- wrong types or invalid enums;
+- malformed SHA-1 or SHA-256 values;
+- a PR target whose target SHA differs from its PR head SHA;
+- bootstrap workflow revision that differs from the base SHA;
+- checkpoint digest mismatch or approval/digest mismatch;
+- duplicate IDs;
+- references to unknown authority, claim, range, evidence, or perspective IDs;
+- an inline/artifact content envelope with neither or both values;
+- nested snapshot or artifact digest mismatch;
+- unsafe absolute or parent-traversing artifact paths;
+- different batch contexts inside one batch;
+- duplicate or missing perspective packets;
+- a packet assignment that differs from its checkpoint assignment;
+- incomplete subject coverage; and
+- packet or batch-context digest mismatch.
+
+## Digest rules
 
 Canonical JSON is UTF-8 JSON with object keys sorted lexicographically, array
 order preserved, Unicode preserved, and no insignificant whitespace. Numbers
 must be safe integers; use strings for timestamps, versions, and identifiers.
 
-The following command uses the repository-pinned Node.js runtime. It prints the
-expected values by default and exits nonzero when `VERIFY=1` and the stored
-values do not match.
+Calculate:
 
-```sh
-node <<'NODE'
-const crypto = require("node:crypto");
-const fs = require("node:fs");
-
-const packet = JSON.parse(fs.readFileSync("review-packet.json", "utf8"));
-
-function canonical(value) {
-  if (value === null || typeof value === "boolean" || typeof value === "string") {
-    return JSON.stringify(value);
-  }
-  if (typeof value === "number") {
-    if (!Number.isSafeInteger(value)) {
-      throw new Error("review packets permit safe integers only");
-    }
-    return String(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(canonical).join(",")}]`;
-  }
-  if (typeof value === "object") {
-    const entries = Object.keys(value)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`);
-    return `{${entries.join(",")}}`;
-  }
-  throw new Error(`unsupported JSON value: ${typeof value}`);
-}
-
-function sha256(value) {
-  return "sha256:" + crypto.createHash("sha256").update(canonical(value), "utf8").digest("hex");
-}
-
-const expectedContext = sha256(packet.batch_context);
-const packetForDigest = structuredClone(packet);
-delete packetForDigest.packet_sha256;
-packetForDigest.batch_context_sha256 = expectedContext;
-const expectedPacket = sha256(packetForDigest);
-
-console.log(`batch_context_sha256=${expectedContext}`);
-console.log(`packet_sha256=${expectedPacket}`);
-
-if (process.env.VERIFY === "1") {
-  if (packet.batch_context_sha256 !== expectedContext) {
-    throw new Error("batch_context_sha256 mismatch");
-  }
-  if (packet.packet_sha256 !== expectedPacket) {
-    throw new Error("packet_sha256 mismatch");
-  }
-}
-NODE
+```text
+checkpoint_sha256 = SHA-256(canonical(checkpoint_content))
+batch_context_sha256 = SHA-256(canonical(batch_context))
+packet_sha256 = SHA-256(canonical(packet with packet_sha256 omitted))
 ```
 
-Creation sequence:
+The approval envelope and `checkpoint_sha256` are not part of
+`checkpoint_content`. The packet digest does include the stored
+`batch_context_sha256` and full `batch_context`.
 
-1. create the packet with placeholder digest values;
-2. run the command and set `batch_context_sha256` and `packet_sha256` to the
-   printed values;
-3. run the same command with `VERIFY=1`;
-4. do not start a Breaker session unless verification succeeds.
+## Content and artifact envelopes
+
+For snapshots and retained artifacts:
+
+- `content` is a UTF-8 string or `null`;
+- `artifact_path` is a repository-relative path or `null`;
+- exactly one is non-null; and
+- `sha256` covers the exact content bytes or file bytes.
+
+The validator resolves artifact paths from the repository root (its current
+working directory). A reviewer must receive the same bytes named by the
+validated packet.
+
+## Batch validation
+
+Run all packet files in one command:
+
+```sh
+node scripts/validate-review-batch.mjs \
+  review-packets/pa-1.json \
+  review-packets/pa-2.json \
+  review-packets/pa-3.json
+```
+
+A successful exit means the supplied files form one internally consistent
+batch under the tracked interface. It does not prove the reviewed claims.
+
+Never validate packets one by one and infer batch equivalence from separate
+successes.
 
 ## Invalidation
 
-Create a new batch ID and new packets when any binding input changes:
+Create a new batch ID and new packet files when any binding input changes:
 
 - target SHA or tree SHA;
 - base SHA or merge-base SHA;
-- approved checkpoint content, digest, or approval;
-- workflow revision;
-- normative authority set;
-- frozen Issue or pull-request claim context;
-- included range or coverage map; or
+- exact changed-file list;
+- checkpoint content, digest, or approval;
+- controlling authority or workflow revision;
+- frozen Issue or pull-request snapshot;
+- claim, range, evidence requirement, or review assignment;
+- retained evidence; or
 - known evidence gap.
 
 ### Binding context and observational evidence
@@ -335,36 +437,56 @@ Create a new batch ID and new packets when any binding input changes:
 A change to binding context invalidates the batch.
 
 Later observational evidence, such as a CI job becoming green or a new
-non-binding comment, is not silently added. Check it separately at merge
-readiness or create a supplemental review/new batch when it materially changes
+non-binding comment, is not silently added. Check it separately at merge or
+milestone readiness, or create a new batch when it materially changes the
 adjudication.
+
+## Bootstrap batch record
+
+For the initial Issue #94 workflow review:
+
+1. use a new batch ID for every target head;
+2. post the batch record in a new Issue or PR comment;
+3. never edit that batch comment;
+4. name controlling authority paths, sections, and base revisions;
+5. include exact Issue and PR body snapshots or immutable artifacts and their
+   digests;
+6. list every changed file path, not only the count;
+7. record claims, ranges, evidence, gaps, review assignments, and coverage; and
+8. provide one validated packet per PA-1/PA-2/PA-3 session.
+
+A permalink is provenance only. Reviewers verify the exact embedded content and
+digests. If the comment is edited or any binding value changes, discard it and
+create a new batch ID and comment.
 
 ## Manual equivalent: Conductor packet preparation
 
-1. resolve the exact repository, target, tree, base, and merge-base;
-2. verify the workflow revision and approved checkpoint snapshot/digest;
-3. freeze the Issue, pull-request, authority, and external-constraint context;
-4. record all included ranges, out-of-range areas, and known gaps;
-5. derive bounded perspectives from the checkpoint and failure models;
-6. map every included claim/range to one or more perspective IDs;
+1. resolve exact repository, target, tree, base, merge-base, and changed paths;
+2. identify controlling authorities at exact revisions;
+3. prepare checkpoint content, calculate its digest, and verify approval;
+4. freeze Issue, PR, external-constraint, and retained evidence bytes;
+5. record structured claims, ranges, evidence requirements, and assignments;
+6. build coverage from stable subject IDs;
 7. copy one identical `batch_context` into one packet per perspective;
-8. add exactly one assignment to each packet;
-9. compute and verify both digests; and
-10. start no reviewer until every required packet is valid.
+8. add exactly one matching assignment to each packet;
+9. calculate nested, context, and packet digests;
+10. validate all packet files together; and
+11. start no reviewer until validation succeeds.
 
 ## Manual equivalent: Breaker
 
-1. start a fresh session with exactly one packet and no other Breaker report;
-2. verify the target/base binding, workflow revision, checkpoint, and digests;
-3. read the authorities at the revisions named in the packet;
-4. investigate only the assigned perspective and ranges;
-5. construct a candidate counterexample or failure sequence;
-6. inspect exact source, tests, specifications, and retained snapshots;
-7. distinguish observed fact from inference;
-8. classify each candidate as `established`, `not established`, or
+1. start a fresh session with exactly one validated packet and no other Breaker
+   report;
+2. verify target/base binding, controlling authorities, checkpoint, and packet
+   identity;
+3. investigate only the assigned subject IDs and failure models;
+4. construct a candidate counterexample or failure sequence;
+5. inspect exact source, tests, specifications, and frozen snapshots;
+6. distinguish observed fact from inference;
+7. classify each candidate as `established`, `not established`, or
    `incomplete`;
-9. cite exact repository evidence; and
-10. return findings only.
+8. cite exact repository evidence; and
+9. return findings only.
 
 If another Breaker report is visible in the session, return:
 
@@ -395,11 +517,11 @@ Do not claim the report was successfully ignored after it entered the session.
 - other Breaker reports visible: false
 - repository/GitHub writes performed: none
 
-## Assigned range
+## Assigned subjects
 
-- commitment:
-- lifecycle:
-- consumer:
+- claim IDs:
+- range IDs:
+- evidence IDs:
 - explicit out-of-range areas:
 
 ## Claim and candidate counterexample
@@ -409,7 +531,7 @@ Do not claim the report was successfully ignored after it entered the session.
 
 ## Evidence inspected
 
-List exact paths, symbols, tests, fixtures, and snapshot references.
+List exact paths, symbols, tests, fixtures, and frozen snapshot references.
 
 ## Findings
 
@@ -419,13 +541,14 @@ List exact paths, symbols, tests, fixtures, and snapshot references.
 - basis: observed fact | inference
 - repository evidence:
 - concrete counterexample or failure sequence:
-- affected range:
+- affected subject IDs:
 - correction or claim reduction required:
 - evidence still required:
 
 ## Checked and held
 
-List assigned claims deliberately checked without an established counterexample.
+List assigned subjects deliberately checked without an established
+counterexample.
 
 ## Evidence gaps
 
@@ -439,8 +562,8 @@ List possible concerns without investigating or assigning severity.
 ## Manual equivalent: Adjudicator
 
 1. start another fresh session after all required uncontaminated reports arrive;
-2. verify target, base, workflow, checkpoint, packet, digest, coverage, and
-   report identity consistency;
+2. verify target, base, authorities, workflow mode, checkpoint, packets,
+   coverage, and report identity consistency;
 3. create a source-finding register covering every raw finding;
 4. reinspect source and authority evidence independently;
 5. classify each source finding as `established`, `rejected`, or `incomplete`;
@@ -450,76 +573,10 @@ List possible concerns without investigating or assigning severity.
 8. choose implementation correction, path deletion, claim reduction,
    provisional status, or bounded defer;
 9. state the proof required before the next transition; and
-10. recommend the next workflow state without authorizing merge or release.
+10. recommend the next state without authorizing merge or release.
 
 A bounded defer is complete only when it records the known limitation, impact,
 safe current boundary, owner, re-evaluation trigger, retained evidence, and
 compatibility or migration treatment where applicable. The current Foundation
 campaign may label such a complete campaign-specific defer `D1`; the generic
 workflow does not make `D1` a permanent taxonomy.
-
-### Adjudicator output
-
-```markdown
-# Aizign adjudication
-
-## Adjudication identity
-
-- batch_id:
-- workflow_revision:
-- target_sha:
-- target_tree_sha:
-- base_sha:
-- merge_base_sha:
-- checkpoint_id:
-- batch_context_sha256:
-- packets_received:
-- reports_received:
-- reports_complete:
-- repository/GitHub writes performed: none
-
-## Batch integrity
-
-Record workflow, packet, target, checkpoint, range, digest, coverage, and report
-consistency.
-
-## Source-finding disposition
-
-| Source finding | Status | Independently verified evidence | Root cause | Reason |
-|---|---|---|---|---|
-
-## Root-cause register
-
-For each root cause record severity, affected ranges, source findings,
-independently verified evidence, causal mechanism, failure sequence, broken
-claim or authority, disposition, required proof, compatibility/migration
-handling, and confidence.
-
-## Rejected findings
-
-State the source verification that supports rejection.
-
-## Incomplete findings and evidence gaps
-
-Do not collapse these into rejection or no finding.
-
-## Next workflow state recommendation
-
-Choose and justify one:
-
-- `proposed`;
-- `implementing`;
-- `evidence complete`;
-- `reviewed`;
-- `adjudicated` and ready for Conductor transition-readiness assessment.
-```
-
-## Manual parity
-
-A skill-assisted run and a manual run are materially equivalent when they use
-the same workflow revision, exact target/base binding, approved checkpoint,
-frozen batch context, assigned ranges, coverage map, digests, and output
-requirements.
-
-Differences in prose are not material. Differences in authority, revision,
-range, evidence status, coverage, or disposition require Conductor review.
