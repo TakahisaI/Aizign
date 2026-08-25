@@ -12,10 +12,12 @@ import {
   decodeResponse,
   emitBestEffort,
   encodeRequest,
-  extractFrame,
   type HelloOutcome,
+  isSubmitRejectionCode,
+  isTimingErrorCode,
   isUnknownOutcomeCode,
   MAX_FRAME_BYTES,
+  OneShotFrameCollector,
   type ParentOperationKind,
   type ParentTimingMeasurement,
   parentTimingOutcome,
@@ -49,7 +51,12 @@ function unknown(
 }
 
 function reportedUnknown(code: string, message: string): UnknownOutcome {
-  return { kind: 'unknown', reason: 'reported_unknown', detail: `${code}: ${message}` };
+  return {
+    kind: 'unknown',
+    reason: 'reported_unknown',
+    reportedCode: code,
+    detail: `${code}: ${message}`,
+  };
 }
 
 export class OneShotCoreClient implements CoreClient {
@@ -111,12 +118,15 @@ export class OneShotCoreClient implements CoreClient {
       kind: 'workflow.signal.submit',
       eventId: payload.signal.eventId,
     };
+    const reportedCode =
+      exchange.response.body.type === 'error' ? exchange.response.body.error.code : undefined;
     const mismatch = checkCorrelation(sent, exchange.response);
     if (mismatch !== undefined) {
       return finish({
         kind: 'unknown',
         reason: 'correlation_mismatch',
         detail: `${mismatch.field}: expected ${mismatch.expected}, got ${String(mismatch.actual)}`,
+        ...(reportedCode === undefined ? {} : { reportedCode }),
       });
     }
     const { body } = exchange.response;
@@ -125,9 +135,9 @@ export class OneShotCoreClient implements CoreClient {
         return finish({ kind: body.result.disposition, eventId: body.result.eventId });
       case 'error':
         return finish(
-          isUnknownOutcomeCode(body.error.code)
-            ? reportedUnknown(body.error.code, body.error.message)
-            : { kind: 'rejected', code: body.error.code, message: body.error.message },
+          isSubmitRejectionCode(body.error.code)
+            ? { kind: 'rejected', code: body.error.code, message: body.error.message }
+            : reportedUnknown(body.error.code, body.error.message),
           body.error.code,
         );
       default:
@@ -204,7 +214,9 @@ export class OneShotCoreClient implements CoreClient {
       readonly reason?: UnknownOutcome['reason'];
       readonly reportedCode?: string;
     };
-    const errorCode = reportedErrorCode ?? classified.code ?? classified.reportedCode;
+    const reportedError = reportedErrorCode ?? classified.code ?? classified.reportedCode;
+    const errorCode =
+      reportedError !== undefined && isTimingErrorCode(reportedError) ? reportedError : undefined;
     const measurement: ParentTimingMeasurement = {
       operation_kind,
       ...timing,
@@ -264,12 +276,10 @@ export class OneShotCoreClient implements CoreClient {
       }
       signal?.addEventListener('abort', onAbort, { once: true });
       const spawned = child;
-      const stdout: Buffer[] = [];
-      let received = 0;
+      const stdout = new OneShotFrameCollector(MAX_FRAME_BYTES);
       spawned.stdout?.on('data', (chunk: Buffer) => {
         responseFirstByteMs ??= performance.now() - started;
-        received += chunk.length;
-        if (received > MAX_FRAME_BYTES + 1) {
+        if (!stdout.append(chunk)) {
           spawned.kill('SIGKILL');
           settle(
             unknown(
@@ -280,7 +290,6 @@ export class OneShotCoreClient implements CoreClient {
           );
           return;
         }
-        stdout.push(chunk);
       });
       spawned.stderr?.on('data', () => undefined);
       spawned.on('error', (error) => settle(unknown('spawn_failed', error.message, timing())));
@@ -301,7 +310,11 @@ export class OneShotCoreClient implements CoreClient {
       }, timeoutMs);
 
       spawned.on('close', (code) => {
-        const extraction = extractFrame(Buffer.concat(stdout).toString('utf8'));
+        const extraction = stdout.extract();
+        if (extraction.kind === 'oversized') {
+          settle(unknown('oversized_response', extraction.detail, timing()));
+          return;
+        }
         if (extraction.kind === 'empty') {
           settle(
             unknown('no_response', `process exited with ${String(code)} without a frame`, timing()),

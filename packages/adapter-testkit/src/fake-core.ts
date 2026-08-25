@@ -19,12 +19,18 @@
  * - `trailing-garbage`  answer, then keep talking
  * - `handler-timeout`   report HANDLER_TIMEOUT without correlation ids
  * - `event-conflict-error` report EVENT_CONFLICT as a correlated error
+ * - `unknown-valid-error-code` report an unrecognized, well-formed correlated error code
+ * - `unknown-valid-error-code-wrong-request-id` report that code without request correlation
+ * - `invalid-utf8`      write a correlated rejection frame containing a raw invalid byte
+ * - `exact-max-padded`  write an exact-max frame followed by permitted ASCII whitespace
  *
  * `AIZIGN_FAKE_HELLO_PROTOCOL_VERSION` overrides the advertised protocol
  * version, for compatibility-check tests.
  * `AIZIGN_FAKE_CAPABILITIES` is a comma-separated capability override.
  * `AIZIGN_FAKE_INVOCATION_LOG` records that this process started, allowing a
  * caller to prove that local validation failed before spawn.
+ * `AIZIGN_FAKE_ASSERT_ENV_ABSENT` names a synthetic parent variable that must
+ * not be inherited by the child process.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -178,6 +184,12 @@ function handleReconcile(
 }
 
 async function main(argv: readonly string[]): Promise<number> {
+  const forbiddenEnvName = process.env.AIZIGN_FAKE_ASSERT_ENV_ABSENT;
+  if (forbiddenEnvName !== undefined && process.env[forbiddenEnvName] !== undefined) {
+    process.stderr.write('forbidden parent environment variable was inherited\n');
+    return 3;
+  }
+
   const fault = process.env.AIZIGN_FAKE_FAULT;
   if (fault === 'exit-2') return 2;
   if (fault === 'hang') {
@@ -235,6 +247,66 @@ async function main(argv: readonly string[]): Promise<number> {
     case 'event-conflict-error':
       write(errorResponse(request.requestId, request.kind, 'EVENT_CONFLICT', 'reported conflict'));
       return 0;
+    case 'unknown-valid-error-code':
+      write(
+        errorResponse(
+          request.requestId,
+          request.kind,
+          'FUTURE_OUTCOME_UNKNOWN',
+          'the write result could not be established',
+        ),
+      );
+      return 0;
+    case 'unknown-valid-error-code-wrong-request-id':
+      write(
+        errorResponse(
+          'req-someone-else',
+          request.kind,
+          'FUTURE_OUTCOME_UNKNOWN',
+          'the write result could not be established',
+        ),
+      );
+      return 0;
+    case 'invalid-utf8': {
+      const marker = Buffer.from('INVALID_UTF8_MARKER');
+      const encoded = Buffer.from(
+        JSON.stringify({
+          protocol: PROTOCOL_NAME,
+          version: PROTOCOL_VERSION,
+          requestId: request.requestId,
+          kind: request.kind,
+          ok: false,
+          error: { code: 'INVALID_SIGNAL', message: marker.toString() },
+        }),
+      );
+      const markerAt = encoded.indexOf(marker);
+      if (markerAt < 0) throw new Error('invalid UTF-8 marker was not encoded');
+      process.stdout.write(
+        Buffer.concat([
+          encoded.subarray(0, markerAt),
+          Buffer.from([0xff]),
+          encoded.subarray(markerAt + marker.length),
+          Buffer.from('\n'),
+        ]),
+      );
+      return 0;
+    }
+    case 'exact-max-padded': {
+      const envelope = {
+        protocol: PROTOCOL_NAME,
+        version: PROTOCOL_VERSION,
+        requestId: request.requestId,
+        kind: request.kind,
+        ok: false,
+        error: { code: codes.INTERNAL, message: '' },
+      };
+      const base = Buffer.from(JSON.stringify(envelope));
+      envelope.error.message = 'x'.repeat(MAX_FRAME_BYTES - base.length);
+      const exact = Buffer.from(JSON.stringify(envelope));
+      if (exact.length !== MAX_FRAME_BYTES) throw new Error('bad exact-max fixture');
+      process.stdout.write(Buffer.concat([exact, Buffer.from('\n \t\n')]));
+      return 0;
+    }
     case 'wrong-request-id':
       write({ ...response, requestId: 'req-someone-else' });
       return 0;

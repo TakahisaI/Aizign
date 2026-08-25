@@ -13,6 +13,14 @@ The `aizign` binary: composition root, and the one-shot NDJSON process boundary 
 | **Test command** | `cargo test -p aizign-cli` |
 | **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0005](../../docs/adr/0005-organize-the-core-by-bounded-context.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md) |
 
+## Security boundary
+
+The CLI trusts the operator-selected binary invocation and state directory. It
+bounds framing and caller wait, but a timeout or killed worker cannot prove
+that no append occurred and therefore remains `unknown`. Stderr carries bounded
+operational metadata rather than content; log retention remains operator-owned.
+See the [v0.1 threat model](../../docs/security/threat-model.md).
+
 ## 使い方
 
 ```sh

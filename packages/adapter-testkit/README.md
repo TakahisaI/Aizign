@@ -10,10 +10,19 @@ harness, or a network.
 | **Non-responsibility** | 本番でのcore client（adapterが所有）、harness固有のfake（adapter側の `test/` が持つ） |
 | **Inputs** | `CoreClientFactory`（`CoreClientConfig` → `CoreClient`） |
 | **Outputs** | `node:assert` による検証。違反で例外 |
-| **Hard invariants** | no-response / garbage / hang / `JOURNAL_OUTCOME_UNKNOWN` / spawn失敗は **すべて `unknown`**（成功にも失敗にも縮約しない、再送しない）、reconciliationのaccepted / conflict / absentと`reportedCode`を検証、lost acknowledgement後もblind submit retryしない、harness IDや本文がframeに現れない |
+| **Hard invariants** | no-response / garbage / invalid UTF-8 / hang / `JOURNAL_OUTCOME_UNKNOWN` / 未認識だが正形式のpeer code / spawn失敗は **すべて `unknown`**（成功にも失敗にも縮約しない、再送しない）、submit / reconciliationの相関不一致でもerror codeを診断用`reportedCode`として保持、未認識codeはmetadata-only timingから除外、reconciliationのaccepted / conflict / absentを検証、lost acknowledgement後もblind submit retryしない、harness IDや本文がframeに現れない |
 | **Allowed dependencies** | `@aizign/protocol` |
 | **Test command** | `npm test -w @aizign/adapter-testkit` |
 | **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md) |
+
+## Security boundary
+
+This package supplies regression evidence, not runtime enforcement or a proof
+of end-to-end adapter security. Its fake state is not a durability or
+authenticity boundary, and generic metadata-key scanning cannot prove value
+provenance. Each adapter owns native identity, visible-schema, configuration,
+and environment-isolation tests. See the
+[v0.1 threat model](../../docs/security/threat-model.md).
 
 言語中立のscenario requirementは
 [`harness-adapter-contract.md`](../../docs/architecture/harness-adapter-contract.md)
@@ -62,13 +71,17 @@ runnerが検査する経路:
 | 別eventで同じrevision identifier・異candidate digest（expected / signalは一致） | `accepted`（global registryを持たない） |
 | processがframeなしで終了 / exit 2 | `unknown no_response` |
 | stdoutがframeでない | `unknown undecodable_response` |
+| stdoutのframeに生の不正UTF-8 byteがある | byte列のままfatal decodeし`unknown undecodable_response`。既知rejectionへ縮約せずretryなし |
 | coreが `JOURNAL_OUTCOME_UNKNOWN` を返す | `unknown reported_unknown` |
+| coreが未認識だが正形式のerror codeを返す | `unknown reported_unknown` + diagnostic `reportedCode`。`rejected`へ縮約せずretryなし |
+| 未認識codeを持つerror responseの`requestId`が不一致 | `unknown correlation_mismatch` + diagnostic `reportedCode`。raw codeはtimingへ出さずretryなし |
 | lost acknowledgement後にfresh clientでreconcile | `accepted`。submitは1回だけでblind retryなし |
 | `requestId: null` / `kind: null` / `HANDLER_TIMEOUT` watchdog response | `unknown correlation_mismatch` + `reportedCode: HANDLER_TIMEOUT` |
 | 応答なし（timeout） | `unknown timeout` |
 | 呼び出し側のabort | `unknown aborted` |
 | `requestId` / `kind` / `eventId` が送信と一致しない | `unknown correlation_mismatch` |
 | responseが `MAX_FRAME_BYTES` を超える | `unknown oversized_response`（childをkill） |
+| frame本体がちょうど `MAX_FRAME_BYTES` で、LF後にASCII whitespaceがある | frameを受理して通常分類（末尾whitespaceは保持しない） |
 | outbound requestが `MAX_REQUEST_BYTES` を超える | spawn前に `REQUEST_TOO_LARGE`でPromise reject。spawn 0回・request 0件・submit classificationなし |
 | reconciliationが `absent` | reconcile request 1件だけ。implicit submitなし |
 | stdoutにframeが2つ、または末尾に非whitespace | `unknown undecodable_response` |

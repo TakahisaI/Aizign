@@ -8,10 +8,19 @@ Append-only, metadata-only JSONL control journal with a writer-published committ
 | **Non-responsibility** | 判断（duplicate / conflictは `aizign-core`）、wire format、state directoryの選択（`aizign-cli`） |
 | **Inputs** | state directory、writerでは`WorkflowEvent` + `BoundedTimestamp` |
 | **Outputs** | committed `JournalEntry` snapshot、appendした`JournalEntry`、`JournalError`（stable code付き） |
-| **Hard invariants** | attempt / candidate digestをmetadata-only recordへ残す（5）、本文・credential・harness IDを書かない（10）、write開始後のbarrier / publish失敗は `OutcomeUnknown` で再送しない（3）、readerはwrite / sync / initialize / repair / tail promotionを一切しない（9）、published prefix以外をacceptedの根拠にしない、既存recordを書き換えない、state artifactはregular file・single link・state directoryと同一ownerに固定してsymlinkを追跡しない |
+| **Hard invariants** | attempt / candidate digestをmetadata-onlyのclosed field setへ残す（5、10。allowed opaque valueのcontent semanticsはproducer責務）、write開始後のbarrier / publish失敗は `OutcomeUnknown` で再送しない（3）、readerはwrite / sync / initialize / repair / tail promotionを一切しない（9）、published prefix以外をacceptedの根拠にしない、既存recordを書き換えない、state artifactはregular file・single link・state directoryと同一ownerに固定してsymlinkを追跡しない |
 | **Allowed dependencies** | `aizign-core`、`aizign-engine`、`serde`、`serde_json`、`sha2`（store metadata v1のcommitted-prefix SHA-256専用）。dev: `aizign-testkit` |
 | **Test command** | `cargo test -p aizign-store-jsonl` |
 | **Related ADR** | [0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md)、[0007](../../docs/adr/0007-use-metadata-only-control-journals.md)、[0009](../../docs/adr/0009-serialization-dependencies-for-the-protocol-crate.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0014](../../docs/adr/0014-use-rustcrypto-sha2-for-committed-prefix-hashing.md) |
+
+## Security boundary
+
+The verified store enforces private modes, no-follow/path-shape checks,
+single-link ownership, bounds, advisory locking, and a writer-published prefix
+on `x86_64-unknown-linux-gnu`. The configured path and local account remain
+trusted. Advisory locks and SHA-256 do not authenticate state against a
+malicious same-user process that can rewrite every artifact consistently. See
+the [v0.1 threat model](../../docs/security/threat-model.md).
 
 record formatの正本は [`spec/journal/v1/`](../../spec/journal/v1/README.md)、commit metadataとstore layoutの正本は [`spec/store/v1/`](../../spec/store/v1/README.md)。`decode_record` / `encode_record` は
 `spec/conformance/{valid,invalid}/journal` のfixtureを回すための入口で、同じfixtureを `spec/test/schema.test.mjs` が

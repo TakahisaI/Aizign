@@ -10,9 +10,11 @@ import {
   checkCompatibility,
   emitBestEffort,
   type HelloInfo,
+  isTimingErrorCode,
   type ParentTimingMeasurement,
   type ParentTimingSink,
   PROTOCOL_VERSION,
+  codes as protocolCodes,
   type TimingOutcome,
 } from '@aizign/protocol';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
@@ -45,17 +47,19 @@ export async function preflight(
     error_code?: string,
     unknown_reason?: ParentTimingMeasurement['unknown_reason'],
   ) => {
+    const safeErrorCode =
+      error_code !== undefined && isTimingErrorCode(error_code) ? error_code : undefined;
     emitBestEffort(options.timingSink, {
       operation_kind: 'preflight',
       preflight_ms: performance.now() - started,
       outcome,
-      ...(error_code === undefined ? {} : { error_code }),
+      ...(safeErrorCode === undefined ? {} : { error_code: safeErrorCode }),
       ...(unknown_reason === undefined ? {} : { unknown_reason }),
     });
   };
   const outcome = await client.hello('req-preflight');
   if (outcome.kind === 'unknown') {
-    finish('unknown', undefined, outcome.reason);
+    finish('unknown', outcome.reportedCode, outcome.reason);
     throw new HarnessError(
       `aizign binary unreachable (${outcome.reason}): ${outcome.detail}`,
       adapterCodes.UNAVAILABLE,
@@ -70,7 +74,12 @@ export async function preflight(
   }
   const problem = checkCompatibility(outcome.info, REQUIRED);
   if (problem !== undefined) {
-    finish('rejected', adapterCodes.INCOMPATIBLE);
+    finish(
+      'rejected',
+      problem.reason === 'protocol_version'
+        ? protocolCodes.PROTOCOL_VERSION_UNSUPPORTED
+        : protocolCodes.CAPABILITY_UNSUPPORTED,
+    );
     throw new HarnessError(problem.detail, adapterCodes.INCOMPATIBLE);
   }
   finish('ok');

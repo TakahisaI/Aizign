@@ -29,10 +29,11 @@ pub mod codes {
     pub const INVALID_EXPECTATION: &str = "INVALID_EXPECTATION";
 }
 
-/// A protocol-boundary error carrying a stable code and a safe human-readable
+/// A protocol-boundary error carrying a stable code and an operational
 /// diagnostic. It may represent a decoded wire error, a local
-/// encode/validation failure, or a workflow rejection. The message never
-/// contains request content.
+/// encode/validation failure, or a workflow rejection. The message is not a
+/// model-safe field and may contain state-path or operating-system detail;
+/// adapters must normalize it before a model-facing boundary.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProtocolError {
     code: ShortErrorCode,
@@ -40,11 +41,12 @@ pub struct ProtocolError {
 }
 
 impl ProtocolError {
-    /// Builds an error from one of the registered codes.
+    /// Builds an error from a well-formed short code.
     ///
-    /// `code` must satisfy the short-error-code pattern; the constants in
-    /// [`codes`] and `WorkflowError::code` do. Anything else degrades to
-    /// [`codes::INTERNAL`] so a malformed code can never reach the wire.
+    /// The constants in [`codes`] and `WorkflowError::code` are registered,
+    /// but a decoded peer may supply another syntactically valid code whose
+    /// operation semantics the consuming client does not recognize. Anything
+    /// malformed degrades to [`codes::INTERNAL`] so it cannot reach the wire.
     #[must_use]
     pub fn new(code: &str, message: impl Into<String>) -> Self {
         let code = ShortErrorCode::new(code)

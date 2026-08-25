@@ -13,6 +13,14 @@ Pure, deterministic decisions for Aizign software-change workflows.
 | **Test command** | `cargo test -p aizign-core` |
 | **Related ADR** | [0002](../../docs/adr/0002-implement-the-deterministic-core-in-rust.md)、[0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md)、[0005](../../docs/adr/0005-organize-the-core-by-bounded-context.md) |
 
+## Security boundary
+
+The core validates shapes, compares configured identity/digests, and makes
+deterministic decisions. It does not possess candidate bytes or prove that a
+well-formed value came from the intended control plane. That provenance is a
+trusted outer-boundary assumption; see the
+[v0.1 threat model](../../docs/security/threat-model.md).
+
 ## 基本形
 
 ```text

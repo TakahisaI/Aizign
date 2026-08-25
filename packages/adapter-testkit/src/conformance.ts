@@ -250,16 +250,83 @@ export async function runFaultScenarios(
       ['wrong-kind', 'correlation_mismatch', 'the response has another kind'],
       ['wrong-event-id', 'correlation_mismatch', 'the response names another event'],
       ['oversized', 'oversized_response', 'the response exceeds the frame bound'],
+      [
+        'exact-max-padded',
+        'reported_unknown',
+        'an exact-max frame may carry permitted trailing ASCII whitespace',
+      ],
       ['two-frames', 'undecodable_response', 'stdout carries two frames'],
       ['trailing-garbage', 'undecodable_response', 'stdout carries a frame and then prose'],
+      [
+        'invalid-utf8',
+        'undecodable_response',
+        'a raw invalid UTF-8 byte is never decoded as a rejection',
+      ],
+      [
+        'unknown-valid-error-code',
+        'reported_unknown',
+        'an unrecognized well-formed peer code is not a definitive rejection',
+      ],
     ];
     for (const [fault, reason, description] of scenarios) {
       const outcome = await make(`fault-${fault}`, {
         AIZIGN_FAKE_FAULT: fault,
       }).submitWorkflowSignal('req-fault', samplePayload('evt-fault'));
       assert.equal(outcome.kind, 'unknown', `${description}: ${JSON.stringify(outcome)}`);
-      if (outcome.kind === 'unknown') assert.equal(outcome.reason, reason, description);
+      if (outcome.kind === 'unknown') {
+        assert.equal(outcome.reason, reason, description);
+        if (fault === 'unknown-valid-error-code') {
+          assert.equal(outcome.reportedCode, 'FUTURE_OUTCOME_UNKNOWN');
+          assert.equal(
+            readFakeRequests(join(root, `fault-${fault}`)).length,
+            1,
+            'an unrecognized peer code never causes a retry',
+          );
+        }
+        if (fault === 'invalid-utf8') {
+          assert.equal(
+            readFakeRequests(join(root, `fault-${fault}`)).length,
+            1,
+            'an invalid UTF-8 response never causes a retry',
+          );
+        }
+      }
     }
+
+    const uncorrelatedCodeState = join(root, 'fault-unknown-code-wrong-request-id');
+    const uncorrelatedCodeMeasurements: ParentTimingMeasurement[] = [];
+    const uncorrelatedCodeClient = factory({
+      ...fake,
+      env: { AIZIGN_FAKE_FAULT: 'unknown-valid-error-code-wrong-request-id' },
+      stateDir: uncorrelatedCodeState,
+      timeoutMs: 10_000,
+      timingSink: (measurement) => {
+        uncorrelatedCodeMeasurements.push(measurement);
+      },
+    });
+    const uncorrelatedCode = await uncorrelatedCodeClient.submitWorkflowSignal(
+      'req-unknown-code-wrong-request-id',
+      samplePayload('evt-unknown-code-wrong-request-id'),
+    );
+    assert.equal(uncorrelatedCode.kind, 'unknown');
+    if (uncorrelatedCode.kind === 'unknown') {
+      assert.equal(uncorrelatedCode.reason, 'correlation_mismatch');
+      assert.equal(uncorrelatedCode.reportedCode, 'FUTURE_OUTCOME_UNKNOWN');
+    }
+    assert.equal(
+      readFakeRequests(uncorrelatedCodeState).length,
+      1,
+      'an uncorrelated error response never causes a retry',
+    );
+    assert.equal(uncorrelatedCodeMeasurements.length, 1);
+    assert.equal(uncorrelatedCodeMeasurements[0]?.outcome, 'unknown');
+    assert.equal(uncorrelatedCodeMeasurements[0]?.unknown_reason, 'correlation_mismatch');
+    assert.equal(uncorrelatedCodeMeasurements[0]?.error_code, undefined);
+    assert.ok(
+      !JSON.stringify(uncorrelatedCodeMeasurements).includes('FUTURE_OUTCOME_UNKNOWN'),
+      'an unrecognized peer code stays out of metadata-only timing',
+    );
+
     const hang = await make(
       'fault-hang',
       { AIZIGN_FAKE_FAULT: 'hang' },

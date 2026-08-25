@@ -56,9 +56,15 @@ A v0.1 signal-submission adapter must:
    or `unknown`;
 9. never infer success, rejection, or absence from `unknown`, and never blindly
    retry an unknown submission;
-10. keep raw prompts, model output, reasoning, credentials, and other
-   conversation content out of the protocol and control journal; and
-11. enforce request and response frame limits, reject extra response frames,
+10. use the closed protocol field set, add no dedicated raw-content or
+   credential field, and require producers not to place prompts, model output,
+   reasoning, credentials, or encoded content in allowed opaque values. Closed
+   shape is enforced; end-to-end value semantics are not guaranteed while a
+   model can supply an opaque value such as the current DSH `artifactRef`;
+11. treat human-readable protocol diagnostics as operational data, not as
+   model-safe text, and normalize them before a model-visible error boundary;
+   and
+12. enforce request and response frame limits, reject extra response frames,
     and place a wall-clock bound on caller wait. If cancellation cannot prove
     that remote work stopped, the outcome remains `unknown`.
 
@@ -100,8 +106,14 @@ Submission classifications have these meanings:
 - `duplicate`: the same `eventId` and exact accepted event content already
   exist, so no second event is appended;
 - `rejected`: the core definitively refused this request and returned a stable
-  rejection code; and
+  rejection code recognized for this operation; and
 - `unknown`: the client cannot establish whether this request took effect.
+
+The Protocol error-code syntax is open. A submit client may return `rejected`
+only for its closed allowlist of codes whose operation semantics establish a
+definitive refusal. It must preserve any well-formed but unrecognized code as
+diagnostic `reportedCode`, classify the submit as `unknown`, and never retry it
+implicitly. Reconciliation classifies every error response as `unknown`.
 
 `unknown` is terminal knowledge about the observation, not permission to retry.
 A caller may perform a separately defined read-only reconciliation or another
@@ -175,14 +187,32 @@ lifecycle boundary are owned by the
 
 ## Data boundary
 
-Adapters may send only stable identity, bounded opaque handles, digests,
-structured evidence, dispositions, and stable short error codes across the
-core boundary. They must not send raw conversation data or credentials.
+Adapters may send only the closed field set of stable identity, bounded opaque
+handles, digests, structured evidence, dispositions, and stable short error
+codes across the core boundary. Producers must not place raw conversation data
+or credentials in those fields. This is an obligation and a structural field
+exclusion, not a claim that every allowed string is semantically inspected.
+
+A recognized stable error code is safe to classify according to the
+operation-specific registry. A well-formed but unrecognized code is diagnostic
+data, not a rejection fact. A human-readable Protocol error message is also
+operational diagnostic data and can contain a configured state path or
+operating-system detail. An adapter must not forward either an unrecognized
+peer code or that message to a model-visible error surface; for an unknown
+submit it uses a fixed adapter-owned code and safe message.
 
 The adapter maps native inputs to protocol DTOs but does not expose core or
 engine internal types to its harness. The core, protocol, and journal likewise
 must not acquire harness or provider names. See
 [data-boundary.md](data-boundary.md) for the complete repository boundary.
+
+Adapter configuration and native mapping form a trust boundary. The core can
+reject malformed values and inconsistent bindings, but it cannot prove that a
+well-formed identity or digest came from the intended control-plane source. A
+malicious adapter can also place prohibited content into an otherwise allowed
+opaque field. The v0.1 assumptions, enforcement limits, and regression-evidence
+requirements are defined in the
+[threat model](../security/threat-model.md).
 
 ## Conformance ownership
 
@@ -223,7 +253,10 @@ The minimum signal-submission group covers:
 - oversized outbound requests failing locally before any process/transport,
   with no submit classification and no emitted frame;
 - non-collapse of `unknown` and no blind submit retry; and
-- metadata-only frames with no harness or provider identifier leakage.
+- closed protocol frames with no harness or provider identifier leakage,
+  together with tests for the producer's claimed allowed-value semantics; and
+- model-visible errors that retain the stable code without forwarding raw
+  Protocol diagnostic text.
 
 The reconciliation extension group covers:
 
@@ -274,7 +307,7 @@ Passing one test layer does not prove requirements owned by another:
 | Protocol envelope, schema, stable code, and applicable encode/decode acceptance | Language codec tests over applicable `spec/conformance/` fixtures |
 | Local request-size failure before process/transport; response/frame bounds, correlation, and submit outcome mapping | Protocol encoder and core-client tests, as applicable |
 | Negative preflight for incompatible version or missing submit capability before exposing submission | Harness-native adapter tests, using a fake core/client |
-| `eventId` and other stable identity provenance; model-visible exclusion | Harness-native adapter tests |
+| `eventId` and other stable identity provenance; model-visible input exclusion and any documented result disclosure | Harness-native adapter tests |
 | Harness/provider identity exclusion from the complete emitted envelope | Harness-native adapter tests that inspect captured requests |
 | Duplicate/conflict and durable journal semantics | Core, engine, store, and protocol tests |
 | Reconciliation mapping and diagnostic code handling | Core-client tests plus core/store tests |
@@ -292,8 +325,9 @@ The current TypeScript `CoreClient` and `runCoreClientConformance` expose and
 exercise both submit and reconciliation operations. They are a TypeScript
 reference core-client interface and scenario runner, not a proof of the whole
 harness adapter contract. Implementing the interface or passing the runner does
-not establish trusted identity provenance, model-visible isolation, native
-registration/preflight behavior, or harness-evidence conformance. Failing to
+not establish trusted identity provenance, model-visible input isolation or
+result-disclosure policy, native registration/preflight behavior, or
+harness-evidence conformance. Failing to
 implement that TypeScript interface does not by itself make a non-TypeScript
 submission adapter non-conforming.
 

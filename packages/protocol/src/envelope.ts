@@ -470,28 +470,110 @@ export function decodeResponse(frame: Uint8Array | string): Response {
   throw invalidEnvelope('ok responses carry exactly payload; error responses carry exactly error');
 }
 
-/** What a process wrote to stdout, classified as exactly one frame or not. */
+/** What a process wrote to stdout, classified as exactly one byte frame or not. */
 export type FrameExtraction =
-  | { readonly kind: 'frame'; readonly frame: string }
+  | { readonly kind: 'frame'; readonly frame: Uint8Array }
   | { readonly kind: 'empty' }
   | { readonly kind: 'extra'; readonly detail: string };
 
+export type BoundedFrameExtraction =
+  | FrameExtraction
+  | { readonly kind: 'oversized'; readonly detail: string };
+
+function isAsciiWhitespace(byte: number): boolean {
+  return byte === 0x20 || (byte >= 0x09 && byte <= 0x0d);
+}
+
 /**
  * A one-shot process must write exactly one frame followed by a newline and
- * nothing but whitespace after it. Anything else is not a response: a second
- * frame, trailing prose, or a frame that never ended.
+ * nothing but ASCII whitespace after it. Anything else is not a response: a
+ * second frame, trailing prose, or a frame that never ended. Process callers
+ * must pass bytes so invalid UTF-8 remains available to the fatal decoder.
  */
-export function extractFrame(output: string): FrameExtraction {
-  const newline = output.indexOf('\n');
+export function extractFrame(output: Uint8Array | string): FrameExtraction {
+  const bytes = typeof output === 'string' ? encoder.encode(output) : output;
+  const newline = bytes.indexOf(0x0a);
   if (newline < 0) {
-    return output.trim().length === 0
+    return bytes.every(isAsciiWhitespace)
       ? { kind: 'empty' }
       : { kind: 'extra', detail: 'frame is not newline-terminated' };
   }
-  const frame = output.slice(0, newline);
-  const rest = output.slice(newline + 1);
-  if (rest.trim().length !== 0) {
+  const frame = bytes.subarray(0, newline);
+  const rest = bytes.subarray(newline + 1);
+  if (!rest.every(isAsciiWhitespace)) {
     return { kind: 'extra', detail: 'more than one frame, or trailing content after the frame' };
   }
-  return frame.trim().length === 0 ? { kind: 'empty' } : { kind: 'frame', frame };
+  return frame.every(isAsciiWhitespace) ? { kind: 'empty' } : { kind: 'frame', frame };
+}
+
+/**
+ * Incrementally retain one bounded frame while validating, but not retaining,
+ * the ASCII whitespace permitted after its terminating LF.
+ */
+export class OneShotFrameCollector {
+  readonly #chunks: Uint8Array[] = [];
+  readonly #maxFrameBytes: number;
+  #frameBytes = 0;
+  #newlineSeen = false;
+  #oversized = false;
+  #invalidTrailingContent = false;
+
+  constructor(maxFrameBytes: number) {
+    if (!Number.isSafeInteger(maxFrameBytes) || maxFrameBytes < 0) {
+      throw new Error('frame limit must be a non-negative safe integer');
+    }
+    this.#maxFrameBytes = maxFrameBytes;
+  }
+
+  /** False means the bytes before the terminating LF exceeded the frame bound. */
+  append(chunk: Uint8Array): boolean {
+    if (this.#oversized) return false;
+    let cursor = 0;
+    if (!this.#newlineSeen) {
+      const newline = chunk.indexOf(0x0a);
+      const frameEnd = newline < 0 ? chunk.length : newline;
+      if (this.#frameBytes + frameEnd > this.#maxFrameBytes) {
+        this.#oversized = true;
+        return false;
+      }
+      if (frameEnd > 0) {
+        this.#chunks.push(Uint8Array.from(chunk.subarray(0, frameEnd)));
+        this.#frameBytes += frameEnd;
+      }
+      if (newline < 0) return true;
+      this.#newlineSeen = true;
+      cursor = newline + 1;
+    }
+    for (; cursor < chunk.length; cursor += 1) {
+      if (!isAsciiWhitespace(chunk[cursor] ?? -1)) this.#invalidTrailingContent = true;
+    }
+    return true;
+  }
+
+  extract(): BoundedFrameExtraction {
+    if (this.#oversized) {
+      return {
+        kind: 'oversized',
+        detail: `frame exceeds ${this.#maxFrameBytes} bytes`,
+      };
+    }
+    const frame = new Uint8Array(this.#frameBytes);
+    let offset = 0;
+    for (const chunk of this.#chunks) {
+      frame.set(chunk, offset);
+      offset += chunk.length;
+    }
+    if (!this.#newlineSeen) {
+      return frame.every(isAsciiWhitespace)
+        ? { kind: 'empty' }
+        : { kind: 'extra', detail: 'frame is not newline-terminated' };
+    }
+    if (this.#invalidTrailingContent) {
+      return {
+        kind: 'extra',
+        detail: 'more than one frame, or trailing content after the frame',
+      };
+    }
+    return frame.every(isAsciiWhitespace) ? { kind: 'empty' } : { kind: 'frame', frame };
+  }
 }

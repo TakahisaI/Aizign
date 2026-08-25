@@ -12,10 +12,11 @@ by this navigation file.
 1. [Harness adapter contract](../../docs/architecture/harness-adapter-contract.md)
 2. [README.md](README.md)
 3. [Hard invariants](../../docs/architecture/invariants.md)
-4. [Protocol v1](../../spec/protocol/v1/README.md)
-5. `packages/protocol/src/client.ts`
-6. [Adapter testkit](../../packages/adapter-testkit/README.md)
-7. The adapter directory being edited
+4. [Threat model](../../docs/security/threat-model.md)
+5. [Protocol v1](../../spec/protocol/v1/README.md)
+6. `packages/protocol/src/client.ts`
+7. [Adapter testkit](../../packages/adapter-testkit/README.md)
+8. The adapter directory being edited
 
 Do not read Rust crates unless the Issue explicitly requires investigation across the protocol boundary.
 

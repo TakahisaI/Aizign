@@ -1,7 +1,7 @@
 # Aizign Protocol v1
 
 NDJSON over stdin / stdout。**1 request frame in、1 response frame out**。frameは改行で終わる1行のJSON objectで、
-request / response とも `65536` bytes（`MAX_FRAME_BYTES`）以下。
+request / response のJSON frame本体はともに `65536` bytes（`MAX_FRAME_BYTES`）以下。終端LFと、その後に許可されるASCII whitespaceはframe sizeに含めない。process clientはLFまでのframeだけをboundedに保持し、LF後は保存せず検査する。
 
 - stdinは **frame 1つ + 末尾 whitespace** だけを許す。2つ目のframeや末尾の非whitespaceは `INVALID_ENVELOPE`（何もappendしない）
 - stdoutも **frame 1つ + 末尾 whitespace** だけ。clientは2つ目のframe・末尾の非whitespace・boundの超過を `unknown` として扱う（effectが実行済みの可能性があるため、拒否ではなく不明）
@@ -31,7 +31,7 @@ adapter ──(request frame)──▶ aizign handle --state <dir> ──(respon
   - **整数の字句表現**（下記）
   - **duplicate member**（下記）
   - **well-formed Unicode**（下記）
-- frame bytesは **BOMなしUTF-8** とする。不正UTF-8と先頭のUTF-8 BOM（`EF BB BF`）はJSONとして解釈せず `INVALID_ENVELOPE`。string入力も先頭のU+FEFFを許さない
+- frame bytesは **BOMなしUTF-8** とする。不正UTF-8と先頭のUTF-8 BOM（`EF BB BF`）はJSONとして解釈せず `INVALID_ENVELOPE`。string入力も先頭のU+FEFFを許さない。process clientはstdoutをframe抽出・decode完了までbyte列として保持し、LF後に許すのはASCII whitespaceだけとする
 - 整数fieldのwire表現は **canonicalな整数token** だけを許す: `0` または `-?[1-9][0-9]*`。`1.0`、`1e0`、`-0` のような表記はJSON data model上は整数1（や0）だが、frameとしては拒否する（`version` は `INVALID_ENVELOPE`、payload内は `INVALID_PAYLOAD`）。JSON Schemaはdata modelしか見ないためこの規則を書けず、両decoderが実装する（Rustは `serde_json` の整数型、TSはparse時のtoken検査）
 - envelope `version` の整数rangeは `0..=4294967295`（`PROTOCOL_VERSION` の型 `u32` に由来）。range外は `PROTOCOL_VERSION_UNSUPPORTED` ではなく **`INVALID_ENVELOPE`**。両decoderとも同じ判定（Rustはtyped field、TSは数値比較。JSON numberは2^53まで厳密なので差は出ない）
 - **同一object内でmember名の重複は拒否**（`INVALID_ENVELOPE`、journalは `JOURNAL_CORRUPT`）。`"a"` と `"\u0061"` のようにescape表記が違っても、decode後の名前が同じなら重複とする。streaming parserとfolding parserで意味が分れるため、どの階層でも契約の外。schema外のlexical ruleとして両decoderが走査し、相関データ（`requestId` / `kind`）は最後の表記から復元する
@@ -64,7 +64,7 @@ structured workflow signalを、shellがbindされている `expected` assignmen
 - `candidateDigest` はcandidate bytesを読めるcontrol plane / artifact authorityが計算する。coreはshapeを検証してcarry / compareするだけで、hashを再計算しない
 - `artifactRef` の既存規則は変更しない。external artifact digestとreview / repair causationはv1のこのsliceには含めない
 - `ok: true` の `disposition` は `accepted`（durable appendの **後** に返る）または `duplicate`（同一 `eventId`・attempt / candidate pairを含む同一内容）
-- `ok: false` の `error.code` はprotocol code、`INVALID_EXPECTATION`、またはworkflow code（`INVALID_SIGNAL`、各`*_MISMATCH`、`EVENT_CONFLICT`）
+- `ok: false` の `error.code` はprotocol code、`INVALID_EXPECTATION`、workflow code（`INVALID_SIGNAL`、各`*_MISMATCH`、`EVENT_CONFLICT`）、またはjournal code。codeの構文集合はopenだが、clientが`rejected`へ分類する集合は下記のoperation別規則でclosed
 - 照合順はworkflow → assignment → attempt → role → revision identifier → candidate digest → duplicate / conflict。異なるevent間のrevision-to-digest registryは持たない
 - Protocol v1は未releaseのためADR-0012でin-place更新した。旧shapeは互換受理しない
 
@@ -82,6 +82,23 @@ restart後に、問い合わせたsignalがwriter-published committed snapshot�
 
 ## Error codes
 
+`error.code` のwire構文は `^[A-Z][A-Z0-9_]{0,63}$` であり、schemaとdecoderは
+登録簿membershipを要求しない。clientは意味を認識したcodeだけを強いsemantic
+classificationへ使う。正形式だが未認識のcodeを確定的な成功・拒否へ推測しない。
+
+### Operation-specific client classification
+
+| Operation | Error code class | Client classification |
+|---|---|---|
+| `workflow.signal.submit` | validation / mismatch / conflict、`CAPABILITY_UNSUPPORTED`、`JOURNAL_OUTCOME_UNKNOWN`以外の既知`JOURNAL_*` | `rejected` |
+| `workflow.signal.submit` | `JOURNAL_OUTCOME_UNKNOWN` / `HANDLER_TIMEOUT` / `EFFECT_OUTCOME_UNKNOWN` | `unknown`、codeは診断用`reportedCode` |
+| `workflow.signal.submit` | `INTERNAL`または正形式だが未認識のcode | `unknown`、codeは診断用`reportedCode` |
+| `workflow.signal.reconcile` | すべてのerror response | `unknown`、codeは診断用`reportedCode` |
+
+この分類はresponseの相関が成立した後のsemantic outcomeである。相関不一致なら
+operationに関係なく`unknown / correlation_mismatch`とし、codeは未相関responseから
+得た診断情報としてのみ保持する。`unknown`から自動retryへ進まない。
+
 | Code | いつ |
 |---|---|
 | `REQUEST_TOO_LARGE` | request frameが上限を超える。`requestId` / `kind` は `null` |
@@ -92,7 +109,7 @@ restart後に、問い合わせたsignalがwriter-published committed snapshot�
 | `INVALID_EXPECTATION` | `expected` の値が不正（識別子の文字種・長さ、またはcandidate digestのhex形式） |
 | `INVALID_SIGNAL` ほかworkflow code | `signal` の値や制約、expectationとの不一致、conflict |
 | `JOURNAL_*` | journalまたはstore commit metadataを開けない・検証できない・書けない。`JOURNAL_OUTCOME_UNKNOWN` は再送せず、reconciliationでもpublished boundaryを越えるtailを確定しない |
-| `CAPABILITY_UNSUPPORTED` | kindは既知だがこのbinaryでは無効（v1では未使用） |
+| `CAPABILITY_UNSUPPORTED` | kindは既知だが、このbuildではoperationを提供できない。verified storeを持たないtargetへsubmit / reconcileを直接送った場合など |
 | `HANDLER_TIMEOUT` | 処理が時間bound（10秒）を超えた。進行中のappendまたはreconciliationの結果は不明。`requestId` / `kind` は `null` |
 | `INTERNAL` | 分類不能。詳細はstderr |
 

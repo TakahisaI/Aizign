@@ -2,8 +2,9 @@
  * The `submit_workflow_signal` tool as the agent sees it: scope-bound. The
  * agent supplies only what it can know (kind, finding count, artifact
  * reference, short error code); the control plane fixed the identity in the
- * plugin configuration, so it never appears in the schema, the arguments,
- * or the prompt.
+ * plugin configuration, so it never appears in the input parameter schema,
+ * arguments, or prompt. The successful result discloses the fixed `eventId`
+ * for correlation, but the agent cannot select or alter it.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -33,6 +34,10 @@ export const adapterCodes = {
   /** The binary speaks another protocol version or lacks a capability. */
   INCOMPATIBLE: 'AIZIGN_INCOMPATIBLE',
 } as const;
+
+const REJECTED_TOOL_MESSAGE = 'Aizign rejected the workflow signal';
+const UNKNOWN_TOOL_MESSAGE = 'Aizign could not determine the workflow signal outcome';
+const INVALID_TOOL_INPUT_MESSAGE = 'Aizign rejected invalid workflow signal input';
 
 /** Kinds a role may submit; `blocked` is always allowed. */
 export function kindsForRole(role: Role): readonly SignalKind[] {
@@ -81,27 +86,26 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 /** Closed decode of the agent's arguments; anything else is `INVALID_SIGNAL`. */
 export function decodeArgs(args: unknown, role: Role): SignalArgs {
-  const fail = (message: string) => new HarnessError(message, 'INVALID_SIGNAL');
-  if (!isPlainObject(args)) throw fail('arguments must be an object');
+  const fail = () => new HarnessError(INVALID_TOOL_INPUT_MESSAGE, 'INVALID_SIGNAL');
+  if (!isPlainObject(args)) throw fail();
   for (const key of Object.keys(args)) {
     if (!['kind', 'findingCount', 'artifactRef', 'shortErrorCode'].includes(key)) {
-      throw fail(`unknown argument \`${key}\``);
+      throw fail();
     }
   }
   const { kind, findingCount, artifactRef, shortErrorCode } = args;
   if (typeof kind !== 'string' || !(kindsForRole(role) as readonly string[]).includes(kind)) {
-    throw fail(`kind must be one of ${kindsForRole(role).join(', ')}`);
+    throw fail();
   }
   if (
     findingCount !== undefined &&
     (!Number.isInteger(findingCount) || (findingCount as number) < 0)
   ) {
-    throw fail('findingCount must be a non-negative integer');
+    throw fail();
   }
-  if (artifactRef !== undefined && typeof artifactRef !== 'string')
-    throw fail('artifactRef must be a string');
+  if (artifactRef !== undefined && typeof artifactRef !== 'string') throw fail();
   if (shortErrorCode !== undefined && typeof shortErrorCode !== 'string') {
-    throw fail('shortErrorCode must be a string');
+    throw fail();
   }
   const decoded: { -readonly [K in keyof SignalArgs]: SignalArgs[K] } = {
     kind: kind as SignalKind,
@@ -121,8 +125,12 @@ export function toPayload(binding: SignalBinding, args: SignalArgs): WorkflowSig
   try {
     return decodeWorkflowSignalSubmit(encodeWorkflowSignalSubmit(payload));
   } catch (error) {
-    if (error instanceof ProtocolError)
-      throw new HarnessError(error.message, error.code, { cause: error });
+    if (error instanceof ProtocolError) {
+      // Local protocol diagnostics follow the same model-facing rule as peer
+      // diagnostics. Do not retain a cause: DSH's diagnostic renderer follows
+      // cause chains and would otherwise recover the original message.
+      throw new HarnessError(INVALID_TOOL_INPUT_MESSAGE, error.code);
+    }
     throw error;
   }
 }
@@ -136,7 +144,13 @@ export function newRequestId(): string {
   return `req-${randomUUID()}`;
 }
 
-/** Maps the core's answer to the tool's canonical value or a harness error. */
+/**
+ * Maps the core's answer to the tool's canonical value or a harness error.
+ *
+ * Protocol diagnostics are control-plane data and can contain state paths or
+ * operating-system detail. Preserve only the stable code at this model-facing
+ * boundary; never forward the peer's human-readable message or unknown detail.
+ */
 export function toToolResult(outcome: SubmitOutcome): {
   disposition: 'accepted' | 'duplicate';
   eventId: string;
@@ -146,14 +160,11 @@ export function toToolResult(outcome: SubmitOutcome): {
     case 'duplicate':
       return { disposition: outcome.kind, eventId: outcome.eventId };
     case 'rejected':
-      throw new HarnessError(outcome.message, outcome.code);
+      throw new HarnessError(REJECTED_TOOL_MESSAGE, outcome.code);
     case 'unknown':
       // Never retried here: the core may have appended. Reconciliation is a
       // separate, explicit step.
-      throw new HarnessError(
-        `outcome unknown (${outcome.reason}): ${outcome.detail}`,
-        adapterCodes.OUTCOME_UNKNOWN,
-      );
+      throw new HarnessError(UNKNOWN_TOOL_MESSAGE, adapterCodes.OUTCOME_UNKNOWN);
   }
 }
 

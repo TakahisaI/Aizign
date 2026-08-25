@@ -3,6 +3,12 @@
 stable short error codeの登録簿です。形式は `^[A-Z][A-Z0-9_]{0,63}$`。
 一度releaseしたcodeの意味を変えません。不要になったcodeは `deprecated` にし、再利用しません。
 
+wire schemaとdecoderが受理する構文集合はopenであり、この登録簿へのmembershipを
+decode時には要求しません。各operation clientは、認識済みの確定的codeだけを強い
+semantic outcomeへ分類します。正形式でも未認識のcodeは`unknown`であり、
+control-plane向け`reportedCode`としてのみ保持できます。operation別規則は
+[Protocol v1](../../spec/protocol/v1/README.md#operation-specific-client-classification)が正本です。
+
 Statusは `reserved`（文書上で予約。実装はまだ）または `implemented`（source / fixtureに存在）。
 protocol fixtureが入った後は、`spec/protocol/v1/` が wire上のcodeの正本になり、この文書は索引になります。
 
@@ -18,7 +24,7 @@ protocol fixtureが入った後は、`spec/protocol/v1/` が wire上のcodeの�
 | `INVALID_PAYLOAD` | payloadがkindのclosed schemaに合わない（欠落、型違い、未知field、`null`） | implemented（`aizign-protocol`） |
 | `REQUEST_TOO_LARGE` | request sizeがboundを超えた | implemented（`aizign-protocol`） |
 | `CAPABILITY_UNSUPPORTED` | 要求された操作をこのbinaryまたはadapterが提供しない。初期storeの未検証platformでsubmit / reconcileを直接要求した場合を含む | implemented（`aizign-cli`） |
-| `INTERNAL` | 分類できない内部error。詳細はstderr | implemented（`aizign-cli`: clock失敗） |
+| `INTERNAL` | 分類できない内部error。詳細はstderr。submit clientは確定的rejectionへ縮約せず`unknown`にする | implemented（`aizign-cli`: clock失敗） |
 | `HANDLER_TIMEOUT` | 処理が時間boundを超えた。進行中のappendまたはreconciliationの結果は不明。再送しない。uncorrelated watchdog responseから得たcodeはreconciliation clientが診断用`reportedCode`として保持する | implemented（`aizign-cli`） |
 
 ## Workflow

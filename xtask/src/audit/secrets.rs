@@ -63,23 +63,30 @@ const FORBIDDEN_COMPONENTS: &[&str] = &[
 
 pub(crate) fn run(root: &Path, tracked: &[PathBuf]) -> Result<(), String> {
     let mut findings = Findings::default();
+    let mut content_scanned = 0;
+    let mut content_exempt = 0;
 
     for path in tracked {
         check_path(path, &mut findings);
         let rendered = display(path);
         if EXEMPT_CONTENT.contains(&rendered.as_str()) {
+            content_exempt += 1;
             continue;
         }
         let Some(text) = read_text(root, path)? else {
             continue;
         };
+        content_scanned += 1;
         for (line_number, line) in text.lines().enumerate() {
             let location = format!("{rendered}:{}", line_number + 1);
             check_line(&location, line, &mut findings);
         }
     }
 
-    println!("{} tracked file(s) scanned", tracked.len());
+    println!(
+        "{} tracked path(s) checked; {content_scanned} UTF-8 text file(s) content-scanned; {content_exempt} rule-definition file(s) exempt",
+        tracked.len()
+    );
     findings.finish("secrets and private paths")
 }
 

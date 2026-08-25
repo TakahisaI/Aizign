@@ -58,7 +58,7 @@ const exec = {
   signal: new AbortController().signal,
 } as unknown as ToolRunContext;
 
-test('the tool schema exposes no identity fields', () => {
+test('the model-visible input schema exposes no identity fields', () => {
   const schema = toolParameters('review') as {
     properties: Record<string, unknown>;
     additionalProperties: boolean;
@@ -67,7 +67,7 @@ test('the tool schema exposes no identity fields', () => {
     stubClient({ kind: 'accepted', eventId: 'evt-fixed' }),
     binding,
   );
-  const modelVisibleDefinition = JSON.stringify({ description: tool.description, schema });
+  const modelVisibleInputDefinition = JSON.stringify({ description: tool.description, schema });
   assert.deepEqual(Object.keys(schema.properties).sort(), [
     'artifactRef',
     'findingCount',
@@ -86,7 +86,7 @@ test('the tool schema exposes no identity fields', () => {
     'candidateDigest',
   ]) {
     assert.ok(!Object.hasOwn(schema.properties, identity), identity);
-    assert.ok(!modelVisibleDefinition.includes(identity), identity);
+    assert.ok(!modelVisibleInputDefinition.includes(identity), identity);
   }
   for (const configuredValue of [
     binding.eventId,
@@ -96,7 +96,7 @@ test('the tool schema exposes no identity fields', () => {
     binding.expected.artifactRevision,
     binding.expected.candidateDigest.hex,
   ]) {
-    assert.ok(!modelVisibleDefinition.includes(configuredValue), configuredValue);
+    assert.ok(!modelVisibleInputDefinition.includes(configuredValue), configuredValue);
   }
 });
 
@@ -119,7 +119,21 @@ test('arguments are decoded closed and bound to the configured identity', () => 
       return (
         error instanceof HarnessError &&
         error.code === 'INVALID_SIGNAL' &&
-        /eventId/.test(error.message)
+        error.message === 'Aizign rejected invalid workflow signal input' &&
+        !error.message.includes('eventId')
+      );
+    },
+  );
+  const privateMarker = 'synthetic-private-state/operator/workflow.jsonl';
+  assert.throws(
+    () => decodeArgs({ kind: 'review_passed', [privateMarker]: true }, 'review'),
+    (error: unknown) => {
+      return (
+        error instanceof HarnessError &&
+        error.code === 'INVALID_SIGNAL' &&
+        error.message === 'Aizign rejected invalid workflow signal input' &&
+        !('cause' in error) &&
+        !error.message.includes(privateMarker)
       );
     },
   );
@@ -146,6 +160,25 @@ test('core rules are applied before any process is spawned', () => {
       return error instanceof HarnessError && error.code === 'INVALID_SIGNAL';
     },
   );
+
+  const privateMarker = 'synthetic-private-state/operator/workflow.jsonl';
+  assert.throws(
+    () =>
+      toPayload(binding, {
+        kind: 'review_findings',
+        findingCount: 1,
+        artifactRef: privateMarker,
+      }),
+    (error: unknown) => {
+      return (
+        error instanceof HarnessError &&
+        error.code === 'INVALID_SIGNAL' &&
+        error.message === 'Aizign rejected invalid workflow signal input' &&
+        !('cause' in error) &&
+        !JSON.stringify(error).includes(privateMarker)
+      );
+    },
+  );
 });
 
 test('request ids are adapter-owned nonces, never derived from the harness call id', () => {
@@ -157,7 +190,7 @@ test('request ids are adapter-owned nonces, never derived from the harness call 
   }
 });
 
-test('outcomes map to the canonical value or a harness error; unknown is never retried', async () => {
+test('outcomes map to safe harness errors without forwarding protocol detail', async () => {
   assert.deepEqual(toToolResult({ kind: 'accepted', eventId: 'evt-fixed' }), {
     disposition: 'accepted',
     eventId: 'evt-fixed',
@@ -167,19 +200,41 @@ test('outcomes map to the canonical value or a harness error; unknown is never r
     eventId: 'evt-fixed',
   });
   assert.throws(
-    () => toToolResult({ kind: 'rejected', code: 'EVENT_CONFLICT', message: 'm' }),
+    () =>
+      toToolResult({
+        kind: 'rejected',
+        code: 'JOURNAL_UNAVAILABLE',
+        message: 'cannot open synthetic-private-state/operator/workflow.jsonl: permission denied',
+      }),
     (error: unknown) => {
-      return error instanceof HarnessError && error.code === 'EVENT_CONFLICT';
+      return (
+        error instanceof HarnessError &&
+        error.code === 'JOURNAL_UNAVAILABLE' &&
+        error.message === 'Aizign rejected the workflow signal' &&
+        !error.message.includes('synthetic-private-state') &&
+        !error.message.includes('permission denied')
+      );
     },
   );
 
-  const client = stubClient({ kind: 'unknown', reason: 'timeout', detail: 'no response' });
+  const client = stubClient({
+    kind: 'unknown',
+    reason: 'reported_unknown',
+    reportedCode: 'FUTURE_OUTCOME_UNKNOWN',
+    detail: 'FUTURE_OUTCOME_UNKNOWN: synthetic-private-state/operator/workflow.jsonl',
+  });
   const tool = createSubmitWorkflowSignalTool(client, binding);
   assert.equal(tool.name, TOOL_NAME);
   await assert.rejects(
     tool.execute({ kind: 'review_passed', findingCount: 0 }, exec),
     (error: unknown) => {
-      return error instanceof HarnessError && error.code === adapterCodes.OUTCOME_UNKNOWN;
+      return (
+        error instanceof HarnessError &&
+        error.code === adapterCodes.OUTCOME_UNKNOWN &&
+        error.message === 'Aizign could not determine the workflow signal outcome' &&
+        !error.message.includes('FUTURE_OUTCOME_UNKNOWN') &&
+        !error.message.includes('synthetic-private-state')
+      );
     },
   );
   assert.equal(client.calls.length, 1, 'exactly one submission; no retry on unknown');

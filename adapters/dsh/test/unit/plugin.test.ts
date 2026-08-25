@@ -7,6 +7,8 @@ import { fakeCoreCommand } from '@aizign/adapter-testkit';
 import {
   CAPABILITY_WORKFLOW_SIGNAL_RECONCILE,
   CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
+  type CoreClient,
+  type ParentTimingMeasurement,
 } from '@aizign/protocol';
 import type { Context } from '@deepseek-ai/cordis';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
@@ -122,9 +124,18 @@ test('preflight accepts a compatible core and rejects an incompatible or unreach
     stateDir: '/unused',
     timeoutMs: 5_000,
   });
-  await assert.rejects(preflight(reconcileOnly), (error: unknown) => {
-    return error instanceof HarnessError && error.code === codes.INCOMPATIBLE;
-  });
+  const missingCapabilityTiming: ParentTimingMeasurement[] = [];
+  await assert.rejects(
+    preflight(reconcileOnly, {
+      timingSink: (measurement) => {
+        missingCapabilityTiming.push(measurement);
+      },
+    }),
+    (error: unknown) => {
+      return error instanceof HarnessError && error.code === codes.INCOMPATIBLE;
+    },
+  );
+  assert.equal(missingCapabilityTiming[0]?.error_code, 'CAPABILITY_UNSUPPORTED');
 
   const future = new OneShotCoreClient({
     ...fake,
@@ -132,9 +143,53 @@ test('preflight accepts a compatible core and rejects an incompatible or unreach
     stateDir: '/unused',
     timeoutMs: 5_000,
   });
-  await assert.rejects(preflight(future), (error: unknown) => {
-    return error instanceof HarnessError && error.code === codes.INCOMPATIBLE;
-  });
+  const versionTiming: ParentTimingMeasurement[] = [];
+  await assert.rejects(
+    preflight(future, {
+      timingSink: (measurement) => {
+        versionTiming.push(measurement);
+      },
+    }),
+    (error: unknown) => {
+      return error instanceof HarnessError && error.code === codes.INCOMPATIBLE;
+    },
+  );
+  assert.equal(versionTiming[0]?.error_code, 'PROTOCOL_VERSION_UNSUPPORTED');
+
+  const unrecognizedPeerCode = {
+    async hello() {
+      return {
+        kind: 'error',
+        code: 'PRIVATE_FRAGMENT_ENCODED_DATA',
+        message: 'synthetic peer diagnostic',
+      } as const;
+    },
+  } as unknown as CoreClient;
+  const peerCodeTiming: ParentTimingMeasurement[] = [];
+  await assert.rejects(
+    preflight(unrecognizedPeerCode, {
+      timingSink: (measurement) => {
+        peerCodeTiming.push(measurement);
+      },
+    }),
+    (error: unknown) => {
+      return error instanceof HarnessError && error.code === codes.UNAVAILABLE;
+    },
+  );
+  assert.equal(peerCodeTiming.length, 1);
+  assert.equal(peerCodeTiming[0]?.error_code, undefined);
+  assert.ok(!JSON.stringify(peerCodeTiming).includes('PRIVATE_FRAGMENT_ENCODED_DATA'));
+  await assert.rejects(
+    preflight(unrecognizedPeerCode, {
+      timingSink: async () => {
+        throw new Error('timing sink unavailable');
+      },
+    }),
+    (error: unknown) => {
+      return error instanceof HarnessError && error.code === codes.UNAVAILABLE;
+    },
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
 
   const silent = new OneShotCoreClient({
     ...fake,
