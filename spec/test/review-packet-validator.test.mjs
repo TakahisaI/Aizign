@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
@@ -45,6 +50,28 @@ function assignment(id, title, subjectIds) {
   };
 }
 
+function rehash(packets) {
+  const context = packets[0].batch_context;
+  const checkpoint = context.checkpoint;
+  checkpoint.checkpoint_sha256 = digest(checkpoint.checkpoint_content);
+  if (checkpoint.approval.decision === 'approved') {
+    checkpoint.approval.approved_checkpoint_sha256 = checkpoint.checkpoint_sha256;
+  }
+  const contextSha = digest(context);
+  const assignments = new Map(
+    checkpoint.checkpoint_content.review_assignments.map((item) => [item.perspective_id, item]),
+  );
+  for (const packet of packets) {
+    packet.batch_context = structuredClone(context);
+    packet.batch_context_sha256 = contextSha;
+    packet.assignment = structuredClone(assignments.get(packet.assignment.perspective_id));
+    const packetForDigest = structuredClone(packet);
+    delete packetForDigest.packet_sha256;
+    packet.packet_sha256 = digest(packetForDigest);
+  }
+  return packets;
+}
+
 function makeBatch() {
   const assignments = [
     assignment('PA-1', 'governance and authority', [
@@ -69,6 +96,7 @@ function makeBatch() {
     workflow_revision: baseSha,
     change_class: 'Boundary change',
     contract_revision: 'issue-94-body-v1',
+    contract_snapshot_id: 'SNAP-ISSUE-94',
     normative_authorities: [
       {
         authority_id: 'AUTH-CONTRIBUTING',
@@ -144,6 +172,7 @@ function makeBatch() {
       {
         evidence_id: 'EVD-AUTHORITY',
         subject_ids: ['CLM-AUTHORITY', 'RNG-PROCESS'],
+        evidence_ref_ids: ['ARTIFACT-WORKFLOW'],
         method: 'Inspect governance and workflow roles.',
         expected_detection: 'Role crossover is established.',
         owner: 'PA-1',
@@ -151,6 +180,7 @@ function makeBatch() {
       {
         evidence_id: 'EVD-CONTEXT',
         subject_ids: ['CLM-CONTEXT', 'RNG-CONSUMER'],
+        evidence_ref_ids: ['ARTIFACT-WORKFLOW'],
         method: 'Compare every packet context.',
         expected_detection: 'Different context fails validation.',
         owner: 'PA-3',
@@ -158,6 +188,7 @@ function makeBatch() {
       {
         evidence_id: 'EVD-ROUTINE',
         subject_ids: ['CLM-ROUTINE', 'RNG-LIFECYCLE'],
+        evidence_ref_ids: ['ARTIFACT-WORKFLOW'],
         method: 'Inspect Routine requirements.',
         expected_detection: 'Standing review burden is established.',
         owner: 'PA-2',
@@ -167,9 +198,12 @@ function makeBatch() {
     implementation_scope: 'review-only',
     known_evidence_gaps: [],
   };
-  const checkpointSha = digest(checkpointContent);
   const issue = 'Exact Issue #94 body';
   const pr = 'Exact PR #95 body';
+  const manualInstructions = [
+    'Manual bootstrap: use one fresh session per packet, inspect only the assigned subjects,',
+    'return findings only, and use another fresh session for adjudication.',
+  ].join(' ');
   const context = {
     schema: 'aizign.review-batch-context/v1',
     context_id: 'issue-94-pr-95-context-v1',
@@ -180,6 +214,10 @@ function makeBatch() {
       procedure_path: null,
       review_packet_path: null,
       revision: baseSha,
+    },
+    execution_adapter: {
+      mode: 'manual',
+      instruction_constraint_id: 'EXEC-MANUAL-BOOTSTRAP',
     },
     controlling_authorities: checkpointContent.normative_authorities,
     target: {
@@ -194,10 +232,10 @@ function makeBatch() {
     },
     checkpoint: {
       checkpoint_content: checkpointContent,
-      checkpoint_sha256: checkpointSha,
+      checkpoint_sha256: digest(checkpointContent),
       approval: {
         decision: 'approved',
-        approved_checkpoint_sha256: checkpointSha,
+        approved_checkpoint_sha256: digest(checkpointContent),
         maintainer_identity: 'TakahisaI',
         approved_at: '2026-08-25T00:00:00Z',
         approval_reference: 'https://github.com/TakahisaI/Aizign/issues/94',
@@ -225,7 +263,17 @@ function makeBatch() {
         sha256: textDigest(pr),
       },
     ],
-    external_constraints: [],
+    external_constraints: [
+      {
+        constraint_id: 'EXEC-MANUAL-BOOTSTRAP',
+        purpose: 'Exact manual Breaker and Adjudicator execution instructions',
+        source_reference: 'Issue #94 bootstrap packet',
+        captured_at: '2026-08-25T00:00:00Z',
+        content: manualInstructions,
+        artifact_path: null,
+        sha256: textDigest(manualInstructions),
+      },
+    ],
     evidence: [
       {
         evidence_id: 'ARTIFACT-WORKFLOW',
@@ -255,27 +303,21 @@ function makeBatch() {
     ],
     known_evidence_gaps: [],
   };
-  const contextSha = digest(context);
-  return assignments.map((item) => {
-    const packet = {
-      schema: 'aizign.review-packet/v1',
-      packet_id: `issue-94-pr-95-${item.perspective_id.toLowerCase()}`,
-      packet_sha256: `sha256:${'0'.repeat(64)}`,
-      batch_id: 'issue-94-pr-95-v1',
-      batch_context_sha256: contextSha,
-      batch_context: context,
-      assignment: item,
-    };
-    const forDigest = structuredClone(packet);
-    delete forDigest.packet_sha256;
-    packet.packet_sha256 = digest(forDigest);
-    return packet;
-  });
+  const packets = assignments.map((item) => ({
+    schema: 'aizign.review-packet/v1',
+    packet_id: `issue-94-pr-95-${item.perspective_id.toLowerCase()}`,
+    packet_sha256: `sha256:${'0'.repeat(64)}`,
+    batch_id: 'issue-94-pr-95-v1',
+    batch_context_sha256: `sha256:${'0'.repeat(64)}`,
+    batch_context: context,
+    assignment: item,
+  }));
+  return rehash(packets);
 }
 
-function run(paths) {
+function run(paths, cwd = root) {
   return spawnSync(process.execPath, [validator, ...paths], {
-    cwd: root,
+    cwd,
     encoding: 'utf8',
   });
 }
@@ -286,6 +328,17 @@ function writePackets(dir, packets) {
     writeFileSync(file, `${JSON.stringify(packet, null, 2)}\n`);
     return file;
   });
+}
+
+function assertRejected(packets, pattern, cwd = root) {
+  const dir = mkdtempSync(join(tmpdir(), 'aizign-review-batch-'));
+  try {
+    const result = run(writePackets(dir, rehash(packets)), cwd);
+    assert.notEqual(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stderr, pattern);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 test('review batch validator accepts one complete fixed-context batch', () => {
@@ -346,5 +399,124 @@ test('review batch validator requires exactly one packet per perspective', () =>
     assert.match(result.stderr, /exactly one packet for every perspective/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+for (const [name, field, value, pattern] of [
+  [
+    'empty identity',
+    'maintainer_identity',
+    '   ',
+    /maintainer_identity must be a non-blank string/,
+  ],
+  ['empty timestamp', 'approved_at', '   ', /schema validation failed|valid RFC 3339 timestamp/],
+  ['empty reference', 'approval_reference', '   ', /approval_reference must be a non-blank string/],
+  ['malformed timestamp', 'approved_at', '2026-99-25T00:00:00Z', /valid RFC 3339 timestamp/],
+]) {
+  test(`review batch validator rejects approved checkpoint with ${name}`, () => {
+    const packets = makeBatch();
+    packets[0].batch_context.checkpoint.approval[field] = value;
+    assertRejected(packets, pattern);
+  });
+}
+
+test('review batch validator requires evidence for every claim', () => {
+  const packets = makeBatch();
+  const requirements =
+    packets[0].batch_context.checkpoint.checkpoint_content.evidence_requirements;
+  const requirement = requirements.find(
+    (item) => item.evidence_id === 'EVD-CONTEXT',
+  );
+  requirement.subject_ids = ['RNG-CONSUMER'];
+  assertRejected(packets, /claim CLM-CONTEXT has no evidence requirement/);
+});
+
+test('review batch validator requires evidence references to resolve', () => {
+  const packets = makeBatch();
+  const requirements =
+    packets[0].batch_context.checkpoint.checkpoint_content.evidence_requirements;
+  requirements[0].evidence_ref_ids = ['EVIDENCE-MISSING'];
+  assertRejected(packets, /references unknown evidence EVIDENCE-MISSING/);
+});
+
+test('review batch validator requires every known evidence gap to be assigned', () => {
+  const packets = makeBatch();
+  const gap = {
+    gap_id: 'GAP-UNASSIGNED',
+    description: 'One missing observation remains.',
+    owner_or_follow_up: 'Issue #100',
+  };
+  packets[0].batch_context.checkpoint.checkpoint_content.known_evidence_gaps.push(gap);
+  packets[0].batch_context.known_evidence_gaps.push(structuredClone(gap));
+  assertRejected(packets, /missing coverage for GAP-UNASSIGNED/);
+});
+
+test('review batch validator requires manual execution for bootstrap', () => {
+  const packets = makeBatch();
+  const constraint = packets[0].batch_context.external_constraints[0];
+  packets[0].batch_context.execution_adapter = {
+    mode: 'skill',
+    instruction_constraint_id: constraint.constraint_id,
+    skill_name: 'aizign-break',
+    skill_version: 'v2',
+    skill_sha256: constraint.sha256,
+  };
+  assertRejected(packets, /bootstrap batches must use the frozen manual execution adapter/);
+});
+
+test('review batch validator rejects bootstrap authorities at the target SHA', () => {
+  const packets = makeBatch();
+  const context = packets[0].batch_context;
+  for (const authority of context.controlling_authorities) authority.revision = targetSha;
+  for (const authority of context.checkpoint.checkpoint_content.normative_authorities) {
+    authority.revision = targetSha;
+  }
+  assertRejected(packets, /bootstrap controlling authorities must use the base SHA/);
+});
+
+test('review batch validator requires a matching pull-request snapshot', () => {
+  const packets = makeBatch();
+  packets[0].batch_context.issue_pr_snapshots = packets[0].batch_context.issue_pr_snapshots.filter(
+    (item) => item.kind !== 'pull_request',
+  );
+  assertRejected(packets, /exactly one matching pull-request snapshot/);
+});
+
+test('review batch validator rejects the wrong pull-request snapshot number', () => {
+  const packets = makeBatch();
+  packets[0].batch_context.issue_pr_snapshots.find(
+    (item) => item.kind === 'pull_request',
+  ).number = 96;
+  assertRejected(packets, /exactly one matching pull-request snapshot/);
+});
+
+test('review batch validator requires the contract snapshot to exist', () => {
+  const packets = makeBatch();
+  packets[0].batch_context.checkpoint.checkpoint_content.contract_snapshot_id =
+    'SNAP-ISSUE-MISSING';
+  assertRejected(packets, /contract snapshot SNAP-ISSUE-MISSING does not exist/);
+});
+
+test('review batch validator rejects an artifact symlink that escapes the repository root', () => {
+  const repoDir = mkdtempSync(join(tmpdir(), 'aizign-review-root-'));
+  const outsideDir = mkdtempSync(join(tmpdir(), 'aizign-review-outside-'));
+  try {
+    const outside = join(outsideDir, 'manual.txt');
+    const content = 'outside manual instruction bytes';
+    writeFileSync(outside, content);
+    symlinkSync(outside, join(repoDir, 'manual.txt'));
+
+    const packets = makeBatch();
+    const constraint = packets[0].batch_context.external_constraints[0];
+    constraint.content = null;
+    constraint.artifact_path = 'manual.txt';
+    constraint.sha256 = textDigest(content);
+    const paths = writePackets(repoDir, rehash(packets));
+    const result = run(paths, repoDir);
+    assert.notEqual(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stderr, /outside the repository root through a symlink/);
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+    rmSync(outsideDir, { recursive: true, force: true });
   }
 });

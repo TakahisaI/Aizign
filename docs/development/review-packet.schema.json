@@ -32,6 +32,16 @@
     "sha1": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "nullableString": { "type": ["string", "null"] },
+    "nullableNonEmptyString": {
+      "anyOf": [
+        { "$ref": "#/definitions/nonEmptyString" },
+        { "type": "null" }
+      ]
+    },
+    "rfc3339": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$"
+    },
     "stringArray": {
       "type": "array",
       "items": { "$ref": "#/definitions/nonEmptyString" },
@@ -130,10 +140,18 @@
     "evidenceRequirement": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["evidence_id", "subject_ids", "method", "expected_detection", "owner"],
+      "required": [
+        "evidence_id",
+        "subject_ids",
+        "evidence_ref_ids",
+        "method",
+        "expected_detection",
+        "owner"
+      ],
       "properties": {
         "evidence_id": { "$ref": "#/definitions/id" },
         "subject_ids": { "$ref": "#/definitions/idArray" },
+        "evidence_ref_ids": { "$ref": "#/definitions/idArray" },
         "method": { "$ref": "#/definitions/nonEmptyString" },
         "expected_detection": { "$ref": "#/definitions/nonEmptyString" },
         "owner": { "$ref": "#/definitions/nonEmptyString" }
@@ -180,6 +198,7 @@
         "workflow_revision",
         "change_class",
         "contract_revision",
+        "contract_snapshot_id",
         "normative_authorities",
         "canonical_owners",
         "duplicate_owners_to_remove",
@@ -197,6 +216,7 @@
         "workflow_revision": { "$ref": "#/definitions/sha1" },
         "change_class": { "enum": ["Boundary change", "Milestone review"] },
         "contract_revision": { "$ref": "#/definitions/nonEmptyString" },
+        "contract_snapshot_id": { "$ref": "#/definitions/id" },
         "normative_authorities": {
           "type": "array",
           "minItems": 1,
@@ -245,22 +265,62 @@
       }
     },
     "approval": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "decision",
-        "approved_checkpoint_sha256",
-        "maintainer_identity",
-        "approved_at",
-        "approval_reference"
-      ],
-      "properties": {
-        "decision": { "enum": ["awaiting", "approved", "rejected"] },
-        "approved_checkpoint_sha256": { "$ref": "#/definitions/nullableString" },
-        "maintainer_identity": { "$ref": "#/definitions/nullableString" },
-        "approved_at": { "$ref": "#/definitions/nullableString" },
-        "approval_reference": { "$ref": "#/definitions/nullableString" }
-      }
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "decision",
+            "approved_checkpoint_sha256",
+            "maintainer_identity",
+            "approved_at",
+            "approval_reference"
+          ],
+          "properties": {
+            "decision": { "const": "awaiting" },
+            "approved_checkpoint_sha256": { "type": "null" },
+            "maintainer_identity": { "type": "null" },
+            "approved_at": { "type": "null" },
+            "approval_reference": { "type": "null" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "decision",
+            "approved_checkpoint_sha256",
+            "maintainer_identity",
+            "approved_at",
+            "approval_reference"
+          ],
+          "properties": {
+            "decision": { "const": "approved" },
+            "approved_checkpoint_sha256": { "$ref": "#/definitions/sha256" },
+            "maintainer_identity": { "$ref": "#/definitions/nonEmptyString" },
+            "approved_at": { "$ref": "#/definitions/rfc3339" },
+            "approval_reference": { "$ref": "#/definitions/nonEmptyString" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "decision",
+            "approved_checkpoint_sha256",
+            "maintainer_identity",
+            "approved_at",
+            "approval_reference"
+          ],
+          "properties": {
+            "decision": { "const": "rejected" },
+            "approved_checkpoint_sha256": { "type": "null" },
+            "maintainer_identity": { "$ref": "#/definitions/nonEmptyString" },
+            "approved_at": { "$ref": "#/definitions/rfc3339" },
+            "approval_reference": { "$ref": "#/definitions/nonEmptyString" }
+          }
+        }
+      ]
     },
     "checkpoint": {
       "type": "object",
@@ -282,6 +342,37 @@
         "review_packet_path": { "$ref": "#/definitions/nullableString" },
         "revision": { "$ref": "#/definitions/sha1" }
       }
+    },
+    "executionAdapter": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "instruction_constraint_id"],
+          "properties": {
+            "mode": { "const": "manual" },
+            "instruction_constraint_id": { "$ref": "#/definitions/id" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "instruction_constraint_id",
+            "skill_name",
+            "skill_version",
+            "skill_sha256"
+          ],
+          "properties": {
+            "mode": { "const": "skill" },
+            "instruction_constraint_id": { "$ref": "#/definitions/id" },
+            "skill_name": { "$ref": "#/definitions/nonEmptyString" },
+            "skill_version": { "$ref": "#/definitions/nonEmptyString" },
+            "skill_sha256": { "$ref": "#/definitions/sha256" }
+          }
+        }
+      ]
     },
     "target": {
       "type": "object",
@@ -338,7 +429,7 @@
           "maximum": 9007199254740991
         },
         "source_reference": { "$ref": "#/definitions/nonEmptyString" },
-        "captured_at": { "$ref": "#/definitions/nonEmptyString" },
+        "captured_at": { "$ref": "#/definitions/rfc3339" },
         "content": { "$ref": "#/definitions/nullableString" },
         "artifact_path": { "$ref": "#/definitions/nullableString" },
         "sha256": { "$ref": "#/definitions/sha256" }
@@ -374,7 +465,7 @@
         "constraint_id": { "$ref": "#/definitions/id" },
         "purpose": { "$ref": "#/definitions/nonEmptyString" },
         "source_reference": { "$ref": "#/definitions/nonEmptyString" },
-        "captured_at": { "$ref": "#/definitions/nonEmptyString" },
+        "captured_at": { "$ref": "#/definitions/rfc3339" },
         "content": { "$ref": "#/definitions/nullableString" },
         "artifact_path": { "$ref": "#/definitions/nullableString" },
         "sha256": { "$ref": "#/definitions/sha256" }
@@ -424,7 +515,7 @@
         "kind": { "const": "artifact" },
         "purpose": { "$ref": "#/definitions/nonEmptyString" },
         "source_reference": { "$ref": "#/definitions/nonEmptyString" },
-        "captured_at": { "$ref": "#/definitions/nonEmptyString" },
+        "captured_at": { "$ref": "#/definitions/rfc3339" },
         "content": { "$ref": "#/definitions/nullableString" },
         "artifact_path": { "$ref": "#/definitions/nullableString" },
         "sha256": { "$ref": "#/definitions/sha256" }
@@ -472,6 +563,7 @@
         "created_at",
         "repository",
         "workflow",
+        "execution_adapter",
         "controlling_authorities",
         "target",
         "checkpoint",
@@ -485,9 +577,10 @@
       "properties": {
         "schema": { "const": "aizign.review-batch-context/v1" },
         "context_id": { "$ref": "#/definitions/id" },
-        "created_at": { "$ref": "#/definitions/nonEmptyString" },
+        "created_at": { "$ref": "#/definitions/rfc3339" },
         "repository": { "$ref": "#/definitions/nonEmptyString" },
         "workflow": { "$ref": "#/definitions/workflow" },
+        "execution_adapter": { "$ref": "#/definitions/executionAdapter" },
         "controlling_authorities": {
           "type": "array",
           "minItems": 1,
@@ -502,6 +595,7 @@
         },
         "external_constraints": {
           "type": "array",
+          "minItems": 1,
           "items": { "$ref": "#/definitions/externalConstraint" }
         },
         "evidence": {

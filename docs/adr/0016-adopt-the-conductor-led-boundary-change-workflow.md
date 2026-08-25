@@ -75,18 +75,23 @@ Hash canonical `checkpoint_content` only. Do not include the digest or approval
 metadata in its own hash input. An approved envelope repeats the exact
 checkpoint digest. Editing checkpoint content requires a new digest and
 approval; adding approval metadata does not change the checkpoint digest.
+Approved identity and reference fields are non-blank, and approval time is a
+valid RFC 3339 timestamp.
 
 Use stable IDs for:
 
 - claims;
 - commitment, lifecycle, and consumer ranges;
-- evidence requirements; and
+- evidence requirements;
+- unresolved evidence gaps; and
 - review perspectives.
 
 Proof and review are not additional range types. They are represented by
-`evidence_requirements` and `review_assignments`. Every claim, every included or
-evidence-gap range, and every evidence requirement maps to one or more
-perspectives before review begins.
+`evidence_requirements` and `review_assignments`. Every claim and every included
+or evidence-gap range has at least one falsifying evidence requirement. Every
+evidence requirement resolves to one or more retained or repository evidence
+records. Every claim, reviewable range, evidence requirement, and unresolved gap
+maps to one or more perspectives before review begins.
 
 For each Boundary change:
 
@@ -94,7 +99,7 @@ For each Boundary change:
 2. dispose every old or competing path as deleted, migrated, explicitly
    provisional, or retained for a distinct named responsibility;
 3. define structured claims and commitment/lifecycle/consumer ranges;
-4. define concrete falsification and evidence requirements;
+4. define concrete falsification and resolvable evidence requirements;
 5. stop and return to proposal when implementation discovers a contract delta;
 6. review one exact target with one frozen shared context;
 7. use one fresh Breaker session per perspective; and
@@ -108,19 +113,28 @@ produce them and then starts a separate review-only Milestone checkpoint.
 
 Review packets bind the target SHA and tree, base and merge-base, exact changed
 paths, controlling authority revisions, checkpoint content/digest/approval,
-frozen Issue and pull-request bodies, structured subjects, evidence, and known
-gaps. Reviewers do not independently reconstruct mutable project context.
+frozen Issue and pull-request bodies, execution instructions, structured
+subjects, evidence, and known gaps. Reviewers do not independently reconstruct
+mutable project context.
 
-Add one tracked, dependency-free Node validator at
-`scripts/validate-review-batch.mjs`. It validates all packet files in one batch,
-including the closed field set, nested content/artifact digests, cross-field
-constraints, byte-equivalent shared context, unique perspective packets, and
+Add one tracked Node validator at `scripts/validate-review-batch.mjs`. It uses
+the repository-pinned Ajv dependency and adds no new dependency. It validates
+all packet files in one batch, including the closed field set, approval
+provenance, nested content/artifact digests, cross-field constraints,
+byte-equivalent shared context, unique perspective packets, evidence links, and
 complete stable-ID coverage. Digest agreement alone is not packet validity.
+Repository-relative artifacts are checked after real-path resolution so a
+symlink cannot escape the repository root.
 
 Allow optional personal or workspace Codex skills for Conduct, Break, and
 Adjudicate. Each skill says in its `description` and body that it is used only
 through explicit `$skill-name` invocation. Skills are installed outside the
 repository, remain non-authoritative, and have a tracked manual equivalent.
+
+The initial Issue #94 / PR #95 bootstrap uses a frozen **manual** execution
+adapter in ordinary fresh sessions. It does not use the personal/workspace
+skills as bootstrap evidence. A later formal batch may use a skill only when its
+exact instructions, name, version, and digest are frozen in the batch.
 
 Treat R01-R14 as the external review plan for the current pre-v0.1 Foundation
 campaign and its required complete rerun only. It is not a normal pull-request
@@ -133,12 +147,16 @@ gate, permanent perspective taxonomy, or generic skill payload.
 - Authority, implementation, evidence, review, and approval become separate
   records.
 - Checkpoint approval no longer creates a digest or approval self-reference.
+- Approval provenance cannot be represented by empty identity, time, or
+  reference values.
 - A stronger specialist can contribute without silently replacing repository
   authority or Maintainer decisions.
-- Reviewers receive one validated exact-revision context instead of
-  reconstructing mutable metadata independently.
-- Stable IDs make coverage omissions mechanically detectable for every declared
-  subject.
+- Reviewers receive one validated exact-revision context and one frozen
+  instruction source instead of reconstructing mutable metadata independently.
+- Stable IDs and evidence references make declared coverage omissions
+  mechanically detectable.
+- Bootstrap authority is constrained to the base revision and PR targets bind
+  the exact PR snapshot.
 - Review-only Milestones have an executable state path.
 - Duplicate ownership and undisposed old paths are addressed before completion.
 - Routine changes retain a lightweight path.
@@ -150,7 +168,7 @@ gate, permanent perspective taxonomy, or generic skill payload.
   pull requests.
 - The batch validator adds a small tracked script and interface that must be
   maintained with the workflow.
-- The validator proves internal packet consistency, not the truth or
+- The validator proves declared packet consistency, not the truth or absolute
   completeness of the technical claims selected by the Conductor.
 - Poor classification can either overburden Routine work or under-review a real
   Boundary change.
@@ -161,12 +179,14 @@ gate, permanent perspective taxonomy, or generic skill payload.
 
 ### Follow-up
 
-- Add the tracked workflow, review-packet interface, validator, and contribution
+- Add the tracked workflow, packet schema, validator, tests, and contribution
   templates in the pull request for Issue #94.
-- Install and smoke-test the personal/workspace `$aizign-conduct`,
-  `$aizign-break`, and `$aizign-adjudicate` skills outside the repository.
-- Recreate the PR #95 bootstrap batch under a new ID and new, unedited comment
-  for the exact corrected head.
+- Recreate the PR #95 checkpoint and bootstrap batch under new IDs for the exact
+  corrected head.
+- Run PA-1, PA-2, and PA-3 with the fixed manual adapter, then run a separate
+  manual Adjudicator session.
+- Smoke-test the personal/workspace `$aizign-conduct`, `$aizign-break`, and
+  `$aizign-adjudicate` skills after the tracked workflow merges.
 - Use Issue #84 as the first complete pilot while preparing contract decisions
   for Issues #72, #75, and #81.
 - Run one retrospective after the four contract decisions and another after
@@ -178,6 +198,9 @@ gate, permanent perspective taxonomy, or generic skill payload.
   fix mutable reviewer context, role self-confirmation, or duplicate ownership.
 - **Keep digest-only packet verification.** Rejected because malformed or
   mutually inconsistent packet files can still have correct individual hashes.
+- **Allow unpinned personal skills in the initial bootstrap.** Rejected because
+  reviewers could receive different effective instructions even with the same
+  packet metadata.
 - **Treat proof and review as free-text ranges.** Rejected because stable
   evidence and assignment IDs provide clearer ownership and mechanical
   coverage checks.
