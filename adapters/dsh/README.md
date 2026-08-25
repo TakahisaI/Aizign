@@ -161,6 +161,6 @@ preflightは全体の`preflight_ms`、evidence cold readは`harness_cold_read_ms
 |---|---|
 | `AIZIGN_UNAVAILABLE` | preflightでbinaryに到達できない、または `hello` がerror |
 | `AIZIGN_INCOMPATIBLE` | protocol versionが違う、またはcapabilityがない |
-| `AIZIGN_OUTCOME_UNKNOWN` | 提出の結果が不明（無応答、garbage、2 frame、oversized、相関不一致、timeout、abort、`JOURNAL_OUTCOME_UNKNOWN`）。再送しない |
+| `AIZIGN_OUTCOME_UNKNOWN` | 提出の結果が不明（無応答、garbage、2 frame、oversized、相関不一致、timeout、abort、`JOURNAL_OUTCOME_UNKNOWN`、正形式だが未認識のpeer code）。peer codeはcontrol-plane診断にのみ保持し、この固定adapter codeへ正規化してmodelへ返す。再送しない |
 | `INVALID_SIGNAL` ほか | protocol / workflow codeをそのまま転送 |
 | `INVALID_EXPECTATION` | plugin configの検証に失敗 |

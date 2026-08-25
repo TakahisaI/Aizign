@@ -41,11 +41,12 @@ pub struct ProtocolError {
 }
 
 impl ProtocolError {
-    /// Builds an error from one of the registered codes.
+    /// Builds an error from a well-formed short code.
     ///
-    /// `code` must satisfy the short-error-code pattern; the constants in
-    /// [`codes`] and `WorkflowError::code` do. Anything else degrades to
-    /// [`codes::INTERNAL`] so a malformed code can never reach the wire.
+    /// The constants in [`codes`] and `WorkflowError::code` are registered,
+    /// but a decoded peer may supply another syntactically valid code whose
+    /// operation semantics the consuming client does not recognize. Anything
+    /// malformed degrades to [`codes::INTERNAL`] so it cannot reach the wire.
     #[must_use]
     pub fn new(code: &str, message: impl Into<String>) -> Self {
         let code = ShortErrorCode::new(code)

@@ -106,8 +106,14 @@ Submission classifications have these meanings:
 - `duplicate`: the same `eventId` and exact accepted event content already
   exist, so no second event is appended;
 - `rejected`: the core definitively refused this request and returned a stable
-  rejection code; and
+  rejection code recognized for this operation; and
 - `unknown`: the client cannot establish whether this request took effect.
+
+The Protocol error-code syntax is open. A submit client may return `rejected`
+only for its closed allowlist of codes whose operation semantics establish a
+definitive refusal. It must preserve any well-formed but unrecognized code as
+diagnostic `reportedCode`, classify the submit as `unknown`, and never retry it
+implicitly. Reconciliation classifies every error response as `unknown`.
 
 `unknown` is terminal knowledge about the observation, not permission to retry.
 A caller may perform a separately defined read-only reconciliation or another
@@ -187,11 +193,13 @@ codes across the core boundary. Producers must not place raw conversation data
 or credentials in those fields. This is an obligation and a structural field
 exclusion, not a claim that every allowed string is semantically inspected.
 
-The stable error code is safe to classify. A human-readable Protocol error
-message is operational diagnostic data and can contain a configured state path
-or operating-system detail. An adapter must not forward that message to a
-model-visible error surface; it must preserve the code and use a fixed safe
-message there.
+A recognized stable error code is safe to classify according to the
+operation-specific registry. A well-formed but unrecognized code is diagnostic
+data, not a rejection fact. A human-readable Protocol error message is also
+operational diagnostic data and can contain a configured state path or
+operating-system detail. An adapter must not forward either an unrecognized
+peer code or that message to a model-visible error surface; for an unknown
+submit it uses a fixed adapter-owned code and safe message.
 
 The adapter maps native inputs to protocol DTOs but does not expose core or
 engine internal types to its harness. The core, protocol, and journal likewise

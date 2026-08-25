@@ -14,6 +14,7 @@ import {
   encodeRequest,
   extractFrame,
   type HelloOutcome,
+  isSubmitRejectionCode,
   isUnknownOutcomeCode,
   MAX_FRAME_BYTES,
   type ParentOperationKind,
@@ -49,7 +50,12 @@ function unknown(
 }
 
 function reportedUnknown(code: string, message: string): UnknownOutcome {
-  return { kind: 'unknown', reason: 'reported_unknown', detail: `${code}: ${message}` };
+  return {
+    kind: 'unknown',
+    reason: 'reported_unknown',
+    reportedCode: code,
+    detail: `${code}: ${message}`,
+  };
 }
 
 export class OneShotCoreClient implements CoreClient {
@@ -125,9 +131,9 @@ export class OneShotCoreClient implements CoreClient {
         return finish({ kind: body.result.disposition, eventId: body.result.eventId });
       case 'error':
         return finish(
-          isUnknownOutcomeCode(body.error.code)
-            ? reportedUnknown(body.error.code, body.error.message)
-            : { kind: 'rejected', code: body.error.code, message: body.error.message },
+          isSubmitRejectionCode(body.error.code)
+            ? { kind: 'rejected', code: body.error.code, message: body.error.message }
+            : reportedUnknown(body.error.code, body.error.message),
           body.error.code,
         );
       default:

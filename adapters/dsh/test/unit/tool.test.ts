@@ -220,7 +220,8 @@ test('outcomes map to safe harness errors without forwarding protocol detail', a
   const client = stubClient({
     kind: 'unknown',
     reason: 'reported_unknown',
-    detail: 'JOURNAL_OUTCOME_UNKNOWN: synthetic-private-state/operator/workflow.jsonl',
+    reportedCode: 'FUTURE_OUTCOME_UNKNOWN',
+    detail: 'FUTURE_OUTCOME_UNKNOWN: synthetic-private-state/operator/workflow.jsonl',
   });
   const tool = createSubmitWorkflowSignalTool(client, binding);
   assert.equal(tool.name, TOOL_NAME);
@@ -231,6 +232,7 @@ test('outcomes map to safe harness errors without forwarding protocol detail', a
         error instanceof HarnessError &&
         error.code === adapterCodes.OUTCOME_UNKNOWN &&
         error.message === 'Aizign could not determine the workflow signal outcome' &&
+        !error.message.includes('FUTURE_OUTCOME_UNKNOWN') &&
         !error.message.includes('synthetic-private-state')
       );
     },

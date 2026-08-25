@@ -252,13 +252,28 @@ export async function runFaultScenarios(
       ['oversized', 'oversized_response', 'the response exceeds the frame bound'],
       ['two-frames', 'undecodable_response', 'stdout carries two frames'],
       ['trailing-garbage', 'undecodable_response', 'stdout carries a frame and then prose'],
+      [
+        'unknown-valid-error-code',
+        'reported_unknown',
+        'an unrecognized well-formed peer code is not a definitive rejection',
+      ],
     ];
     for (const [fault, reason, description] of scenarios) {
       const outcome = await make(`fault-${fault}`, {
         AIZIGN_FAKE_FAULT: fault,
       }).submitWorkflowSignal('req-fault', samplePayload('evt-fault'));
       assert.equal(outcome.kind, 'unknown', `${description}: ${JSON.stringify(outcome)}`);
-      if (outcome.kind === 'unknown') assert.equal(outcome.reason, reason, description);
+      if (outcome.kind === 'unknown') {
+        assert.equal(outcome.reason, reason, description);
+        if (fault === 'unknown-valid-error-code') {
+          assert.equal(outcome.reportedCode, 'FUTURE_OUTCOME_UNKNOWN');
+          assert.equal(
+            readFakeRequests(join(root, `fault-${fault}`)).length,
+            1,
+            'an unrecognized peer code never causes a retry',
+          );
+        }
+      }
     }
     const hang = await make(
       'fault-hang',

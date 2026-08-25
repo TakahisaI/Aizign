@@ -31,8 +31,9 @@ export function isShortErrorCode(value: unknown): value is string {
  * may represent a decoded wire error, a local encode/validation failure, or a
  * workflow rejection. The message is not a model-safe field and may contain
  * state-path or operating-system detail; adapters must normalize it before a
- * model-facing boundary. Construct with a registered code; anything else
- * degrades to `INTERNAL` so a malformed code cannot reach the wire.
+ * model-facing boundary. Construct with a well-formed short code; operation
+ * clients decide whether they recognize its semantics. A malformed code
+ * degrades to `INTERNAL` so it cannot reach the wire.
  */
 export class ProtocolError extends Error {
   readonly code: string;

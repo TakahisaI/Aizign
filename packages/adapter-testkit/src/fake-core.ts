@@ -19,6 +19,7 @@
  * - `trailing-garbage`  answer, then keep talking
  * - `handler-timeout`   report HANDLER_TIMEOUT without correlation ids
  * - `event-conflict-error` report EVENT_CONFLICT as a correlated error
+ * - `unknown-valid-error-code` report an unrecognized, well-formed correlated error code
  *
  * `AIZIGN_FAKE_HELLO_PROTOCOL_VERSION` overrides the advertised protocol
  * version, for compatibility-check tests.
@@ -242,6 +243,16 @@ async function main(argv: readonly string[]): Promise<number> {
       return 0;
     case 'event-conflict-error':
       write(errorResponse(request.requestId, request.kind, 'EVENT_CONFLICT', 'reported conflict'));
+      return 0;
+    case 'unknown-valid-error-code':
+      write(
+        errorResponse(
+          request.requestId,
+          request.kind,
+          'FUTURE_OUTCOME_UNKNOWN',
+          'the write result could not be established',
+        ),
+      );
       return 0;
     case 'wrong-request-id':
       write({ ...response, requestId: 'req-someone-else' });

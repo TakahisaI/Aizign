@@ -64,7 +64,7 @@ structured workflow signalを、shellがbindされている `expected` assignmen
 - `candidateDigest` はcandidate bytesを読めるcontrol plane / artifact authorityが計算する。coreはshapeを検証してcarry / compareするだけで、hashを再計算しない
 - `artifactRef` の既存規則は変更しない。external artifact digestとreview / repair causationはv1のこのsliceには含めない
 - `ok: true` の `disposition` は `accepted`（durable appendの **後** に返る）または `duplicate`（同一 `eventId`・attempt / candidate pairを含む同一内容）
-- `ok: false` の `error.code` はprotocol code、`INVALID_EXPECTATION`、またはworkflow code（`INVALID_SIGNAL`、各`*_MISMATCH`、`EVENT_CONFLICT`）
+- `ok: false` の `error.code` はprotocol code、`INVALID_EXPECTATION`、workflow code（`INVALID_SIGNAL`、各`*_MISMATCH`、`EVENT_CONFLICT`）、またはjournal code。codeの構文集合はopenだが、clientが`rejected`へ分類する集合は下記のoperation別規則でclosed
 - 照合順はworkflow → assignment → attempt → role → revision identifier → candidate digest → duplicate / conflict。異なるevent間のrevision-to-digest registryは持たない
 - Protocol v1は未releaseのためADR-0012でin-place更新した。旧shapeは互換受理しない
 
@@ -81,6 +81,23 @@ restart後に、問い合わせたsignalがwriter-published committed snapshot�
 - これはcontrol-plane / operator APIであり、model-visible toolや自動retry / 自動reconcileを追加しない
 
 ## Error codes
+
+`error.code` のwire構文は `^[A-Z][A-Z0-9_]{0,63}$` であり、schemaとdecoderは
+登録簿membershipを要求しない。clientは意味を認識したcodeだけを強いsemantic
+classificationへ使う。正形式だが未認識のcodeを確定的な成功・拒否へ推測しない。
+
+### Operation-specific client classification
+
+| Operation | Error code class | Client classification |
+|---|---|---|
+| `workflow.signal.submit` | validation / mismatch / conflict、`CAPABILITY_UNSUPPORTED`、`JOURNAL_OUTCOME_UNKNOWN`以外の既知`JOURNAL_*` | `rejected` |
+| `workflow.signal.submit` | `JOURNAL_OUTCOME_UNKNOWN` / `HANDLER_TIMEOUT` / `EFFECT_OUTCOME_UNKNOWN` | `unknown`、codeは診断用`reportedCode` |
+| `workflow.signal.submit` | `INTERNAL`または正形式だが未認識のcode | `unknown`、codeは診断用`reportedCode` |
+| `workflow.signal.reconcile` | すべてのerror response | `unknown`、codeは診断用`reportedCode` |
+
+この分類はresponseの相関が成立した後のsemantic outcomeである。相関不一致なら
+operationに関係なく`unknown / correlation_mismatch`とし、codeは未相関responseから
+得た診断情報としてのみ保持する。`unknown`から自動retryへ進まない。
 
 | Code | いつ |
 |---|---|
