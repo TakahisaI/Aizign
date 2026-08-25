@@ -25,7 +25,7 @@ const SCENARIO_OPERATION_NAMES = {
   assignment_unknown_reconcile: ['hello', 'preflight', 'submit_lost_ack', 'lookup'],
 };
 
-const STAGE_METRICS = [
+const STAGE_METRICS_MS = [
   'request_read_ms',
   'decode_ms',
   'journal_open_ms',
@@ -34,7 +34,6 @@ const STAGE_METRICS = [
   'committed_prefix_hash_ms',
   'committed_prefix_decode_ms',
   'replay_ms',
-  'decide_us',
   'append_sync_ms',
   'publish_prefix_hash_ms',
   'response_encode_ms',
@@ -46,6 +45,7 @@ const STAGE_METRICS = [
   'aizign_end_to_end_ms',
   'batch_total_ms',
 ];
+const STAGE_METRICS_US = ['decide_us'];
 
 function transportBudgets() {
   return PR_SMOKE_CASES.flatMap(({ name: caseName }) => {
@@ -178,10 +178,17 @@ function matches(aggregate, budget) {
   );
 }
 
-function pickFinite(source, names = STAGE_METRICS) {
+function pickFinite(source, names = STAGE_METRICS_MS) {
   return Object.fromEntries(
     names.flatMap((name) => (Number.isFinite(source?.[name]) ? [[name, source[name]]] : [])),
   );
+}
+
+function stageAttribution(...sources) {
+  return {
+    stages_ms: Object.assign({}, ...sources.map((source) => pickFinite(source))),
+    stages_us: Object.assign({}, ...sources.map((source) => pickFinite(source, STAGE_METRICS_US))),
+  };
 }
 
 function scenarioSource(sample, operationName) {
@@ -228,10 +235,7 @@ function operationAttribution(operation, operationIndex) {
     outcome: operation.outcome ?? operation.parent?.outcome ?? 'unknown',
     ...(operation.error_code === undefined ? {} : { error_code: operation.error_code }),
     ...(operation.unknown_reason === undefined ? {} : { unknown_reason: operation.unknown_reason }),
-    stages_ms: {
-      ...pickFinite(operation.child),
-      ...pickFinite(operation.parent),
-    },
+    ...stageAttribution(operation.child, operation.parent),
   };
 }
 
@@ -240,10 +244,10 @@ function sampleAttribution(sample, measured) {
     sample_phase: sample.sample_phase,
     sample_index: sample.sample_index,
     measured_ms: measured,
-    stages_ms: {},
+    ...stageAttribution(),
   };
   if (sample.sweep === 'transport') {
-    attribution.stages_ms = { ...pickFinite(sample.child), ...pickFinite(sample.parent) };
+    Object.assign(attribution, stageAttribution(sample.child, sample.parent));
   } else if (sample.sweep === 'concurrency') {
     attribution.stages_ms = pickFinite(sample, ['batch_total_ms']);
     attribution.operations = sample.operations.map(operationAttribution);

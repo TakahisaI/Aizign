@@ -27,7 +27,7 @@ import {
   TRANSPORT_CASES,
 } from './matrix.mjs';
 
-export const RUNNER_VERSION = 4;
+export const RUNNER_VERSION = 5;
 export const CORE_WATCHDOG_MS = 10_000;
 export const DSH_ADAPTER_TIMEOUT_MS = 15_000;
 export const OPERATION_TIMEOUT_MS = 60_000;
@@ -268,7 +268,11 @@ function extractChildTiming(stderr) {
     .find((line) => line.startsWith('aizign_timing:'))
     ?.slice('aizign_timing:'.length);
   if (encoded === undefined) return undefined;
-  return JSON.parse(encoded);
+  try {
+    return JSON.parse(encoded);
+  } catch {
+    throw runError('timing_decode_failed', 'benchmark child emitted malformed timing JSON');
+  }
 }
 
 export function decodeCorrelatedResponse(stdout, request, protocol) {
@@ -397,78 +401,86 @@ export function runProcess(
     });
     child.on('close', () => {
       clearTimeout(timer);
-      const transportTiming = {
-        ...(spawnToExitMs === undefined ? {} : { spawn_to_exit_ms: spawnToExitMs }),
-        ...(responseFirstByteMs === undefined
-          ? {}
-          : { response_first_byte_ms: responseFirstByteMs }),
-      };
-      if (stderrOverflow) {
-        fail(new Error(`benchmark child stderr exceeded ${MAX_BENCHMARK_STDERR_BYTES} bytes`));
-        return;
-      }
-      if (stdoutOverflow) {
-        finish({
-          transport_kind: 'unknown',
-          outcome: 'unknown',
-          unknown_reason: 'oversized_response',
-          parent: {
-            operation_kind: operationKind,
-            ...transportTiming,
+      try {
+        const transportTiming = {
+          ...(spawnToExitMs === undefined ? {} : { spawn_to_exit_ms: spawnToExitMs }),
+          ...(responseFirstByteMs === undefined
+            ? {}
+            : { response_first_byte_ms: responseFirstByteMs }),
+        };
+        if (stderrOverflow) {
+          fail(new Error(`benchmark child stderr exceeded ${MAX_BENCHMARK_STDERR_BYTES} bytes`));
+          return;
+        }
+        if (stdoutOverflow) {
+          finish({
+            transport_kind: 'unknown',
             outcome: 'unknown',
             unknown_reason: 'oversized_response',
-          },
-        });
-        return;
-      }
-      if (timedOut) {
-        finish({
-          transport_kind: 'unknown',
-          outcome: 'unknown',
-          unknown_reason: 'timeout',
-          parent: {
-            operation_kind: operationKind,
-            ...transportTiming,
+            parent: {
+              operation_kind: operationKind,
+              ...transportTiming,
+              outcome: 'unknown',
+              unknown_reason: 'oversized_response',
+            },
+          });
+          return;
+        }
+        if (timedOut) {
+          finish({
+            transport_kind: 'unknown',
             outcome: 'unknown',
             unknown_reason: 'timeout',
-          },
-          child: extractChildTiming(stderr.toString()),
-        });
-        return;
-      }
-      const decoded = decodeCorrelatedResponse(stdout.toString(), request, protocol);
-      if (decoded.transport_kind === 'unknown') {
-        finish({
-          transport_kind: 'unknown',
-          outcome: 'unknown',
-          ...(decoded.error_code === undefined ? {} : { error_code: decoded.error_code }),
-          unknown_reason: decoded.unknown_reason,
-          parent: {
-            operation_kind: operationKind,
-            ...transportTiming,
+            parent: {
+              operation_kind: operationKind,
+              ...transportTiming,
+              outcome: 'unknown',
+              unknown_reason: 'timeout',
+            },
+            child: extractChildTiming(stderr.toString()),
+          });
+          return;
+        }
+        const decoded = decodeCorrelatedResponse(stdout.toString(), request, protocol);
+        if (decoded.transport_kind === 'unknown') {
+          finish({
+            transport_kind: 'unknown',
             outcome: 'unknown',
             ...(decoded.error_code === undefined ? {} : { error_code: decoded.error_code }),
             unknown_reason: decoded.unknown_reason,
+            parent: {
+              operation_kind: operationKind,
+              ...transportTiming,
+              outcome: 'unknown',
+              ...(decoded.error_code === undefined ? {} : { error_code: decoded.error_code }),
+              unknown_reason: decoded.unknown_reason,
+            },
+            child: extractChildTiming(stderr.toString()),
+          });
+          return;
+        }
+        const classified = classifyResponse(
+          decoded.response,
+          operationKind,
+          protocol.isUnknownOutcomeCode,
+        );
+        finish({
+          transport_kind: 'correlated_response',
+          ...classified,
+          parent: {
+            operation_kind: operationKind,
+            ...transportTiming,
+            ...classified,
           },
           child: extractChildTiming(stderr.toString()),
         });
-        return;
+      } catch (error) {
+        fail(
+          error instanceof BenchmarkRunError
+            ? error
+            : runError('child_close_failed', 'benchmark child close processing failed'),
+        );
       }
-      const classified = classifyResponse(
-        decoded.response,
-        operationKind,
-        protocol.isUnknownOutcomeCode,
-      );
-      finish({
-        transport_kind: 'correlated_response',
-        ...classified,
-        parent: {
-          operation_kind: operationKind,
-          ...transportTiming,
-          ...classified,
-        },
-        child: extractChildTiming(stderr.toString()),
-      });
     });
     child.stdin.on('error', () => undefined);
     child.stdin.end(request === undefined ? undefined : `${JSON.stringify(request)}\n`);
@@ -1288,6 +1300,17 @@ function countSummary(counts) {
   return entries.length === 0 ? '-' : entries.map(([name, count]) => `${name}:${count}`).join(', ');
 }
 
+export function renderStageAttribution(attribution) {
+  return [
+    ...Object.entries(attribution?.stages_ms ?? {}).map(
+      ([name, value]) => `${name}=${round(value)} ms`,
+    ),
+    ...Object.entries(attribution?.stages_us ?? {}).map(
+      ([name, value]) => `${name}=${round(value)} µs`,
+    ),
+  ].join(', ');
+}
+
 export function renderSummary(result) {
   const isSmoke = result.config.profile === 'pr-smoke';
   const statisticLabel = isSmoke ? 'median / max' : 'p50 / p95 / p99';
@@ -1336,16 +1359,12 @@ export function renderSummary(result) {
       lines.push('', '### Failed-case stage attribution', '');
       for (const evaluation of failed) {
         const attribution = evaluation.sample_attribution;
-        const stages = Object.entries(attribution?.stages_ms ?? {})
-          .map(([name, value]) => `${name}=${round(value)} ms`)
-          .join(', ');
+        const stages = renderStageAttribution(attribution);
         lines.push(
           `- ${evaluation.id}: ${attribution === null ? 'raw sample missing' : `${attribution.sample_phase}/${attribution.sample_index}, measured=${round(attribution.measured_ms)} ms; ${stages || 'no direct stages'}`}`,
         );
         for (const operation of attribution?.operations ?? []) {
-          const operationStages = Object.entries(operation.stages_ms)
-            .map(([name, value]) => `${name}=${round(value)} ms`)
-            .join(', ');
+          const operationStages = renderStageAttribution(operation);
           lines.push(
             `  - operation ${operation.operation_index} ${operation.name ?? operation.operation_kind}: ${operation.outcome}; ${operationStages || 'no stage values'}`,
           );
@@ -1920,7 +1939,7 @@ export async function main(argv = process.argv.slice(2)) {
     const aggregates = aggregateSamples(samples);
     const budgets = isSmoke ? evaluatePrSmokeBudgets({ config, aggregates, samples }) : undefined;
     const result = {
-      schema_version: 4,
+      schema_version: 5,
       metadata: environmentMetadata(tempRoot),
       config: resultConfig(config),
       watchdog: compareWatchdog(aggregates, CORE_WATCHDOG_MS, isSmoke ? 'max' : 'p99'),

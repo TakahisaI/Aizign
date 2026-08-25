@@ -61,6 +61,7 @@ import {
   executeScenario,
   MAX_BENCHMARK_STDERR_BYTES,
   parseArgs,
+  renderStageAttribution,
   renderSummary,
   runProcess,
   seedFixture,
@@ -113,7 +114,11 @@ function canonicalSmokeFixture() {
         ...(benchmarkCase.expected_error_code === undefined
           ? {}
           : { error_code: benchmarkCase.expected_error_code }),
-        child: { handler_total_ms: 10 + index, append_sync_ms: 2 + index },
+        child: {
+          handler_total_ms: 10 + index,
+          decide_us: 0.531 + index,
+          append_sync_ms: 2 + index,
+        },
         parent: { spawn_to_exit_ms: 20 + index },
       });
     }
@@ -474,6 +479,66 @@ process.stdin.on('end', () => {
   }
 });
 
+test('malformed child timing rejects safely and produces a metadata-only failure manifest', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aizign-malformed-timing-'));
+  const outputDir = join(root, 'report');
+  try {
+    const fakeBinary = join(root, 'malformed-timing-core.cjs');
+    writeFileSync(
+      fakeBinary,
+      `#!/usr/bin/env node
+let input = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => { input += chunk; });
+process.stdin.on('end', () => {
+  const request = JSON.parse(input);
+  process.stdout.write(JSON.stringify({
+    protocol: 'aizign',
+    version: 1,
+    requestId: request.requestId,
+    kind: request.kind,
+    ok: true,
+    payload: { disposition: 'accepted', eventId: request.payload.signal.eventId },
+  }) + '\\n');
+  process.stderr.write('aizign_timing:{"schema_version":\\n');
+});
+`,
+      { mode: 0o700 },
+    );
+    chmodSync(fakeBinary, 0o700);
+    const request = buildRequest(OUTCOME_CASES[0]);
+    let failure;
+    await assert.rejects(runProcess(fakeBinary, [], request, request.kind, PROTOCOL), (error) => {
+      failure = error;
+      return error.errorKind === 'timing_decode_failed';
+    });
+    writeSmokeFailure(
+      {
+        binary: fakeBinary,
+        outputDir,
+        ...PR_SMOKE_CONFIG,
+        sweeps: [...PR_SMOKE_CONFIG.sweeps],
+      },
+      root,
+      [],
+      {
+        phase: 'transport',
+        case_name: 'accepted_0',
+        sample_phase: 'warm_repeated',
+        sample_index: 0,
+      },
+      failure,
+    );
+    const statusText = readFileSync(join(outputDir, 'status.json'), 'utf8');
+    const status = JSON.parse(statusText);
+    assert.equal(status.failure.error_kind, 'timing_decode_failed');
+    assert.doesNotMatch(statusText, /aizign_timing|malformed-timing-core|private/);
+    assert.match(readFileSync(join(outputDir, 'summary.md'), 'utf8'), /No performance PASS/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('nearest-rank summaries always carry their sample count', () => {
   assert.equal(percentile([1, 2, 3, 4, 100], 0.95), 100);
   assert.deepEqual(summarizeValues([1, 2, 3, 4]), {
@@ -788,6 +853,11 @@ test('PR smoke budgets require the exact config, matrix, IDs, and three raw metr
   assert.equal(passing.evaluations[0].sample_count, 3);
   assert.equal(passing.evaluations[0].sample_attribution.sample_index, 2);
   assert.equal(passing.evaluations[0].sample_attribution.stages_ms.append_sync_ms, 4);
+  assert.equal(passing.evaluations[0].sample_attribution.stages_us.decide_us, 2.531);
+  const renderedStages = renderStageAttribution(passing.evaluations[0].sample_attribution);
+  assert.match(renderedStages, /append_sync_ms=4\.000 ms/);
+  assert.match(renderedStages, /decide_us=2\.531 µs/);
+  assert.doesNotMatch(renderedStages, /decide_us=.* ms/);
   assert.equal(new Set(PR_SMOKE_BUDGET_IDS).size, 33);
   assert.equal(new Set(PR_SMOKE_AGGREGATE_IDENTITIES).size, 23);
   assert.deepEqual(PR_SMOKE_BUDGET_IDS, [
