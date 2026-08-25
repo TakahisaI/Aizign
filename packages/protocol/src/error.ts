@@ -26,11 +26,13 @@ export function isShortErrorCode(value: unknown): value is string {
 }
 
 /**
- * A protocol-boundary error carrying a stable code and a safe diagnostic. It
+ * A protocol-boundary error carrying a stable code and an operational
+ * diagnostic. It
  * may represent a decoded wire error, a local encode/validation failure, or a
- * workflow rejection. The message never contains request content. Construct
- * with a registered code; anything else degrades to `INTERNAL` so a malformed
- * code cannot reach the wire.
+ * workflow rejection. The message is not a model-safe field and may contain
+ * state-path or operating-system detail; adapters must normalize it before a
+ * model-facing boundary. Construct with a registered code; anything else
+ * degrades to `INTERNAL` so a malformed code cannot reach the wire.
  */
 export class ProtocolError extends Error {
   readonly code: string;

@@ -157,7 +157,7 @@ test('request ids are adapter-owned nonces, never derived from the harness call 
   }
 });
 
-test('outcomes map to the canonical value or a harness error; unknown is never retried', async () => {
+test('outcomes map to safe harness errors without forwarding protocol detail', async () => {
   assert.deepEqual(toToolResult({ kind: 'accepted', eventId: 'evt-fixed' }), {
     disposition: 'accepted',
     eventId: 'evt-fixed',
@@ -167,19 +167,39 @@ test('outcomes map to the canonical value or a harness error; unknown is never r
     eventId: 'evt-fixed',
   });
   assert.throws(
-    () => toToolResult({ kind: 'rejected', code: 'EVENT_CONFLICT', message: 'm' }),
+    () =>
+      toToolResult({
+        kind: 'rejected',
+        code: 'JOURNAL_UNAVAILABLE',
+        message: 'cannot open synthetic-private-state/operator/workflow.jsonl: permission denied',
+      }),
     (error: unknown) => {
-      return error instanceof HarnessError && error.code === 'EVENT_CONFLICT';
+      return (
+        error instanceof HarnessError &&
+        error.code === 'JOURNAL_UNAVAILABLE' &&
+        error.message === 'Aizign rejected the workflow signal' &&
+        !error.message.includes('synthetic-private-state') &&
+        !error.message.includes('permission denied')
+      );
     },
   );
 
-  const client = stubClient({ kind: 'unknown', reason: 'timeout', detail: 'no response' });
+  const client = stubClient({
+    kind: 'unknown',
+    reason: 'reported_unknown',
+    detail: 'JOURNAL_OUTCOME_UNKNOWN: synthetic-private-state/operator/workflow.jsonl',
+  });
   const tool = createSubmitWorkflowSignalTool(client, binding);
   assert.equal(tool.name, TOOL_NAME);
   await assert.rejects(
     tool.execute({ kind: 'review_passed', findingCount: 0 }, exec),
     (error: unknown) => {
-      return error instanceof HarnessError && error.code === adapterCodes.OUTCOME_UNKNOWN;
+      return (
+        error instanceof HarnessError &&
+        error.code === adapterCodes.OUTCOME_UNKNOWN &&
+        error.message === 'Aizign could not determine the workflow signal outcome' &&
+        !error.message.includes('synthetic-private-state')
+      );
     },
   );
   assert.equal(client.calls.length, 1, 'exactly one submission; no retry on unknown');

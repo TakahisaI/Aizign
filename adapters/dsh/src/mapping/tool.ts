@@ -34,6 +34,9 @@ export const adapterCodes = {
   INCOMPATIBLE: 'AIZIGN_INCOMPATIBLE',
 } as const;
 
+const REJECTED_TOOL_MESSAGE = 'Aizign rejected the workflow signal';
+const UNKNOWN_TOOL_MESSAGE = 'Aizign could not determine the workflow signal outcome';
+
 /** Kinds a role may submit; `blocked` is always allowed. */
 export function kindsForRole(role: Role): readonly SignalKind[] {
   return role === 'implementation'
@@ -136,7 +139,13 @@ export function newRequestId(): string {
   return `req-${randomUUID()}`;
 }
 
-/** Maps the core's answer to the tool's canonical value or a harness error. */
+/**
+ * Maps the core's answer to the tool's canonical value or a harness error.
+ *
+ * Protocol diagnostics are control-plane data and can contain state paths or
+ * operating-system detail. Preserve only the stable code at this model-facing
+ * boundary; never forward the peer's human-readable message or unknown detail.
+ */
 export function toToolResult(outcome: SubmitOutcome): {
   disposition: 'accepted' | 'duplicate';
   eventId: string;
@@ -146,14 +155,11 @@ export function toToolResult(outcome: SubmitOutcome): {
     case 'duplicate':
       return { disposition: outcome.kind, eventId: outcome.eventId };
     case 'rejected':
-      throw new HarnessError(outcome.message, outcome.code);
+      throw new HarnessError(REJECTED_TOOL_MESSAGE, outcome.code);
     case 'unknown':
       // Never retried here: the core may have appended. Reconciliation is a
       // separate, explicit step.
-      throw new HarnessError(
-        `outcome unknown (${outcome.reason}): ${outcome.detail}`,
-        adapterCodes.OUTCOME_UNKNOWN,
-      );
+      throw new HarnessError(UNKNOWN_TOOL_MESSAGE, adapterCodes.OUTCOME_UNKNOWN);
   }
 }
 

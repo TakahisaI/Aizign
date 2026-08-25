@@ -21,8 +21,14 @@ the child receives `PATH` only. The exported reference client can accept
 explicit child variables for tests/integration, and those values are the direct
 caller's responsibility. Closed tool arguments prevent the model from choosing
 stable identity, but neither the core nor schema can prove honest provenance
-from a malicious adapter. DSH persistence remains auxiliary evidence with the
-limits below. See the
+from a malicious adapter. The ordinary model can also supply `artifactRef` and
+`shortErrorCode`; their closed shape and bounds are validated, but their text
+is not scanned for credentials, prompts, or encoded content. End-to-end
+semantic exclusion is therefore not guaranteed. Protocol diagnostic messages
+are control-plane data and may contain state-path or operating-system detail;
+the tool mapping retains the stable code but replaces rejected/unknown detail
+with fixed model-safe messages. DSH persistence remains auxiliary evidence
+with the limits below. See the
 [v0.1 threat model](../../docs/security/threat-model.md).
 
 ## Layout
@@ -80,7 +86,9 @@ operatorのpatchはその entry を **id で上書き**して有効化します�
 This adapter satisfies the current minimum signal-submission behavior through
 protocol preflight, trusted config-bound identity injection, full response
 correlation, exact outcome propagation, non-collapse of `unknown`,
-metadata-only requests, and bounded process I/O.
+the closed metadata field set with producer obligations for opaque values,
+model-facing diagnostic normalization, and bounded process I/O. This does not
+claim semantic inspection of model-supplied `artifactRef` or `shortErrorCode`.
 
 It also demonstrates three optional harness adapter integrations:
 

@@ -47,6 +47,9 @@ In particular:
   values are not secret-scanned; the current DSH `artifactRef` is model-supplied
   and can carry such data if a producer violates the metadata-only policy;
 - provider/harness identity remains inside the adapter;
+- human-readable Protocol error messages are operational diagnostics and can
+  contain state-path or OS detail; model-facing adapter boundaries must retain
+  the stable code and replace the raw message with a fixed safe message;
 - the control plane is trusted for state-path selection, assignment identity,
   and candidate-digest provenance;
 - the committed journal is workflow-acceptance authority, while harness

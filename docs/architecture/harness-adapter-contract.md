@@ -56,9 +56,15 @@ A v0.1 signal-submission adapter must:
    or `unknown`;
 9. never infer success, rejection, or absence from `unknown`, and never blindly
    retry an unknown submission;
-10. keep raw prompts, model output, reasoning, credentials, and other
-   conversation content out of the protocol and control journal; and
-11. enforce request and response frame limits, reject extra response frames,
+10. use the closed protocol field set, add no dedicated raw-content or
+   credential field, and require producers not to place prompts, model output,
+   reasoning, credentials, or encoded content in allowed opaque values. Closed
+   shape is enforced; end-to-end value semantics are not guaranteed while a
+   model can supply an opaque value such as the current DSH `artifactRef`;
+11. treat human-readable protocol diagnostics as operational data, not as
+   model-safe text, and normalize them before a model-visible error boundary;
+   and
+12. enforce request and response frame limits, reject extra response frames,
     and place a wall-clock bound on caller wait. If cancellation cannot prove
     that remote work stopped, the outcome remains `unknown`.
 
@@ -175,9 +181,17 @@ lifecycle boundary are owned by the
 
 ## Data boundary
 
-Adapters may send only stable identity, bounded opaque handles, digests,
-structured evidence, dispositions, and stable short error codes across the
-core boundary. They must not send raw conversation data or credentials.
+Adapters may send only the closed field set of stable identity, bounded opaque
+handles, digests, structured evidence, dispositions, and stable short error
+codes across the core boundary. Producers must not place raw conversation data
+or credentials in those fields. This is an obligation and a structural field
+exclusion, not a claim that every allowed string is semantically inspected.
+
+The stable error code is safe to classify. A human-readable Protocol error
+message is operational diagnostic data and can contain a configured state path
+or operating-system detail. An adapter must not forward that message to a
+model-visible error surface; it must preserve the code and use a fixed safe
+message there.
 
 The adapter maps native inputs to protocol DTOs but does not expose core or
 engine internal types to its harness. The core, protocol, and journal likewise
@@ -231,7 +245,10 @@ The minimum signal-submission group covers:
 - oversized outbound requests failing locally before any process/transport,
   with no submit classification and no emitted frame;
 - non-collapse of `unknown` and no blind submit retry; and
-- metadata-only frames with no harness or provider identifier leakage.
+- closed protocol frames with no harness or provider identifier leakage,
+  together with tests for the producer's claimed allowed-value semantics; and
+- model-visible errors that retain the stable code without forwarding raw
+  Protocol diagnostic text.
 
 The reconciliation extension group covers:
 

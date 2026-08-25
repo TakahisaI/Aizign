@@ -93,6 +93,8 @@ v0.1 while model-supplied `artifactRef` remains supported.
 |---|---|
 | `aizign` stdout | Exactly one Protocol v1 response frame |
 | `aizign` stderr | Normal diagnostics: stage, stable identity, kind, disposition, and stable code. Opt-in `aizign_timing:` JSON: allowlisted operation kind, durations/counts, semantic outcome, stable code, and unknown reason without request/event ID, path, or raw content. |
+| Human-readable Protocol error message | Operational control-plane diagnostic. Store and OS failures can include the configured state path or platform detail. It is not a model-safe field. |
+| DSH model-facing `HarnessError` | Stable code plus a fixed safe message for submit rejection or unknown outcome. The raw Protocol message/unknown detail is not forwarded. |
 | Adapter log | Adapter-owned metadata under its documented policy; native IDs do not cross into the core |
 | Adapter/parent timing sink | Closed metadata-only timing values when explicitly configured. Sink failure is isolated from workflow outcomes; sink retention/access remain caller-owned. |
 | DSH child environment | `PATH` and explicitly configured client variables only; the parent harness environment is not inherited wholesale |

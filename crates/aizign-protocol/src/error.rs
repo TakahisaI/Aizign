@@ -29,10 +29,11 @@ pub mod codes {
     pub const INVALID_EXPECTATION: &str = "INVALID_EXPECTATION";
 }
 
-/// A protocol-boundary error carrying a stable code and a safe human-readable
+/// A protocol-boundary error carrying a stable code and an operational
 /// diagnostic. It may represent a decoded wire error, a local
-/// encode/validation failure, or a workflow rejection. The message never
-/// contains request content.
+/// encode/validation failure, or a workflow rejection. The message is not a
+/// model-safe field and may contain state-path or operating-system detail;
+/// adapters must normalize it before a model-facing boundary.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProtocolError {
     code: ShortErrorCode,
