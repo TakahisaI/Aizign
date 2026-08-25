@@ -12,6 +12,7 @@ Repository tooling, invoked as `cargo xtask <command>` (alias in `.cargo/config.
 | `conformance` | `spec/conformance/` のfixtureの構造検査。decoderを通すのは各protocol実装の責務 |
 | `public-audit` | 依存境界（`src/audit/dependencies.rs`）、secretとprivate path（`src/audit/secrets.rs`）、package manifest（`src/audit/packages.rs`）、entry document（`src/audit/entry_docs.rs`）、文書link（`src/audit/links.rs`） |
 | `performance-baseline` | release binaryとTypeScript clientをbuildし、目的別のmanual / scheduled performance sweepを実行。PR gateではない |
+| `performance-smoke` | Builds the release binary and TypeScript clients, then runs the small Linux PR matrix against generous informational ceilings. |
 | `whitespace` | tracked tree全体に対する `git diff --check` |
 
 ## Quick profiles

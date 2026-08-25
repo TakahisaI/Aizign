@@ -24,11 +24,14 @@ import {
   MAX_FRAME_BYTES,
 } from '../../packages/protocol/lib/index.js';
 import { BoundedBuffer } from './bounded-buffer.mjs';
+import { evaluatePrSmokeBudgets, PR_SMOKE_BUDGETS } from './budget.mjs';
 import { dropsAcknowledgement, proxyFailureFrame, requestKind } from './lost-ack-proxy.mjs';
 import {
   JOURNAL_SCALE_CASES,
   MAX_PAYLOAD_CASES,
   OUTCOME_CASES,
+  PR_SMOKE_CASES,
+  PR_SMOKE_CONCURRENCY_LEVELS,
   percentile,
   summarizeValues,
   TRANSPORT_CASES,
@@ -91,6 +94,19 @@ test('purpose-specific matrices contain the exact valid boundaries', () => {
     ),
     [0, 10, 100, 1_000, 9_999],
   );
+  assert.deepEqual(
+    PR_SMOKE_CASES.filter((entry) => entry.name.startsWith('accepted_')).map(
+      (entry) => entry.journal_entries_before_operation,
+    ),
+    [0, 100, 9_999],
+  );
+  assert.deepEqual(
+    PR_SMOKE_CASES.filter((entry) => entry.name.startsWith('duplicate_')).map(
+      (entry) => entry.journal_entries_before_operation,
+    ),
+    [1, 100, 10_000],
+  );
+  assert.deepEqual(PR_SMOKE_CONCURRENCY_LEVELS, [1, 2]);
   assert.deepEqual(
     JOURNAL_SCALE_CASES.filter((entry) => entry.name.startsWith('submit_duplicate_')).map(
       (entry) => entry.journal_entries_before_operation,
@@ -451,11 +467,13 @@ test('scenario aggregation keeps preflight, submit, and reconciliation distribut
   }));
   const aggregates = aggregateSamples(samples);
   const scenario = aggregates.find((entry) => entry.sweep === 'scenarios');
+  const hello = aggregates.find((entry) => entry.operation_name === 'hello');
   const preflight = aggregates.find((entry) => entry.operation_name === 'preflight');
   const submit = aggregates.find((entry) => entry.operation_name === 'submit_lost_ack');
   const lookup = aggregates.find((entry) => entry.operation_name === 'lookup');
   assert.equal(scenario.metrics.aizign_end_to_end_ms.sample_count, 2);
   assert.equal(scenario.metrics.spawn_to_exit_ms, undefined);
+  assert.equal(hello.metrics.spawn_to_exit_ms.p50, 9);
   assert.equal(preflight.metrics.preflight_ms.p50, 10);
   assert.equal(submit.metrics.spawn_to_exit_ms.p50, 30);
   assert.equal(lookup.metrics.spawn_to_exit_ms.p50, 50);
@@ -573,6 +591,8 @@ test('runner arguments keep sweeps independent', () => {
   const parsed = parseArgs([
     '--binary',
     '/tmp/aizign',
+    '--profile',
+    'pr-smoke',
     '--warmup',
     '0',
     '--samples',
@@ -582,7 +602,41 @@ test('runner arguments keep sweeps independent', () => {
   ]);
   assert.equal(parsed.warmup, 0);
   assert.equal(parsed.samples, 2);
+  assert.equal(parsed.profile, 'pr-smoke');
   assert.deepEqual(parsed.sweeps, ['outcomes', 'max-payload', 'dsh']);
+});
+
+test('PR smoke budgets report missing metrics and preserve stage attribution', () => {
+  const passingBudget = {
+    id: 'test/pass',
+    sweep: 'transport',
+    case_name: 'accepted_100',
+    transport: 'rust_direct',
+    metric: 'spawn_to_exit_ms',
+    limit_ms: 1_000,
+    baseline_p95_ms: 4.073,
+  };
+  const aggregate = {
+    sweep: 'transport',
+    case_name: 'accepted_100',
+    transport: 'rust_direct',
+    metrics: {
+      handler_total_ms: { p95: 10 },
+      spawn_to_exit_ms: { p95: 15, max: 20 },
+    },
+  };
+  const passing = evaluatePrSmokeBudgets([aggregate], [passingBudget]);
+  assert.equal(passing.status, 'pass');
+  assert.equal(passing.evaluations[0].measured_ms, 20);
+  assert.deepEqual(passing.evaluations[0].stage_attribution_p95_ms, {
+    handler_total_ms: 10,
+    spawn_to_exit_ms: 15,
+  });
+
+  const missing = evaluatePrSmokeBudgets([], [passingBudget]);
+  assert.equal(missing.status, 'fail');
+  assert.equal(missing.evaluations[0].measured_ms, null);
+  assert.ok(PR_SMOKE_BUDGETS.length > 20);
 });
 
 test('concurrency prepares every fixture before the common timed execution window', async () => {

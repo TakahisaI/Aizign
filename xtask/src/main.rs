@@ -31,6 +31,8 @@ commands:
                  closed package exports, entry documents, documentation links
   performance-baseline [runner options]
                  build release binary + TypeScript clients, then run manual/scheduled sweeps
+  performance-smoke [runner options]
+                 run the small Linux PR matrix against generous informational budgets
   whitespace     git diff --check over the whole tree (trailing whitespace, missing final newline)
   help           print this message
 
@@ -54,6 +56,7 @@ fn main() -> ExitCode {
         Some("conformance") => conformance::run(&root),
         Some("public-audit") => audit::run(&root),
         Some("performance-baseline") => performance::run(&root, &args[1..]),
+        Some("performance-smoke") => performance::run_smoke(&root, &args[1..]),
         Some("whitespace") => whitespace(&root),
         Some("help" | "--help" | "-h") | None => {
             print!("{USAGE}");

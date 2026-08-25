@@ -136,6 +136,13 @@ export const TRANSPORT_CASES = [
   })),
 ];
 
+// The PR smoke uses the valid low, representative, and upper journal boundaries
+// without the full outcome/transport Cartesian product.
+export const PR_SMOKE_CASES = [...TRANSPORT_CASES];
+export const PR_SMOKE_CONCURRENCY_LEVELS = [1, 2];
+export const PR_SMOKE_CONCURRENCY_MODES = ['same_state_dir', 'different_state_dir'];
+export const PR_SMOKE_CONCURRENCY_OPERATIONS = ['workflow.signal.submit'];
+
 export const MAX_PAYLOAD_CASES = [
   {
     name: 'submit_accepted_1000_near_max',

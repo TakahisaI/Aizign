@@ -9,6 +9,7 @@ import { dirname, join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { BoundedBuffer } from './bounded-buffer.mjs';
+import { evaluatePrSmokeBudgets } from './budget.mjs';
 import {
   CANONICAL_SCENARIOS,
   CONCURRENCY_LEVELS,
@@ -18,12 +19,18 @@ import {
   JOURNAL_SCALE_CASES,
   MAX_PAYLOAD_CASES,
   OUTCOME_CASES,
+  PR_SMOKE_CASES,
+  PR_SMOKE_CONCURRENCY_LEVELS,
+  PR_SMOKE_CONCURRENCY_MODES,
+  PR_SMOKE_CONCURRENCY_OPERATIONS,
   summarizeValues,
   TRANSPORT_CASES,
 } from './matrix.mjs';
 
-export const RUNNER_VERSION = 3;
+export const RUNNER_VERSION = 4;
 export const CORE_WATCHDOG_MS = 10_000;
+export const DSH_ADAPTER_TIMEOUT_MS = 15_000;
+export const OPERATION_TIMEOUT_MS = 60_000;
 export const MAX_BENCHMARK_STDERR_BYTES = 256 * 1024;
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = resolve(HERE, '../..');
@@ -69,6 +76,7 @@ let requestSequence = 0;
 export function parseArgs(argv) {
   const config = {
     binary: undefined,
+    profile: 'baseline',
     outputDir: join(REPOSITORY_ROOT, 'target', 'performance-baseline'),
     warmup: 3,
     samples: 20,
@@ -79,6 +87,9 @@ export function parseArgs(argv) {
     const value = argv[index + 1];
     if (option === '--binary' && value !== undefined) {
       config.binary = resolve(value);
+      index += 1;
+    } else if (option === '--profile' && value !== undefined) {
+      config.profile = value;
       index += 1;
     } else if (option === '--output-dir' && value !== undefined) {
       config.outputDir = resolve(value);
@@ -99,6 +110,9 @@ export function parseArgs(argv) {
     }
   }
   if (config.binary === undefined) throw new Error('--binary is required');
+  if (!['baseline', 'pr-smoke'].includes(config.profile)) {
+    throw new Error('--profile must be baseline or pr-smoke');
+  }
   if (!Number.isInteger(config.warmup) || config.warmup < 0) {
     throw new Error('--warmup must be a non-negative integer');
   }
@@ -115,6 +129,7 @@ function usage() {
   return `usage: node benchmarks/performance/run.mjs --binary <release-aizign> [options]
 
 options:
+  --profile <name>    baseline or pr-smoke (default baseline)
   --output-dir <dir>  write result.json and summary.md (default target/performance-baseline)
   --warmup <n>        unrecorded repetitions before warm samples (default 3)
   --samples <n>       warm samples used for p50/p95/p99 (default 20)
@@ -281,7 +296,15 @@ export function decodeCorrelatedResponse(stdout, request, protocol) {
   return { transport_kind: 'correlated_response', response };
 }
 
-export function runProcess(binary, args, request, operationKind, protocol, timingEnabled = true) {
+export function runProcess(
+  binary,
+  args,
+  request,
+  operationKind,
+  protocol,
+  timingEnabled = true,
+  timeoutMs = OPERATION_TIMEOUT_MS,
+) {
   return new Promise((resolvePromise, rejectPromise) => {
     const started = performance.now();
     let spawnToExitMs;
@@ -328,7 +351,7 @@ export function runProcess(binary, args, request, operationKind, protocol, timin
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill('SIGKILL');
-    }, 60_000);
+    }, timeoutMs);
     child.stdout.on('data', (chunk) => {
       responseFirstByteMs ??= performance.now() - started;
       if (!stdout.append(chunk) && !stdoutOverflow) {
@@ -480,7 +503,7 @@ async function runReferenceOperation(ReferenceOneShotClient, binary, stateDir, b
     command: binary,
     env: { AIZIGN_TIMING_JSON: '1' },
     stateDir,
-    timeoutMs: 60_000,
+    timeoutMs: OPERATION_TIMEOUT_MS,
     timingSink: (measurement) => {
       timings.push(measurement);
     },
@@ -707,10 +730,18 @@ export async function executeConcurrencyBatch(
   };
 }
 
-async function runConcurrencySweep(context, samples) {
-  for (const operationKind of CONCURRENCY_OPERATIONS) {
-    for (const mode of CONCURRENCY_MODES) {
-      for (const concurrency of CONCURRENCY_LEVELS) {
+async function runConcurrencySweep(
+  context,
+  samples,
+  {
+    operations = CONCURRENCY_OPERATIONS,
+    modes = CONCURRENCY_MODES,
+    levels = CONCURRENCY_LEVELS,
+  } = {},
+) {
+  for (const operationKind of operations) {
+    for (const mode of modes) {
+      for (const concurrency of levels) {
         process.stdout.write(`  concurrency: ${operationKind} ${mode} ${concurrency}\n`);
         samples.push(
           await executeConcurrencyBatch(
@@ -798,6 +829,7 @@ async function executeDshEvidenceRead(context, eventCount, sourceKind, phase, in
     binding,
     {
       maxEvents: eventCount,
+      timeoutMs: DSH_ADAPTER_TIMEOUT_MS,
       timingSink: (measurement) => {
         timings.push(measurement);
       },
@@ -853,7 +885,7 @@ export async function executeScenario(context, scenario, phase, index) {
   const losesSubmitAcknowledgement = scenario === 'assignment_unknown_reconcile';
   const clientConfig = {
     stateDir,
-    timeoutMs: 60_000,
+    timeoutMs: OPERATION_TIMEOUT_MS,
     timingSink: (measurement) => {
       parentTimings.push(measurement);
     },
@@ -1068,13 +1100,19 @@ export function aggregateSamples(samples) {
       group.unexpected_operations += sample.unexpected_operations;
     }
     if (sample.sweep === 'scenarios') {
+      const hello = sample.parent_timings?.find(
+        (measurement) => measurement.operation_kind === 'hello',
+      );
       const preflight = sample.parent_timings?.find(
         (measurement) => measurement.operation_kind === 'preflight',
       );
-      if (preflight === undefined) {
-        throw new Error(`${sample.case_name}: preflight timing is missing from scenario sample`);
+      if (hello === undefined || preflight === undefined) {
+        throw new Error(
+          `${sample.case_name}: hello or preflight timing is missing from scenario sample`,
+        );
       }
       const scenarioMeasurements = [
+        { name: 'hello', parent: hello },
         { name: 'preflight', parent: preflight },
         ...(sample.operations ?? []),
       ];
@@ -1132,8 +1170,9 @@ function countSummary(counts) {
 }
 
 export function renderSummary(result) {
+  const isSmoke = result.config.profile === 'pr-smoke';
   const lines = [
-    '# Aizign runtime performance baseline',
+    isSmoke ? '# Aizign PR performance smoke' : '# Aizign runtime performance baseline',
     '',
     `Generated: ${result.metadata.generated_at}`,
     '',
@@ -1145,13 +1184,45 @@ export function renderSummary(result) {
     '',
     `Sampling: one \`new_process_new_open\` observation, ${result.config.warmup} unrecorded warmups, then ${result.config.samples} \`warm_repeated\` samples per point. Percentiles use nearest rank and always show the sample count.`,
     '',
-    'This report is an observation, not a performance budget or CI gate. GitHub-hosted runs do not claim a true cold OS page cache.',
+    `Timeouts: core watchdog ${result.config.timeouts?.core_watchdog_ms ?? CORE_WATCHDOG_MS} ms; DSH adapter ${result.config.timeouts?.dsh_adapter_ms ?? DSH_ADAPTER_TIMEOUT_MS} ms; per-operation runner ${result.config.timeouts?.operation_ms ?? OPERATION_TIMEOUT_MS} ms.`,
+    '',
+    isSmoke
+      ? 'This Linux-only smoke compares the maximum of a small sample with generous absolute ceilings. It is informational during the initial observation period and does not claim a true cold OS page cache.'
+      : 'This report is an observation, not a performance budget or CI gate. GitHub-hosted runs do not claim a true cold OS page cache.',
     '',
     `Core watchdog comparison: slowest warm handler p99 ${round(result.watchdog.slowest_handler_p99_ms)} ms in ${result.watchdog.slowest_handler_case}; ${round(result.watchdog.headroom_ms)} ms headroom remains against the ${result.watchdog.core_watchdog_ms} ms default (${round(result.watchdog.headroom_percent)}%).`,
-    '',
-    '| Sweep | Case | Transport | Entries / events | handler p50 / p95 / p99 ms (n) | spawn p50 / p95 / p99 ms (n) | load p50 / p95 / p99 ms (n) | append p50 / p95 / p99 ms (n) | e2e / DSH / batch p50 / p95 / p99 ms (n) | Outcomes |',
-    '|---|---|---|---:|---:|---:|---:|---:|---:|---|',
   ];
+  if (result.budgets !== undefined) {
+    lines.push(
+      '',
+      `## PR smoke budgets: ${result.budgets.status.toUpperCase()}`,
+      '',
+      `Budget version ${result.budgets.version}; ${result.budgets.passed} passed, ${result.budgets.failed} failed. Native reference: commit \`${result.budgets.baseline.commit_sha}\`, workflow runs ${result.budgets.baseline.workflow_run_ids.join(', ')}, ${result.budgets.baseline.samples_per_point} warm samples per point in each of ${result.budgets.baseline.run_count} runs.`,
+      '',
+      '| Budget | Metric | Statistic | Measured ms | Limit ms | Native p95 ms | Status |',
+      '|---|---|---|---:|---:|---:|---|',
+    );
+    for (const evaluation of result.budgets.evaluations) {
+      lines.push(
+        `| ${evaluation.id} | ${evaluation.metric} | ${evaluation.statistic} | ${round(evaluation.measured_ms)} | ${round(evaluation.limit_ms)} | ${round(evaluation.baseline_p95_ms)} | ${evaluation.status} |`,
+      );
+    }
+    const failed = result.budgets.evaluations.filter((evaluation) => evaluation.status === 'fail');
+    if (failed.length > 0) {
+      lines.push('', '### Failed-case stage attribution', '');
+      for (const evaluation of failed) {
+        const stages = Object.entries(evaluation.stage_attribution_p95_ms)
+          .map(([name, value]) => `${name}=${round(value)} ms`)
+          .join(', ');
+        lines.push(`- ${evaluation.id}: ${stages || 'aggregate or metric missing'}`);
+      }
+    }
+  }
+  lines.push(
+    '',
+    '| Sweep | Case | Operation | Transport | Entries / events | handler p50 / p95 / p99 ms (n) | spawn p50 / p95 / p99 ms (n) | load p50 / p95 / p99 ms (n) | append p50 / p95 / p99 ms (n) | e2e / DSH / batch p50 / p95 / p99 ms (n) | Outcomes | Error codes |',
+    '|---|---|---|---|---:|---:|---:|---:|---:|---:|---|---|',
+  );
   for (const aggregate of result.aggregates.filter(
     (candidate) => !['concurrency', 'scenario-operations'].includes(candidate.sweep),
   )) {
@@ -1168,7 +1239,7 @@ export function renderSummary(result) {
           ? 'harness_cold_read_ms'
           : 'batch_total_ms';
     lines.push(
-      `| ${aggregate.sweep} | ${aggregate.case_name} | ${aggregate.transport ?? '-'} | ${size} | ${metricTriplet(aggregate, 'handler_total_ms')} | ${metricTriplet(aggregate, 'spawn_to_exit_ms')} | ${metricTriplet(aggregate, 'journal_load_decode_ms')} | ${metricTriplet(aggregate, 'append_sync_ms')} | ${metricTriplet(aggregate, finalMetric)} | ${countSummary(aggregate.outcomes)} |`,
+      `| ${aggregate.sweep} | ${aggregate.case_name} | ${aggregate.operation_kind ?? '-'} | ${aggregate.transport ?? '-'} | ${size} | ${metricTriplet(aggregate, 'handler_total_ms')} | ${metricTriplet(aggregate, 'spawn_to_exit_ms')} | ${metricTriplet(aggregate, 'journal_load_decode_ms')} | ${metricTriplet(aggregate, 'append_sync_ms')} | ${metricTriplet(aggregate, finalMetric)} | ${countSummary(aggregate.outcomes)} | ${countSummary(aggregate.error_codes)} |`,
     );
   }
   lines.push(
@@ -1605,6 +1676,7 @@ export async function main(argv = process.argv.slice(2)) {
   const samples = [];
   try {
     const context = createContext(config, dependencies, tempRoot);
+    const isSmoke = config.profile === 'pr-smoke';
     if (config.sweeps.includes('journal-scale')) {
       await runMatrixSweep(context, samples, 'journal-scale', JOURNAL_SCALE_CASES, ['rust_direct']);
     }
@@ -1612,30 +1684,52 @@ export async function main(argv = process.argv.slice(2)) {
       await runMatrixSweep(context, samples, 'outcomes', OUTCOME_CASES, ['rust_direct']);
     }
     if (config.sweeps.includes('transport')) {
-      await runMatrixSweep(context, samples, 'transport', TRANSPORT_CASES, [
-        'rust_direct',
-        'typescript_reference',
-      ]);
+      await runMatrixSweep(
+        context,
+        samples,
+        'transport',
+        isSmoke ? PR_SMOKE_CASES : TRANSPORT_CASES,
+        isSmoke ? ['rust_direct'] : ['rust_direct', 'typescript_reference'],
+      );
     }
     if (config.sweeps.includes('max-payload')) {
       await runMatrixSweep(context, samples, 'max-payload', MAX_PAYLOAD_CASES, ['rust_direct']);
     }
-    if (config.sweeps.includes('concurrency')) await runConcurrencySweep(context, samples);
+    if (config.sweeps.includes('concurrency')) {
+      await runConcurrencySweep(
+        context,
+        samples,
+        isSmoke
+          ? {
+              operations: PR_SMOKE_CONCURRENCY_OPERATIONS,
+              modes: PR_SMOKE_CONCURRENCY_MODES,
+              levels: PR_SMOKE_CONCURRENCY_LEVELS,
+            }
+          : undefined,
+      );
+    }
     if (config.sweeps.includes('dsh')) await runDshSweep(context, samples);
     if (config.sweeps.includes('scenarios')) await runScenarioSweep(context, samples);
 
     const aggregates = aggregateSamples(samples);
+    const budgets = isSmoke ? evaluatePrSmokeBudgets(aggregates) : undefined;
     const result = {
-      schema_version: 3,
+      schema_version: 4,
       metadata: environmentMetadata(tempRoot),
       config: {
+        profile: config.profile,
         warmup: config.warmup,
         samples: config.samples,
         sweeps: config.sweeps,
         percentile_method: 'nearest_rank',
-        core_watchdog_ms: CORE_WATCHDOG_MS,
+        timeouts: {
+          core_watchdog_ms: CORE_WATCHDOG_MS,
+          dsh_adapter_ms: DSH_ADAPTER_TIMEOUT_MS,
+          operation_ms: OPERATION_TIMEOUT_MS,
+        },
       },
       watchdog: compareWatchdog(aggregates),
+      ...(budgets === undefined ? {} : { budgets }),
       aggregates,
       samples,
     };
@@ -1646,6 +1740,9 @@ export async function main(argv = process.argv.slice(2)) {
     process.stdout.write(
       `wrote ${result.samples.length} recorded observations and ${result.aggregates.length} aggregate rows\n`,
     );
+    if (budgets?.status === 'fail') {
+      throw new Error(`${budgets.failed} PR smoke performance budget(s) failed`);
+    }
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }
