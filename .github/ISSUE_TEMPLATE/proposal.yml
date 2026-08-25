@@ -1,55 +1,103 @@
 name: Proposal
-description: 挙動、API、schema、依存境界を変える提案（PRの前に契約を確定します）
+description: Propose a change to behavior, API, schema, boundaries, or repository process before implementation.
 title: "proposal: "
 labels: ["type:proposal"]
 body:
   - type: markdown
     attributes:
       value: |
-        Aizignはproposal-firstです。ここでscopeと契約を合意してからPRを出してください。
-        大きな目的はumbrella Issueにし、leaf Issueへ分割します。
+        Aizign is proposal-first. Agree on the scope and contract before opening an implementation pull request.
+        Use an umbrella Issue for a large goal and divide it into reviewable leaf Issues.
+        Routine changes remain lightweight; Boundary changes and Milestone reviews follow the conductor-led workflow.
   - type: textarea
     id: problem
     attributes:
-      label: 解きたい問題
+      label: Problem to solve
+    validations:
+      required: true
+  - type: dropdown
+    id: change_class
+    attributes:
+      label: Change class
+      description: Select by authority and commitment impact, not by diff size. Routine is allowed only when no normative authority, public behavior, support, durable state, or process policy changes.
+      options:
+        - Routine change
+        - Boundary change
+        - Milestone review
     validations:
       required: true
   - type: textarea
     id: contract
     attributes:
-      label: 提案する契約
-      description: command / event / decision、protocol kind、journal record、error code、capabilityなど、変わるものを具体的に
+      label: Proposed contract or process decision
+      description: Describe the concrete command, event, decision, Protocol kind, journal record, error code, capability, support claim, or repository process rule that changes.
     validations:
       required: true
   - type: textarea
     id: contexts
     attributes:
-      label: 触るbounded context
-      description: docs/architecture/context-map.md の行で答える。二つ以上なら理由
+      label: Bounded contexts or process surfaces touched
+      description: For product/runtime work, name entries from docs/architecture/context-map.md. For repository/process work, name the affected governance, contribution, review, merge, release, template, skill, or tooling surfaces. Explain why more than one is required.
+      placeholder: "Product/runtime: <context and path>\nRepository/process: <surface and path>\nNot applicable — Routine prose-only change; no product context or process authority changes."
+    validations:
+      required: true
+  - type: textarea
+    id: canonical_owners
+    attributes:
+      label: Canonical owner and duplicate candidates
+      description: Name the single authority or implementation owner for each changed policy or surface and every competing owner or path.
+      placeholder: "<surface> — canonical: <path>; duplicate candidates: <paths or none>\nNot applicable — Routine change; no policy ownership or normative authority changes."
+    validations:
+      required: true
+  - type: textarea
+    id: old_path_disposition
+    attributes:
+      label: Old-path disposition
+      description: Record each existing path with the same apparent responsibility as deleted, migrated, provisional with a trigger, or retained for a distinct named responsibility.
+      placeholder: "<path> — deleted | migrated to <owner> | provisional until <trigger> | retained for <distinct responsibility>\nNot applicable — Routine change; no alternate path is introduced, changed, or retained."
+    validations:
+      required: true
+  - type: textarea
+    id: ranges
+    attributes:
+      label: Commitment, lifecycle, and consumer ranges
+      description: Use the vocabulary from docs/development/change-workflow.md. Record included areas, explicit exclusions with reasons/owners, and evidence gaps. A Routine change may use the exact Not applicable form shown below.
+      placeholder: "Commitment included: <WIRE | DURABLE | SUPPORT | PROVISIONAL | INTERNAL | PROCESS>\nLifecycle included: <scopes>\nConsumers included: <consumers>\nExplicitly out of range: <area, reason, owner>\nEvidence gaps: <gap and owner or none>\nNot applicable — Routine change remains within one accepted owner-local contract."
     validations:
       required: true
   - type: dropdown
     id: adr
     attributes:
-      label: ADRが必要か
-      description: crate / package境界、依存方向、protocol、journal、接続方式、runtime dependency、data boundary、retry policy、toolchain、release policy
+      label: Is an ADR required?
+      description: ADRs are required for architecture, boundary, contribution/review/merge policy, Protocol or journal shape, runtime dependency, data boundary, retry policy, toolchain support, and release or compatibility policy.
       options:
-        - 不要
-        - 必要（このIssueでADR番号を確定する）
+        - "No"
+        - "Yes — the ADR decision will be completed in this Issue"
     validations:
       required: true
   - type: textarea
     id: invariants
     attributes:
-      label: 関係するhard invariants
-      description: root AGENTS.md の番号と、それを壊さない理由
+      label: Related hard invariants
+      description: Reference numbered entries in docs/architecture/invariants.md and explain why the proposed contract preserves or changes them. Use Not applicable only when no hard invariant is implicated.
   - type: textarea
-    id: tests
+    id: falsifying_evidence
     attributes:
-      label: 検証方法
-      description: どのtest / fixture / conformanceで、守る境界を一度壊して検出できることを確認するか
+      label: Falsifying evidence
+      description: State one concrete mutation, counterexample, or failure sequence that would make the proposed claim false, and name the test, fixture, or observation that must detect it. Not applicable is allowed only for a typo or prose-only change with no executable behavior or claim change.
+      placeholder: "<claim> would be false if <mutation or sequence>; <test, fixture, or observation> must detect it."
+    validations:
+      required: true
+  - type: textarea
+    id: targeted_review
+    attributes:
+      label: Required targeted review
+      description: For a Boundary change, name the affected range and failure model an independent Breaker must inspect. For a Milestone review, reference the milestone-specific plan. A Routine change may use the exact Not applicable form shown below.
+      placeholder: "Required — <range and failure model>\nNot applicable — Routine change; no independent Breaker required."
+    validations:
+      required: true
   - type: textarea
     id: legacy
     attributes:
-      label: 旧実装からの採用（該当する場合）
-      description: "Adopt / Reject / Defer を明示し、採用する契約は新しいtestとして書き直す（ADR-0006）"
+      label: Adoption from the legacy implementation, if applicable
+      description: State Adopt, Reject, or Defer. Rewrite every adopted contract as a new test under ADR-0006.
