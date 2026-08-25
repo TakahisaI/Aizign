@@ -86,6 +86,13 @@ function byteLength(frame: Uint8Array | string): number {
   return typeof frame === 'string' ? encoder.encode(frame).byteLength : frame.byteLength;
 }
 
+function assertEncodedUnicode(frame: string): void {
+  const invalidUnicode = findInvalidUnicode(frame);
+  if (invalidUnicode !== null) {
+    throw new ProtocolError(codes.INVALID_ENVELOPE, invalidUnicode.message);
+  }
+}
+
 function decodeFrame(frame: Uint8Array | string): string {
   if (typeof frame === 'string') return frame;
   if (frame[0] === 0xef && frame[1] === 0xbb && frame[2] === 0xbf) {
@@ -337,6 +344,7 @@ export function encodeRequest(request: Request): string {
       `request is ${size} bytes; at most ${MAX_REQUEST_BYTES} allowed`,
     );
   }
+  assertEncodedUnicode(frame);
   return frame;
 }
 
@@ -374,6 +382,7 @@ export function encodeResponse(response: Response): string {
       `response is ${size} bytes; at most ${MAX_FRAME_BYTES} allowed`,
     );
   }
+  assertEncodedUnicode(frame);
   return frame;
 }
 
