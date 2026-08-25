@@ -237,29 +237,25 @@ export function seedFixture(stateDir, entries, fixtureTarget = 'absent', fixture
   for (const path of [lockPath, journalPath, commitPath]) chmodSync(path, 0o600);
 }
 
-const DEFAULT_UNKNOWN_OUTCOME_CODES = new Set([
-  'JOURNAL_OUTCOME_UNKNOWN',
-  'HANDLER_TIMEOUT',
-  'EFFECT_OUTCOME_UNKNOWN',
-]);
-
 export function classifyResponse(
   response,
   operationKind,
-  isUnknownOutcomeCode = (code) => DEFAULT_UNKNOWN_OUTCOME_CODES.has(code),
+  isSubmitRejectionCode,
+  isTimingErrorCode,
 ) {
   if (response.body.type !== 'error') {
     return { outcome: response.body.type === 'hello' ? 'ok' : response.body.result.disposition };
   }
   const errorCode = response.body.error.code;
+  const safeDiagnostic = isTimingErrorCode(errorCode) ? { error_code: errorCode } : {};
   if (operationKind === 'workflow.signal.reconcile') {
-    return { outcome: 'unknown', error_code: errorCode, unknown_reason: 'reported_unknown' };
+    return { outcome: 'unknown', ...safeDiagnostic, unknown_reason: 'reported_unknown' };
   }
   if (errorCode === 'EVENT_CONFLICT') return { outcome: 'conflict', error_code: errorCode };
-  if (isUnknownOutcomeCode(errorCode)) {
-    return { outcome: 'unknown', error_code: errorCode, unknown_reason: 'reported_unknown' };
+  if (isSubmitRejectionCode(errorCode)) {
+    return { outcome: 'rejected', error_code: errorCode };
   }
-  return { outcome: 'rejected', error_code: errorCode };
+  return { outcome: 'unknown', ...safeDiagnostic, unknown_reason: 'reported_unknown' };
 }
 
 function extractChildTiming(stderr) {
@@ -275,11 +271,10 @@ function extractChildTiming(stderr) {
   }
 }
 
-export function decodeCorrelatedResponse(stdout, request, protocol) {
-  if (Buffer.byteLength(stdout) > protocol.MAX_FRAME_BYTES + 1) {
+function decodeExtractedResponse(extraction, request, protocol) {
+  if (extraction.kind === 'oversized') {
     return { transport_kind: 'unknown', unknown_reason: 'oversized_response' };
   }
-  const extraction = protocol.extractFrame(stdout);
   if (extraction.kind === 'empty') {
     return { transport_kind: 'unknown', unknown_reason: 'no_response' };
   }
@@ -302,15 +297,25 @@ export function decodeCorrelatedResponse(stdout, request, protocol) {
   );
   if (mismatch !== undefined) {
     const reportedCode = response.body.type === 'error' ? response.body.error.code : undefined;
+    const safeReportedCode =
+      reportedCode !== undefined && protocol.isTimingErrorCode(reportedCode)
+        ? reportedCode
+        : undefined;
     return {
       transport_kind: 'unknown',
       unknown_reason: 'correlation_mismatch',
-      ...(request.kind === 'workflow.signal.reconcile' && reportedCode !== undefined
-        ? { error_code: reportedCode }
+      ...(request.kind === 'workflow.signal.reconcile' && safeReportedCode !== undefined
+        ? { error_code: safeReportedCode }
         : {}),
     };
   }
   return { transport_kind: 'correlated_response', response };
+}
+
+export function decodeCorrelatedResponse(stdout, request, protocol) {
+  const collector = new protocol.OneShotFrameCollector(protocol.MAX_FRAME_BYTES);
+  collector.append(typeof stdout === 'string' ? Buffer.from(stdout) : stdout);
+  return decodeExtractedResponse(collector.extract(), request, protocol);
 }
 
 export function runProcess(
@@ -326,7 +331,7 @@ export function runProcess(
     const started = performance.now();
     let spawnToExitMs;
     let responseFirstByteMs;
-    const stdout = new BoundedBuffer(protocol.MAX_FRAME_BYTES + 1);
+    const stdout = new protocol.OneShotFrameCollector(protocol.MAX_FRAME_BYTES);
     const stderr = new BoundedBuffer(MAX_BENCHMARK_STDERR_BYTES);
     let stdoutOverflow = false;
     let stderrOverflow = false;
@@ -441,7 +446,7 @@ export function runProcess(
           });
           return;
         }
-        const decoded = decodeCorrelatedResponse(stdout.toBuffer(), request, protocol);
+        const decoded = decodeExtractedResponse(stdout.extract(), request, protocol);
         if (decoded.transport_kind === 'unknown') {
           finish({
             transport_kind: 'unknown',
@@ -462,7 +467,8 @@ export function runProcess(
         const classified = classifyResponse(
           decoded.response,
           operationKind,
-          protocol.isUnknownOutcomeCode,
+          protocol.isSubmitRejectionCode,
+          protocol.isTimingErrorCode,
         );
         finish({
           transport_kind: 'correlated_response',
@@ -1572,7 +1578,9 @@ async function loadDependencies() {
         checkCorrelation: protocol.checkCorrelation,
         decodeResponse: protocol.decodeResponse,
         extractFrame: protocol.extractFrame,
-        isUnknownOutcomeCode: protocol.isUnknownOutcomeCode,
+        isSubmitRejectionCode: protocol.isSubmitRejectionCode,
+        isTimingErrorCode: protocol.isTimingErrorCode,
+        OneShotFrameCollector: protocol.OneShotFrameCollector,
       },
       ReferenceOneShotClient: testkit.ReferenceOneShotClient,
       preflight: dsh.preflight,

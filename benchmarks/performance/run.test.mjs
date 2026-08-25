@@ -20,8 +20,10 @@ import {
   checkCorrelation,
   decodeResponse,
   extractFrame,
-  isUnknownOutcomeCode,
+  isSubmitRejectionCode,
+  isTimingErrorCode,
   MAX_FRAME_BYTES,
+  OneShotFrameCollector,
 } from '../../packages/protocol/lib/index.js';
 import { BoundedBuffer } from './bounded-buffer.mjs';
 import {
@@ -73,8 +75,10 @@ const PROTOCOL = {
   checkCorrelation,
   decodeResponse,
   extractFrame,
-  isUnknownOutcomeCode,
+  isSubmitRejectionCode,
+  isTimingErrorCode,
   MAX_FRAME_BYTES,
+  OneShotFrameCollector,
 };
 
 function renderAggregates(aggregates, samples = 2) {
@@ -330,6 +334,8 @@ test('request fixtures preserve operation validity and response classification',
     classifyResponse(
       { body: { type: 'error', error: { code: 'EVENT_CONFLICT' } } },
       'workflow.signal.submit',
+      isSubmitRejectionCode,
+      isTimingErrorCode,
     ),
     { outcome: 'conflict', error_code: 'EVENT_CONFLICT' },
   );
@@ -337,12 +343,32 @@ test('request fixtures preserve operation validity and response classification',
     classifyResponse(
       { body: { type: 'error', error: { code: 'JOURNAL_LOCKED' } } },
       'workflow.signal.reconcile',
+      isSubmitRejectionCode,
+      isTimingErrorCode,
     ),
     {
       outcome: 'unknown',
       error_code: 'JOURNAL_LOCKED',
       unknown_reason: 'reported_unknown',
     },
+  );
+  assert.deepEqual(
+    classifyResponse(
+      { body: { type: 'error', error: { code: 'INTERNAL' } } },
+      'workflow.signal.submit',
+      isSubmitRejectionCode,
+      isTimingErrorCode,
+    ),
+    { outcome: 'unknown', error_code: 'INTERNAL', unknown_reason: 'reported_unknown' },
+  );
+  assert.deepEqual(
+    classifyResponse(
+      { body: { type: 'error', error: { code: 'FUTURE_OUTCOME_UNKNOWN' } } },
+      'workflow.signal.submit',
+      isSubmitRejectionCode,
+      isTimingErrorCode,
+    ),
+    { outcome: 'unknown', unknown_reason: 'reported_unknown' },
   );
   const nearMax = buildRequest(MAX_PAYLOAD_CASES[0]);
   assert.equal(nearMax.payload.expected.workflowId.length, 128);
@@ -449,15 +475,37 @@ test('bounded buffers preserve UTF-8 chunk boundaries and stop retaining after t
   assert.equal(buffer.toString(), '前後');
 });
 
-test('direct runner classifies stdout overflow and fails on stderr overflow', async () => {
+test('direct runner bounds the frame, permits trailing whitespace, and fails closed', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aizign-direct-output-bound-'));
   try {
     const fakeBinary = join(root, 'overflow-core.cjs');
     writeFileSync(
       fakeBinary,
       `#!/usr/bin/env node
-process.stdin.resume();
+let input = '';
+process.stdin.on('data', (chunk) => { input += chunk; });
 process.stdin.on('end', () => {
+  if (process.argv[2] === 'response') {
+    const request = JSON.parse(input);
+    const response = {
+      protocol: 'aizign',
+      version: 1,
+      requestId: request.requestId,
+      kind: request.kind,
+      ok: false,
+      error: { code: process.argv[3], message: '' },
+    };
+    if (process.argv[4] === 'exact-max') {
+      const base = Buffer.from(JSON.stringify(response));
+      response.error.message = 'x'.repeat(Number(process.argv[5]) - base.length);
+      const exact = Buffer.from(JSON.stringify(response));
+      if (exact.length !== Number(process.argv[5])) throw new Error('bad exact-max fixture');
+      process.stdout.write(Buffer.concat([exact, Buffer.from('\\n \\t\\n')]));
+      return;
+    }
+    process.stdout.write(JSON.stringify(response) + '\\n');
+    return;
+  }
   const stream = process.argv[2] === 'stderr' ? process.stderr : process.stdout;
   stream.write(Buffer.alloc(Number(process.argv[3]), 120));
 });
@@ -475,6 +523,30 @@ process.stdin.on('end', () => {
     );
     assert.equal(stdoutResult.transport_kind, 'unknown');
     assert.equal(stdoutResult.unknown_reason, 'oversized_response');
+
+    const exactMax = await runProcess(
+      fakeBinary,
+      ['response', 'INTERNAL', 'exact-max', String(MAX_FRAME_BYTES)],
+      request,
+      request.kind,
+      PROTOCOL,
+    );
+    assert.equal(exactMax.transport_kind, 'correlated_response');
+    assert.equal(exactMax.outcome, 'unknown');
+    assert.equal(exactMax.unknown_reason, 'reported_unknown');
+    assert.equal(exactMax.error_code, 'INTERNAL');
+
+    const unrecognized = await runProcess(
+      fakeBinary,
+      ['response', 'FUTURE_OUTCOME_UNKNOWN'],
+      request,
+      request.kind,
+      PROTOCOL,
+    );
+    assert.equal(unrecognized.transport_kind, 'correlated_response');
+    assert.equal(unrecognized.outcome, 'unknown');
+    assert.equal(unrecognized.unknown_reason, 'reported_unknown');
+    assert.equal('error_code' in unrecognized, false);
 
     await assert.rejects(
       runProcess(

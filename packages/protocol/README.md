@@ -6,7 +6,7 @@ interface.
 
 | | |
 |---|---|
-| **Responsibility** | `decodeRequest` / `encodeRequest` / `decodeResponse` / `encodeResponse`（両方向 `MAX_FRAME_BYTES`）、`extractFrame`（stdoutがframe 1つだけか）、`checkCorrelation`（`requestId` / `kind` / `eventId` の照合）、`hello` の `checkCompatibility`、submit / reconcileのpayload型とclosed decoder、`CoreClient` / submit・reconcile outcomeの契約型 |
+| **Responsibility** | `decodeRequest` / `encodeRequest` / `decodeResponse` / `encodeResponse`（両方向 `MAX_FRAME_BYTES`）、`extractFrame`（完全なstdoutがframe 1つだけか）、`OneShotFrameCollector`（LFまでのframeをboundedに保持し末尾ASCII whitespaceを保存せず検査）、`checkCorrelation`（`requestId` / `kind` / `eventId` の照合）、`hello` の `checkCompatibility`、submit / reconcileのpayload型とclosed decoder、`CoreClient` / submit・reconcile outcomeの契約型 |
 | **Non-responsibility** | process起動、filesystem、harness固有型、判断（coreの責務。decoderはcoreと同じ入力規則で **事前に** 拒否するだけ） |
 | **Inputs** | frame（`Uint8Array` / `string`）、payload object |
 | **Outputs** | `Request` / `Response`、`DecodeFailure`（復元した `requestId` / `kind` 付き）、`ProtocolError` |

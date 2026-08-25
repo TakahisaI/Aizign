@@ -6,6 +6,7 @@ import {
   encodeResponse,
   MAX_FRAME_BYTES,
   MAX_REQUEST_BYTES,
+  OneShotFrameCollector,
   type Request,
 } from './envelope.ts';
 import { codes, ProtocolError } from './error.ts';
@@ -110,6 +111,26 @@ test('extractFrame accepts exactly one newline-terminated frame plus whitespace'
       (error: unknown) => error instanceof ProtocolError && error.code === codes.INVALID_ENVELOPE,
     );
   }
+});
+
+test('the process collector bounds only the frame and validates discarded trailing whitespace', () => {
+  const exact = new OneShotFrameCollector(4);
+  assert.equal(exact.append(Uint8Array.from([0x31, 0x32])), true);
+  assert.equal(exact.append(Uint8Array.from([0x33, 0x34, 0x0a, 0x20, 0x09])), true);
+  assert.equal(exact.append(Uint8Array.from([0x0a, 0x0d])), true);
+  const extraction = exact.extract();
+  assert.equal(extraction.kind, 'frame');
+  if (extraction.kind === 'frame')
+    assert.deepEqual([...extraction.frame], [0x31, 0x32, 0x33, 0x34]);
+
+  const oversized = new OneShotFrameCollector(4);
+  assert.equal(oversized.append(Uint8Array.from([0x31, 0x32, 0x33, 0x34])), true);
+  assert.equal(oversized.append(Uint8Array.from([0x35, 0x0a])), false);
+  assert.equal(oversized.extract().kind, 'oversized');
+
+  const trailingContent = new OneShotFrameCollector(4);
+  assert.equal(trailingContent.append(Uint8Array.from([0x31, 0x0a, 0xc2, 0xa0])), true);
+  assert.equal(trailingContent.extract().kind, 'extra');
 });
 
 test('oversized or badly addressed responses are invalid envelopes', async () => {

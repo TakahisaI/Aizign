@@ -1,7 +1,7 @@
 # Aizign Protocol v1
 
 NDJSON over stdin / stdout。**1 request frame in、1 response frame out**。frameは改行で終わる1行のJSON objectで、
-request / response とも `65536` bytes（`MAX_FRAME_BYTES`）以下。
+request / response のJSON frame本体はともに `65536` bytes（`MAX_FRAME_BYTES`）以下。終端LFと、その後に許可されるASCII whitespaceはframe sizeに含めない。process clientはLFまでのframeだけをboundedに保持し、LF後は保存せず検査する。
 
 - stdinは **frame 1つ + 末尾 whitespace** だけを許す。2つ目のframeや末尾の非whitespaceは `INVALID_ENVELOPE`（何もappendしない）
 - stdoutも **frame 1つ + 末尾 whitespace** だけ。clientは2つ目のframe・末尾の非whitespace・boundの超過を `unknown` として扱う（effectが実行済みの可能性があるため、拒否ではなく不明）

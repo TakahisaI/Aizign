@@ -33,6 +33,7 @@ export {
   type UnknownOutcome,
 } from './client.ts';
 export {
+  type BoundedFrameExtraction,
   DecodeFailure,
   decodeRequest,
   decodeResponse,
@@ -45,6 +46,7 @@ export {
   KIND_WORKFLOW_SIGNAL_SUBMIT,
   MAX_FRAME_BYTES,
   MAX_REQUEST_BYTES,
+  OneShotFrameCollector,
   PROTOCOL_NAME,
   PROTOCOL_VERSION,
   type Request,

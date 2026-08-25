@@ -476,6 +476,10 @@ export type FrameExtraction =
   | { readonly kind: 'empty' }
   | { readonly kind: 'extra'; readonly detail: string };
 
+export type BoundedFrameExtraction =
+  | FrameExtraction
+  | { readonly kind: 'oversized'; readonly detail: string };
+
 function isAsciiWhitespace(byte: number): boolean {
   return byte === 0x20 || (byte >= 0x09 && byte <= 0x0d);
 }
@@ -500,4 +504,76 @@ export function extractFrame(output: Uint8Array | string): FrameExtraction {
     return { kind: 'extra', detail: 'more than one frame, or trailing content after the frame' };
   }
   return frame.every(isAsciiWhitespace) ? { kind: 'empty' } : { kind: 'frame', frame };
+}
+
+/**
+ * Incrementally retain one bounded frame while validating, but not retaining,
+ * the ASCII whitespace permitted after its terminating LF.
+ */
+export class OneShotFrameCollector {
+  readonly #chunks: Uint8Array[] = [];
+  readonly #maxFrameBytes: number;
+  #frameBytes = 0;
+  #newlineSeen = false;
+  #oversized = false;
+  #invalidTrailingContent = false;
+
+  constructor(maxFrameBytes: number) {
+    if (!Number.isSafeInteger(maxFrameBytes) || maxFrameBytes < 0) {
+      throw new Error('frame limit must be a non-negative safe integer');
+    }
+    this.#maxFrameBytes = maxFrameBytes;
+  }
+
+  /** False means the bytes before the terminating LF exceeded the frame bound. */
+  append(chunk: Uint8Array): boolean {
+    if (this.#oversized) return false;
+    let cursor = 0;
+    if (!this.#newlineSeen) {
+      const newline = chunk.indexOf(0x0a);
+      const frameEnd = newline < 0 ? chunk.length : newline;
+      if (this.#frameBytes + frameEnd > this.#maxFrameBytes) {
+        this.#oversized = true;
+        return false;
+      }
+      if (frameEnd > 0) {
+        this.#chunks.push(Uint8Array.from(chunk.subarray(0, frameEnd)));
+        this.#frameBytes += frameEnd;
+      }
+      if (newline < 0) return true;
+      this.#newlineSeen = true;
+      cursor = newline + 1;
+    }
+    for (; cursor < chunk.length; cursor += 1) {
+      if (!isAsciiWhitespace(chunk[cursor] ?? -1)) this.#invalidTrailingContent = true;
+    }
+    return true;
+  }
+
+  extract(): BoundedFrameExtraction {
+    if (this.#oversized) {
+      return {
+        kind: 'oversized',
+        detail: `frame exceeds ${this.#maxFrameBytes} bytes`,
+      };
+    }
+    const frame = new Uint8Array(this.#frameBytes);
+    let offset = 0;
+    for (const chunk of this.#chunks) {
+      frame.set(chunk, offset);
+      offset += chunk.length;
+    }
+    if (!this.#newlineSeen) {
+      return frame.every(isAsciiWhitespace)
+        ? { kind: 'empty' }
+        : { kind: 'extra', detail: 'frame is not newline-terminated' };
+    }
+    if (this.#invalidTrailingContent) {
+      return {
+        kind: 'extra',
+        detail: 'more than one frame, or trailing content after the frame',
+      };
+    }
+    return frame.every(isAsciiWhitespace) ? { kind: 'empty' } : { kind: 'frame', frame };
+  }
 }

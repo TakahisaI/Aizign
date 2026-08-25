@@ -250,6 +250,11 @@ export async function runFaultScenarios(
       ['wrong-kind', 'correlation_mismatch', 'the response has another kind'],
       ['wrong-event-id', 'correlation_mismatch', 'the response names another event'],
       ['oversized', 'oversized_response', 'the response exceeds the frame bound'],
+      [
+        'exact-max-padded',
+        'reported_unknown',
+        'an exact-max frame may carry permitted trailing ASCII whitespace',
+      ],
       ['two-frames', 'undecodable_response', 'stdout carries two frames'],
       ['trailing-garbage', 'undecodable_response', 'stdout carries a frame and then prose'],
       [

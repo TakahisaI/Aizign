@@ -22,6 +22,7 @@
  * - `unknown-valid-error-code` report an unrecognized, well-formed correlated error code
  * - `unknown-valid-error-code-wrong-request-id` report that code without request correlation
  * - `invalid-utf8`      write a correlated rejection frame containing a raw invalid byte
+ * - `exact-max-padded`  write an exact-max frame followed by permitted ASCII whitespace
  *
  * `AIZIGN_FAKE_HELLO_PROTOCOL_VERSION` overrides the advertised protocol
  * version, for compatibility-check tests.
@@ -288,6 +289,22 @@ async function main(argv: readonly string[]): Promise<number> {
           Buffer.from('\n'),
         ]),
       );
+      return 0;
+    }
+    case 'exact-max-padded': {
+      const envelope = {
+        protocol: PROTOCOL_NAME,
+        version: PROTOCOL_VERSION,
+        requestId: request.requestId,
+        kind: request.kind,
+        ok: false,
+        error: { code: codes.INTERNAL, message: '' },
+      };
+      const base = Buffer.from(JSON.stringify(envelope));
+      envelope.error.message = 'x'.repeat(MAX_FRAME_BYTES - base.length);
+      const exact = Buffer.from(JSON.stringify(envelope));
+      if (exact.length !== MAX_FRAME_BYTES) throw new Error('bad exact-max fixture');
+      process.stdout.write(Buffer.concat([exact, Buffer.from('\n \t\n')]));
       return 0;
     }
     case 'wrong-request-id':

@@ -12,12 +12,12 @@ import {
   decodeResponse,
   emitBestEffort,
   encodeRequest,
-  extractFrame,
   type HelloOutcome,
   isSubmitRejectionCode,
   isTimingErrorCode,
   isUnknownOutcomeCode,
   MAX_FRAME_BYTES,
+  OneShotFrameCollector,
   type ParentOperationKind,
   type ParentTimingMeasurement,
   parentTimingOutcome,
@@ -276,12 +276,10 @@ export class OneShotCoreClient implements CoreClient {
       }
       signal?.addEventListener('abort', onAbort, { once: true });
       const spawned = child;
-      const stdout: Buffer[] = [];
-      let received = 0;
+      const stdout = new OneShotFrameCollector(MAX_FRAME_BYTES);
       spawned.stdout?.on('data', (chunk: Buffer) => {
         responseFirstByteMs ??= performance.now() - started;
-        received += chunk.length;
-        if (received > MAX_FRAME_BYTES + 1) {
+        if (!stdout.append(chunk)) {
           spawned.kill('SIGKILL');
           settle(
             unknown(
@@ -292,7 +290,6 @@ export class OneShotCoreClient implements CoreClient {
           );
           return;
         }
-        stdout.push(chunk);
       });
       spawned.stderr?.on('data', () => undefined);
       spawned.on('error', (error) => settle(unknown('spawn_failed', error.message, timing())));
@@ -313,7 +310,11 @@ export class OneShotCoreClient implements CoreClient {
       }, timeoutMs);
 
       spawned.on('close', (code) => {
-        const extraction = extractFrame(Buffer.concat(stdout));
+        const extraction = stdout.extract();
+        if (extraction.kind === 'oversized') {
+          settle(unknown('oversized_response', extraction.detail, timing()));
+          return;
+        }
         if (extraction.kind === 'empty') {
           settle(
             unknown('no_response', `process exited with ${String(code)} without a frame`, timing()),
