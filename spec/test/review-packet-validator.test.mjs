@@ -1,12 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
-import {
-  mkdtempSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
@@ -422,19 +417,15 @@ for (const [name, field, value, pattern] of [
 
 test('review batch validator requires evidence for every claim', () => {
   const packets = makeBatch();
-  const requirements =
-    packets[0].batch_context.checkpoint.checkpoint_content.evidence_requirements;
-  const requirement = requirements.find(
-    (item) => item.evidence_id === 'EVD-CONTEXT',
-  );
+  const requirements = packets[0].batch_context.checkpoint.checkpoint_content.evidence_requirements;
+  const requirement = requirements.find((item) => item.evidence_id === 'EVD-CONTEXT');
   requirement.subject_ids = ['RNG-CONSUMER'];
   assertRejected(packets, /claim CLM-CONTEXT has no evidence requirement/);
 });
 
 test('review batch validator requires evidence references to resolve', () => {
   const packets = makeBatch();
-  const requirements =
-    packets[0].batch_context.checkpoint.checkpoint_content.evidence_requirements;
+  const requirements = packets[0].batch_context.checkpoint.checkpoint_content.evidence_requirements;
   requirements[0].evidence_ref_ids = ['EVIDENCE-MISSING'];
   assertRejected(packets, /references unknown evidence EVIDENCE-MISSING/);
 });
@@ -484,9 +475,8 @@ test('review batch validator requires a matching pull-request snapshot', () => {
 
 test('review batch validator rejects the wrong pull-request snapshot number', () => {
   const packets = makeBatch();
-  packets[0].batch_context.issue_pr_snapshots.find(
-    (item) => item.kind === 'pull_request',
-  ).number = 96;
+  packets[0].batch_context.issue_pr_snapshots.find((item) => item.kind === 'pull_request').number =
+    96;
   assertRejected(packets, /exactly one matching pull-request snapshot/);
 });
 
