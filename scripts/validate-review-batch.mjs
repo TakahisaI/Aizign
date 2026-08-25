@@ -94,34 +94,88 @@ function verifySortedArrays(packet, where) {
 function verifyReferences(packet, where) {
   const context = packet.batch_context;
   const checkpoint = context.checkpoint.checkpoint_content;
-  const authorityIds = new Set(checkpoint.normative_authorities.map((item) => item.authority_id));
-  const controllingIds = new Set(context.controlling_authorities.map((item) => item.authority_id));
+
+  unique(
+    context.controlling_authorities.map((item) => item.authority_id),
+    `${where}.controlling authority IDs`,
+  );
+  unique(
+    checkpoint.normative_authorities.map((item) => item.authority_id),
+    `${where}.checkpoint authority IDs`,
+  );
+  unique(
+    checkpoint.canonical_owners.map((item) => item.owner_id),
+    `${where}.owner IDs`,
+  );
+  unique(
+    checkpoint.claims.map((item) => item.claim_id),
+    `${where}.claim IDs`,
+  );
+  unique(
+    checkpoint.ranges.map((item) => item.range_id),
+    `${where}.range IDs`,
+  );
+  unique(
+    checkpoint.evidence_requirements.map((item) => item.evidence_id),
+    `${where}.evidence requirement IDs`,
+  );
+  unique(
+    checkpoint.review_assignments.map((item) => item.perspective_id),
+    `${where}.perspective IDs`,
+  );
+  unique(
+    context.issue_pr_snapshots.map((item) => item.snapshot_id),
+    `${where}.snapshot IDs`,
+  );
+  unique(
+    context.external_constraints.map((item) => item.constraint_id),
+    `${where}.external constraint IDs`,
+  );
+  unique(
+    context.evidence.map((item) => item.evidence_id),
+    `${where}.retained evidence IDs`,
+  );
+  unique(
+    context.known_evidence_gaps.map((item) => item.gap_id),
+    `${where}.batch gap IDs`,
+  );
+  unique(
+    checkpoint.known_evidence_gaps.map((item) => item.gap_id),
+    `${where}.checkpoint gap IDs`,
+  );
+
+  const controllingById = new Map(
+    context.controlling_authorities.map((item) => [item.authority_id, item]),
+  );
+  const authoritiesById = new Map(
+    checkpoint.normative_authorities.map((item) => [item.authority_id, item]),
+  );
   const ownerIds = new Set(checkpoint.canonical_owners.map((item) => item.owner_id));
   const claimIds = new Set(checkpoint.claims.map((item) => item.claim_id));
-  const rangeIds = new Set(checkpoint.ranges.map((item) => item.range_id));
+  const reviewableRangeIds = new Set(
+    checkpoint.ranges
+      .filter((item) => item.disposition !== 'out_of_range')
+      .map((item) => item.range_id),
+  );
   const evidenceIds = new Set(
     checkpoint.evidence_requirements.map((item) => item.evidence_id),
   );
-  const subjectIds = new Set([...claimIds, ...rangeIds, ...evidenceIds]);
+  const requiredSubjectIds = new Set([...claimIds, ...reviewableRangeIds, ...evidenceIds]);
   const assignments = new Map(
     checkpoint.review_assignments.map((item) => [item.perspective_id, item]),
   );
 
-  unique([...authorityIds], `${where}.authority IDs`);
-  unique([...ownerIds], `${where}.owner IDs`);
-  unique([...claimIds], `${where}.claim IDs`);
-  unique([...rangeIds], `${where}.range IDs`);
-  unique([...evidenceIds], `${where}.evidence IDs`);
-  unique([...assignments.keys()], `${where}.perspective IDs`);
-
-  for (const authorityId of authorityIds) {
-    if (!controllingIds.has(authorityId)) {
-      fail(`${where}: checkpoint authority ${authorityId} is not controlling`);
+  for (const authority of checkpoint.normative_authorities) {
+    const controlling = controllingById.get(authority.authority_id);
+    if (!controlling || canonical(controlling) !== canonical(authority)) {
+      fail(
+        `${where}: checkpoint authority ${authority.authority_id} is not an exact controlling authority`,
+      );
     }
   }
   for (const claim of checkpoint.claims) {
     for (const authorityId of claim.authority_ids) {
-      if (!authorityIds.has(authorityId)) {
+      if (!authoritiesById.has(authorityId)) {
         fail(`${where}: ${claim.claim_id} references unknown authority ${authorityId}`);
       }
     }
@@ -133,15 +187,17 @@ function verifyReferences(packet, where) {
   }
   for (const evidence of checkpoint.evidence_requirements) {
     for (const subjectId of evidence.subject_ids) {
-      if (!claimIds.has(subjectId) && !rangeIds.has(subjectId)) {
-        fail(`${where}: ${evidence.evidence_id} references invalid subject ${subjectId}`);
+      if (!claimIds.has(subjectId) && !reviewableRangeIds.has(subjectId)) {
+        fail(`${where}: ${evidence.evidence_id} references non-reviewable subject ${subjectId}`);
       }
     }
   }
   for (const assignment of assignments.values()) {
     for (const subjectId of assignment.subject_ids) {
-      if (!subjectIds.has(subjectId)) {
-        fail(`${where}: ${assignment.perspective_id} references unknown subject ${subjectId}`);
+      if (!requiredSubjectIds.has(subjectId)) {
+        fail(
+          `${where}: ${assignment.perspective_id} references unknown or out-of-range subject ${subjectId}`,
+        );
       }
     }
   }
@@ -153,8 +209,8 @@ function verifyReferences(packet, where) {
 
   const coverage = new Map();
   for (const entry of context.coverage) {
-    if (!subjectIds.has(entry.subject_id)) {
-      fail(`${where}: coverage references unknown subject ${entry.subject_id}`);
+    if (!requiredSubjectIds.has(entry.subject_id)) {
+      fail(`${where}: coverage references unknown or out-of-range subject ${entry.subject_id}`);
     }
     for (const perspectiveId of entry.perspective_ids) {
       if (!assignments.has(perspectiveId)) {
@@ -165,14 +221,7 @@ function verifyReferences(packet, where) {
     coverage.set(entry.subject_id, new Set(entry.perspective_ids));
   }
 
-  const requiredSubjects = new Set([
-    ...claimIds,
-    ...checkpoint.ranges
-      .filter((item) => item.disposition !== 'out_of_range')
-      .map((item) => item.range_id),
-    ...evidenceIds,
-  ]);
-  for (const subjectId of requiredSubjects) {
+  for (const subjectId of requiredSubjectIds) {
     if (!coverage.has(subjectId)) fail(`${where}: missing coverage for ${subjectId}`);
   }
 
@@ -182,6 +231,9 @@ function verifyReferences(packet, where) {
       if (!derived.has(subjectId)) derived.set(subjectId, new Set());
       derived.get(subjectId).add(assignment.perspective_id);
     }
+  }
+  if (coverage.size !== derived.size) {
+    fail(`${where}: coverage and assignment subjects differ`);
   }
   for (const [subjectId, perspectiveIds] of coverage) {
     const expected = [...(derived.get(subjectId) ?? [])].sort();
@@ -220,6 +272,9 @@ function verifyPacket(packet, filePath, root) {
     context.workflow.review_packet_path === null
   ) {
     fail(`${where}: merged workflow mode requires both workflow paths`);
+  }
+  if (context.checkpoint.checkpoint_content.workflow_revision !== context.workflow.revision) {
+    fail(`${where}: checkpoint workflow revision differs from the batch workflow revision`);
   }
 
   const checkpoint = context.checkpoint;
