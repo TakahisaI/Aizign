@@ -31,7 +31,7 @@ adapter ──(request frame)──▶ aizign handle --state <dir> ──(respon
   - **整数の字句表現**（下記）
   - **duplicate member**（下記）
   - **well-formed Unicode**（下記）
-- frame bytesは **BOMなしUTF-8** とする。不正UTF-8と先頭のUTF-8 BOM（`EF BB BF`）はJSONとして解釈せず `INVALID_ENVELOPE`。string入力も先頭のU+FEFFを許さない
+- frame bytesは **BOMなしUTF-8** とする。不正UTF-8と先頭のUTF-8 BOM（`EF BB BF`）はJSONとして解釈せず `INVALID_ENVELOPE`。string入力も先頭のU+FEFFを許さない。process clientはstdoutをframe抽出・decode完了までbyte列として保持し、LF後に許すのはASCII whitespaceだけとする
 - 整数fieldのwire表現は **canonicalな整数token** だけを許す: `0` または `-?[1-9][0-9]*`。`1.0`、`1e0`、`-0` のような表記はJSON data model上は整数1（や0）だが、frameとしては拒否する（`version` は `INVALID_ENVELOPE`、payload内は `INVALID_PAYLOAD`）。JSON Schemaはdata modelしか見ないためこの規則を書けず、両decoderが実装する（Rustは `serde_json` の整数型、TSはparse時のtoken検査）
 - envelope `version` の整数rangeは `0..=4294967295`（`PROTOCOL_VERSION` の型 `u32` に由来）。range外は `PROTOCOL_VERSION_UNSUPPORTED` ではなく **`INVALID_ENVELOPE`**。両decoderとも同じ判定（Rustはtyped field、TSは数値比較。JSON numberは2^53まで厳密なので差は出ない）
 - **同一object内でmember名の重複は拒否**（`INVALID_ENVELOPE`、journalは `JOURNAL_CORRUPT`）。`"a"` と `"\u0061"` のようにescape表記が違っても、decode後の名前が同じなら重複とする。streaming parserとfolding parserで意味が分れるため、どの階層でも契約の外。schema外のlexical ruleとして両decoderが走査し、相関データ（`requestId` / `kind`）は最後の表記から復元する

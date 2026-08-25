@@ -470,28 +470,34 @@ export function decodeResponse(frame: Uint8Array | string): Response {
   throw invalidEnvelope('ok responses carry exactly payload; error responses carry exactly error');
 }
 
-/** What a process wrote to stdout, classified as exactly one frame or not. */
+/** What a process wrote to stdout, classified as exactly one byte frame or not. */
 export type FrameExtraction =
-  | { readonly kind: 'frame'; readonly frame: string }
+  | { readonly kind: 'frame'; readonly frame: Uint8Array }
   | { readonly kind: 'empty' }
   | { readonly kind: 'extra'; readonly detail: string };
 
+function isAsciiWhitespace(byte: number): boolean {
+  return byte === 0x20 || (byte >= 0x09 && byte <= 0x0d);
+}
+
 /**
  * A one-shot process must write exactly one frame followed by a newline and
- * nothing but whitespace after it. Anything else is not a response: a second
- * frame, trailing prose, or a frame that never ended.
+ * nothing but ASCII whitespace after it. Anything else is not a response: a
+ * second frame, trailing prose, or a frame that never ended. Process callers
+ * must pass bytes so invalid UTF-8 remains available to the fatal decoder.
  */
-export function extractFrame(output: string): FrameExtraction {
-  const newline = output.indexOf('\n');
+export function extractFrame(output: Uint8Array | string): FrameExtraction {
+  const bytes = typeof output === 'string' ? encoder.encode(output) : output;
+  const newline = bytes.indexOf(0x0a);
   if (newline < 0) {
-    return output.trim().length === 0
+    return bytes.every(isAsciiWhitespace)
       ? { kind: 'empty' }
       : { kind: 'extra', detail: 'frame is not newline-terminated' };
   }
-  const frame = output.slice(0, newline);
-  const rest = output.slice(newline + 1);
-  if (rest.trim().length !== 0) {
+  const frame = bytes.subarray(0, newline);
+  const rest = bytes.subarray(newline + 1);
+  if (!rest.every(isAsciiWhitespace)) {
     return { kind: 'extra', detail: 'more than one frame, or trailing content after the frame' };
   }
-  return frame.trim().length === 0 ? { kind: 'empty' } : { kind: 'frame', frame };
+  return frame.every(isAsciiWhitespace) ? { kind: 'empty' } : { kind: 'frame', frame };
 }

@@ -253,6 +253,11 @@ export async function runFaultScenarios(
       ['two-frames', 'undecodable_response', 'stdout carries two frames'],
       ['trailing-garbage', 'undecodable_response', 'stdout carries a frame and then prose'],
       [
+        'invalid-utf8',
+        'undecodable_response',
+        'a raw invalid UTF-8 byte is never decoded as a rejection',
+      ],
+      [
         'unknown-valid-error-code',
         'reported_unknown',
         'an unrecognized well-formed peer code is not a definitive rejection',
@@ -271,6 +276,13 @@ export async function runFaultScenarios(
             readFakeRequests(join(root, `fault-${fault}`)).length,
             1,
             'an unrecognized peer code never causes a retry',
+          );
+        }
+        if (fault === 'invalid-utf8') {
+          assert.equal(
+            readFakeRequests(join(root, `fault-${fault}`)).length,
+            1,
+            'an invalid UTF-8 response never causes a retry',
           );
         }
       }

@@ -8,7 +8,7 @@ The DSH harness adapter: a cordis plugin that registers one **scope-bound** `sub
 | **Non-responsibility** | 判断（core）、journal（coreのJSONL。DSH persistenceには書かない）、identityの決定（configで固定。agentはinputとして指定・変更できない。成功resultでは固定済み`eventId`を知る）、live smokeの手順（operatorの `op/`） |
 | **Inputs** | plugin config（binary、stateDir、timeoutMs、eventId + workflow / assignment / attempt / candidate digest）、agentのtool call `{ kind, findingCount?, artifactRef?, shortErrorCode? }` |
 | **Outputs** | model tool result `{ disposition: accepted \| duplicate, eventId }`、control-plane reconciliation outcome、または `HarnessError`（protocol / workflow code、`AIZIGN_OUTCOME_UNKNOWN`、`AIZIGN_UNAVAILABLE`、`AIZIGN_INCOMPATIBLE`） |
-| **Hard invariants** | control-plane identity（eventId、workflowId、assignmentId、attemptId、role、artifactRevision、candidateDigest）をinput parameter schema・引数・promptに出さずmodelに選択させない（5、8。成功resultは固定済み`eventId`を開示）、reconciliationをmodel-visible toolにしない、DSHのcall id / session idを **envelope全体**（`requestId` 含む）に入れない（8。`requestId` はadapter所有のnonce）、responseは `requestId` / `kind` / `eventId` を送信と照合し不一致は `unknown`、reconciliation error codeは相関検査前に診断用`reportedCode`へ保持、stdoutは `MAX_FRAME_BYTES` と「frame 1つ」でbound、`unknown` は成功 / 失敗に縮約せず再送しない（3、4）、session readはcallerのtimeoutと取得後の`maxEvents` guardを持ちpartial evidenceを採用しない、preflight失敗時はtoolを登録しない、環境変数を子processへ丸ごと渡さない（PATHのみ） |
+| **Hard invariants** | control-plane identity（eventId、workflowId、assignmentId、attemptId、role、artifactRevision、candidateDigest）をinput parameter schema・引数・promptに出さずmodelに選択させない（5、8。成功resultは固定済み`eventId`を開示）、reconciliationをmodel-visible toolにしない、DSHのcall id / session idを **envelope全体**（`requestId` 含む）に入れない（8。`requestId` はadapter所有のnonce）、responseは `requestId` / `kind` / `eventId` を送信と照合し不一致は `unknown`、reconciliation error codeは相関検査前に診断用`reportedCode`へ保持、stdoutはbyte列のままfatal UTF-8 decodeし、`MAX_FRAME_BYTES` と「frame 1つ」でbound、`unknown` は成功 / 失敗に縮約せず再送しない（3、4）、session readはcallerのtimeoutと取得後の`maxEvents` guardを持ちpartial evidenceを採用しない、preflight失敗時はtoolを登録しない、環境変数を子processへ丸ごと渡さない（PATHのみ） |
 | **Allowed dependencies** | `@aizign/protocol`。peer: `@deepseek-ai/cordis` 4.0.1、`dsh-llm` / `dsh-tools` 0.1.1-rc.2、`schemastery` 3.18.1（exact、ADR-0010）。dev: `@aizign/adapter-testkit` |
 | **Test command** | `npm test -w @aizign/adapter-dsh`（`AIZIGN_BINARY` を与えると実binaryにも） |
 | **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0010](../../docs/adr/0010-harness-sdk-dependencies-and-node-policy.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md) |
@@ -155,6 +155,8 @@ preflightは全体の`preflight_ms`、evidence cold readは`harness_cold_read_ms
 どのmeasurementにもsession ID、signal identity、path、本文を含めません。
 `error_code`は固定された認識済みcodeのallowlistに限り、正形式でも未認識のpeer
 codeは返却outcomeのcontrol-plane診断にだけ保持してtimingから除外します。
+preflightのversion / capability不一致は、それぞれ
+`PROTOCOL_VERSION_UNSUPPORTED` / `CAPABILITY_UNSUPPORTED`へ正規化します。
 同期throwと非同期Promise rejectionを共通helperで隔離するため、sink failureはtool登録、submit、reconcile、evidence classificationを変えません。
 
 ## Harness-facing codes

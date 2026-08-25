@@ -313,7 +313,7 @@ export class OneShotCoreClient implements CoreClient {
       }, timeoutMs);
 
       spawned.on('close', (code) => {
-        const extraction = extractFrame(Buffer.concat(stdout).toString('utf8'));
+        const extraction = extractFrame(Buffer.concat(stdout));
         if (extraction.kind === 'empty') {
           settle(
             unknown('no_response', `process exited with ${String(code)} without a frame`, timing()),

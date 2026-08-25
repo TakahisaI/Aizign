@@ -21,6 +21,7 @@
  * - `event-conflict-error` report EVENT_CONFLICT as a correlated error
  * - `unknown-valid-error-code` report an unrecognized, well-formed correlated error code
  * - `unknown-valid-error-code-wrong-request-id` report that code without request correlation
+ * - `invalid-utf8`      write a correlated rejection frame containing a raw invalid byte
  *
  * `AIZIGN_FAKE_HELLO_PROTOCOL_VERSION` overrides the advertised protocol
  * version, for compatibility-check tests.
@@ -265,6 +266,30 @@ async function main(argv: readonly string[]): Promise<number> {
         ),
       );
       return 0;
+    case 'invalid-utf8': {
+      const marker = Buffer.from('INVALID_UTF8_MARKER');
+      const encoded = Buffer.from(
+        JSON.stringify({
+          protocol: PROTOCOL_NAME,
+          version: PROTOCOL_VERSION,
+          requestId: request.requestId,
+          kind: request.kind,
+          ok: false,
+          error: { code: 'INVALID_SIGNAL', message: marker.toString() },
+        }),
+      );
+      const markerAt = encoded.indexOf(marker);
+      if (markerAt < 0) throw new Error('invalid UTF-8 marker was not encoded');
+      process.stdout.write(
+        Buffer.concat([
+          encoded.subarray(0, markerAt),
+          Buffer.from([0xff]),
+          encoded.subarray(markerAt + marker.length),
+          Buffer.from('\n'),
+        ]),
+      );
+      return 0;
+    }
     case 'wrong-request-id':
       write({ ...response, requestId: 'req-someone-else' });
       return 0;

@@ -18,9 +18,9 @@ assumptions, threat classification, and known limitations are defined in
 - Reserve binary stdout for one Protocol v1 response. Diagnostics use stderr
   and remain content-free.
 - A closed schema controls shape, not provenance or string semantics. The
-  current DSH adapter exposes `artifactRef` to the model, so v0.1 does not
-  mechanically guarantee that every allowed opaque value is free of prohibited
-  content.
+  current DSH adapter exposes `artifactRef` and `shortErrorCode` to the model,
+  so v0.1 does not mechanically guarantee that every allowed opaque value is
+  free of prohibited content.
 
 ## Adapter-only data
 
@@ -43,7 +43,8 @@ assumptions, threat classification, and known limitations are defined in
 | Model-supplied bounded metadata | The current DSH tool accepts `artifactRef` and `shortErrorCode` from the model, validates only their closed shape/value constraints, and may persist them in an accepted signal. |
 | Structured signal | A closed DTO containing kind and bounded optional metadata such as `findingCount`, `artifactRef`, or `shortErrorCode`. Closed shape does not imply trusted value provenance. |
 | Source-qualified disposition | Submit, core reconciliation, and harness-native observations keep separate authorities even when words such as `accepted` or `unknown` overlap. |
-| Stable short error code | `^[A-Z][A-Z0-9_]{0,63}$`; safe diagnostic category, not a raw provider error body. |
+| Recognized Protocol error code | A fixed code whose meaning is registered and recognized for the operation; safe for that operation's classification, not a raw provider error body. |
+| Model-supplied signal `shortErrorCode` or unrecognized peer code | A bounded diagnostic-shaped string matching `^[A-Z][A-Z0-9_]{0,63}$`. Shape alone provides no semantic provenance or content-safety guarantee. |
 | Bounded timestamp | Supplied by the shell. The deterministic core does not read a clock. |
 
 `artifactRef`, `shortErrorCode`, and other allowed opaque fields are not a

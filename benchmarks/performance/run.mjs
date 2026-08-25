@@ -441,7 +441,7 @@ export function runProcess(
           });
           return;
         }
-        const decoded = decodeCorrelatedResponse(stdout.toString(), request, protocol);
+        const decoded = decodeCorrelatedResponse(stdout.toBuffer(), request, protocol);
         if (decoded.transport_kind === 'unknown') {
           finish({
             transport_kind: 'unknown',
@@ -1517,7 +1517,6 @@ function environmentMetadata(tempRoot) {
 
 export function verifyReleaseBinary(binary, protocol, timeoutMs = OPERATION_TIMEOUT_MS) {
   const hello = spawnSync(binary, ['hello'], {
-    encoding: 'utf8',
     env: { PATH: process.env.PATH ?? '' },
     timeout: timeoutMs,
     killSignal: 'SIGKILL',

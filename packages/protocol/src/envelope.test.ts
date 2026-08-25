@@ -86,13 +86,30 @@ test('encoders reject ill-formed Unicode before returning a frame', () => {
 
 test('extractFrame accepts exactly one newline-terminated frame plus whitespace', async () => {
   const { extractFrame } = await import('./envelope.ts');
-  assert.deepEqual(extractFrame('{"a":1}\n'), { kind: 'frame', frame: '{"a":1}' });
-  assert.deepEqual(extractFrame('{"a":1}\n  \n\t'), { kind: 'frame', frame: '{"a":1}' });
+  const text = new TextDecoder('utf-8', { fatal: true });
+  const first = extractFrame('{"a":1}\n');
+  assert.equal(first.kind, 'frame');
+  if (first.kind === 'frame') assert.equal(text.decode(first.frame), '{"a":1}');
+  const padded = extractFrame('{"a":1}\n  \n\t');
+  assert.equal(padded.kind, 'frame');
+  if (padded.kind === 'frame') assert.equal(text.decode(padded.frame), '{"a":1}');
   assert.deepEqual(extractFrame(''), { kind: 'empty' });
   assert.deepEqual(extractFrame('\n'), { kind: 'empty' });
   assert.equal(extractFrame('{"a":1}').kind, 'extra', 'a frame that never ended');
   assert.equal(extractFrame('{"a":1}\n{"b":2}\n').kind, 'extra', 'two frames');
   assert.equal(extractFrame('{"a":1}\nprose').kind, 'extra', 'trailing content');
+  assert.equal(extractFrame('{"a":1}\n\u00a0').kind, 'extra', 'Unicode whitespace is content');
+
+  const invalidUtf8 = Uint8Array.from([0x7b, 0xff, 0x7d, 0x0a]);
+  const invalidFrame = extractFrame(invalidUtf8);
+  assert.equal(invalidFrame.kind, 'frame');
+  if (invalidFrame.kind === 'frame') {
+    assert.deepEqual([...invalidFrame.frame], [0x7b, 0xff, 0x7d]);
+    assert.throws(
+      () => decodeResponse(invalidFrame.frame),
+      (error: unknown) => error instanceof ProtocolError && error.code === codes.INVALID_ENVELOPE,
+    );
+  }
 });
 
 test('oversized or badly addressed responses are invalid envelopes', async () => {
