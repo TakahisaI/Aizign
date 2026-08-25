@@ -6,6 +6,18 @@
 Aizignは **proposal-first** で開発します。挙動、API、schema、依存境界を変える変更は、
 先にIssueで契約を確定してからPRを出してください。未合意の大規模rewriteは受け付けません。
 
+## Conductor-led Boundary and Milestone changes
+
+Boundary changes and Milestone reviews must follow the
+[conductor-led Boundary change workflow](docs/development/change-workflow.md),
+whether the work is performed manually or with AI assistance.
+
+`CONTRIBUTING.md` remains the contribution-policy authority.
+`GOVERNANCE.md` continues to define Maintainer, merge, and release authority.
+Product and runtime contracts remain owned by their existing normative
+repository authorities. Routine changes continue to use the ordinary
+contribution process.
+
 ## 受け付けるもの
 
 - Issue、bug report、設計提案
@@ -53,6 +65,7 @@ chore(ci): pin cargo-deny action
 - security / data boundary
 - automatic retry policy
 - MSRVまたはNode support policy
+- contribution / review / merge policy
 - release / compatibility policy
 
 Accepted ADRは後からsilent rewriteしません。変更時は新しいADRでsupersedeします。
