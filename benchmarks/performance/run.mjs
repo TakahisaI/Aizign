@@ -73,6 +73,19 @@ const SWEEPS = [
 
 let requestSequence = 0;
 
+class BenchmarkRunError extends Error {
+  constructor(errorKind, message, diagnostic = {}) {
+    super(message);
+    this.name = 'BenchmarkRunError';
+    this.errorKind = errorKind;
+    this.diagnostic = diagnostic;
+  }
+}
+
+function runError(errorKind, message, diagnostic = {}) {
+  return new BenchmarkRunError(errorKind, message, diagnostic);
+}
+
 export function parseArgs(argv) {
   const config = {
     binary: undefined,
@@ -485,15 +498,23 @@ async function runDirectOperation(
 export function assertDirectTransport(benchmarkCase, result) {
   const expected = benchmarkCase.expected_transport_kind ?? 'correlated_response';
   if (result.transport_kind !== expected) {
-    throw new Error(
+    throw runError(
+      'transport_mismatch',
       `${benchmarkCase.name}: expected ${expected}, got ${result.transport_kind} (${result.unknown_reason ?? 'no reason'})`,
+      {
+        expected_transport_kind: expected,
+        observed_transport_kind: result.transport_kind,
+        observed_outcome: result.outcome,
+        ...(result.error_code === undefined ? {} : { observed_error_code: result.error_code }),
+        ...(result.unknown_reason === undefined ? {} : { unknown_reason: result.unknown_reason }),
+      },
     );
   }
 }
 
 export function assertDirectChildTiming(benchmarkCase, result) {
   if (result.transport_kind === 'correlated_response' && result.child === undefined) {
-    throw new Error(`${benchmarkCase.name}: child timing was not emitted`);
+    throw runError('timing_missing', `${benchmarkCase.name}: child timing was not emitted`);
   }
 }
 
@@ -528,16 +549,30 @@ async function runReferenceOperation(ReferenceOneShotClient, binary, stateDir, b
 
 function assertExpected(benchmarkCase, result) {
   if (result.outcome !== benchmarkCase.expected_outcome) {
-    throw new Error(
+    throw runError(
+      'semantic_mismatch',
       `${benchmarkCase.name}: expected ${benchmarkCase.expected_outcome}, got ${result.outcome}`,
+      {
+        expected_outcome: benchmarkCase.expected_outcome,
+        observed_outcome: result.outcome,
+        ...(result.error_code === undefined ? {} : { observed_error_code: result.error_code }),
+        ...(result.unknown_reason === undefined ? {} : { unknown_reason: result.unknown_reason }),
+      },
     );
   }
   if (
     benchmarkCase.expected_error_code !== undefined &&
     result.error_code !== benchmarkCase.expected_error_code
   ) {
-    throw new Error(
+    throw runError(
+      'stable_error_code_mismatch',
       `${benchmarkCase.name}: expected ${benchmarkCase.expected_error_code}, got ${String(result.error_code)}`,
+      {
+        expected_outcome: benchmarkCase.expected_outcome,
+        observed_outcome: result.outcome,
+        expected_error_code: benchmarkCase.expected_error_code,
+        ...(result.error_code === undefined ? {} : { observed_error_code: result.error_code }),
+      },
     );
   }
 }
@@ -548,6 +583,7 @@ function createContext(config, dependencies, tempRoot) {
     config,
     dependencies,
     tempRoot,
+    current: { phase: 'setup' },
     nextState(label) {
       stateSequence += 1;
       return join(tempRoot, `${String(stateSequence).padStart(7, '0')}-${label}`);
@@ -556,6 +592,16 @@ function createContext(config, dependencies, tempRoot) {
 }
 
 async function executeCase(context, sweep, benchmarkCase, transport, samplePhase, sampleIndex) {
+  context.current = {
+    phase: sweep,
+    case_name: benchmarkCase.name,
+    sample_phase: samplePhase,
+    sample_index: sampleIndex,
+    expected_outcome: benchmarkCase.expected_outcome,
+    ...(benchmarkCase.expected_error_code === undefined
+      ? {}
+      : { expected_error_code: benchmarkCase.expected_error_code }),
+  };
   const stateDir = context.nextState(`${sweep}-${benchmarkCase.name}-${transport}`);
   if (benchmarkCase.fixture_target !== 'missing') {
     seedFixture(
@@ -648,8 +694,22 @@ export function assertConcurrencySemantics(mode, operationKind, results) {
     const observed = unexpected
       .map((result) => `${result.outcome}/${result.error_code ?? '-'}`)
       .join(', ');
-    throw new Error(
+    throw runError(
+      'semantic_mismatch',
       `concurrency ${operationKind} ${mode}: unexpected semantic outcome(s): ${observed}`,
+      {
+        expected_outcome_set:
+          operationKind === 'workflow.signal.reconcile'
+            ? ['absent']
+            : mode === 'different_state_dir'
+              ? ['accepted']
+              : ['accepted', 'rejected/JOURNAL_LOCKED'],
+        observed_outcomes: unexpected.map((result) => ({
+          outcome: result.outcome,
+          ...(result.error_code === undefined ? {} : { error_code: result.error_code }),
+          ...(result.unknown_reason === undefined ? {} : { unknown_reason: result.unknown_reason }),
+        })),
+      },
     );
   }
   if (
@@ -657,7 +717,17 @@ export function assertConcurrencySemantics(mode, operationKind, results) {
     mode === 'same_state_dir' &&
     !results.some((result) => result.outcome === 'accepted')
   ) {
-    throw new Error('same-state submit concurrency must accept at least one operation');
+    throw runError(
+      'semantic_mismatch',
+      'same-state submit concurrency must accept at least one operation',
+      {
+        expected_outcome_set: ['accepted', 'rejected/JOURNAL_LOCKED'],
+        observed_outcomes: results.map((result) => ({
+          outcome: result.outcome,
+          ...(result.error_code === undefined ? {} : { error_code: result.error_code }),
+        })),
+      },
+    );
   }
 }
 
@@ -671,6 +741,12 @@ export async function executeConcurrencyBatch(
   hooks = {},
 ) {
   const benchmarkCase = concurrencyCase(operationKind, concurrency);
+  context.current = {
+    phase: 'concurrency',
+    case_name: `${operationKind === 'workflow.signal.submit' ? 'submit' : 'lookup'}_${mode}_${concurrency}`,
+    sample_phase: phase,
+    sample_index: index,
+  };
   const seed = hooks.seedFixture ?? seedFixture;
   const run = hooks.runDirectOperation ?? runDirectOperation;
   const now = hooks.now ?? (() => performance.now());
@@ -811,6 +887,12 @@ function dshEvents(count, dependencies) {
 }
 
 async function executeDshEvidenceRead(context, eventCount, sourceKind, phase, index) {
+  context.current = {
+    phase: 'dsh',
+    case_name: `dsh_evidence_${sourceKind}_${eventCount}`,
+    sample_phase: phase,
+    sample_index: index,
+  };
   const { events, binding } = dshEvents(eventCount, context.dependencies);
   let source;
   if (sourceKind === 'in_memory_scan') {
@@ -878,7 +960,50 @@ export function assertLostAckInvocationCounts(counterPath) {
   }
 }
 
+export function assertScenarioTimingSequence(scenario, parentTimings) {
+  let expected;
+  if (scenario === 'assignment_submit') {
+    expected = [
+      { operation_kind: 'hello', outcome: 'ok' },
+      { operation_kind: 'preflight', outcome: 'ok' },
+      { operation_kind: 'workflow.signal.submit', outcome: 'accepted' },
+    ];
+  } else if (scenario === 'assignment_unknown_reconcile') {
+    expected = [
+      { operation_kind: 'hello', outcome: 'ok' },
+      { operation_kind: 'preflight', outcome: 'ok' },
+      {
+        operation_kind: 'workflow.signal.submit',
+        outcome: 'unknown',
+        unknown_reason: 'no_response',
+      },
+      { operation_kind: 'workflow.signal.reconcile', outcome: 'accepted' },
+    ];
+  } else {
+    throw runError('scenario_sequence_mismatch', `${scenario}: scenario is not canonical`, {
+      observed_scenario: scenario,
+    });
+  }
+  const observed = parentTimings.map((timing) => ({
+    operation_kind: timing.operation_kind,
+    outcome: timing.outcome,
+    ...(timing.unknown_reason === undefined ? {} : { unknown_reason: timing.unknown_reason }),
+  }));
+  if (JSON.stringify(observed) !== JSON.stringify(expected)) {
+    throw runError('scenario_sequence_mismatch', `${scenario}: timing sequence is not canonical`, {
+      expected_sequence: expected,
+      observed_sequence: observed,
+    });
+  }
+}
+
 export async function executeScenario(context, scenario, phase, index) {
+  context.current = {
+    phase: 'scenarios',
+    case_name: scenario,
+    sample_phase: phase,
+    sample_index: index,
+  };
   const stateDir = context.nextState(`scenario-${scenario}`);
   const counterPath = context.nextState(`scenario-${scenario}-invocations.txt`);
   const parentTimings = [];
@@ -974,6 +1099,7 @@ export async function executeScenario(context, scenario, phase, index) {
     operations.push({ name: 'lookup', ...reconciled });
   }
   if (losesSubmitAcknowledgement) verifyLostAckInvocations(counterPath);
+  assertScenarioTimingSequence(scenario, parentTimings);
   if (aizignEndToEndMs === undefined) throw new Error(`${scenario}: scenario timing is missing`);
   return {
     sweep: 'scenarios',
@@ -1100,17 +1226,8 @@ export function aggregateSamples(samples) {
       group.unexpected_operations += sample.unexpected_operations;
     }
     if (sample.sweep === 'scenarios') {
-      const hello = sample.parent_timings?.find(
-        (measurement) => measurement.operation_kind === 'hello',
-      );
-      const preflight = sample.parent_timings?.find(
-        (measurement) => measurement.operation_kind === 'preflight',
-      );
-      if (hello === undefined || preflight === undefined) {
-        throw new Error(
-          `${sample.case_name}: hello or preflight timing is missing from scenario sample`,
-        );
-      }
+      assertScenarioTimingSequence(sample.case_name, sample.parent_timings ?? []);
+      const [hello, preflight] = sample.parent_timings;
       const scenarioMeasurements = [
         { name: 'hello', parent: hello },
         { name: 'preflight', parent: preflight },
@@ -1157,11 +1274,13 @@ function round(value) {
   return value === undefined || value === null ? '-' : value.toFixed(3);
 }
 
-function metricTriplet(aggregate, name) {
+function metricSummary(aggregate, name, smoke) {
   const metric = aggregate.metrics[name];
   return metric === undefined
     ? '-'
-    : `${round(metric.p50)} / ${round(metric.p95)} / ${round(metric.p99)} (${metric.sample_count})`;
+    : smoke
+      ? `${round(metric.p50)} / ${round(metric.max)} (${metric.sample_count})`
+      : `${round(metric.p50)} / ${round(metric.p95)} / ${round(metric.p99)} (${metric.sample_count})`;
 }
 
 function countSummary(counts) {
@@ -1171,6 +1290,8 @@ function countSummary(counts) {
 
 export function renderSummary(result) {
   const isSmoke = result.config.profile === 'pr-smoke';
+  const statisticLabel = isSmoke ? 'median / max' : 'p50 / p95 / p99';
+  const metric = (aggregate, name) => metricSummary(aggregate, name, isSmoke);
   const lines = [
     isSmoke ? '# Aizign PR performance smoke' : '# Aizign runtime performance baseline',
     '',
@@ -1182,7 +1303,7 @@ export function renderSummary(result) {
     '',
     `Toolchain: ${result.metadata.rust_version}; ${result.metadata.node_version}; release profile; runner v${result.metadata.runner_version}`,
     '',
-    `Sampling: one \`new_process_new_open\` observation, ${result.config.warmup} unrecorded warmups, then ${result.config.samples} \`warm_repeated\` samples per point. Percentiles use nearest rank and always show the sample count.`,
+    `Sampling: one \`new_process_new_open\` observation, ${result.config.warmup} unrecorded warmups, then ${result.config.samples} \`warm_repeated\` samples per point. ${isSmoke ? 'The human report shows median and max; the shared machine schema retains nearest-rank percentile fields.' : 'Percentiles use nearest rank and always show the sample count.'}`,
     '',
     `Timeouts: core watchdog ${result.config.timeouts?.core_watchdog_ms ?? CORE_WATCHDOG_MS} ms; DSH adapter ${result.config.timeouts?.dsh_adapter_ms ?? DSH_ADAPTER_TIMEOUT_MS} ms; per-operation runner ${result.config.timeouts?.operation_ms ?? OPERATION_TIMEOUT_MS} ms.`,
     '',
@@ -1190,7 +1311,7 @@ export function renderSummary(result) {
       ? 'This Linux-only smoke compares the maximum of a small sample with generous absolute ceilings. It is informational during the initial observation period and does not claim a true cold OS page cache.'
       : 'This report is an observation, not a performance budget or CI gate. GitHub-hosted runs do not claim a true cold OS page cache.',
     '',
-    `Core watchdog comparison: slowest warm handler p99 ${round(result.watchdog.slowest_handler_p99_ms)} ms in ${result.watchdog.slowest_handler_case}; ${round(result.watchdog.headroom_ms)} ms headroom remains against the ${result.watchdog.core_watchdog_ms} ms default (${round(result.watchdog.headroom_percent)}%).`,
+    `Core watchdog comparison: slowest warm handler ${result.watchdog.statistic} ${round(result.watchdog.slowest_handler_ms)} ms in ${result.watchdog.slowest_handler_case}; ${round(result.watchdog.headroom_ms)} ms headroom remains against the ${result.watchdog.core_watchdog_ms} ms default (${round(result.watchdog.headroom_percent)}%).`,
   ];
   if (result.budgets !== undefined) {
     lines.push(
@@ -1198,29 +1319,43 @@ export function renderSummary(result) {
       `## PR smoke budgets: ${result.budgets.status.toUpperCase()}`,
       '',
       `Budget version ${result.budgets.version}; ${result.budgets.passed} passed, ${result.budgets.failed} failed. Native reference: commit \`${result.budgets.baseline.commit_sha}\`, workflow runs ${result.budgets.baseline.workflow_run_ids.join(', ')}, ${result.budgets.baseline.samples_per_point} warm samples per point in each of ${result.budgets.baseline.run_count} runs.`,
+      ...(result.budgets.contract_errors.length === 0
+        ? []
+        : ['', `Contract errors: ${result.budgets.contract_errors.join(', ')}`]),
       '',
-      '| Budget | Metric | Statistic | Measured ms | Limit ms | Native p95 ms | Status |',
-      '|---|---|---|---:|---:|---:|---|',
+      '| Budget | Metric | Statistic | Samples | Measured ms | Limit ms | Native p95 ms | Status |',
+      '|---|---|---|---:|---:|---:|---:|---|',
     );
     for (const evaluation of result.budgets.evaluations) {
       lines.push(
-        `| ${evaluation.id} | ${evaluation.metric} | ${evaluation.statistic} | ${round(evaluation.measured_ms)} | ${round(evaluation.limit_ms)} | ${round(evaluation.baseline_p95_ms)} | ${evaluation.status} |`,
+        `| ${evaluation.id} | ${evaluation.metric} | ${evaluation.statistic} | ${evaluation.sample_count} | ${round(evaluation.measured_ms)} | ${round(evaluation.limit_ms)} | ${round(evaluation.baseline_p95_ms)} | ${evaluation.status} |`,
       );
     }
     const failed = result.budgets.evaluations.filter((evaluation) => evaluation.status === 'fail');
     if (failed.length > 0) {
       lines.push('', '### Failed-case stage attribution', '');
       for (const evaluation of failed) {
-        const stages = Object.entries(evaluation.stage_attribution_p95_ms)
+        const attribution = evaluation.sample_attribution;
+        const stages = Object.entries(attribution?.stages_ms ?? {})
           .map(([name, value]) => `${name}=${round(value)} ms`)
           .join(', ');
-        lines.push(`- ${evaluation.id}: ${stages || 'aggregate or metric missing'}`);
+        lines.push(
+          `- ${evaluation.id}: ${attribution === null ? 'raw sample missing' : `${attribution.sample_phase}/${attribution.sample_index}, measured=${round(attribution.measured_ms)} ms; ${stages || 'no direct stages'}`}`,
+        );
+        for (const operation of attribution?.operations ?? []) {
+          const operationStages = Object.entries(operation.stages_ms)
+            .map(([name, value]) => `${name}=${round(value)} ms`)
+            .join(', ');
+          lines.push(
+            `  - operation ${operation.operation_index} ${operation.name ?? operation.operation_kind}: ${operation.outcome}; ${operationStages || 'no stage values'}`,
+          );
+        }
       }
     }
   }
   lines.push(
     '',
-    '| Sweep | Case | Operation | Transport | Entries / events | handler p50 / p95 / p99 ms (n) | spawn p50 / p95 / p99 ms (n) | load p50 / p95 / p99 ms (n) | append p50 / p95 / p99 ms (n) | e2e / DSH / batch p50 / p95 / p99 ms (n) | Outcomes | Error codes |',
+    `| Sweep | Case | Operation | Transport | Entries / events | handler ${statisticLabel} ms (n) | spawn ${statisticLabel} ms (n) | load ${statisticLabel} ms (n) | append ${statisticLabel} ms (n) | e2e / DSH / batch ${statisticLabel} ms (n) | Outcomes | Error codes |`,
     '|---|---|---|---|---:|---:|---:|---:|---:|---:|---|---|',
   );
   for (const aggregate of result.aggregates.filter(
@@ -1239,42 +1374,42 @@ export function renderSummary(result) {
           ? 'harness_cold_read_ms'
           : 'batch_total_ms';
     lines.push(
-      `| ${aggregate.sweep} | ${aggregate.case_name} | ${aggregate.operation_kind ?? '-'} | ${aggregate.transport ?? '-'} | ${size} | ${metricTriplet(aggregate, 'handler_total_ms')} | ${metricTriplet(aggregate, 'spawn_to_exit_ms')} | ${metricTriplet(aggregate, 'journal_load_decode_ms')} | ${metricTriplet(aggregate, 'append_sync_ms')} | ${metricTriplet(aggregate, finalMetric)} | ${countSummary(aggregate.outcomes)} | ${countSummary(aggregate.error_codes)} |`,
+      `| ${aggregate.sweep} | ${aggregate.case_name} | ${aggregate.operation_kind ?? '-'} | ${aggregate.transport ?? '-'} | ${size} | ${metric(aggregate, 'handler_total_ms')} | ${metric(aggregate, 'spawn_to_exit_ms')} | ${metric(aggregate, 'journal_load_decode_ms')} | ${metric(aggregate, 'append_sync_ms')} | ${metric(aggregate, finalMetric)} | ${countSummary(aggregate.outcomes)} | ${countSummary(aggregate.error_codes)} |`,
     );
   }
   lines.push(
     '',
     '## Concurrency semantics and throughput',
     '',
-    '| Operation | Mode | Concurrency | Entries before batch | Batch p50 / p95 / p99 ms (n) | Success throughput p50 / p95 / p99 ops/s (n) | Accepted | JOURNAL_LOCKED | Unexpected | Outcomes | Error codes |',
+    `| Operation | Mode | Concurrency | Entries before batch | Batch ${statisticLabel} ms (n) | Success throughput ${statisticLabel} ops/s (n) | Accepted | JOURNAL_LOCKED | Unexpected | Outcomes | Error codes |`,
     '|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|',
   );
   for (const aggregate of result.aggregates.filter(
     (candidate) => candidate.sweep === 'concurrency',
   )) {
     lines.push(
-      `| ${aggregate.operation_kind} | ${aggregate.mode} | ${aggregate.concurrency} | ${aggregate.journal_entries_before_batch} | ${metricTriplet(aggregate, 'batch_total_ms')} | ${metricTriplet(aggregate, 'throughput_success_ops_per_s')} | ${aggregate.outcomes.accepted ?? 0} | ${aggregate.journal_locked} | ${aggregate.unexpected_operations} | ${countSummary(aggregate.outcomes)} | ${countSummary(aggregate.error_codes)} |`,
+      `| ${aggregate.operation_kind} | ${aggregate.mode} | ${aggregate.concurrency} | ${aggregate.journal_entries_before_batch} | ${metric(aggregate, 'batch_total_ms')} | ${metric(aggregate, 'throughput_success_ops_per_s')} | ${aggregate.outcomes.accepted ?? 0} | ${aggregate.journal_locked} | ${aggregate.unexpected_operations} | ${countSummary(aggregate.outcomes)} | ${countSummary(aggregate.error_codes)} |`,
     );
   }
   lines.push(
     '',
     '## Canonical scenario operations',
     '',
-    '| Scenario | Operation | Kind | preflight p50 / p95 / p99 ms (n) | spawn p50 / p95 / p99 ms (n) | first byte p50 / p95 / p99 ms (n) | Outcomes | Error codes | Unknown reasons |',
+    `| Scenario | Operation | Kind | preflight ${statisticLabel} ms (n) | spawn ${statisticLabel} ms (n) | first byte ${statisticLabel} ms (n) | Outcomes | Error codes | Unknown reasons |`,
     '|---|---|---|---:|---:|---:|---|---|---|',
   );
   for (const aggregate of result.aggregates.filter(
     (candidate) => candidate.sweep === 'scenario-operations',
   )) {
     lines.push(
-      `| ${aggregate.case_name} | ${aggregate.operation_name} | ${aggregate.operation_kind} | ${metricTriplet(aggregate, 'preflight_ms')} | ${metricTriplet(aggregate, 'spawn_to_exit_ms')} | ${metricTriplet(aggregate, 'response_first_byte_ms')} | ${countSummary(aggregate.outcomes)} | ${countSummary(aggregate.error_codes)} | ${countSummary(aggregate.unknown_reasons)} |`,
+      `| ${aggregate.case_name} | ${aggregate.operation_name} | ${aggregate.operation_kind} | ${metric(aggregate, 'preflight_ms')} | ${metric(aggregate, 'spawn_to_exit_ms')} | ${metric(aggregate, 'response_first_byte_ms')} | ${countSummary(aggregate.outcomes)} | ${countSummary(aggregate.error_codes)} | ${countSummary(aggregate.unknown_reasons)} |`,
     );
   }
   lines.push(
     '',
     '## Committed-prefix attribution',
     '',
-    '| Sweep | Case | Entries | read p50 / p95 / p99 ms (n) | verify hash p50 / p95 / p99 ms (n) | decode p50 / p95 / p99 ms (n) | replay p50 / p95 / p99 ms (n) | publish hash p50 / p95 / p99 ms (n) |',
+    `| Sweep | Case | Entries | read ${statisticLabel} ms (n) | verify hash ${statisticLabel} ms (n) | decode ${statisticLabel} ms (n) | replay ${statisticLabel} ms (n) | publish hash ${statisticLabel} ms (n) |`,
     '|---|---|---:|---:|---:|---:|---:|---:|',
   );
   for (const aggregate of result.aggregates.filter(
@@ -1284,7 +1419,7 @@ export function renderSummary(result) {
         [0, 1_000, 9_999, 10_000].includes(candidate.journal_entries_before_operation)),
   )) {
     lines.push(
-      `| ${aggregate.sweep} | ${aggregate.case_name} | ${aggregate.journal_entries_before_operation ?? '-'} | ${metricTriplet(aggregate, 'committed_prefix_read_ms')} | ${metricTriplet(aggregate, 'committed_prefix_hash_ms')} | ${metricTriplet(aggregate, 'committed_prefix_decode_ms')} | ${metricTriplet(aggregate, 'replay_ms')} | ${metricTriplet(aggregate, 'publish_prefix_hash_ms')} |`,
+      `| ${aggregate.sweep} | ${aggregate.case_name} | ${aggregate.journal_entries_before_operation ?? '-'} | ${metric(aggregate, 'committed_prefix_read_ms')} | ${metric(aggregate, 'committed_prefix_hash_ms')} | ${metric(aggregate, 'committed_prefix_decode_ms')} | ${metric(aggregate, 'replay_ms')} | ${metric(aggregate, 'publish_prefix_hash_ms')} |`,
     );
   }
   lines.push(
@@ -1305,29 +1440,32 @@ export function renderSummary(result) {
   return lines.join('\n');
 }
 
-export function compareWatchdog(aggregates, coreWatchdogMs = CORE_WATCHDOG_MS) {
+export function compareWatchdog(aggregates, coreWatchdogMs = CORE_WATCHDOG_MS, statistic = 'p99') {
+  if (!['p99', 'max'].includes(statistic)) throw new Error(`unsupported watchdog statistic`);
   const candidates = aggregates
     .filter((aggregate) => aggregate.metrics.handler_total_ms !== undefined)
     .map((aggregate) => ({
       case_name: `${aggregate.sweep}/${aggregate.case_name}`,
-      p99: aggregate.metrics.handler_total_ms.p99,
+      value: aggregate.metrics.handler_total_ms[statistic],
     }))
-    .sort((left, right) => right.p99 - left.p99);
+    .sort((left, right) => right.value - left.value);
   const slowest = candidates[0];
   if (slowest === undefined) {
     return {
       core_watchdog_ms: coreWatchdogMs,
+      statistic,
       slowest_handler_case: 'unavailable',
-      slowest_handler_p99_ms: null,
+      slowest_handler_ms: null,
       headroom_ms: null,
       headroom_percent: null,
     };
   }
-  const headroom = coreWatchdogMs - slowest.p99;
+  const headroom = coreWatchdogMs - slowest.value;
   return {
     core_watchdog_ms: coreWatchdogMs,
+    statistic,
     slowest_handler_case: slowest.case_name,
-    slowest_handler_p99_ms: slowest.p99,
+    slowest_handler_ms: slowest.value,
     headroom_ms: headroom,
     headroom_percent: (headroom / coreWatchdogMs) * 100,
   };
@@ -1664,6 +1802,73 @@ export function assertArtifactPrivacy(result, forbiddenPaths = []) {
   }
 }
 
+function resultConfig(config) {
+  return {
+    profile: config.profile,
+    warmup: config.warmup,
+    samples: config.samples,
+    sweeps: config.sweeps,
+    percentile_method: 'nearest_rank',
+    timeouts: {
+      core_watchdog_ms: CORE_WATCHDOG_MS,
+      dsh_adapter_ms: DSH_ADAPTER_TIMEOUT_MS,
+      operation_ms: OPERATION_TIMEOUT_MS,
+    },
+  };
+}
+
+function renderFailureSummary(status) {
+  const failure = status.failure;
+  return [
+    '# Aizign PR performance smoke failure',
+    '',
+    `Generated: ${status.metadata.generated_at}`,
+    '',
+    `Commit: \`${status.metadata.commit_sha}\` (working tree dirty: ${String(status.metadata.working_tree_dirty)})`,
+    '',
+    `Status: **${status.status.toUpperCase()}**`,
+    '',
+    `Phase: ${failure.phase}`,
+    '',
+    `Case: ${failure.case_name ?? 'unavailable'}`,
+    '',
+    `Sample: ${failure.sample_phase ?? 'unavailable'} / ${failure.sample_index ?? 'unavailable'}`,
+    '',
+    `Error kind: ${failure.error_kind}`,
+    '',
+    `Completed recorded samples: ${status.completed_samples}`,
+    '',
+    `Timeouts: core watchdog ${status.config.timeouts.core_watchdog_ms} ms; DSH adapter ${status.config.timeouts.dsh_adapter_ms} ms; per-operation runner ${status.config.timeouts.operation_ms} ms.`,
+    '',
+    'No performance PASS was produced. This manifest contains metadata-only diagnostics; inspect the failed job log for process-level setup details.',
+    '',
+    '```json',
+    JSON.stringify(failure, null, 2),
+    '```',
+    '',
+  ].join('\n');
+}
+
+export function writeSmokeFailure(config, tempRoot, samples, current, error) {
+  const diagnostic = error instanceof BenchmarkRunError ? error.diagnostic : {};
+  const status = {
+    schema_version: 1,
+    status: 'error',
+    metadata: environmentMetadata(tempRoot),
+    config: resultConfig(config),
+    completed_samples: samples.length,
+    failure: {
+      ...current,
+      error_kind: error instanceof BenchmarkRunError ? error.errorKind : 'runner_error',
+      ...diagnostic,
+    },
+  };
+  assertArtifactPrivacy(status, [REPOSITORY_ROOT, tempRoot, config.binary]);
+  mkdirSync(config.outputDir, { recursive: true });
+  writeFileSync(join(config.outputDir, 'status.json'), `${JSON.stringify(status, null, 2)}\n`);
+  writeFileSync(join(config.outputDir, 'summary.md'), renderFailureSummary(status));
+}
+
 export async function main(argv = process.argv.slice(2)) {
   const config = parseArgs(argv);
   if (config.help) {
@@ -1674,9 +1879,10 @@ export async function main(argv = process.argv.slice(2)) {
   verifyReleaseBinary(config.binary, dependencies.protocol);
   const tempRoot = mkdtempSync(join(tmpdir(), 'aizign-performance-'));
   const samples = [];
+  const context = createContext(config, dependencies, tempRoot);
+  const isSmoke = config.profile === 'pr-smoke';
+  let resultWritten = false;
   try {
-    const context = createContext(config, dependencies, tempRoot);
-    const isSmoke = config.profile === 'pr-smoke';
     if (config.sweeps.includes('journal-scale')) {
       await runMatrixSweep(context, samples, 'journal-scale', JOURNAL_SCALE_CASES, ['rust_direct']);
     }
@@ -1712,23 +1918,12 @@ export async function main(argv = process.argv.slice(2)) {
     if (config.sweeps.includes('scenarios')) await runScenarioSweep(context, samples);
 
     const aggregates = aggregateSamples(samples);
-    const budgets = isSmoke ? evaluatePrSmokeBudgets(aggregates) : undefined;
+    const budgets = isSmoke ? evaluatePrSmokeBudgets({ config, aggregates, samples }) : undefined;
     const result = {
       schema_version: 4,
       metadata: environmentMetadata(tempRoot),
-      config: {
-        profile: config.profile,
-        warmup: config.warmup,
-        samples: config.samples,
-        sweeps: config.sweeps,
-        percentile_method: 'nearest_rank',
-        timeouts: {
-          core_watchdog_ms: CORE_WATCHDOG_MS,
-          dsh_adapter_ms: DSH_ADAPTER_TIMEOUT_MS,
-          operation_ms: OPERATION_TIMEOUT_MS,
-        },
-      },
-      watchdog: compareWatchdog(aggregates),
+      config: resultConfig(config),
+      watchdog: compareWatchdog(aggregates, CORE_WATCHDOG_MS, isSmoke ? 'max' : 'p99'),
       ...(budgets === undefined ? {} : { budgets }),
       aggregates,
       samples,
@@ -1737,12 +1932,18 @@ export async function main(argv = process.argv.slice(2)) {
     mkdirSync(config.outputDir, { recursive: true });
     writeFileSync(join(config.outputDir, 'result.json'), `${JSON.stringify(result, null, 2)}\n`);
     writeFileSync(join(config.outputDir, 'summary.md'), renderSummary(result));
+    resultWritten = true;
     process.stdout.write(
       `wrote ${result.samples.length} recorded observations and ${result.aggregates.length} aggregate rows\n`,
     );
     if (budgets?.status === 'fail') {
       throw new Error(`${budgets.failed} PR smoke performance budget(s) failed`);
     }
+  } catch (error) {
+    if (isSmoke && !resultWritten) {
+      writeSmokeFailure(config, tempRoot, samples, context.current, error);
+    }
+    throw error;
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }

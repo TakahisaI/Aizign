@@ -31,7 +31,7 @@ commands:
                  closed package exports, entry documents, documentation links
   performance-baseline [runner options]
                  build release binary + TypeScript clients, then run manual/scheduled sweeps
-  performance-smoke [runner options]
+  performance-smoke
                  run the small Linux PR matrix against generous informational budgets
   whitespace     git diff --check over the whole tree (trailing whitespace, missing final newline)
   help           print this message

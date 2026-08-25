@@ -9,12 +9,7 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
 }
 
 pub(crate) fn run_smoke(root: &Path, args: &[String]) -> Result<(), String> {
-    if args
-        .iter()
-        .any(|arg| arg == "--profile" || arg == "--sweeps")
-    {
-        return Err("performance-smoke fixes its profile and sweep selection".to_owned());
-    }
+    validate_smoke_args(args)?;
     run_profile(
         root,
         args,
@@ -32,6 +27,14 @@ pub(crate) fn run_smoke(root: &Path, args: &[String]) -> Result<(), String> {
         ],
         "run informational PR performance smoke",
     )
+}
+
+fn validate_smoke_args(args: &[String]) -> Result<(), String> {
+    if args.is_empty() {
+        Ok(())
+    } else {
+        Err("performance-smoke has no configurable runner options".to_owned())
+    }
 }
 
 fn run_profile(root: &Path, args: &[String], defaults: &[&str], stage: &str) -> Result<(), String> {
@@ -58,4 +61,22 @@ fn run_profile(root: &Path, args: &[String], defaults: &[&str], stage: &str) -> 
     runner_args.extend(args.iter().cloned());
     let runner_args = runner_args.iter().map(String::as_str).collect::<Vec<_>>();
     shell::run(root, "node", &runner_args)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_smoke_args;
+
+    #[test]
+    fn smoke_configuration_cannot_be_overridden() {
+        assert!(validate_smoke_args(&[]).is_ok());
+        for args in [
+            vec!["--samples".to_owned(), "1".to_owned()],
+            vec!["--warmup".to_owned(), "0".to_owned()],
+            vec!["--output-dir".to_owned(), "elsewhere".to_owned()],
+            vec!["--sweeps".to_owned(), "transport".to_owned()],
+        ] {
+            assert!(validate_smoke_args(&args).is_err());
+        }
+    }
 }

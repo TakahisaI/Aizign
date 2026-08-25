@@ -8,7 +8,7 @@ The ceilings apply only to the Linux GitHub-hosted smoke environment. No macOS o
 
 ## Native reference observations
 
-All reference runs measured commit `ee93496eb0a7a08666770b0bffcc2aa33b23e79a` with runner v3, release profile, Ubuntu 24.04 image `20260816.277.1`, 3 unrecorded warmups, 20 recorded warm samples per point, and nearest-rank percentiles. The raw `result.json` and human `summary.md` remain in the workflow artifacts.
+All reference runs measured commit `ee93496eb0a7a08666770b0bffcc2aa33b23e79a` with runner v3, release profile, Ubuntu 24.04 image `20260816.277.1`, 3 unrecorded warmups, 20 recorded warm samples per point, and nearest-rank percentiles. The raw `result.json` and human `summary.md` remain in the workflow artifacts. Their source metadata, SHA-256 digests, and recomputed highest p95 values are preserved in the [native baseline manifest](../../benchmarks/performance/native-baseline-v3.json), so expiring workflow artifacts are not the only durable budget evidence.
 
 | Run | CPU | Result |
 |---|---|---|
@@ -96,11 +96,11 @@ The Linux-only PR smoke is intentionally smaller:
 
 Semantic assertions remain strict. Same-state submit allows only accepted or `JOURNAL_LOCKED` and requires at least one acceptance; different-state submit requires every operation to be accepted. `JOURNAL_BOUND_EXCEEDED` and `JOURNAL_LOCKED` remain distinct stable codes. No operation is retried to obtain a passing sample.
 
-The workflow is initially informational: the measurement step may fail and uploads its metadata-only report, while the job warns rather than becoming a required merge gate. Promotion to a required gross-regression check requires all of the following:
+The workflow is initially informational because branch protection does not require it. A failed observation remains a red optional check and uploads either the full result or a metadata-only failure manifest; it is never converted to a green job. Promotion to a required gross-regression check requires all of the following:
 
 1. at least three scheduled baseline runs and ten PR smoke runs on the current runner version;
 2. no false alerts at the current ceilings;
-3. a reviewed change that removes `continue-on-error` without tightening the ceilings from hosted-runner data alone;
+3. a reviewed branch-protection change that makes the already-failing smoke check required without tightening the ceilings from hosted-runner data alone;
 4. documented triage ownership and an explicit return to informational status if runner-image changes create false alerts.
 
 ## Optimization triggers
