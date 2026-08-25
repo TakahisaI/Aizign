@@ -1,6 +1,6 @@
 # ADR-0016: Adopt the conductor-led Boundary change workflow
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-08-25
 - Related: Issue #12, Issue #74, Issue #94, ADR-0015
 
