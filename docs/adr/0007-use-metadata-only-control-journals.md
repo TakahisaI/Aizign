@@ -44,6 +44,7 @@ journalを共有・公開・監査できなくなり、harness固有のデータ
 ### Negative / Risks
 
 - 本文を参照したい場合は、adapter側のharness persistenceやworkspaceのartifactを別途参照する必要がある。journalはそれらへのdigestと参照だけを持つ
+- closed schemaはfield shapeを制限するが、allowed stringの意味を検査しない。current DSHのmodel-supplied `artifactRef` / `shortErrorCode` が残る間、credential fragmentやencoded contentのend-to-end exclusionは保証しない
 
 ### Follow-up
 

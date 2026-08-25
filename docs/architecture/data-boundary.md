@@ -46,12 +46,12 @@ assumptions, threat classification, and known limitations are defined in
 | Stable short error code | `^[A-Z][A-Z0-9_]{0,63}$`; safe diagnostic category, not a raw provider error body. |
 | Bounded timestamp | Supplied by the shell. The deterministic core does not read a clock. |
 
-`artifactRef` and other allowed opaque fields are not a covert-content detector.
-The normal DSH adapter currently lets the untrusted model choose `artifactRef`;
-a syntactically valid credential-like token or encoded content can therefore
-reach the protocol and journal without a malicious adapter. Moving this value
-to trusted configuration or a finite trusted selector is a separate contract
-change.
+`artifactRef`, `shortErrorCode`, and other allowed opaque fields are not a
+covert-content detector. The normal DSH adapter currently lets the untrusted
+model choose both strings; a syntactically valid credential-like fragment or
+encoded content can therefore reach the protocol and journal without a
+malicious adapter. Moving both free-string paths behind trusted configuration,
+finite selectors, or equivalent authority is a separate contract change.
 
 ## Capability boundary
 
@@ -85,7 +85,7 @@ The prohibited column is a field/shape guarantee. It does not mean the runtime
 can recognize credential or raw-content semantics inside every structurally
 allowed string. Producers remain obligated by hard invariant 10 not to put
 such content there, but end-to-end allowed-value exclusion is not guaranteed in
-v0.1 while model-supplied `artifactRef` remains supported.
+v0.1 while model-supplied `artifactRef` or `shortErrorCode` remains supported.
 
 ## Diagnostics and process environment
 
@@ -94,7 +94,7 @@ v0.1 while model-supplied `artifactRef` remains supported.
 | `aizign` stdout | Exactly one Protocol v1 response frame |
 | `aizign` stderr | Normal diagnostics: stage, stable identity, kind, disposition, and stable code. Opt-in `aizign_timing:` JSON: allowlisted operation kind, durations/counts, semantic outcome, stable code, and unknown reason without request/event ID, path, or raw content. |
 | Human-readable Protocol error message | Operational control-plane diagnostic. Store and OS failures can include the configured state path or platform detail. It is not a model-safe field. |
-| DSH model-facing `HarnessError` | Stable code plus a fixed safe message for local input rejection, submit rejection, or unknown outcome. The raw Protocol message/unknown detail is not forwarded and local Protocol errors are not retained as causes. |
+| DSH model-facing `HarnessError` | Stable code plus a fixed safe message for argument decoding, local Protocol validation, submit rejection, or unknown outcome. Raw argument keys, Protocol messages, and unknown detail are not forwarded; local Protocol errors are not retained as causes. |
 | Adapter log | Adapter-owned metadata under its documented policy; native IDs do not cross into the core |
 | Adapter/parent timing sink | Closed metadata-only timing values when explicitly configured. Sink failure is isolated from workflow outcomes; sink retention/access remain caller-owned. |
 | DSH child environment | `PATH` and explicitly configured client variables only; the parent harness environment is not inherited wholesale |
@@ -120,8 +120,9 @@ access remain operator responsibilities.
   stable codes, bounds, and closed shapes.
 - Core/store tests verify binding, duplicate/conflict, committed-prefix,
   permission, path, locking, corruption, and read-only behavior.
-- Adapter-native tests verify model-visible exclusion and compare actual native
-  identifiers against the complete emitted envelope.
+- Adapter-native tests verify stable-identity exclusion from model-visible
+  input, any documented result disclosure, and actual native identifiers
+  against the complete emitted envelope.
 - `cargo xtask public-audit` checks all tracked paths for forbidden
   names/components. Its fixed known-secret/private-path patterns content-scan
   only tracked UTF-8 text without NUL bytes, excluding the rule-definition

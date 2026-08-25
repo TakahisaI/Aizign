@@ -58,7 +58,7 @@ const exec = {
   signal: new AbortController().signal,
 } as unknown as ToolRunContext;
 
-test('the tool schema exposes no identity fields', () => {
+test('the model-visible input schema exposes no identity fields', () => {
   const schema = toolParameters('review') as {
     properties: Record<string, unknown>;
     additionalProperties: boolean;
@@ -67,7 +67,7 @@ test('the tool schema exposes no identity fields', () => {
     stubClient({ kind: 'accepted', eventId: 'evt-fixed' }),
     binding,
   );
-  const modelVisibleDefinition = JSON.stringify({ description: tool.description, schema });
+  const modelVisibleInputDefinition = JSON.stringify({ description: tool.description, schema });
   assert.deepEqual(Object.keys(schema.properties).sort(), [
     'artifactRef',
     'findingCount',
@@ -86,7 +86,7 @@ test('the tool schema exposes no identity fields', () => {
     'candidateDigest',
   ]) {
     assert.ok(!Object.hasOwn(schema.properties, identity), identity);
-    assert.ok(!modelVisibleDefinition.includes(identity), identity);
+    assert.ok(!modelVisibleInputDefinition.includes(identity), identity);
   }
   for (const configuredValue of [
     binding.eventId,
@@ -96,7 +96,7 @@ test('the tool schema exposes no identity fields', () => {
     binding.expected.artifactRevision,
     binding.expected.candidateDigest.hex,
   ]) {
-    assert.ok(!modelVisibleDefinition.includes(configuredValue), configuredValue);
+    assert.ok(!modelVisibleInputDefinition.includes(configuredValue), configuredValue);
   }
 });
 
@@ -119,7 +119,21 @@ test('arguments are decoded closed and bound to the configured identity', () => 
       return (
         error instanceof HarnessError &&
         error.code === 'INVALID_SIGNAL' &&
-        /eventId/.test(error.message)
+        error.message === 'Aizign rejected invalid workflow signal input' &&
+        !error.message.includes('eventId')
+      );
+    },
+  );
+  const privateMarker = 'synthetic-private-state/operator/workflow.jsonl';
+  assert.throws(
+    () => decodeArgs({ kind: 'review_passed', [privateMarker]: true }, 'review'),
+    (error: unknown) => {
+      return (
+        error instanceof HarnessError &&
+        error.code === 'INVALID_SIGNAL' &&
+        error.message === 'Aizign rejected invalid workflow signal input' &&
+        !('cause' in error) &&
+        !error.message.includes(privateMarker)
       );
     },
   );

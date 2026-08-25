@@ -44,8 +44,9 @@ In particular:
 
 - the control journal schema has no dedicated fields for raw prompts, model
   output, reasoning, credentials, or environment, but allowed opaque string
-  values are not secret-scanned; the current DSH `artifactRef` is model-supplied
-  and can carry such data if a producer violates the metadata-only policy;
+  values are not secret-scanned; the current DSH `artifactRef` and
+  `shortErrorCode` are model-supplied and can carry such data if a producer
+  violates the metadata-only policy;
 - provider/harness identity remains inside the adapter;
 - human-readable Protocol error messages are operational diagnostics and can
   contain state-path or OS detail; model-facing adapter boundaries must retain

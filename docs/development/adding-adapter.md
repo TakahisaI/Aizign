@@ -114,9 +114,10 @@ include submission and reconciliation operations. They exercise the
 core-client boundary only; implementing the interface or passing the runner
 does not establish harness-adapter conformance. A TypeScript adapter choosing
 these APIs implements the full interface and still needs harness-native tests
-for preflight, identity provenance, model-visible isolation, and other owned
-behavior. A non-TypeScript adapter can implement the minimum or claim the same
-extension through native types and tests.
+for preflight, identity provenance, model-visible input isolation, documented
+result disclosure, and other owned behavior. A non-TypeScript adapter can
+implement the minimum or claim the same extension through native types and
+tests.
 
 TypeScript repository rules:
 

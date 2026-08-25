@@ -299,7 +299,7 @@ Passing one test layer does not prove requirements owned by another:
 | Protocol envelope, schema, stable code, and applicable encode/decode acceptance | Language codec tests over applicable `spec/conformance/` fixtures |
 | Local request-size failure before process/transport; response/frame bounds, correlation, and submit outcome mapping | Protocol encoder and core-client tests, as applicable |
 | Negative preflight for incompatible version or missing submit capability before exposing submission | Harness-native adapter tests, using a fake core/client |
-| `eventId` and other stable identity provenance; model-visible exclusion | Harness-native adapter tests |
+| `eventId` and other stable identity provenance; model-visible input exclusion and any documented result disclosure | Harness-native adapter tests |
 | Harness/provider identity exclusion from the complete emitted envelope | Harness-native adapter tests that inspect captured requests |
 | Duplicate/conflict and durable journal semantics | Core, engine, store, and protocol tests |
 | Reconciliation mapping and diagnostic code handling | Core-client tests plus core/store tests |
@@ -317,8 +317,9 @@ The current TypeScript `CoreClient` and `runCoreClientConformance` expose and
 exercise both submit and reconciliation operations. They are a TypeScript
 reference core-client interface and scenario runner, not a proof of the whole
 harness adapter contract. Implementing the interface or passing the runner does
-not establish trusted identity provenance, model-visible isolation, native
-registration/preflight behavior, or harness-evidence conformance. Failing to
+not establish trusted identity provenance, model-visible input isolation or
+result-disclosure policy, native registration/preflight behavior, or
+harness-evidence conformance. Failing to
 implement that TypeScript interface does not by itself make a non-TypeScript
 submission adapter non-conforming.
 

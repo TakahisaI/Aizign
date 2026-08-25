@@ -70,8 +70,11 @@ attribution, integrity, durability, and retention limits.
 The control plane fixes workflow, assignment, attempt, role, artifact revision,
 and candidate digest. It also fixes `eventId`, or the adapter/control plane
 generates and retains it for the same logical submission. Stable identity is
-not model-visible. Harness session, call, thread, provider, and delivery IDs do
-not become Aizign identity or `requestId`.
+never accepted from model-visible input. The current DSH tool discloses the
+fixed `eventId` in its successful result, but the model cannot select or alter
+it; the other configured identity fields remain outside the input, prompt, and
+result. Harness session, call, thread, provider, and delivery IDs do not become
+Aizign identity or `requestId`.
 
 The core checks shape and equality in a defined order. It cannot tell whether
 a malicious adapter copied values from the intended control-plane source. That
@@ -123,10 +126,10 @@ Treat these as trusted assumptions after local shape validation:
 - provider or harness guarantees explicitly claimed by an adapter.
 
 Shape validation does not turn a model-supplied opaque value into trusted
-metadata. In particular, the current DSH `artifactRef` accepts a bounded string
-from the model and does not scan that value for credentials, prompts, encoded
-content, or other sensitive material. Such a value can be persisted in the
-control journal if the signal is accepted.
+metadata. In particular, the current DSH `artifactRef` and `shortErrorCode`
+accept bounded strings from the model and do not scan those values for
+credentials, prompts, encoded content, or other sensitive material. Such a
+value can be persisted in the control journal if the signal is accepted.
 
 ## Threat and failure matrix
 
@@ -139,9 +142,9 @@ threat crosses layers, the row uses the weakest end-to-end level.
 | Oversized request or response | Detected and fail closed | Production encoders, CLI, and clients | Refuse outbound frames or reject inbound frames before a stronger classification | Encoder bounds, CLI framing, and core-client conformance tests | Timeout bounds caller wait, not all remote work |
 | Multiple or injected stdout frames | Detected and fail closed | CLI and core clients | Reserve stdout for one response and classify extra data as `unknown` | CLI tests and core-client fault scenarios | A third-party transport is not authorized by v0.1 |
 | Response `requestId`, kind, or event mismatch | Detected and fail closed | Core clients | Return `unknown`; retain a valid reported code only as diagnostic data | Core-client correlation scenarios | The caller still cannot determine whether an append happened |
-| Model controls stable identity or candidate digest | Runtime enforced | Current DSH adapter | Closed tool schema omits stable identity; validated configuration is injected | DSH schema, config, mapping, and captured-envelope tests | A malicious adapter can still submit a well-formed false value |
+| Model controls stable identity or candidate digest | Runtime enforced | Current DSH adapter | Closed input schema omits stable identity; validated configuration is injected | DSH input-schema, config, mapping, and captured-envelope tests | The successful DSH result discloses the fixed `eventId`; non-selection is enforced, not identity confidentiality, and a malicious adapter can still submit a well-formed false value |
 | Harness/provider identity leaks into core identity or envelope | Runtime enforced | Current DSH adapter mapping | Use an adapter nonce and construct the envelope without native IDs | DSH captured-envelope round-trip tests | Generic key scanning cannot prove value provenance; each adapter owns native-value tests |
-| Model-supplied opaque value contains a prompt, output, credential, token, or encoded content | Not guaranteed | No semantic value scanner in v0.1 | A syntactically valid `artifactRef` can be accepted and journaled | Tests prove only closed shape and known native-ID exclusion | Current DSH exposes `artifactRef` to the model; moving it to trusted configuration or a finite selector requires a separate contract change |
+| Model-supplied opaque value contains a prompt, output, credential, token, or encoded content | Not guaranteed | No semantic value scanner in v0.1 | A syntactically valid `artifactRef` or `shortErrorCode` can be accepted and journaled | Tests prove only closed shape and known native-ID exclusion | Current DSH exposes both strings to the model; Issue #72 must close both free-string paths before any stronger end-to-end allowed-value claim |
 | A dedicated raw-content, environment, credential, or native-ID field is added to protocol/journal | Runtime enforced | Closed protocol and journal schemas/DTOs | Reject unknown fields; owned encoders do not define such fields | Protocol/journal fixtures and schema tests | This is structural exclusion only and does not inspect allowed string values |
 | Parent harness credential environment leaks to `aizign` | Runtime enforced | DSH one-shot client | Rebuild child environment from `PATH` and explicit client variables | DSH synthetic parent-credential inheritance test | Explicitly configured child variables are trusted caller responsibility; no credential manager exists |
 | Expected and signal binding disagree | Runtime enforced | Deterministic core | Compare workflow, assignment, attempt, role, revision, then candidate digest before duplicate/conflict | Core mismatch-order, protocol, and replay tests | This compares the two submitted values; it does not establish which external assignment or candidate is current |
@@ -198,7 +201,7 @@ general provider, network, or persistence guarantees.
 | 7. Human authorization is revision-bound and append-only | Future authorization context; not implemented in v0.1 | Not claimed as implemented |
 | 8. Provider identity is not core identity | Adapter mapping and provider-neutral core/protocol/journal types | Dependency/public audit and DSH captured-envelope tests |
 | 9. Restart reconciliation is bounded and read-only | Store reader, engine port separation, CLI composition | Store read-only/bounds tests and reconciliation tests |
-| 10. Journal is metadata-only and producers do not place raw content/credentials in allowed values | Closed DTOs prohibit dedicated raw-content fields; producer mapping owns allowed-value semantics | Shape exclusion is tested. End-to-end value-content exclusion is not guaranteed while DSH accepts model-supplied `artifactRef` |
+| 10. Journal is metadata-only and producers do not place raw content/credentials in allowed values | Closed DTOs prohibit dedicated raw-content fields; producer mapping owns allowed-value semantics | Shape exclusion is tested. End-to-end value-content exclusion is not guaranteed while DSH accepts model-supplied `artifactRef` or `shortErrorCode` |
 | 11. No automatic remote publication or force update | No such runtime operation exists in v0.1 | Not claimed beyond absence and repository policy |
 | 12. Same identity/content is duplicate; changed content is conflict | Deterministic core | Core decision, replay, engine, and client scenarios |
 

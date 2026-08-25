@@ -2,8 +2,9 @@
  * The `submit_workflow_signal` tool as the agent sees it: scope-bound. The
  * agent supplies only what it can know (kind, finding count, artifact
  * reference, short error code); the control plane fixed the identity in the
- * plugin configuration, so it never appears in the schema, the arguments,
- * or the prompt.
+ * plugin configuration, so it never appears in the input parameter schema,
+ * arguments, or prompt. The successful result discloses the fixed `eventId`
+ * for correlation, but the agent cannot select or alter it.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -85,27 +86,26 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 /** Closed decode of the agent's arguments; anything else is `INVALID_SIGNAL`. */
 export function decodeArgs(args: unknown, role: Role): SignalArgs {
-  const fail = (message: string) => new HarnessError(message, 'INVALID_SIGNAL');
-  if (!isPlainObject(args)) throw fail('arguments must be an object');
+  const fail = () => new HarnessError(INVALID_TOOL_INPUT_MESSAGE, 'INVALID_SIGNAL');
+  if (!isPlainObject(args)) throw fail();
   for (const key of Object.keys(args)) {
     if (!['kind', 'findingCount', 'artifactRef', 'shortErrorCode'].includes(key)) {
-      throw fail(`unknown argument \`${key}\``);
+      throw fail();
     }
   }
   const { kind, findingCount, artifactRef, shortErrorCode } = args;
   if (typeof kind !== 'string' || !(kindsForRole(role) as readonly string[]).includes(kind)) {
-    throw fail(`kind must be one of ${kindsForRole(role).join(', ')}`);
+    throw fail();
   }
   if (
     findingCount !== undefined &&
     (!Number.isInteger(findingCount) || (findingCount as number) < 0)
   ) {
-    throw fail('findingCount must be a non-negative integer');
+    throw fail();
   }
-  if (artifactRef !== undefined && typeof artifactRef !== 'string')
-    throw fail('artifactRef must be a string');
+  if (artifactRef !== undefined && typeof artifactRef !== 'string') throw fail();
   if (shortErrorCode !== undefined && typeof shortErrorCode !== 'string') {
-    throw fail('shortErrorCode must be a string');
+    throw fail();
   }
   const decoded: { -readonly [K in keyof SignalArgs]: SignalArgs[K] } = {
     kind: kind as SignalKind,

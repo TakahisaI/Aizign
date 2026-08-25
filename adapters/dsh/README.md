@@ -5,10 +5,10 @@ The DSH harness adapter: a cordis plugin that registers one **scope-bound** `sub
 | | |
 |---|---|
 | **Responsibility** | DSH plugin entry（`name` / `inject` / `Config` / `apply`）、model-visible tool用preflight（`aizign hello` → protocol version + submit capability）、`OneShotCoreClient`、agentの引数 → `workflow.signal.submit` payload のmapping、control-plane向けread-only reconciliation clientとその独立したcapability requirement、coreの結果 → tool result / `HarnessError`、harness-persisted success metadata integration（`tool/result` の `meta` にbinding / payload digestを記録し、session logのcold readでbinding digestを照合） |
-| **Non-responsibility** | 判断（core）、journal（coreのJSONL。DSH persistenceには書かない）、identityの決定（configで固定。agentは知らない）、live smokeの手順（operatorの `op/`） |
+| **Non-responsibility** | 判断（core）、journal（coreのJSONL。DSH persistenceには書かない）、identityの決定（configで固定。agentはinputとして指定・変更できない。成功resultでは固定済み`eventId`を知る）、live smokeの手順（operatorの `op/`） |
 | **Inputs** | plugin config（binary、stateDir、timeoutMs、eventId + workflow / assignment / attempt / candidate digest）、agentのtool call `{ kind, findingCount?, artifactRef?, shortErrorCode? }` |
 | **Outputs** | model tool result `{ disposition: accepted \| duplicate, eventId }`、control-plane reconciliation outcome、または `HarnessError`（protocol / workflow code、`AIZIGN_OUTCOME_UNKNOWN`、`AIZIGN_UNAVAILABLE`、`AIZIGN_INCOMPATIBLE`） |
-| **Hard invariants** | control-plane identity（eventId、workflowId、assignmentId、attemptId、role、artifactRevision、candidateDigest）をtool schema・引数・promptに出さない（5、8）、reconciliationをmodel-visible toolにしない、DSHのcall id / session idを **envelope全体**（`requestId` 含む）に入れない（8。`requestId` はadapter所有のnonce）、responseは `requestId` / `kind` / `eventId` を送信と照合し不一致は `unknown`、reconciliation error codeは相関検査前に診断用`reportedCode`へ保持、stdoutは `MAX_FRAME_BYTES` と「frame 1つ」でbound、`unknown` は成功 / 失敗に縮約せず再送しない（3、4）、session readはcallerのtimeoutと取得後の`maxEvents` guardを持ちpartial evidenceを採用しない、preflight失敗時はtoolを登録しない、環境変数を子processへ丸ごと渡さない（PATHのみ） |
+| **Hard invariants** | control-plane identity（eventId、workflowId、assignmentId、attemptId、role、artifactRevision、candidateDigest）をinput parameter schema・引数・promptに出さずmodelに選択させない（5、8。成功resultは固定済み`eventId`を開示）、reconciliationをmodel-visible toolにしない、DSHのcall id / session idを **envelope全体**（`requestId` 含む）に入れない（8。`requestId` はadapter所有のnonce）、responseは `requestId` / `kind` / `eventId` を送信と照合し不一致は `unknown`、reconciliation error codeは相関検査前に診断用`reportedCode`へ保持、stdoutは `MAX_FRAME_BYTES` と「frame 1つ」でbound、`unknown` は成功 / 失敗に縮約せず再送しない（3、4）、session readはcallerのtimeoutと取得後の`maxEvents` guardを持ちpartial evidenceを採用しない、preflight失敗時はtoolを登録しない、環境変数を子processへ丸ごと渡さない（PATHのみ） |
 | **Allowed dependencies** | `@aizign/protocol`。peer: `@deepseek-ai/cordis` 4.0.1、`dsh-llm` / `dsh-tools` 0.1.1-rc.2、`schemastery` 3.18.1（exact、ADR-0010）。dev: `@aizign/adapter-testkit` |
 | **Test command** | `npm test -w @aizign/adapter-dsh`（`AIZIGN_BINARY` を与えると実binaryにも） |
 | **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0010](../../docs/adr/0010-harness-sdk-dependencies-and-node-policy.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md) |
@@ -26,8 +26,9 @@ from a malicious adapter. The ordinary model can also supply `artifactRef` and
 is not scanned for credentials, prompts, or encoded content. End-to-end
 semantic exclusion is therefore not guaranteed. Protocol diagnostic messages
 are control-plane data and may contain state-path or operating-system detail;
-the tool mapping retains the stable code but replaces local validation,
-rejected, and unknown detail with fixed model-safe messages. It deliberately
+the tool mapping retains the stable code but replaces argument decoding, local
+Protocol validation, rejected, and unknown detail with fixed model-safe
+messages. It deliberately
 does not attach the original local `ProtocolError` as a cause because DSH's
 diagnostic renderer follows cause chains. DSH persistence remains auxiliary
 evidence with the limits below. See the
