@@ -89,6 +89,43 @@ test('a recorded call/result pair with matching event and binding metadata is ev
   });
 });
 
+test('cold-read timing is metadata-only and cannot change evidence', async () => {
+  const args = { kind: 'implementation_ready' };
+  const meta = presentationMetaFor(binding, args, { disposition: 'accepted', eventId: 'evt-1' });
+  const timings: unknown[] = [];
+  const evidence = await readSignalEvidence(
+    source([call(3, 'c1', args), result(4, 'c1', meta)]),
+    'session-sensitive',
+    binding,
+    {
+      timingSink: (measurement) => {
+        timings.push(measurement);
+      },
+    },
+  );
+  assert.equal(evidence.kind, 'accepted');
+  assert.equal(timings.length, 1);
+  const timing = timings[0] as Record<string, unknown>;
+  assert.equal(timing.operation_kind, 'dsh.evidence.cold_read');
+  assert.equal(timing.events_returned, 2);
+  assert.equal(timing.outcome, 'accepted');
+  assert.equal(typeof timing.harness_cold_read_ms, 'number');
+  assert.ok(!JSON.stringify(timing).includes('session-sensitive'));
+
+  const stillAccepted = await readSignalEvidence(
+    source([call(3, 'c1', args), result(4, 'c1', meta)]),
+    'session-sensitive',
+    binding,
+    {
+      timingSink: async () => {
+        throw new Error('timing sink unavailable');
+      },
+    },
+  );
+  assert.equal(stillAccepted.kind, 'accepted');
+  await new Promise<void>((resolve) => setImmediate(resolve));
+});
+
 test('a call without a result is unknown, never inferred from later prose', async () => {
   const args = { kind: 'implementation_ready' };
   const evidence = await readSignalEvidence(
@@ -183,4 +220,28 @@ test('caller timeout and the post-read event guard are unknown, never partial', 
   };
   await readSignalEvidence(observing, 's', binding, { fromSeq: 1 });
   assert.ok(forwarded instanceof AbortSignal);
+});
+
+test('a pre-aborted caller returns unknown before starting the source read', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  let readStarted = false;
+  const ignoring: EvidenceSource = {
+    readFrom: () => {
+      readStarted = true;
+      return new Promise(() => undefined);
+    },
+  };
+
+  const evidence = await readSignalEvidence(ignoring, 's', binding, {
+    signal: controller.signal,
+    timeoutMs: 50,
+  });
+
+  assert.deepEqual(evidence, {
+    kind: 'unknown',
+    reason: 'aborted',
+    detail: 'cold read cancelled',
+  });
+  assert.equal(readStarted, false);
 });

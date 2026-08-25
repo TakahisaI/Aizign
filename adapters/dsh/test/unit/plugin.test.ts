@@ -82,8 +82,20 @@ test('plugin shape: name, inject, and a schemastery Config', () => {
 test('preflight accepts a compatible core and rejects an incompatible or unreachable one', async () => {
   const fake = fakeCoreCommand();
   const ok = new OneShotCoreClient({ ...fake, stateDir: '/unused', timeoutMs: 5_000 });
-  const info = await preflight(ok);
+  const timing: unknown[] = [];
+  const info = await preflight(ok, {
+    timingSink: (measurement) => {
+      timing.push(measurement);
+    },
+  });
   assert.equal(info.protocolVersion, 1);
+  assert.equal(timing.length, 1);
+  assert.deepEqual(timing[0], {
+    operation_kind: 'preflight',
+    preflight_ms: (timing[0] as { preflight_ms: number }).preflight_ms,
+    outcome: 'ok',
+  });
+  assert.equal(typeof (timing[0] as { preflight_ms: number }).preflight_ms, 'number');
 
   const submitOnly = new OneShotCoreClient({
     ...fake,
@@ -92,10 +104,17 @@ test('preflight accepts a compatible core and rejects an incompatible or unreach
     timeoutMs: 5_000,
   });
   assert.deepEqual(
-    (await preflight(submitOnly)).capabilities,
+    (
+      await preflight(submitOnly, {
+        timingSink: async () => {
+          throw new Error('timing sink unavailable');
+        },
+      })
+    ).capabilities,
     [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT],
     'the model-visible submit tool must not require the separate control-plane capability',
   );
+  await new Promise<void>((resolve) => setImmediate(resolve));
 
   const reconcileOnly = new OneShotCoreClient({
     ...fake,

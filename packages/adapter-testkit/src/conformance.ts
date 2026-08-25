@@ -15,6 +15,7 @@ import {
   type CoreClientConfig,
   codes,
   MAX_REQUEST_BYTES,
+  type ParentTimingMeasurement,
   PROTOCOL_VERSION,
   ProtocolError,
   type WorkflowSignalSubmitPayload,
@@ -312,6 +313,38 @@ export async function runFaultScenarios(
       'reconciliation does not retry an uncorrelated watchdog response',
     );
 
+    const conflictMeasurements: ParentTimingMeasurement[] = [];
+    const reportedConflict = factory({
+      ...fake,
+      env: { AIZIGN_FAKE_FAULT: 'event-conflict-error' },
+      stateDir: join(root, 'reconcile-event-conflict-error'),
+      timeoutMs: 10_000,
+      timingSink: (measurement) => {
+        conflictMeasurements.push(measurement);
+      },
+    });
+    const conflictUnknown = await reportedConflict.reconcileWorkflowSignal(
+      'req-reconcile-event-conflict-error',
+      { signal: samplePayload('evt-reconcile-event-conflict-error').signal },
+    );
+    assert.equal(conflictUnknown.kind, 'unknown');
+    if (conflictUnknown.kind === 'unknown') {
+      assert.equal(conflictUnknown.reason, 'reported_unknown');
+      assert.equal(conflictUnknown.reportedCode, 'EVENT_CONFLICT');
+    }
+    assert.deepEqual(
+      {
+        outcome: conflictMeasurements[0]?.outcome,
+        error_code: conflictMeasurements[0]?.error_code,
+        unknown_reason: conflictMeasurements[0]?.unknown_reason,
+      },
+      {
+        outcome: 'unknown',
+        error_code: 'EVENT_CONFLICT',
+        unknown_reason: 'reported_unknown',
+      },
+    );
+
     const reconciliationFaults: Array<[string, string]> = [
       ['garbage', 'undecodable_response'],
       ['oversized', 'oversized_response'],
@@ -399,6 +432,21 @@ export async function runFaultScenarios(
       2,
       'one submit and one reconciliation occur without a blind submit retry',
     );
+
+    const rejectingSink = factory({
+      ...fake,
+      stateDir: join(root, 'async-rejecting-timing-sink'),
+      timeoutMs: 10_000,
+      timingSink: async () => {
+        throw new Error('metric backend unavailable');
+      },
+    });
+    const accepted = await rejectingSink.submitWorkflowSignal(
+      'req-async-rejecting-sink',
+      samplePayload('evt-async-rejecting-sink'),
+    );
+    assert.equal(accepted.kind, 'accepted');
+    await new Promise<void>((resolve) => setImmediate(resolve));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

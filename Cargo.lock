@@ -11,6 +11,7 @@ dependencies = [
  "aizign-protocol",
  "aizign-store-jsonl",
  "aizign-testkit",
+ "serde_json",
 ]
 
 [[package]]

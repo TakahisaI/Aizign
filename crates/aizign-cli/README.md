@@ -33,4 +33,14 @@ echo '<request frame>' | aizign handle --state ./.aizign-state
 3. 10秒で打ち切り（**stdinのread込み**。one-frame検査はEOFまで走査するので、stdinを閉じないcallerもこのboundで終わる）。打ち切り時は `HANDLER_TIMEOUT` を返す。進行中のappendの結果は不明として扱い、再送しない。boundはtest用に `AIZIGN_HANDLE_TIMEOUT_MS`（1..=600000）で上書きできる（adapterは子processへ `PATH` しか渡さないので、harness側からは届かない）
 4. stderrに `aizign: stage=... requestId=... kind=... outcome=...` を1行
 
+## Opt-in timing
+
+`AIZIGN_TIMING_JSON=1`を設定すると、`handle`は通常のlogに加えて`aizign_timing:`で始まるmetadata-only JSONをstderrへ一行出します。
+request read、decode、journal open、committed-prefix read、verification hash、decode、replay、decision、appendと`sync_all`、publish-prefix hash、response encode、response write、handler totalを到達したstageだけ記録します。
+値にはallowlist済みoperation kind、semantic outcome、stable error code、journal physical byte数とcommitted entry数を含められますが、request ID、state path、本文、credentialは含めません。
+timingの生成や出力に失敗してもresponseとexit codeは変わりません。
+環境変数を設定しない通常経路はstage clock、observer、追加のjournal statを実行せず、非observed engine APIを使います。
+
+fieldごとの計測区間は[`benchmarks/performance/README.md`](../../benchmarks/performance/README.md#計測区間)を参照してください。
+
 `hello` responseの `journalSchemaVersion` は `aizign-store-jsonl` の定数から、`package.version` はこのcrateのversionから取ります。検証済みの `x86_64-unknown-linux-gnu` buildだけがsubmitとreconcileをadvertiseします。x32を含む別ABIや別architecture / libcのLinux、macOS、BSD、Windowsなどの未検証storage targetでは両capabilityをadvertiseせず、直接送られたrequestはstateへ触れず `CAPABILITY_UNSUPPORTED` を返します。

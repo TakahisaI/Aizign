@@ -19,6 +19,8 @@ export type { AdapterConfig, Config as PluginConfig, SignalBinding } from './con
 export { OneShotCoreClient } from './core-client/one-shot-client.ts';
 export {
   type ColdReadOptions,
+  type ColdReadTimingMeasurement,
+  type ColdReadTimingSink,
   DEFAULT_COLD_READ_TIMEOUT_MS,
   DEFAULT_MAX_EVENTS,
   type EvidenceSource,
@@ -28,7 +30,12 @@ export {
   type SignalResultMeta,
 } from './evidence/cold-read.ts';
 export { bindingDigest, canonicalJson, payloadDigest } from './evidence/digest.ts';
-export { preflight, RECONCILIATION_REQUIRED, REQUIRED } from './lifecycle/preflight.ts';
+export {
+  type PreflightOptions,
+  preflight,
+  RECONCILIATION_REQUIRED,
+  REQUIRED,
+} from './lifecycle/preflight.ts';
 export {
   adapterCodes,
   createSubmitWorkflowSignalTool,
