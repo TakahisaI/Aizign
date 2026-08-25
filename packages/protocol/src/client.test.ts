@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkCorrelation } from './client.ts';
+import { checkCorrelation, emitBestEffort, parentTimingOutcome } from './client.ts';
 import type { Response } from './envelope.ts';
 import { codes, ProtocolError } from './error.ts';
 
@@ -57,4 +57,29 @@ test('reconciliation success also correlates the queried event id', () => {
     })?.field,
     'eventId',
   );
+});
+
+test('parent timing preserves unknown before submit conflict normalization', () => {
+  assert.equal(
+    parentTimingOutcome('workflow.signal.submit', 'rejected', 'EVENT_CONFLICT'),
+    'conflict',
+  );
+  assert.equal(
+    parentTimingOutcome('workflow.signal.reconcile', 'unknown', 'EVENT_CONFLICT'),
+    'unknown',
+  );
+  assert.equal(
+    parentTimingOutcome('workflow.signal.submit', 'unknown', 'EVENT_CONFLICT'),
+    'unknown',
+  );
+});
+
+test('best-effort timing isolates synchronous throws and asynchronous rejection', async () => {
+  emitBestEffort(() => {
+    throw new Error('synchronous sink failure');
+  }, 1);
+  emitBestEffort(async () => {
+    throw new Error('asynchronous sink failure');
+  }, 2);
+  await new Promise<void>((resolve) => setImmediate(resolve));
 });

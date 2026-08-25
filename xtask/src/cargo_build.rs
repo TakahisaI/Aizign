@@ -9,9 +9,21 @@ use crate::shell;
 /// Reading the `compiler-artifact` message keeps this correct when a developer
 /// sets `CARGO_TARGET_DIR`, `build.target-dir`, or a configured build target.
 pub(crate) fn aizign_binary(root: &Path, frozen: bool) -> Result<PathBuf, String> {
+    aizign_binary_with_profile(root, frozen, false)
+}
+
+/// Builds the release-profile binary used by the reproducible performance runner.
+pub(crate) fn aizign_release_binary(root: &Path, frozen: bool) -> Result<PathBuf, String> {
+    aizign_binary_with_profile(root, frozen, true)
+}
+
+fn aizign_binary_with_profile(root: &Path, frozen: bool, release: bool) -> Result<PathBuf, String> {
     let mut args = vec!["build"];
     if frozen {
         args.push("--frozen");
+    }
+    if release {
+        args.push("--release");
     }
     args.extend([
         "--quiet",

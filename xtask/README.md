@@ -11,6 +11,7 @@ Repository tooling, invoked as `cargo xtask <command>` (alias in `.cargo/config.
 | `rust-check` | `cargo fmt --all --check`、`cargo clippy --workspace --all-targets --all-features -- -D warnings`、`cargo test --workspace`、`cargo doc --workspace --no-deps`（warning deny）、`cargo deny check` |
 | `conformance` | `spec/conformance/` のfixtureの構造検査。decoderを通すのは各protocol実装の責務 |
 | `public-audit` | 依存境界（`src/audit/dependencies.rs`）、secretとprivate path（`src/audit/secrets.rs`）、package manifest（`src/audit/packages.rs`）、entry document（`src/audit/entry_docs.rs`）、文書link（`src/audit/links.rs`） |
+| `performance-baseline` | release binaryとTypeScript clientをbuildし、目的別のmanual / scheduled performance sweepを実行。PR gateではない |
 | `whitespace` | tracked tree全体に対する `git diff --check` |
 
 ## Quick profiles
