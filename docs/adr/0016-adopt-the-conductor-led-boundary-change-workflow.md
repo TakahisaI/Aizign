@@ -69,12 +69,12 @@ revision, approved checkpoint, authority set, frozen Issue and pull-request
 context, assigned ranges, evidence paths, and known gaps. Reviewers do not
 independently reconstruct mutable project context.
 
-Allow optional repository-scoped Codex skills for Conduct, Break, and
-Adjudicate after the tracked workflow merges. Each skill must say in its
-`description` and body that it is used only through explicit `$skill-name`
-invocation. Skills remain non-authoritative and have a tracked manual
-equivalent. The initial skills are read-only. Candidate skills do not review or
-adjudicate themselves.
+Allow optional personal or workspace skills for Conduct, Break, and Adjudicate.
+The skill packages are created and installed outside the repository. Each skill
+must say in its `description` and body that it is used only through explicit
+`$skill-name` invocation. Skills remain non-authoritative, read current tracked
+procedure and authorities when invoked, and remain replaceable by the manual
+procedure. The repository does not register or own the skill packages.
 
 Treat R01-R14 as the external review plan for the current pre-v0.1 Foundation
 campaign and its required complete rerun only. It is not a normal pull-request
@@ -94,6 +94,8 @@ gate, permanent perspective taxonomy, or generic skill payload.
   considered complete.
 - Routine changes retain a lightweight path.
 - The process remains executable without Codex or any skill.
+- Skill installation can evolve independently without turning personal tooling
+  into repository authority.
 
 ### Negative / Risks
 
@@ -107,14 +109,16 @@ gate, permanent perspective taxonomy, or generic skill payload.
   maintainer must still ensure sessions receive the intended inputs.
 - A completed template or packet remains evidence metadata, not proof that the
   underlying claim is true.
+- Personal or workspace skill versions may drift from the tracked workflow, so
+  each invocation must reread the current repository procedure.
 
 ### Follow-up
 
 - Add the tracked workflow, review-packet interface, and contribution templates
-  in the first pull request for Issue #94.
-- Add the explicit `$aizign-conduct`, `$aizign-break`, and
-  `$aizign-adjudicate` skills in a second pull request after the workflow
-  merges.
+  in the pull request for Issue #94.
+- Create and install `$aizign-conduct`, `$aizign-break`, and
+  `$aizign-adjudicate` outside the repository, with explicit invocation stated
+  in each skill's description and body.
 - Use Issue #84 as the first complete pilot, while preparing contract decisions
   for Issues #72, #75, and #81.
 - Run one retrospective after the four contract decisions and another after
@@ -132,6 +136,9 @@ gate, permanent perspective taxonomy, or generic skill payload.
 - **Give an autonomous Conductor approval, merge, or release authority.**
   Rejected because repository governance assigns those decisions to a
   Maintainer and the configured repository mechanisms.
+- **Store personal skill packages in the repository.** Rejected because the
+  repository should own the workflow and manual interface, not installation of
+  user or workspace tooling.
 - **Create a permanent review-lens registry.** Rejected because perspectives
   should be derived from each accepted checkpoint and its failure models.
 - **Automate the full workflow immediately.** Rejected because the pilot must
