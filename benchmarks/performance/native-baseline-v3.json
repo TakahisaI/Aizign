@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "commit_sha": "ee93496eb0a7a08666770b0bffcc2aa33b23e79a",
+  "runner_version": 3,
+  "github_runner_image": "ubuntu24",
+  "github_runner_image_version": "20260816.277.1",
+  "warmup": 3,
+  "samples_per_point": 20,
+  "percentile_method": "nearest_rank",
+  "runs": [
+    {
+      "workflow_run_id": 32792032577,
+      "generated_at": "2026-08-25T00:04:38.132Z",
+      "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+      "result_sha256": "f816895f07118d9b2bca4fe19a316a20548e7f90f79ef2dac40755650daa8ae2",
+      "summary_sha256": "1a8dc63b3f4aef4089456d619218f00f6ebce196c85f200c5ffb124e43251794"
+    },
+    {
+      "workflow_run_id": 32792661803,
+      "generated_at": "2026-08-25T00:13:40.241Z",
+      "cpu_model": "INTEL(R) XEON(R) PLATINUM 8573C",
+      "result_sha256": "11e839af2c0a4a20dcfc2c8bad469e9d3886a4ac0699df7cf9c51b44c9758cd9",
+      "summary_sha256": "20b5d369dc9c2ff942c8718964c47e9ceb8c379c6517ab8bdcd9c13b656d9a38"
+    },
+    {
+      "workflow_run_id": 32792663958,
+      "generated_at": "2026-08-25T00:15:40.552Z",
+      "cpu_model": "Intel(R) Xeon(R) 6973P-C",
+      "result_sha256": "c7a4e1a6207487d193ddfc5e75b76d150e8149937d23860cdfb65248bb805e15",
+      "summary_sha256": "ffe92e5ac4faf6cfa5e9c1ef833235d0c5e953e6d6a17ee11a37a4fe94061aa2"
+    }
+  ],
+  "highest_p95_ms": {
+    "transport": {
+      "accepted_0": { "handler_total_ms": 400.321547, "spawn_to_exit_ms": 401.957079 },
+      "accepted_100": { "handler_total_ms": 74.485734, "spawn_to_exit_ms": 75.82605 },
+      "accepted_9999": { "handler_total_ms": 231.044572, "spawn_to_exit_ms": 233.180662 },
+      "duplicate_1": { "handler_total_ms": 106.790135, "spawn_to_exit_ms": 108.93672 },
+      "duplicate_100": { "handler_total_ms": 78.936072, "spawn_to_exit_ms": 80.502226 },
+      "duplicate_10000": { "handler_total_ms": 117.513703, "spawn_to_exit_ms": 119.530287 },
+      "bound_exceeded_10000": { "handler_total_ms": 136.530123, "spawn_to_exit_ms": 139.868954 },
+      "lookup_absent_0": { "handler_total_ms": 0.337578, "spawn_to_exit_ms": 2.383428 },
+      "lookup_absent_100": { "handler_total_ms": 0.873741, "spawn_to_exit_ms": 2.785478 },
+      "lookup_absent_10000": { "handler_total_ms": 58.684794, "spawn_to_exit_ms": 62.001583 }
+    },
+    "scenarios": {
+      "assignment_submit": 828.076324,
+      "assignment_unknown_reconcile": 320.31817
+    },
+    "scenario_operations": {
+      "assignment_submit/hello": 3.101074,
+      "assignment_submit/preflight": 3.274679,
+      "assignment_submit/submit": 824.695231,
+      "assignment_unknown_reconcile/hello": 3.356407,
+      "assignment_unknown_reconcile/preflight": 3.468556,
+      "assignment_unknown_reconcile/submit_lost_ack": 315.271105,
+      "assignment_unknown_reconcile/lookup": 4.521041
+    },
+    "concurrency": {
+      "submit_same_state_dir_1": 242.70304,
+      "submit_same_state_dir_2": 99.070903,
+      "submit_different_state_dir_1": 449.382491,
+      "submit_different_state_dir_2": 196.716479
+    },
+    "dsh_file_backed_read_10000": 4.110102
+  }
+}

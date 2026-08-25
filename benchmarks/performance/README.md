@@ -1,7 +1,6 @@
 # Runtime performance baseline
 
-このベンチマークrunnerは、release profileの`aizign`とTypeScript clientを使い、runtimeの変化を説明するためのbaselineを採取します。
-結果は観測値であり、performance budgetでもpull requestのCI gateでもありません。
+The performance runner uses the release-profile `aizign` binary and TypeScript clients. Baseline mode produces full manual/scheduled observations. PR-smoke mode uses a smaller matrix and generous absolute ceilings for gross-regression detection.
 
 ## 実行環境
 
@@ -27,6 +26,20 @@ cargo xtask performance-baseline \
 
 `performance-baseline`はTypeScript packageとrelease binaryをbuildしてからrunnerを起動します。
 生成物は既定で`target/performance-baseline/result.json`と`target/performance-baseline/summary.md`へ書きます。
+
+## PR performance smoke
+
+The Linux-only PR workflow runs:
+
+```sh
+cargo xtask performance-smoke
+```
+
+It builds the same release binary and clients, then writes `target/performance-smoke/result.json` and `summary.md`. The matrix contains accepted submit at 0 / 100 / 9,999 entries, duplicate at 1 / 100 / 10,000, new-event `JOURNAL_BOUND_EXCEEDED` at 10,000, absent lookup at 0 / 100 / 10,000, same-state and different-state submit concurrency 1 / 2, and both canonical scenarios. It runs one warmup and exactly three recorded warm samples; it compares the maximum sample with an absolute ceiling and makes no p99 claim. `performance-smoke` accepts no runner options so a PR cannot silently change these boundaries.
+
+The initial workflow is informational because it is not a required branch-protection check. A smoke failure remains a visible failed check; it is not converted to green. The workflow still uploads diagnostics. Ceiling failures retain the full result and identify the same raw max sample, including its stages and scenario/concurrency operations. Machine-readable attribution separates `stages_ms` from `stages_us`, and the human report renders each with its actual unit. The initial release-binary `hello` verification shares the 60-second operation guard and the failure-manifest path. Timeout, spawn, capability, transport, malformed timing, or semantic failures write metadata-only `status.json` and a failure `summary.md` before exiting nonzero; they are never converted into valid performance samples. Promotion criteria and the three native reference runs are documented in [the performance budget report](../../docs/performance/2026-08-25-performance-budgets.md).
+
+The evaluator requires the exact profile, warmup, sample count, ordered sweep list, 23 aggregate identities, 33 unique budget IDs, one aggregate per identity, and three raw metric values per budget. A missing timing, duplicate aggregate, partial matrix, or noncanonical direct-runner configuration cannot produce `PASS`.
 
 ## 計測区間
 
@@ -123,15 +136,15 @@ lost-ACK proxyもchild stdoutを同じprotocol上限で打ち切ります。
 ここでいうwarmはOS page cacheの状態を保証せず、runner、toolchain、filesystemを含む実行環境が先行実行を経験したことだけを表します。
 GitHub-hosted runnerでtrue cold OS page cacheを主張しません。
 
-aggregateは`warm_repeated`だけからnearest-rankのp50、p95、p99を計算し、metricごとのsample数も保存します。
-canonical scenarioはscenario全体の`aizign_end_to_end_ms`と、`preflight`、`submit`、`submit_lost_ack`、`lookup`のoperation別分布を分離します。
+aggregateは`warm_repeated`だけからnearest-rankのp50、p95、p99を計算し、metricごとのsample数も保存します。PR smokeのmachine schemaは共通aggregateを保持しますが、3 sampleのhuman summaryとwatchdog比較は`median / max`だけを表示し、p95/p99を性能上の主張として扱いません。
+canonical scenarioはscenario全体の`aizign_end_to_end_ms`と、`hello`、`preflight`、`submit`、`submit_lost_ack`、`lookup`のoperation別分布を分離します。
 submitとreconcileのparent latencyを一つの分布へ混ぜません。
 生の`new_process_new_open` observationとwarm sampleは`result.json`に残ります。
-summaryとmachine-readable resultは、全warm aggregateで最も遅い`handler_total_ms` p99を既定10,000 ms watchdogと比較し、残りのheadroomを明示します。
+summaryとmachine-readable resultは、全warm aggregateで最も遅い`handler_total_ms`を既定10,000 ms watchdogと比較し、残りのheadroomを明示します。full baselineはp99、PR smokeは3 sampleのmaxを使います。
 
 ## Artifactと更新手順
 
-`result.json`はmachine-readableなenvironment、GitHub runner image version、設定、aggregate、生sampleを持ちます。
+`result.json`はmachine-readableなenvironment、GitHub runner image version、timeout設定、aggregate、生sampleを持ちます。PR smokeの予算根拠は[versioned native baseline manifest](native-baseline-v3.json)から読み、run ID、runner/image version、CPU、result/summary SHA-256、各budgetの最大native p95を固定します。
 `summary.md`は同じaggregateをレビュー用tableへ変換します。
 runnerはchild、parent、DSH timingごとにexact-key allowlistを検査し、未登録fieldが一つでもあればartifactを保存しません。
 timingのschema version、時間値、byte数、entry数、event数も型と範囲を検査します。
@@ -139,9 +152,8 @@ timingのschema version、時間値、byte数、entry数、event数も型と範�
 direct transportの`transport_kind`も`correlated_response`または`unknown`だけを許可します。
 private filesystem pathとidentity keyの検査も重ねます。
 
-scheduled workflowは固定した`ubuntu-24.04` imageで毎週水曜日とmanual dispatchにより実行し、両fileを30日間artifactとして保存します。
-pull requestでは起動せず、required checkにも設定しません。
+The scheduled baseline uses fixed `ubuntu-24.04` every Wednesday and on manual dispatch, retains both files for 30 days, and does not run for pull requests. The separate PR smoke also uses `ubuntu-24.04`, retains reports for 14 days, and is informational during its initial observation period.
 
 reviewed baselineを更新するときは、同じcommitのartifact二点を確認し、environmentとsample設定を記録した解釈だけを`docs/performance/`へ追加します。
-Issue #57は、merge後のnative runでこの確認を終えるまでopenのまま維持します。
+Issue #57 closed after the first native runner v3 artifact was reviewed. Issue #58 records multiple comparable native runs before introducing the provisional smoke ceilings.
 環境が異なるrunの絶対値を直接比較せず、同じ環境内のjournal規模、outcome、transport、concurrencyの傾向を先に確認します。
