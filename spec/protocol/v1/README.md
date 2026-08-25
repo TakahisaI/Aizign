@@ -92,7 +92,7 @@ restart後に、問い合わせたsignalがwriter-published committed snapshot�
 | `INVALID_EXPECTATION` | `expected` の値が不正（識別子の文字種・長さ、またはcandidate digestのhex形式） |
 | `INVALID_SIGNAL` ほかworkflow code | `signal` の値や制約、expectationとの不一致、conflict |
 | `JOURNAL_*` | journalまたはstore commit metadataを開けない・検証できない・書けない。`JOURNAL_OUTCOME_UNKNOWN` は再送せず、reconciliationでもpublished boundaryを越えるtailを確定しない |
-| `CAPABILITY_UNSUPPORTED` | kindは既知だがこのbinaryでは無効（v1では未使用） |
+| `CAPABILITY_UNSUPPORTED` | kindは既知だが、このbuildではoperationを提供できない。verified storeを持たないtargetへsubmit / reconcileを直接送った場合など |
 | `HANDLER_TIMEOUT` | 処理が時間bound（10秒）を超えた。進行中のappendまたはreconciliationの結果は不明。`requestId` / `kind` は `null` |
 | `INTERNAL` | 分類不能。詳細はstderr |
 

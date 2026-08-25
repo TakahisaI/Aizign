@@ -7,9 +7,9 @@ assumptions, threat classification, and known limitations are defined in
 
 ## Principles
 
-- Send the core only bounded structured values needed for a decision. Do not
-  send prompts, screens, natural language, reasoning, model output, or
-  credentials.
+- Send the core only bounded structured values needed for a decision. Producers
+  must not place prompts, screens, natural language, reasoning, model output,
+  or credentials in either dedicated fields or allowed opaque values.
 - Keep the control journal metadata-only. Content remains in a workspace
   artifact or harness-owned persistence; the journal stores only structured
   references, identity, and digests.
@@ -17,9 +17,10 @@ assumptions, threat classification, and known limitations are defined in
   identity, candidate identity, or process correlation.
 - Reserve binary stdout for one Protocol v1 response. Diagnostics use stderr
   and remain content-free.
-- A closed schema controls shape, not provenance. A trusted adapter and control
-  plane remain responsible for ensuring that allowed opaque strings do not
-  contain prohibited content.
+- A closed schema controls shape, not provenance or string semantics. The
+  current DSH adapter exposes `artifactRef` to the model, so v0.1 does not
+  mechanically guarantee that every allowed opaque value is free of prohibited
+  content.
 
 ## Adapter-only data
 
@@ -30,7 +31,7 @@ assumptions, threat classification, and known limitations are defined in
 | Raw delivery receipts and provider responses | The adapter maps them to its documented outcome without forwarding the body. |
 | Harness persistence records | They are an adapter-specific auxiliary evidence source, not the Aizign journal. |
 | Credential location, browser profile, token, and provider environment | The core, protocol, and journal have no credential authority. |
-| Prompt, model output, reasoning, and conversation content | They remain outside the Aizign control plane. |
+| Prompt, model output, reasoning, and conversation content | Producers must keep them outside the Aizign control plane; v0.1 does not semantically inspect every allowed opaque value. |
 
 ## Data allowed across the core boundary
 
@@ -38,16 +39,19 @@ assumptions, threat classification, and known limitations are defined in
 |---|---|
 | Stable workflow identity | `workflowId`, `assignmentId`, `attemptId`, `artifactRevision`, and `eventId`; fixed or retained by the trusted control plane/adapter, never model-selected. |
 | Candidate digest | SHA-256 computed by the control plane or artifact authority from the intended candidate bytes. The core validates, carries, and compares it; it does not compute or authenticate it. |
-| Bounded opaque handle | A length-limited string issued by a trusted boundary. The core compares/stores it but does not interpret external content. |
-| Structured signal | A closed DTO containing kind and bounded optional metadata such as `findingCount`, `artifactRef`, or `shortErrorCode`. |
+| Trusted bounded opaque handle | A length-limited string issued by a trusted boundary. The core compares/stores it but does not interpret external content. |
+| Model-supplied bounded metadata | The current DSH tool accepts `artifactRef` and `shortErrorCode` from the model, validates only their closed shape/value constraints, and may persist them in an accepted signal. |
+| Structured signal | A closed DTO containing kind and bounded optional metadata such as `findingCount`, `artifactRef`, or `shortErrorCode`. Closed shape does not imply trusted value provenance. |
 | Source-qualified disposition | Submit, core reconciliation, and harness-native observations keep separate authorities even when words such as `accepted` or `unknown` overlap. |
 | Stable short error code | `^[A-Z][A-Z0-9_]{0,63}$`; safe diagnostic category, not a raw provider error body. |
 | Bounded timestamp | Supplied by the shell. The deterministic core does not read a clock. |
 
 `artifactRef` and other allowed opaque fields are not a covert-content detector.
-A malicious adapter can place inappropriate data in a syntactically valid
-field. v0.1 relies on the trusted adapter mapping and verifies that mapping with
-adapter-native regression tests.
+The normal DSH adapter currently lets the untrusted model choose `artifactRef`;
+a syntactically valid credential-like token or encoded content can therefore
+reach the protocol and journal without a malicious adapter. Moving this value
+to trusted configuration or a finite trusted selector is a separate contract
+change.
 
 ## Capability boundary
 
@@ -62,7 +66,7 @@ cross the protocol boundary, and it does not permit `unknown` to be reclassified
 
 ## Journal data
 
-| Allowed | Prohibited |
+| Structurally allowed fields | Dedicated fields prohibited by the closed schema |
 |---|---|
 | Schema/store version and record kind | Raw prompt, model output, or reasoning |
 | Stable workflow and candidate identity | Stdout/stderr bodies or native provider responses |
@@ -76,6 +80,12 @@ metadata version, committed byte length, entry count, and SHA-256 of the
 published prefix. That digest detects a mismatch; it is not candidate identity,
 a MAC, a signature, or authentication against a same-user process that can
 rewrite both journal and commit metadata.
+
+The prohibited column is a field/shape guarantee. It does not mean the runtime
+can recognize credential or raw-content semantics inside every structurally
+allowed string. Producers remain obligated by hard invariant 10 not to put
+such content there, but end-to-end allowed-value exclusion is not guaranteed in
+v0.1 while model-supplied `artifactRef` remains supported.
 
 ## Diagnostics and process environment
 
@@ -109,9 +119,11 @@ access remain operator responsibilities.
   permission, path, locking, corruption, and read-only behavior.
 - Adapter-native tests verify model-visible exclusion and compare actual native
   identifiers against the complete emitted envelope.
-- `cargo xtask public-audit` scans the tracked/package tree for known secret
-  patterns, private paths, forbidden state directories, and dependency rules.
-  It does not scan runtime memory, arbitrary logs, opaque-field semantics, or
-  all history.
+- `cargo xtask public-audit` scans tracked repository files for known secret and
+  private-path patterns, rejects tracked state directories, and validates
+  package manifests/dependency rules. Separate package gates enumerate intended
+  files, but package contents and generated/untracked files are not
+  secret-scanned. No gate scans runtime memory, arbitrary logs, opaque-field
+  semantics, or all history.
 - Live smoke evidence is separate from normal CI and proves only the tested
   integration run.

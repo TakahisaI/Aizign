@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-25
-- Related: ADR-0003, ADR-0004, ADR-0007, ADR-0012, ADR-0013, ADR-0014, Issue #52, PR #70
+- Related: ADR-0003, ADR-0004, ADR-0007, ADR-0012, ADR-0013, ADR-0014, Issue #52, Issue #72, PR #70
 
 ## Context
 
@@ -76,6 +76,15 @@ adapter can submit a well-formed lie using trusted-looking identifiers. The
 core rejects malformed values and inconsistent bindings but cannot recover
 provenance that the wire format does not carry.
 
+Interpret hard invariant 10 as both a structural runtime rule and a producer
+obligation. Closed Protocol v1 and journal schemas do not define dedicated raw
+prompt, model-output, reasoning, environment, or credential fields. They do not
+classify the semantics of every allowed string. The current DSH tool accepts a
+model-supplied `artifactRef`, so end-to-end exclusion of credentials or encoded
+content from allowed opaque values is not a v0.1 runtime guarantee. Changing
+that authority to trusted configuration or a finite selector requires a
+separate behavior contract.
+
 Candidate SHA-256, store committed-prefix SHA-256, and adapter-local binding or
 payload digests have separate authorities. None is a signature, MAC, remote
 attestation, or proof of authenticity by itself. Candidate authenticity
@@ -115,9 +124,10 @@ v0.1 has no state-instance manifest or downgrade fence.
   journal plus commit document.
 - A wrong but valid initialized state directory cannot be distinguished from
   the intended instance.
-- A malicious adapter can place sensitive content into an otherwise allowed
-  opaque field or submit a false but well-formed digest. Schema validation is
-  not data-loss prevention or provenance attestation.
+- The current model-visible DSH `artifactRef`, as well as a malicious adapter,
+  can place sensitive or encoded content into an otherwise allowed opaque
+  field. Schema validation is not data-loss prevention or provenance
+  attestation.
 - Provider, network, and harness-persistence guarantees remain outside the core
   authority and vary by adapter.
 
@@ -125,6 +135,8 @@ v0.1 has no state-instance manifest or downgrade fence.
 
 - Keep the threat matrix synchronized when a new effect, credential, remote
   store, transport, adapter capability, or supported platform is introduced.
+- Issue #72 owns the separate authority decision required to remove free
+  model-supplied `artifactRef` values and strengthen allowed-value guarantees.
 - Require a new Issue and, where the trust boundary changes, an ADR before
   adding signing, remote attestation, automatic retry, a state-instance
   manifest, downgrade fencing, or multi-tenant operation.

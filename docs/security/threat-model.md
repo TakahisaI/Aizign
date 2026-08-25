@@ -39,6 +39,7 @@ must name an enforcement owner and the regression evidence that guards it.
 | Domain | Trusted for | Not trusted for / boundary |
 |---|---|---|
 | Human operator / control plane | Binary and state-path selection; assignment identity; `eventId` generation or retention; candidate-digest provenance; adapter configuration | A wrong but valid state path is not detected. Configuration still receives shape validation. |
+| Model / agent | Nothing across the control boundary | Model-visible arguments are untrusted. In the current DSH tool the model selects signal kind and optional values including `artifactRef` and `shortErrorCode`; accepted opaque values can reach the journal. |
 | Harness adapter | Native input mapping; preflight; identity isolation; model-visible schema; correlation and outcome preservation | The core cannot prove that a well-formed signal from a malicious adapter has honest provenance. |
 | Harness runtime / provider SDK | Only the native behavior explicitly documented by that adapter | Native IDs and session records are not core identity or workflow-acceptance authority. |
 | Remote provider / network | Nothing in the core contract | Availability, confidentiality, ordering, and retention are adapter/provider concerns. |
@@ -105,7 +106,8 @@ detectable because v0.1 has no durable state-instance identity.
 
 Treat these as untrusted and validate before use:
 
-- model-visible tool arguments;
+- model-visible tool arguments, including the current DSH `artifactRef` and
+  `shortErrorCode` strings;
 - every Protocol v1 byte frame, including output from a spawned binary;
 - every journal and commit-metadata byte read after open;
 - every harness/provider event used for auxiliary evidence; and
@@ -120,31 +122,42 @@ Treat these as trusted assumptions after local shape validation:
 - the local account and kernel; and
 - provider or harness guarantees explicitly claimed by an adapter.
 
+Shape validation does not turn a model-supplied opaque value into trusted
+metadata. In particular, the current DSH `artifactRef` accepts a bounded string
+from the model and does not scan that value for credentials, prompts, encoded
+content, or other sensitive material. Such a value can be persisted in the
+control journal if the signal is accepted.
+
 ## Threat and failure matrix
 
-| Threat or failure | Classification | Enforcement / response | Regression evidence | Residual limitation |
-|---|---|---|---|---|
-| Malformed UTF-8, BOM, duplicate member, invalid Unicode, non-canonical number, unknown field or kind | Runtime enforced | Rust and TypeScript closed decoders reject with stable codes | Shared protocol and schema conformance fixtures | A valid opaque field can still carry semantically inappropriate content |
-| Oversized request or response | Runtime enforced / fail closed | Production encoders reject oversized output; CLI and clients bound input before classification | Encoder bounds, CLI framing, and core-client conformance tests | Timeout bounds caller wait, not all remote work |
-| Multiple or injected stdout frames | Detected and fail closed | CLI reserves stdout for one response; clients reject extra data | CLI tests and core-client fault scenarios | A third-party transport is not authorized by v0.1 |
-| Response `requestId`, kind, or event mismatch | Detected and fail closed | Client returns `unknown`; valid reported codes remain diagnostic only | Core-client correlation scenarios | The caller still cannot determine whether an append happened |
-| Model-controlled stable identity or digest | Runtime enforced by current adapter | DSH tool schema is closed and identity is injected from validated config | DSH schema, config, mapping, and captured-envelope tests | A malicious adapter can still submit a well-formed false value |
-| Harness/provider identity leaks into core identity or envelope | Runtime mapping plus regression evidence | Current DSH mapping uses an adapter nonce and omits native IDs | DSH round-trip captured-envelope tests | Generic key scanning cannot prove value provenance; each adapter owns native-value tests |
-| Raw prompt, model output, reasoning, environment, or credential enters protocol/journal | Runtime schema and mapping, plus audit | Closed DTOs/records admit only bounded structured fields; DSH mapping excludes raw content | Protocol/journal fixtures, DSH mapping tests, repository public audit | Schemas cannot detect sensitive content hidden in an allowed opaque string by a malicious adapter |
-| Parent harness credential environment leaks to `aizign` | Runtime enforced by DSH client | Child environment is rebuilt from `PATH` and explicit client variables | DSH synthetic parent-credential inheritance test | Explicitly configured child variables are trusted caller responsibility; no credential manager exists |
-| Stale or mismatched assignment/candidate binding | Runtime enforced | Core compares workflow, assignment, attempt, role, revision, then candidate digest before duplicate/conflict | Core, protocol, and replay tests | Digest provenance and current assignment selection are trusted control-plane responsibilities |
-| Partial write, barrier failure, corrupt or unpublished tail | Detected and fail closed | Store publishes only after barriers; uncertain writes remain `OutcomeUnknown`; reader accepts only the published exact prefix | Store fault-injection, tail, corruption, digest, count, and reopen tests | A same-user attacker can forge all mutually consistent files |
-| Lock failure or concurrent writer | Detected and fail closed | Shared/exclusive nonblocking advisory locks prevent cooperating Aizign processes from overlapping | Store lock tests | A malicious same-user process can ignore advisory locks |
-| Symlink, special file, hard link, wrong owner or mode | Runtime enforced / fail closed | Verified store uses no-follow opens and validates inode, type, link count, owner, and exact private modes | Store path, permission, symlink, special-file, and hard-link tests | State-path choice and the same OS account remain trusted |
-| Wrong but valid state directory | Trusted assumption | Operator/control plane selects the intended path | No runtime proof in v0.1 | No state-instance manifest exists |
-| Same-user state modification | Not guaranteed | Digest and schema mismatches are detected only when the attacker does not rewrite every dependent artifact consistently | Corruption and mismatch tests cover accidental/incomplete changes | No MAC, signature, privilege separation, or attestation |
-| Missing, reordered, forged, or expired harness persistence | Adapter-specific / fail closed where documented | DSH cold read verifies available binding metadata and otherwise returns unknown or throws before an outcome | DSH cold-read tests | Real DSH durability/retention and source-side bounds are not established by fake tests |
-| Timeout, abort, response loss, or `JOURNAL_OUTCOME_UNKNOWN` | Detected as unknown | Clients preserve uncertainty and do not retry blindly | Engine lost-ack tests and core-client fault scenarios | Read-only reconciliation cannot resolve missing/corrupt/unpublished state |
-| Reconciliation returns `absent` | Runtime policy | It remains an observation; no implicit submit follows | Core-client absent/no-submit and store read-only tests | A later writer can make the observation stale after lock release |
-| Diagnostic output leaks raw content | Runtime mapping | CLI stderr uses stage, identity, kind, outcome, and stable code; stdout is protocol-only | CLI stderr-content test | Identity metadata itself may be sensitive operational data; external log sinks are operator-owned |
-| Repository or package publishes a tracked secret/state directory | Audit detection | Ignore rules and `public-audit` reject known paths, token patterns, and private paths | `xtask` audit unit tests and package audit | This scans tracked/package artifacts, not runtime memory, logs, arbitrary opaque values, or git history outside the checked tree |
-| Old binary opens current state directory | Not guaranteed | Documentation requires a separate state directory | Compatibility and store contract documentation | No downgrade fence; an old binary may ignore commit metadata |
-| Unsupported platform receives a weaker durability contract | Runtime enforced / fail closed | CLI omits store capabilities and rejects direct requests | Supported-target and x32 compile-time negative tests | Only `x86_64-unknown-linux-gnu` is currently supported for the store |
+The guarantee-level column uses only the five values defined above. Where a
+threat crosses layers, the row uses the weakest end-to-end level.
+
+| Threat or failure | Guarantee level | Enforcement owner | Runtime response | Regression evidence | Residual limitation |
+|---|---|---|---|---|---|
+| Malformed UTF-8, BOM, duplicate member, invalid Unicode, non-canonical number, unknown field or kind | Runtime enforced | Rust and TypeScript protocol codecs | Reject with a stable code before domain handling | Shared protocol and schema conformance fixtures | A valid opaque field can still carry semantically inappropriate content |
+| Oversized request or response | Detected and fail closed | Production encoders, CLI, and clients | Refuse outbound frames or reject inbound frames before a stronger classification | Encoder bounds, CLI framing, and core-client conformance tests | Timeout bounds caller wait, not all remote work |
+| Multiple or injected stdout frames | Detected and fail closed | CLI and core clients | Reserve stdout for one response and classify extra data as `unknown` | CLI tests and core-client fault scenarios | A third-party transport is not authorized by v0.1 |
+| Response `requestId`, kind, or event mismatch | Detected and fail closed | Core clients | Return `unknown`; retain a valid reported code only as diagnostic data | Core-client correlation scenarios | The caller still cannot determine whether an append happened |
+| Model controls stable identity or candidate digest | Runtime enforced | Current DSH adapter | Closed tool schema omits stable identity; validated configuration is injected | DSH schema, config, mapping, and captured-envelope tests | A malicious adapter can still submit a well-formed false value |
+| Harness/provider identity leaks into core identity or envelope | Runtime enforced | Current DSH adapter mapping | Use an adapter nonce and construct the envelope without native IDs | DSH captured-envelope round-trip tests | Generic key scanning cannot prove value provenance; each adapter owns native-value tests |
+| Model-supplied opaque value contains a prompt, output, credential, token, or encoded content | Not guaranteed | No semantic value scanner in v0.1 | A syntactically valid `artifactRef` can be accepted and journaled | Tests prove only closed shape and known native-ID exclusion | Current DSH exposes `artifactRef` to the model; moving it to trusted configuration or a finite selector requires a separate contract change |
+| A dedicated raw-content, environment, credential, or native-ID field is added to protocol/journal | Runtime enforced | Closed protocol and journal schemas/DTOs | Reject unknown fields; owned encoders do not define such fields | Protocol/journal fixtures and schema tests | This is structural exclusion only and does not inspect allowed string values |
+| Parent harness credential environment leaks to `aizign` | Runtime enforced | DSH one-shot client | Rebuild child environment from `PATH` and explicit client variables | DSH synthetic parent-credential inheritance test | Explicitly configured child variables are trusted caller responsibility; no credential manager exists |
+| Stale or mismatched assignment/candidate binding | Runtime enforced | Deterministic core | Compare workflow, assignment, attempt, role, revision, then candidate digest before duplicate/conflict | Core, protocol, and replay tests | Digest provenance and current assignment selection are trusted control-plane responsibilities |
+| Partial write, barrier failure, corrupt or unpublished tail | Detected and fail closed | JSONL store | Publish only after barriers; keep uncertain writes as `OutcomeUnknown`; read only the exact committed prefix | Store fault-injection, tail, corruption, digest, count, and reopen tests | A same-user attacker can forge all mutually consistent files |
+| Lock failure or concurrent writer | Detected and fail closed | JSONL store | Reject lock contention rather than observe or write concurrently | Store lock tests | A malicious same-user process can ignore advisory locks |
+| Symlink, special file, hard link, wrong owner or mode | Detected and fail closed | JSONL store | Reject the unsafe artifact/path before use | Store path, permission, symlink, special-file, and hard-link tests | State-path choice and the same OS account remain trusted |
+| Wrong but valid state directory | Trusted assumption | Operator/control plane | Use the configured initialized store | No runtime proof in v0.1 | No state-instance manifest exists |
+| Same-user state modification | Not guaranteed | No separate same-user security boundary | Detect only incomplete/inconsistent rewrites | Corruption and mismatch tests cover accidental/incomplete changes | No MAC, signature, privilege separation, or attestation |
+| Missing, reordered, forged, or expired harness persistence | Not guaranteed | Adapter-specific evidence reader | DSH returns unknown/throws for detected missing or unverified observations | DSH cold-read tests | Matching forged metadata, real persistence durability/retention, and source-side bounds are not established |
+| Timeout, abort, response loss, or `JOURNAL_OUTCOME_UNKNOWN` | Detected and fail closed | Engine and core clients | Preserve `unknown` and do not retry blindly | Engine lost-ack tests and core-client fault scenarios | Read-only reconciliation cannot resolve missing/corrupt/unpublished state |
+| Reconciliation returns `absent` | Runtime enforced | Core-client orchestration | Return the observation without implicit submit | Core-client absent/no-submit and store read-only tests | A later writer can make the observation stale after lock release |
+| CLI diagnostic output contains a raw request/content body | Runtime enforced | CLI diagnostic mapping | Emit bounded stage, identity, kind, outcome, and stable code only | CLI stderr-content test | Identity metadata itself may be sensitive; external log sinks are operator-owned |
+| Tracked repository contains a known secret pattern, private path, or runtime state directory | Regression evidence | `cargo xtask public-audit` | CI/reviewer gate rejects the tracked tree | `xtask` audit unit tests and the repository gate | It does not scan runtime data, untracked/generated output, package contents, arbitrary opaque values, or full git history |
+| Package manifest or intended file list is unsafe | Regression evidence | Manifest audit, `cargo package --list`, and `npm pack --dry-run` gates | CI/reviewer gate rejects manifest policy violations; package commands enumerate/validate intended contents | Package/public-audit gates | Package artifact contents are not secret-scanned |
+| Old binary opens current state directory | Not guaranteed | Operator procedure | Documentation requires a separate state directory | Compatibility and store contract documentation | No downgrade fence; an old binary may ignore commit metadata |
+| Unsupported platform receives a weaker durability contract | Runtime enforced | Store target gate and CLI capability handling | Omit store capabilities and reject direct requests | Supported-target and x32 compile-time negative tests | Only `x86_64-unknown-linux-gnu` is currently supported for the store |
 
 ### Regression evidence index
 
@@ -162,7 +175,8 @@ mechanism. Their repository locations are:
 | CLI framing, timeout, stderr, capability, and unsupported-target behavior | `crates/aizign-cli/tests/handle.rs` |
 | TypeScript one-shot faults, correlation, no-retry, no-submit-after-absent, and no-spawn-on-oversize | `packages/adapter-testkit/src/conformance.ts` and `reference-client.test.ts` |
 | DSH config/tool schema, native identity exclusion, environment isolation, preflight, round trip, and cold read | `adapters/dsh/test/unit/` and `adapters/dsh/test/conformance/` |
-| Tracked/package secret, private-path, state-directory, and dependency policy | `xtask/src/audit/` through `cargo xtask public-audit` |
+| Tracked-file secret/private-path/state-directory and dependency policy | `xtask/src/audit/` through `cargo xtask public-audit` |
+| Package manifest and intended-file-list gates | `xtask/src/audit/packages.rs`, `cargo package --list`, and `npm pack --dry-run` |
 
 The opt-in DSH live smoke is not part of normal CI and is not evidence for
 general provider, network, or persistence guarantees.
@@ -180,7 +194,7 @@ general provider, network, or persistence guarantees.
 | 7. Human authorization is revision-bound and append-only | Future authorization context; not implemented in v0.1 | Not claimed as implemented |
 | 8. Provider identity is not core identity | Adapter mapping and provider-neutral core/protocol/journal types | Dependency/public audit and DSH captured-envelope tests |
 | 9. Restart reconciliation is bounded and read-only | Store reader, engine port separation, CLI composition | Store read-only/bounds tests and reconciliation tests |
-| 10. Journal contains no raw content or credentials | Closed journal DTO and adapter/protocol mapping | Journal conformance, metadata-only tests, public audit within its stated scope |
+| 10. Journal is metadata-only and producers do not place raw content/credentials in allowed values | Closed DTOs prohibit dedicated raw-content fields; producer mapping owns allowed-value semantics | Shape exclusion is tested. End-to-end value-content exclusion is not guaranteed while DSH accepts model-supplied `artifactRef` |
 | 11. No automatic remote publication or force update | No such runtime operation exists in v0.1 | Not claimed beyond absence and repository policy |
 | 12. Same identity/content is duplicate; changed content is conflict | Deterministic core | Core decision, replay, engine, and client scenarios |
 

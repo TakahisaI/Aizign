@@ -2,7 +2,14 @@
 
 - Status: Accepted
 - Date: 2026-08-23
-- Related: ADR-0004
+- Related: ADR-0004, ADR-0015
+
+> **Security clarification (2026-08-25):** ADR-0015 distinguishes the closed
+> metadata field set from the semantics of allowed opaque string values. The
+> schema rejects dedicated raw-content/credential fields, but it cannot detect
+> a credential-like token or encoded content inside `artifactRef`. The current
+> DSH adapter accepts that value from the model, so end-to-end value-content
+> exclusion is a producer obligation and not a v0.1 runtime guarantee.
 
 ## Context
 

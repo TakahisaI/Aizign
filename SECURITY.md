@@ -42,8 +42,10 @@ The allowed component data flows are in
 [`docs/architecture/data-boundary.md`](docs/architecture/data-boundary.md).
 In particular:
 
-- the control journal excludes raw prompts, model output, reasoning,
-  credentials, and environment;
+- the control journal schema has no dedicated fields for raw prompts, model
+  output, reasoning, credentials, or environment, but allowed opaque string
+  values are not secret-scanned; the current DSH `artifactRef` is model-supplied
+  and can carry such data if a producer violates the metadata-only policy;
 - provider/harness identity remains inside the adapter;
 - the control plane is trusted for state-path selection, assignment identity,
   and candidate-digest provenance;
@@ -61,7 +63,8 @@ In particular:
 - Fork pull requests do not receive secrets.
 - Normal CI does not invoke an external model, live harness, browser, or
   provider login.
-- `cargo xtask public-audit` checks tracked/package artifacts for known secret
-  patterns, private paths, forbidden runtime directories, and dependency
-  boundaries. It is not a runtime secret scanner and does not prove that an
-  allowed opaque field is semantically safe.
+- `cargo xtask public-audit` scans tracked repository files for known secret and
+  private-path patterns, rejects tracked runtime directories, and validates
+  package manifests/dependency boundaries. Separate `cargo package --list` and
+  `npm pack --dry-run` gates inspect intended package file lists; package
+  artifact contents and generated/untracked files are not secret-scanned.

@@ -17,6 +17,6 @@
 7. Human authorizationはrevision-boundかつappend-onlyにする。
 8. Provider固有identityをcore identityにしない。
 9. Restart reconciliationはboundedかつread-onlyにする。
-10. Control journalへraw prompt、model output、reasoning、credentialを保存しない。
+10. Control journalはmetadata-onlyのclosed field setとし、producerはraw prompt、model output、reasoning、credentialをallowed opaque valueにも入れない。
 11. Remote publication、repository visibility変更、force updateを自動実行しない。
 12. 同一identity・同一内容はduplicate、同一identity・異内容はconflictにする。
