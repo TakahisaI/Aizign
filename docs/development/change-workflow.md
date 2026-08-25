@@ -345,7 +345,7 @@ A change may use both lifecycle profiles.
 - repository documentation;
 - Issue templates;
 - pull-request templates;
-- skill adapters;
+- personal or workspace skill adapters;
 - CI or release tooling;
 - public contributor documentation.
 
@@ -477,9 +477,9 @@ and manual procedures.
 ## Workflow-change bootstrap
 
 A pull request that introduces or changes this workflow cannot treat its
-candidate text or candidate skills as accepted review authority.
+candidate text as accepted review authority.
 
-For the initial Issue #94 PR A:
+For the initial Issue #94 PR:
 
 - current tracked governance and contribution files remain controlling;
 - Issue #94 is the frozen design basis;
@@ -523,10 +523,13 @@ The workflow is usable without Codex or a skill:
 
 ## Optional explicit skills
 
-Repository-scoped skills may assist with Conduct, Break, and Adjudicate after
-they are separately accepted. Each skill must state in its `description` and
-body that it is used only through explicit `$skill-name` invocation.
+Personal or workspace skills may assist with Conduct, Break, and Adjudicate.
+They are created and installed outside the repository. Each skill must state in
+its `description` and body that it is used only through explicit `$skill-name`
+invocation.
 
-Skills are optional adapters, not authorities. They read current tracked
-procedure and authorities at invocation time, remain manually replaceable, and
-do not make repository or GitHub writes merely because they were invoked.
+Skills are optional adapters, not authorities. They read this current tracked
+procedure and the applicable repository authorities at invocation time, remain
+manually replaceable, and do not make repository or GitHub writes merely
+because they were invoked. The repository does not register or own the skill
+packages.
