@@ -1,0 +1,533 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://aizign.dev/schemas/review-packet-v1.json",
+  "title": "Aizign review packet v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "packet_id",
+    "packet_sha256",
+    "batch_id",
+    "batch_context_sha256",
+    "batch_context",
+    "assignment"
+  ],
+  "properties": {
+    "schema": { "const": "aizign.review-packet/v1" },
+    "packet_id": { "$ref": "#/definitions/id" },
+    "packet_sha256": { "$ref": "#/definitions/sha256" },
+    "batch_id": { "$ref": "#/definitions/id" },
+    "batch_context_sha256": { "$ref": "#/definitions/sha256" },
+    "batch_context": { "$ref": "#/definitions/batchContext" },
+    "assignment": { "$ref": "#/definitions/reviewAssignment" }
+  },
+  "definitions": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "nonEmptyString": { "type": "string", "minLength": 1 },
+    "sha1": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "nullableString": { "type": ["string", "null"] },
+    "stringArray": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/nonEmptyString" },
+      "uniqueItems": true
+    },
+    "nonEmptyStringArray": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/nonEmptyString" },
+      "uniqueItems": true
+    },
+    "idArray": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/id" },
+      "uniqueItems": true
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authority_id", "path", "revision", "section", "purpose"],
+      "properties": {
+        "authority_id": { "$ref": "#/definitions/id" },
+        "path": { "$ref": "#/definitions/nonEmptyString" },
+        "revision": { "$ref": "#/definitions/sha1" },
+        "section": { "$ref": "#/definitions/nonEmptyString" },
+        "purpose": { "$ref": "#/definitions/nonEmptyString" }
+      }
+    },
+    "canonicalOwner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner_id", "surface", "path"],
+      "properties": {
+        "owner_id": { "$ref": "#/definitions/id" },
+        "surface": { "$ref": "#/definitions/nonEmptyString" },
+        "path": { "$ref": "#/definitions/nonEmptyString" }
+      }
+    },
+    "duplicateOwner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "canonical_owner_id", "disposition"],
+      "properties": {
+        "path": { "$ref": "#/definitions/nonEmptyString" },
+        "canonical_owner_id": { "$ref": "#/definitions/id" },
+        "disposition": {
+          "enum": ["delete", "migrate", "provisional", "retain-distinct"]
+        }
+      }
+    },
+    "oldPathDisposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "disposition", "target_or_reason", "owner_or_trigger"],
+      "properties": {
+        "path": { "$ref": "#/definitions/nonEmptyString" },
+        "disposition": {
+          "enum": ["deleted", "migrated", "provisional", "retained-distinct"]
+        },
+        "target_or_reason": { "$ref": "#/definitions/nonEmptyString" },
+        "owner_or_trigger": { "$ref": "#/definitions/nonEmptyString" }
+      }
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "statement", "authority_ids", "falsification"],
+      "properties": {
+        "claim_id": { "$ref": "#/definitions/id" },
+        "statement": { "$ref": "#/definitions/nonEmptyString" },
+        "authority_ids": { "$ref": "#/definitions/idArray" },
+        "falsification": { "$ref": "#/definitions/nonEmptyString" }
+      }
+    },
+    "range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "range_id",
+        "kind",
+        "value",
+        "disposition",
+        "reason",
+        "owner_or_follow_up"
+      ],
+      "properties": {
+        "range_id": { "$ref": "#/definitions/id" },
+        "kind": { "enum": ["commitment", "lifecycle", "consumer"] },
+        "value": { "$ref": "#/definitions/nonEmptyString" },
+        "disposition": { "enum": ["included", "out_of_range", "evidence_gap"] },
+        "reason": { "$ref": "#/definitions/nonEmptyString" },
+        "owner_or_follow_up": { "$ref": "#/definitions/nonEmptyString" }
+      }
+    },
+    "evidenceRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence_id", "subject_ids", "method", "expected_detection", "owner"],
+      "properties": {
+        "evidence_id": { "$ref": "#/definitions/id" },
+        "subject_ids": { "$ref": "#/definitions/idArray" },
+        "method": { "$ref": "#/definitions/nonEmptyString" },
+        "expected_detection": { "$ref": "#/definitions/nonEmptyString" },
+        "owner": { "$ref": "#/definitions/nonEmptyString" }
+      }
+    },
+    "reviewAssignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "perspective_id",
+        "title",
+        "question",
+        "failure_models",
+        "subject_ids",
+        "required_checks",
+        "assignment_out_of_range"
+      ],
+      "properties": {
+        "perspective_id": { "$ref": "#/definitions/id" },
+        "title": { "$ref": "#/definitions/nonEmptyString" },
+        "question": { "$ref": "#/definitions/nonEmptyString" },
+        "failure_models": { "$ref": "#/definitions/nonEmptyStringArray" },
+        "subject_ids": { "$ref": "#/definitions/idArray" },
+        "required_checks": { "$ref": "#/definitions/nonEmptyStringArray" },
+        "assignment_out_of_range": { "$ref": "#/definitions/stringArray" }
+      }
+    },
+    "gap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gap_id", "description", "owner_or_follow_up"],
+      "properties": {
+        "gap_id": { "$ref": "#/definitions/id" },
+        "description": { "$ref": "#/definitions/nonEmptyString" },
+        "owner_or_follow_up": { "$ref": "#/definitions/nonEmptyString" }
+      }
+    },
+    "checkpointContent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "checkpoint_id",
+        "workflow_revision",
+        "change_class",
+        "contract_revision",
+        "normative_authorities",
+        "canonical_owners",
+        "duplicate_owners_to_remove",
+        "old_path_dispositions",
+        "claims",
+        "ranges",
+        "evidence_requirements",
+        "review_assignments",
+        "implementation_scope",
+        "known_evidence_gaps"
+      ],
+      "properties": {
+        "schema": { "const": "aizign.checkpoint/v1" },
+        "checkpoint_id": { "$ref": "#/definitions/id" },
+        "workflow_revision": { "$ref": "#/definitions/sha1" },
+        "change_class": { "enum": ["Boundary change", "Milestone review"] },
+        "contract_revision": { "$ref": "#/definitions/nonEmptyString" },
+        "normative_authorities": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/authority" }
+        },
+        "canonical_owners": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/canonicalOwner" }
+        },
+        "duplicate_owners_to_remove": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/duplicateOwner" }
+        },
+        "old_path_dispositions": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/oldPathDisposition" }
+        },
+        "claims": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/claim" }
+        },
+        "ranges": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/range" }
+        },
+        "evidence_requirements": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/evidenceRequirement" }
+        },
+        "review_assignments": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/reviewAssignment" }
+        },
+        "implementation_scope": {
+          "enum": ["ADR/specification", "implementation", "review-only"]
+        },
+        "known_evidence_gaps": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/gap" }
+        }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision",
+        "approved_checkpoint_sha256",
+        "maintainer_identity",
+        "approved_at",
+        "approval_reference"
+      ],
+      "properties": {
+        "decision": { "enum": ["awaiting", "approved", "rejected"] },
+        "approved_checkpoint_sha256": { "$ref": "#/definitions/nullableString" },
+        "maintainer_identity": { "$ref": "#/definitions/nullableString" },
+        "approved_at": { "$ref": "#/definitions/nullableString" },
+        "approval_reference": { "$ref": "#/definitions/nullableString" }
+      }
+    },
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["checkpoint_content", "checkpoint_sha256", "approval"],
+      "properties": {
+        "checkpoint_content": { "$ref": "#/definitions/checkpointContent" },
+        "checkpoint_sha256": { "$ref": "#/definitions/sha256" },
+        "approval": { "$ref": "#/definitions/approval" }
+      }
+    },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "procedure_path", "review_packet_path", "revision"],
+      "properties": {
+        "mode": { "enum": ["merged", "bootstrap"] },
+        "procedure_path": { "$ref": "#/definitions/nullableString" },
+        "review_packet_path": { "$ref": "#/definitions/nullableString" },
+        "revision": { "$ref": "#/definitions/sha1" }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sha",
+        "tree_sha",
+        "pull_request_number",
+        "pull_request_head_sha",
+        "base_ref",
+        "base_sha",
+        "merge_base_sha",
+        "changed_files"
+      ],
+      "properties": {
+        "sha": { "$ref": "#/definitions/sha1" },
+        "tree_sha": { "$ref": "#/definitions/sha1" },
+        "pull_request_number": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "pull_request_head_sha": {
+          "anyOf": [
+            { "$ref": "#/definitions/sha1" },
+            { "type": "null" }
+          ]
+        },
+        "base_ref": { "$ref": "#/definitions/nonEmptyString" },
+        "base_sha": { "$ref": "#/definitions/sha1" },
+        "merge_base_sha": { "$ref": "#/definitions/sha1" },
+        "changed_files": { "$ref": "#/definitions/nonEmptyStringArray" }
+      }
+    },
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "snapshot_id",
+        "kind",
+        "number",
+        "source_reference",
+        "captured_at",
+        "content",
+        "artifact_path",
+        "sha256"
+      ],
+      "properties": {
+        "snapshot_id": { "$ref": "#/definitions/id" },
+        "kind": { "enum": ["issue", "pull_request", "comment", "other"] },
+        "number": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "source_reference": { "$ref": "#/definitions/nonEmptyString" },
+        "captured_at": { "$ref": "#/definitions/nonEmptyString" },
+        "content": { "$ref": "#/definitions/nullableString" },
+        "artifact_path": { "$ref": "#/definitions/nullableString" },
+        "sha256": { "$ref": "#/definitions/sha256" }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "content": { "type": "string" },
+            "artifact_path": { "type": "null" }
+          }
+        },
+        {
+          "properties": {
+            "content": { "type": "null" },
+            "artifact_path": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "externalConstraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "constraint_id",
+        "purpose",
+        "source_reference",
+        "captured_at",
+        "content",
+        "artifact_path",
+        "sha256"
+      ],
+      "properties": {
+        "constraint_id": { "$ref": "#/definitions/id" },
+        "purpose": { "$ref": "#/definitions/nonEmptyString" },
+        "source_reference": { "$ref": "#/definitions/nonEmptyString" },
+        "captured_at": { "$ref": "#/definitions/nonEmptyString" },
+        "content": { "$ref": "#/definitions/nullableString" },
+        "artifact_path": { "$ref": "#/definitions/nullableString" },
+        "sha256": { "$ref": "#/definitions/sha256" }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "content": { "type": "string" },
+            "artifact_path": { "type": "null" }
+          }
+        },
+        {
+          "properties": {
+            "content": { "type": "null" },
+            "artifact_path": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "repositoryEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence_id", "kind", "path", "revision", "purpose"],
+      "properties": {
+        "evidence_id": { "$ref": "#/definitions/id" },
+        "kind": { "const": "repository" },
+        "path": { "$ref": "#/definitions/nonEmptyString" },
+        "revision": { "$ref": "#/definitions/sha1" },
+        "purpose": { "$ref": "#/definitions/nonEmptyString" }
+      }
+    },
+    "artifactEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_id",
+        "kind",
+        "purpose",
+        "source_reference",
+        "captured_at",
+        "content",
+        "artifact_path",
+        "sha256"
+      ],
+      "properties": {
+        "evidence_id": { "$ref": "#/definitions/id" },
+        "kind": { "const": "artifact" },
+        "purpose": { "$ref": "#/definitions/nonEmptyString" },
+        "source_reference": { "$ref": "#/definitions/nonEmptyString" },
+        "captured_at": { "$ref": "#/definitions/nonEmptyString" },
+        "content": { "$ref": "#/definitions/nullableString" },
+        "artifact_path": { "$ref": "#/definitions/nullableString" },
+        "sha256": { "$ref": "#/definitions/sha256" }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "content": { "type": "string" },
+            "artifact_path": { "type": "null" }
+          }
+        },
+        {
+          "properties": {
+            "content": { "type": "null" },
+            "artifact_path": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject_id", "perspective_ids"],
+      "properties": {
+        "subject_id": { "$ref": "#/definitions/id" },
+        "perspective_ids": { "$ref": "#/definitions/idArray" }
+      }
+    },
+    "outOfRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["area", "reason", "owner_or_follow_up"],
+      "properties": {
+        "area": { "$ref": "#/definitions/nonEmptyString" },
+        "reason": { "$ref": "#/definitions/nonEmptyString" },
+        "owner_or_follow_up": { "$ref": "#/definitions/nonEmptyString" }
+      }
+    },
+    "batchContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "context_id",
+        "created_at",
+        "repository",
+        "workflow",
+        "controlling_authorities",
+        "target",
+        "checkpoint",
+        "issue_pr_snapshots",
+        "external_constraints",
+        "evidence",
+        "coverage",
+        "global_out_of_range",
+        "known_evidence_gaps"
+      ],
+      "properties": {
+        "schema": { "const": "aizign.review-batch-context/v1" },
+        "context_id": { "$ref": "#/definitions/id" },
+        "created_at": { "$ref": "#/definitions/nonEmptyString" },
+        "repository": { "$ref": "#/definitions/nonEmptyString" },
+        "workflow": { "$ref": "#/definitions/workflow" },
+        "controlling_authorities": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/authority" }
+        },
+        "target": { "$ref": "#/definitions/target" },
+        "checkpoint": { "$ref": "#/definitions/checkpoint" },
+        "issue_pr_snapshots": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/snapshot" }
+        },
+        "external_constraints": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/externalConstraint" }
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              { "$ref": "#/definitions/repositoryEvidence" },
+              { "$ref": "#/definitions/artifactEvidence" }
+            ]
+          }
+        },
+        "coverage": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/coverage" }
+        },
+        "global_out_of_range": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/outOfRange" }
+        },
+        "known_evidence_gaps": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/gap" }
+        }
+      }
+    }
+  }
+}
