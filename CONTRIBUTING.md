@@ -18,10 +18,13 @@ requests, and local commands.
 
 [`GOVERNANCE.md`](GOVERNANCE.md) assigns the Maintainer authority to approve
 ADRs, review and merge pull requests, handle conflicts, and release. This
-contract adds no authority beyond that source. An accepted Issue or ADR is the
-authority for a changed contract before implementation begins; a PR cannot
-silently widen that decision. A review record is evidence, not approval, and a
-Maintainer records the merge decision separately.
+contract adds no authority beyond that source. Governance's broad rule that
+architecture, boundary, and policy changes require an ADR controls; the ADR
+examples below are illustrative, not exhaustive. A Higher-risk change requires
+an accepted Issue before implementation and an ADR whenever Governance or this
+contract requires one. An accepted decision cannot be silently widened by a
+PR. A review record is evidence, not approval, and a Maintainer records the
+merge decision separately.
 
 ### Change classes
 
@@ -50,7 +53,7 @@ review requirements below.
 
 ### Records before implementation
 
-The accepted Issue or ADR for a higher-risk change records:
+The accepted Issue for a higher-risk change records:
 
 - the problem and why it matters;
 - the proposed contract or process decision;
@@ -61,11 +64,15 @@ The accepted Issue or ADR for a higher-risk change records:
   responsibility); and
 - at least one concrete failure case and the evidence expected to detect it.
 
-For higher-risk work, the PR links that accepted record. For an allowed
-ordinary no-Issue change, it names the owner-local contract and the applicable
-exception. Every PR names its change class, affected paths or contexts,
-authority, owner, old-path dispositions, commands/tests/inspections, the
-concrete failure case checked, and known limitations or evidence gaps.
+When Governance or this contract requires an ADR, the accepted ADR accompanies
+the Issue and records the durable architecture or policy decision; it does not
+replace the Issue.
+
+For higher-risk work, the PR links the accepted Issue and any required ADR. For
+an allowed ordinary no-Issue change, it names the owner-local contract and the
+applicable exception. Every PR names its change class, affected paths or
+contexts, authority, owner, old-path dispositions, commands/tests/inspections,
+the concrete failure case checked, and known limitations or evidence gaps.
 
 ### Independent review for higher-risk changes
 
@@ -85,10 +92,11 @@ its owner or next action instead of treating the change as complete.
 
 ### Contract changes and evidence gaps
 
-Stop and return to the Issue or ADR before continuing when implementation would
-change the accepted authority, contract, public claim, scope, support or
-compatibility boundary, lifecycle, schema, durable field, canonical owner, or
-old-path disposition. Do not make that change silently.
+Stop and return to the accepted Issue and, when required, its ADR before
+continuing when implementation would change the accepted authority, contract,
+public claim, scope, support or compatibility boundary, lifecycle, schema,
+durable field, canonical owner, or old-path disposition. Do not make that
+change silently.
 
 Keep limitations and missing evidence visible in the PR, with an owner or next
 action. Passing CI, completing a template, or agreeing in review does not by
@@ -130,7 +138,10 @@ chore(ci): pin cargo-deny action
 
 ## ADRが必要な変更
 
-次の変更はIssueだけでなく、[docs/adr/](docs/adr/) へのADRを要求します。
+Governance's broad rule controls: architecture, boundary, and policy changes
+require an ADR. The following examples are illustrative, not exhaustive. For a
+Higher-risk change, keep the accepted Issue and add an ADR whenever this rule
+requires one.
 
 - crate / package境界
 - dependency方向

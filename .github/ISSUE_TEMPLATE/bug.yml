@@ -6,6 +6,12 @@ body:
   - type: markdown
     attributes:
       value: |
+        This form is for reproducible-defect intake only; it is not an implementation or decision record.
+        After acceptance, a fix proceeds through the [Ordinary change form](ordinary.yml) unless it is classified as Higher-risk.
+        Higher-risk fixes use the [Higher-risk proposal form](proposal.yml). Classification and routing follow [CONTRIBUTING.md](../../CONTRIBUTING.md).
+  - type: markdown
+    attributes:
+      value: |
         credential、raw prompt、model output、実データ、private pathを貼らないでください。必要なら架空のnon-confidentialな値へ置き換えてください。
   - type: input
     id: location
