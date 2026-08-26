@@ -16,12 +16,36 @@ use aizign_core::workflow::{Command, Decision, WorkflowEvent, WorkflowState, dec
 use aizign_engine::{Journal, JournalEntry, JournalError, JournalReader, MAX_JOURNAL_ENTRIES};
 use aizign_store_jsonl::{
     COMMIT_FILE_NAME, JOURNAL_FILE_NAME, JOURNAL_SCHEMA_VERSION, JsonlJournal, JsonlJournalReader,
-    LOCK_FILE_NAME, STORE_METADATA_VERSION, encode_record,
+    LOCK_FILE_NAME, STORE_METADATA_VERSION, StoreObservation, StoreObserver, StoreStage,
+    encode_record,
 };
 use aizign_testkit::{TempDir, journal_contract, signals};
 use sha2::{Digest as _, Sha256};
 
 const COMMIT_TEMP_FILE_NAME: &str = "workflow.commit.tmp";
+
+#[derive(Default)]
+struct StoreEventLog {
+    events: Vec<StoreObservation>,
+}
+
+impl StoreObserver for StoreEventLog {
+    fn observe(&mut self, observation: StoreObservation) {
+        self.events.push(observation);
+    }
+}
+
+#[derive(Default)]
+struct PanickingStoreObserver {
+    calls: usize,
+}
+
+impl StoreObserver for PanickingStoreObserver {
+    fn observe(&mut self, _observation: StoreObservation) {
+        self.calls += 1;
+        panic!("injected store observer panic");
+    }
+}
 
 fn journal_file(state: &Path) -> PathBuf {
     state.join(JOURNAL_FILE_NAME)
@@ -84,6 +108,181 @@ fn create_private_fifo(path: &Path) {
         .status()
         .expect("run mkfifo");
     assert!(status.success(), "create FIFO at {}", path.display());
+}
+
+#[test]
+fn observed_writer_emits_store_stages_in_physical_order() {
+    let dir = TempDir::new();
+    let state = dir.state();
+    let mut log = StoreEventLog::default();
+    {
+        let mut journal = JsonlJournal::open_observed(&state, &mut log).unwrap();
+        journal
+            .append(&event("evt-observed"), signals::at(0))
+            .unwrap();
+    }
+
+    assert_eq!(
+        log.events,
+        vec![
+            StoreObservation::StageStarted(StoreStage::JournalOpen),
+            StoreObservation::StageFinished(StoreStage::JournalOpen),
+            StoreObservation::JournalPhysicalBytes(0),
+            StoreObservation::StageStarted(StoreStage::CommittedPrefixRead),
+            StoreObservation::StageFinished(StoreStage::CommittedPrefixRead),
+            StoreObservation::StageStarted(StoreStage::CommittedPrefixHash),
+            StoreObservation::StageFinished(StoreStage::CommittedPrefixHash),
+            StoreObservation::StageStarted(StoreStage::CommittedPrefixDecode),
+            StoreObservation::StageFinished(StoreStage::CommittedPrefixDecode),
+            StoreObservation::StageStarted(StoreStage::PublishPrefixHash),
+            StoreObservation::StageFinished(StoreStage::PublishPrefixHash),
+        ]
+    );
+    assert!(fs::metadata(journal_file(&state)).unwrap().len() > 0);
+}
+
+#[test]
+fn observed_reader_reports_open_bytes_and_reaches_only_stages_it_executes() {
+    let dir = TempDir::new();
+    let state = dir.state();
+    initialize(&state);
+    let mut log = StoreEventLog::default();
+    {
+        let mut reader = JsonlJournalReader::open_observed(&state, &mut log).unwrap();
+        let entries = reader.load_committed().unwrap();
+        assert!(entries.is_empty());
+    }
+
+    assert_eq!(
+        log.events,
+        vec![
+            StoreObservation::StageStarted(StoreStage::JournalOpen),
+            StoreObservation::StageFinished(StoreStage::JournalOpen),
+            StoreObservation::JournalPhysicalBytes(0),
+            StoreObservation::StageStarted(StoreStage::CommittedPrefixRead),
+            StoreObservation::StageFinished(StoreStage::CommittedPrefixRead),
+            StoreObservation::StageStarted(StoreStage::CommittedPrefixHash),
+            StoreObservation::StageFinished(StoreStage::CommittedPrefixHash),
+            StoreObservation::StageStarted(StoreStage::CommittedPrefixDecode),
+            StoreObservation::StageFinished(StoreStage::CommittedPrefixDecode),
+        ]
+    );
+}
+
+#[test]
+fn observed_read_finishes_a_stage_when_the_physical_read_errors() {
+    let dir = TempDir::new();
+    let state = dir.state();
+    initialize(&state);
+    fs::write(journal_file(&state), b"unpublished tail\n").unwrap();
+
+    let mut log = StoreEventLog::default();
+    let mut reader = JsonlJournalReader::open_observed(&state, &mut log).unwrap();
+    assert!(matches!(
+        reader.load_committed(),
+        Err(JournalError::OutcomeUnknown { .. })
+    ));
+    assert_eq!(
+        log.events,
+        vec![
+            StoreObservation::StageStarted(StoreStage::JournalOpen),
+            StoreObservation::StageFinished(StoreStage::JournalOpen),
+            StoreObservation::JournalPhysicalBytes(17),
+            StoreObservation::StageStarted(StoreStage::CommittedPrefixRead),
+            StoreObservation::StageFinished(StoreStage::CommittedPrefixRead),
+        ]
+    );
+}
+
+#[test]
+fn raw_and_observed_paths_have_equivalent_results_and_mutations() {
+    let raw_dir = TempDir::new();
+    let observed_dir = TempDir::new();
+    let raw_state = raw_dir.state();
+    let observed_state = observed_dir.state();
+
+    let raw_entry = {
+        let mut journal = JsonlJournal::open(&raw_state).unwrap();
+        journal
+            .append(&event("evt-equivalent"), signals::at(0))
+            .unwrap()
+    };
+    let observed_entry = {
+        let mut log = StoreEventLog::default();
+        let mut journal = JsonlJournal::open_observed(&observed_state, &mut log).unwrap();
+        journal
+            .append(&event("evt-equivalent"), signals::at(0))
+            .unwrap()
+    };
+
+    assert_eq!(raw_entry, observed_entry);
+    assert_eq!(
+        fs::read(journal_file(&raw_state)).unwrap(),
+        fs::read(journal_file(&observed_state)).unwrap()
+    );
+    assert_eq!(
+        fs::read(commit_file(&raw_state)).unwrap(),
+        fs::read(commit_file(&observed_state)).unwrap()
+    );
+
+    fs::write(journal_file(&raw_state), b"unpublished tail\n").unwrap();
+    fs::write(journal_file(&observed_state), b"unpublished tail\n").unwrap();
+    let raw_error = JsonlJournalReader::open(&raw_state)
+        .and_then(|mut reader| reader.load_committed())
+        .unwrap_err();
+    let mut log = StoreEventLog::default();
+    let observed_error = JsonlJournalReader::open_observed(&observed_state, &mut log)
+        .and_then(|mut reader| reader.load_committed())
+        .unwrap_err();
+    assert_eq!(raw_error, observed_error);
+}
+
+#[test]
+fn store_observer_panic_cannot_change_the_durable_result() {
+    let raw_dir = TempDir::new();
+    let observed_dir = TempDir::new();
+    let raw_state = raw_dir.state();
+    let observed_state = observed_dir.state();
+
+    let raw_entry = JsonlJournal::open(&raw_state)
+        .unwrap()
+        .append(&event("evt-store-panic"), signals::at(0))
+        .unwrap();
+    let mut observer = PanickingStoreObserver::default();
+    let observed_entry = {
+        let mut journal = JsonlJournal::open_observed(&observed_state, &mut observer).unwrap();
+        journal
+            .append(&event("evt-store-panic"), signals::at(0))
+            .unwrap()
+    };
+
+    assert_eq!(observer.calls, 1);
+    assert_eq!(raw_entry, observed_entry);
+    assert_eq!(
+        fs::read(journal_file(&raw_state)).unwrap(),
+        fs::read(journal_file(&observed_state)).unwrap()
+    );
+    assert_eq!(
+        fs::read(commit_file(&raw_state)).unwrap(),
+        fs::read(commit_file(&observed_state)).unwrap()
+    );
+}
+
+#[test]
+fn observed_open_finishes_on_error_without_physical_bytes() {
+    let missing = TempDir::new().state();
+    let mut log = StoreEventLog::default();
+    assert!(matches!(
+        JsonlJournalReader::open_observed(&missing, &mut log),
+        Err(JournalError::Unavailable { .. })
+    ));
+    assert_eq!(
+        log.events,
+        vec![
+            StoreObservation::StageStarted(StoreStage::JournalOpen),
+            StoreObservation::StageFinished(StoreStage::JournalOpen),
+        ]
+    );
 }
 
 fn safe_partial_initialization(state: &Path) {

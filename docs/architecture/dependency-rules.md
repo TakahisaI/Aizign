@@ -79,7 +79,8 @@ contractの正本は[`harness-adapter-contract.md`](harness-adapter-contract.md)
 | `JournalReader` | `aizign-engine` | `aizign-store-jsonl`、`aizign-testkit`（`MemoryJournal`） | 実装済み |
 | `Journal` | `aizign-engine` | `aizign-store-jsonl`、`aizign-testkit`（`MemoryJournal`） | 実装済み（`JournalReader`を拡張） |
 | `Clock` | `aizign-engine` | `aizign-cli`（system）、`aizign-testkit`（`FixedClock`） | 実装済み |
-| `EngineObserver` | `aizign-engine` | `aizign-cli`（opt-in timing） | 実装済み。engineは時計とI/Oを持たず、callback panicをbest-effort境界で隔離する |
+| `EngineObserver` | `aizign-engine` | `aizign-cli`（opt-in timing） | Aggregate use-case stages only. Engine owns its best-effort panic boundary and no observation I/O. |
+| `StoreObserver` | `aizign-store-jsonl` | `aizign-cli`（opt-in timing） | JSONL open/physical-byte/prefix/publish stages only. The store owns observed wrappers and its best-effort panic boundary. |
 | Harness adapter behavioral contract | `docs/architecture/harness-adapter-contract.md` | 各adapter |
 | Core--adapter wire contract | `spec/protocol/` | Rust / TypeScript codec、各adapter |
 

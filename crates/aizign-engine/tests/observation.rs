@@ -87,75 +87,51 @@ fn reconciliation_uses_the_shared_read_only_stage_vocabulary() {
     );
 }
 
-struct PublishingJournal(MemoryJournal);
+struct PanicsImmediately(usize);
 
-impl JournalReader for PublishingJournal {
-    fn load_committed(&mut self) -> Result<Vec<JournalEntry>, JournalError> {
-        self.0.load_committed()
-    }
-}
-
-impl Journal for PublishingJournal {
-    fn append(
-        &mut self,
-        event: &WorkflowEvent,
-        at: BoundedTimestamp,
-    ) -> Result<JournalEntry, JournalError> {
-        self.0.append(event, at)
+impl EngineObserver for PanicsImmediately {
+    fn stage_started(&mut self, _stage: EngineStage) {
+        self.0 += 1;
+        panic!("metric collector failed");
     }
 
-    fn append_observed(
-        &mut self,
-        event: &WorkflowEvent,
-        at: BoundedTimestamp,
-        observer: &mut dyn EngineObserver,
-    ) -> Result<JournalEntry, JournalError> {
-        observer.stage_started(EngineStage::PublishPrefixHash);
-        observer.stage_finished(EngineStage::PublishPrefixHash, None);
-        self.0.append(event, at)
+    fn stage_finished(&mut self, _stage: EngineStage, _journal_entries: Option<usize>) {
+        self.0 += 1;
     }
-}
-
-struct PanicsOnPublish;
-
-impl EngineObserver for PanicsOnPublish {
-    fn stage_started(&mut self, stage: EngineStage) {
-        assert_ne!(
-            stage,
-            EngineStage::PublishPrefixHash,
-            "metric collector failed"
-        );
-    }
-
-    fn stage_finished(&mut self, _stage: EngineStage, _journal_entries: Option<usize>) {}
 }
 
 #[test]
 fn panicking_observer_cannot_change_the_durable_outcome() {
-    let mut plain_journal = PublishingJournal(MemoryJournal::new());
+    let mut plain_journal = MemoryJournal::new();
     let plain = handle_workflow_signal(
         &mut plain_journal,
         &FixedClock::default(),
         submit("evt-observer-panic"),
     );
-    let mut observed_journal = PublishingJournal(MemoryJournal::new());
-    let observed = handle_workflow_signal_observed(
+    let mut observed_journal = MemoryJournal::new();
+    let mut timing_probe = PanicsImmediately(0);
+    let observed_result = handle_workflow_signal_observed(
         &mut observed_journal,
         &FixedClock::default(),
         submit("evt-observer-panic"),
-        &mut PanicsOnPublish,
+        &mut timing_probe,
     );
-    assert_eq!(observed, plain);
-    assert!(matches!(observed, Ok(SignalOutcome::Accepted { .. })));
-    assert_eq!(observed_journal.0.entries(), plain_journal.0.entries());
+    assert_eq!(observed_result, plain);
+    assert!(matches!(
+        observed_result,
+        Ok(SignalOutcome::Accepted { .. })
+    ));
+    assert_eq!(observed_journal.entries(), plain_journal.entries());
+    assert_eq!(
+        timing_probe.0, 1,
+        "the first panic disables later callbacks"
+    );
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct PortCalls {
-    plain_load: usize,
-    observed_load: usize,
-    plain_append: usize,
-    observed_append: usize,
+    load: usize,
+    append: usize,
 }
 
 #[derive(Default)]
@@ -178,16 +154,8 @@ impl ProbeJournal {
 
 impl JournalReader for ProbeJournal {
     fn load_committed(&mut self) -> Result<Vec<JournalEntry>, JournalError> {
-        self.calls.plain_load += 1;
+        self.calls.load += 1;
         self.inner.load_committed()
-    }
-
-    fn load_committed_observed(
-        &mut self,
-        observer: &mut dyn EngineObserver,
-    ) -> Result<Vec<JournalEntry>, JournalError> {
-        self.calls.observed_load += 1;
-        self.inner.load_committed_observed(observer)
     }
 }
 
@@ -197,18 +165,8 @@ impl Journal for ProbeJournal {
         event: &WorkflowEvent,
         at: BoundedTimestamp,
     ) -> Result<JournalEntry, JournalError> {
-        self.calls.plain_append += 1;
+        self.calls.append += 1;
         self.inner.append(event, at)
-    }
-
-    fn append_observed(
-        &mut self,
-        event: &WorkflowEvent,
-        at: BoundedTimestamp,
-        observer: &mut dyn EngineObserver,
-    ) -> Result<JournalEntry, JournalError> {
-        self.calls.observed_append += 1;
-        self.inner.append_observed(event, at, observer)
     }
 }
 
@@ -249,18 +207,16 @@ fn compare_submit_modes(
     assert_eq!(
         plain_journal.calls,
         PortCalls {
-            plain_load: 1,
-            plain_append: append_calls,
-            ..PortCalls::default()
+            load: 1,
+            append: append_calls,
         },
         "plain ports differ for {name}"
     );
     assert_eq!(
         observed_journal.calls,
         PortCalls {
-            observed_load: 1,
-            observed_append: append_calls,
-            ..PortCalls::default()
+            load: 1,
+            append: append_calls,
         },
         "observed ports differ for {name}"
     );
@@ -288,18 +244,12 @@ fn compare_reconcile_modes(
     );
     assert_eq!(
         plain_journal.calls,
-        PortCalls {
-            plain_load: 1,
-            ..PortCalls::default()
-        },
+        PortCalls { load: 1, append: 0 },
         "plain ports differ for {name}"
     );
     assert_eq!(
         observed_journal.calls,
-        PortCalls {
-            observed_load: 1,
-            ..PortCalls::default()
-        },
+        PortCalls { load: 1, append: 0 },
         "observed ports differ for {name}"
     );
     assert_stage_pairs(&trace, stages);
@@ -483,22 +433,15 @@ fn plain_and_observed_reconcile_share_every_disposition_and_unknown_path() {
     .unwrap_err();
 }
 
-struct PlainOnlyJournal(MemoryJournal);
+struct PathlessJournal(MemoryJournal);
 
-impl JournalReader for PlainOnlyJournal {
+impl JournalReader for PathlessJournal {
     fn load_committed(&mut self) -> Result<Vec<JournalEntry>, JournalError> {
         self.0.load_committed()
     }
-
-    fn load_committed_observed(
-        &mut self,
-        _observer: &mut dyn EngineObserver,
-    ) -> Result<Vec<JournalEntry>, JournalError> {
-        panic!("plain execution must not use the observed read path");
-    }
 }
 
-impl Journal for PlainOnlyJournal {
+impl Journal for PathlessJournal {
     fn append(
         &mut self,
         event: &WorkflowEvent,
@@ -506,32 +449,27 @@ impl Journal for PlainOnlyJournal {
     ) -> Result<JournalEntry, JournalError> {
         self.0.append(event, at)
     }
-
-    fn append_observed(
-        &mut self,
-        _event: &WorkflowEvent,
-        _at: BoundedTimestamp,
-        _observer: &mut dyn EngineObserver,
-    ) -> Result<JournalEntry, JournalError> {
-        panic!("plain execution must not use the observed append path");
-    }
 }
 
 #[test]
-fn unobserved_api_never_calls_observed_journal_ports() {
-    let mut journal = PlainOnlyJournal(MemoryJournal::new());
-    let outcome = handle_workflow_signal(
+fn pathless_journal_needs_only_the_generic_ports_in_both_engine_modes() {
+    let mut journal = PathlessJournal(MemoryJournal::new());
+    let mut trace = Trace::default();
+    let outcome = handle_workflow_signal_observed(
         &mut journal,
         &FixedClock::default(),
-        submit("evt-unobserved"),
+        submit("evt-pathless"),
+        &mut trace,
     )
     .unwrap();
     assert!(matches!(outcome, SignalOutcome::Accepted { .. }));
     assert_eq!(journal.0.entries().len(), 1);
+    let mut trace = Trace::default();
     assert_eq!(
-        reconcile_workflow_signal(
+        reconcile_workflow_signal_observed(
             &mut journal,
-            &signals::implementation_ready("evt-unobserved")
+            &signals::implementation_ready("evt-pathless"),
+            &mut trace,
         )
         .unwrap(),
         aizign_core::recovery::SignalReconciliation::Accepted

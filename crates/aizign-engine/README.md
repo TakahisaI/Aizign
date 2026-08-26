@@ -11,7 +11,7 @@ Application engine around `aizign-core`: use cases, and the ports the shell must
 | **Hard invariants** | Report a server `accepted` disposition only after the accepted event is durably appended; preserve `JournalError::OutcomeUnknown` without success/failure inference or retry (3, 4); give reconciliation no append or clock dependency (9); never hide journal inconsistency. Invariant 2 is a future-effect principle and is not evidence of a current effect operation. |
 | **Allowed dependencies** | `aizign-core`。dev: `aizign-testkit` |
 | **Test command** | `cargo test -p aizign-engine` |
-| **Related ADR** | [0002](../../docs/adr/0002-implement-the-deterministic-core-in-rust.md)、[0005](../../docs/adr/0005-organize-the-core-by-bounded-context.md)、[0007](../../docs/adr/0007-use-metadata-only-control-journals.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md) |
+| **Related ADR** | [0002](../../docs/adr/0002-implement-the-deterministic-core-in-rust.md)、[0005](../../docs/adr/0005-organize-the-core-by-bounded-context.md)、[0007](../../docs/adr/0007-use-metadata-only-control-journals.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0019](../../docs/adr/0019-separate-engine-and-store-observation-ownership.md) |
 
 ## Security boundary
 
@@ -28,7 +28,7 @@ enforcement and trust split is recorded in the
 | `JournalReader` | `aizign-store-jsonl::JsonlJournalReader` / `JsonlJournal`、`aizign-testkit::MemoryJournal` | 実装済み |
 | `Journal`（`JournalReader`を拡張） | `aizign-store-jsonl::JsonlJournal`、`aizign-testkit::MemoryJournal` | 実装済み |
 | `Clock` | `aizign-cli`（system clock）、`aizign-testkit::FixedClock` | 実装済み |
-| `EngineObserver` | `aizign-cli`（opt-in timing） | 実装済み。時計とI/Oはshell側。callback panicは最初の一回で隔離し、そのoperationでは以後無効化 |
+| `EngineObserver` | `aizign-cli`（opt-in timing） | Use-case aggregate stages only. The engine isolates the first callback panic and performs no observation I/O. Physical JSONL stages are owned by `aizign-store-jsonl`. |
 
 ## Layout
 
@@ -36,7 +36,7 @@ enforcement and trust split is recorded in the
 src/
 ├── lib.rs       意図した型だけを公開
 ├── journal.rs   JournalReader / Journal trait、JournalEntry、JournalError（stable code付き）、MAX_JOURNAL_ENTRIES
-├── observation.rs EngineObserverとprefix read / hash / decode / replay / decide / append / publish hashのstage境界
+├── observation.rs EngineObserver and load / replay / decide / append use-case stage boundaries
 ├── clock.rs     Clock trait、ClockError
 ├── handle.rs    handle_workflow_signal、SignalOutcome、HandleError
 └── reconcile.rs reconcile_workflow_signal、ReconcileError
@@ -46,11 +46,12 @@ tests/
 ```
 
 Each plain/observed public API pair delegates to one internal executor for
-submit and one for reconciliation. The plain mode calls only `load_committed`
-and `append`; it never enters the observer port. The observed mode and store
-implementations wrap the caller-supplied observer in `BestEffortObserver` and
-add only stage callbacks to the same use-case transition. A callback panic
-cannot change the workflow outcome or commit publication.
+submit and one for reconciliation. Both modes call the same ordinary
+`load_committed` and `append` ports. The observed mode wraps the caller-supplied
+engine observer in `BestEffortObserver` and adds only use-case callbacks to the
+same transition. A callback panic cannot change the workflow outcome. A store
+may add physical observation behind its own ordinary port implementation; the
+generic engine port requires no store observer, path, or physical vocabulary.
 
 ## Use case: `handle_workflow_signal`
 

@@ -32,12 +32,28 @@ JSON Schemaに通すため、schemaとruntimeの受理集合はCIで突き合わ
 src/
 ├── lib.rs
 ├── journal.rs   JsonlJournal / JsonlJournalReader、durable initialization、lock、committed read、append / publish
+├── observation.rs  Store-owned physical stage and journal-size observations
 ├── commit.rs    workflow.commit.json DTO、closed decoder、bounded SHA-256
 ├── json_member.rs member重複の事前検査（内部実装）
 └── record.rs    record DTO（private）、encode_entry / decode_line、JOURNAL_SCHEMA_VERSION
 tests/
 └── jsonl_journal.rs   commit point、read-only、crash layout、tail、lock、permission、corrupt、bound、metadata-only
 ```
+
+## Observation ownership
+
+The engine owns only use-case stages. This crate owns the physical JSONL
+stages (`JournalOpen`, committed-prefix read/hash/decode, and publish-prefix
+hash) and the optional post-open journal byte count. `StoreStage`,
+`StoreObservation`, and `StoreObserver` are store-qualified metadata-only
+interfaces; they do not change journal results, durability, or the provisional
+timing record.
+
+`JsonlJournal::open_observed` and `JsonlJournalReader::open_observed` return
+store-owned wrappers that implement the ordinary engine `Journal` and
+`JournalReader` ports while retaining a best-effort observer. The raw
+`open`, `load_committed`, and `append` paths do not emit store observations and
+do not perform any observation-only I/O.
 
 ## 挙動
 

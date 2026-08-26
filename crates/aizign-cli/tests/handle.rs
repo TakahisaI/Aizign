@@ -631,6 +631,41 @@ fn opt_in_submit_timing_reports_every_applicable_stage() {
     assert!(metric.get("publish_prefix_hash_ms").is_none());
 }
 
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
+#[test]
+fn timing_does_not_change_submit_reconcile_or_open_error_outcomes() {
+    let raw_dir = TempDir::new();
+    let timed_dir = TempDir::new();
+    let submit = submit_frame("evt-timing-equivalence", "req-timing-equivalence");
+
+    let raw_submit = run_handle(&raw_dir.state(), &submit);
+    let timed_submit = run_handle_with_timing(&timed_dir.state(), &submit);
+    assert_eq!(raw_submit.status.code(), timed_submit.status.code());
+    assert_eq!(one_frame(&raw_submit), one_frame(&timed_submit));
+
+    let signal = signals::implementation_ready("evt-timing-equivalence");
+    let reconcile = reconcile_frame(signal, "req-timing-equivalence-reconcile");
+    let raw_reconcile = run_handle(&raw_dir.state(), &reconcile);
+    let timed_reconcile = run_handle_with_timing(&timed_dir.state(), &reconcile);
+    assert_eq!(raw_reconcile.status.code(), timed_reconcile.status.code());
+    assert_eq!(one_frame(&raw_reconcile), one_frame(&timed_reconcile));
+
+    let missing = TempDir::new().state();
+    let raw_error = one_frame(&run_handle(&missing, &reconcile));
+    let timed_error = one_frame(&run_handle_with_timing(&missing, &reconcile));
+    let (ResponseBody::Error(raw_error), ResponseBody::Error(timed_error)) =
+        (raw_error.body, timed_error.body)
+    else {
+        panic!("missing store must fail in both modes")
+    };
+    assert_eq!(raw_error.code(), timed_error.code());
+}
+
 #[test]
 fn malformed_and_oversized_frames_still_get_one_response() {
     let dir = TempDir::new();

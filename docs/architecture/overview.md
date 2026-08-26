@@ -31,9 +31,9 @@ snapshot.
 | Layer | Current responsibility | Prohibited |
 |---|---|---|
 | `aizign-core` | Workflow state, identity/binding validation, event application, duplicate/conflict decisions, and pure reconciliation disposition | I/O, clock, async, SDKs, serialization, harness-specific names, external-effect execution |
-| `aizign-engine` | Committed journal load, signal decision, accepted-event append, read-only reconciliation, bounded stage observation, and journal/clock ports | Harness-specific types and external-effect dispatch/claim/result/reconciliation |
+| `aizign-engine` | Committed journal load, signal decision, accepted-event append, read-only reconciliation, bounded use-case stage observation, and journal/clock ports | Store-physical observation, harness-specific types, and external-effect dispatch/claim/result/reconciliation |
 | `aizign-protocol` | NDJSON envelope、protocol version、capability negotiation、stable error code、DTO <-> domain変換、input size制限 | domain型の直接serialize |
-| `aizign-store-jsonl` | append-only、owner-only、writer-published commit point、bounded read-only cold read、record / store metadata version、shared / exclusive lock | raw conversation data、reader-side sync / repair / tail promotion |
+| `aizign-store-jsonl` | append-only、owner-only、writer-published commit point、bounded read-only cold read、record / store metadata version、shared / exclusive lock、JSONL physical observation seam | raw conversation data、reader-side sync / repair / tail promotion |
 | `aizign-cli` | composition root。`aizign handle`、`aizign hello` | business logic |
 | adapter | harness Context / Session / Tool / native event / persistence / lifecycle / harness固有error | core内部型の参照、harness IDのcore identity化 |
 
@@ -93,7 +93,9 @@ This trigger does not decide the diagnostics work in #83, capability work in
 
 - core: 純粋関数。`State + Command -> Decision`、`State + Event -> State`
 - shell: engine以降。I/O、時間、processはshellが所有し、coreには値として渡す
-- Portは利用側（engine）が定義し、store / adapterが実装する
+- Workflow-use-case ports are defined by their consumer (`aizign-engine`) and
+  implemented by the store or shell. JSONL physical observation is defined by
+  its implementation owner (`aizign-store-jsonl`) and consumed by the CLI.
 
 ## いま存在するもの
 
@@ -101,8 +103,8 @@ This trigger does not decide the diagnostics work in #83, capability work in
 |---|---|
 | `crates/aizign-core` | `identity`, `workflow`, and pure `recovery` (classification of a complete signal as accepted/conflict/absent). Candidate lifecycle, provenance, repair causation, execution, and effects are not current. |
 | `crates/aizign-protocol`、`spec/protocol/v1/` | Protocol v1: envelope、`hello`、signal submit / reconcile、closed decoder、schemaとexample |
-| `crates/aizign-engine` | `JournalReader` / `Journal` / `Clock` / best-effort stage observation port、submit / reconcile use case |
-| `crates/aizign-store-jsonl`、`spec/journal/v1/`、`spec/store/v1/` | JSONL journal: owner-only、shared / exclusive lock、writer-published committed prefix、bounded read-only cold read、closed record / metadata |
+| `crates/aizign-engine` | `JournalReader` / `Journal` / `Clock` / best-effort use-case stage observation port、submit / reconcile use case |
+| `crates/aizign-store-jsonl`、`spec/journal/v1/`、`spec/store/v1/` | JSONL journal: owner-only、shared / exclusive lock、writer-published committed prefix、bounded read-only cold read、closed record / metadata、store-owned physical observation |
 | `crates/aizign-testkit` | `MemoryJournal`（fault injection）、`FixedClock`、`TempDir`、journal contract、signal helper |
 | `crates/aizign-cli` | `aizign hello`、`aizign handle --state <dir>`: one-shot process、watchdog、stderr log |
 | `xtask` | `cargo xtask check / conformance / public-audit / performance-baseline` |

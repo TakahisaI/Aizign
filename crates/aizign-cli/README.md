@@ -4,14 +4,14 @@ The `aizign` binary: composition root, and the one-shot NDJSON process boundary 
 
 | | |
 |---|---|
-| **Responsibility** | 引数、stdin / stdout、system clock、state directoryの選択、submit用`JsonlJournal` / reconcile用`JsonlJournalReader` と `aizign-engine` の結線、処理時間のbound、stderrへの構造化log |
-| **Non-responsibility** | business logic（`aizign-core`）、use case（`aizign-engine`）、wire format（`aizign-protocol`）、journal format（`aizign-store-jsonl`） |
+| **Responsibility** | 引数、stdin / stdout、system clock、state directoryの選択、submit用`JsonlJournal` / reconcile用`JsonlJournalReader` と `aizign-engine` の結線、engine/store観測のchild timing recordへの合成、処理時間のbound、stderrへの構造化log |
+| **Non-responsibility** | business logic（`aizign-core`）、use caseとengine stage語彙（`aizign-engine`）、wire format（`aizign-protocol`）、journal formatとphysical stage語彙（`aizign-store-jsonl`） |
 | **Inputs** | `aizign hello` / `aizign handle --state <dir>` + stdinの1 frame |
 | **Outputs** | stdoutに1 frame。exit code |
 | **Hard invariants** | stdoutにはresponse frame以外を書かない、stderrに本文を出さない（identity、kind、codeのみ）、submitの`accepted`はappend後だけ、reconciliationはread-only readerしか開かない、timeout時は `HANDLER_TIMEOUT`（outcome unknown）で再送しない |
 | **Allowed dependencies** | `aizign-core`、`aizign-engine`、`aizign-protocol`、`aizign-store-jsonl`。dev: `aizign-testkit` |
 | **Test command** | `cargo test -p aizign-cli` |
-| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0005](../../docs/adr/0005-organize-the-core-by-bounded-context.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md) |
+| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0005](../../docs/adr/0005-organize-the-core-by-bounded-context.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0019](../../docs/adr/0019-separate-engine-and-store-observation-ownership.md) |
 
 ## Security boundary
 
@@ -58,6 +58,12 @@ total. Values may include an allowlisted operation kind, the child runtime's
 committed entries. Request IDs, state paths, content, and credentials are not
 included.
 
+The engine owns only aggregate load/replay/decide/append observations. The
+JSONL store owns journal open, physical-byte, committed-prefix, and publication
+hash observations. The CLI maps both owner-supplied vocabularies into this
+unchanged flat record; it does not inspect the journal path or define physical
+stage meaning.
+
 The child `outcome` observation is source-qualified. It is not the returned
 client outcome or a parent transport observation, and these sources must not
 be treated as one universal semantic outcome. The
@@ -66,9 +72,9 @@ target authority; this contract-only slice does not make the current producer
 corpus-driven.
 
 Timing generation and output are best effort: failure does not change the
-response or exit code. Without the environment variable, the normal path does
-not run stage clocks, the observer, or the additional journal stat and uses the
-unobserved engine API.
+response or exit code. Without the environment variable, the normal path uses
+the raw JSONL store and unobserved engine API; it does not construct either
+observer, run stage clocks, or perform the additional physical-length stat.
 
 See the [performance runner documentation](../../benchmarks/performance/README.md#measurement-intervals)
 for field-level measurement intervals and the provisional lifecycle.
