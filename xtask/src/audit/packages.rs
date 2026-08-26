@@ -224,11 +224,26 @@ fn declared_workspace_dependencies<'a>(
 
     match value {
         serde_json::Value::Null => BTreeSet::new(),
-        serde_json::Value::Object(entries) => entries
-            .keys()
-            .map(String::as_str)
-            .filter(|dependency| dependency.starts_with("@aizign/"))
-            .collect(),
+        serde_json::Value::Object(entries) => {
+            for (dependency, requirement) in entries {
+                match requirement.as_str() {
+                    Some(requirement) if is_noncanonical_dependency_spec(requirement) => {
+                        findings.push(format!(
+                            "{rendered}: {kind}.{dependency} uses noncanonical local or alias requirement `{requirement}`; workspace packages must use their canonical `@aizign/*` name and exact version"
+                        ));
+                    }
+                    Some(_) => {}
+                    None => findings.push(format!(
+                        "{rendered}: {kind}.{dependency} requirement must be a string"
+                    )),
+                }
+            }
+            entries
+                .keys()
+                .map(String::as_str)
+                .filter(|dependency| dependency.starts_with("@aizign/"))
+                .collect()
+        }
         _ => {
             findings.push(format!(
                 "{rendered}: `{kind}` must be an object when present"
@@ -236,6 +251,28 @@ fn declared_workspace_dependencies<'a>(
             BTreeSet::new()
         }
     }
+}
+
+fn is_noncanonical_dependency_spec(requirement: &str) -> bool {
+    let requirement = requirement.trim();
+    let lowercase = requirement.to_ascii_lowercase();
+    [
+        "file:",
+        "link:",
+        "npm:",
+        "portal:",
+        "workspace:",
+        "./",
+        "../",
+        "/",
+        "~/",
+    ]
+    .iter()
+    .any(|prefix| lowercase.starts_with(prefix))
+        || requirement
+            .as_bytes()
+            .get(1..3)
+            .is_some_and(|separator| matches!(separator, b":/" | b":\\"))
 }
 
 fn check_typescript_sources(
@@ -373,5 +410,37 @@ mod tests {
             dependency_findings("@aizign/adapter-testkit", &manifest).len(),
             2
         );
+    }
+
+    #[test]
+    fn local_paths_and_package_aliases_cannot_hide_workspace_dependencies() {
+        for requirement in [
+            "file:../../packages/adapter-testkit",
+            "link:../../packages/adapter-testkit",
+            "npm:@aizign/adapter-testkit@0.1.0",
+            "workspace:../adapter-testkit",
+            "../adapter-testkit",
+            " FILE:../../packages/adapter-testkit ",
+        ] {
+            let manifest = json!({ "dependencies": { "testkit-local": requirement } });
+            assert_eq!(
+                dependency_findings("@aizign/protocol", &manifest).len(),
+                1,
+                "requirement {requirement} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn noncanonical_aliases_are_rejected_in_optional_and_peer_sections() {
+        let manifest = json!({
+            "optionalDependencies": {
+                "testkit-local": "file:../../packages/adapter-testkit"
+            },
+            "peerDependencies": {
+                "testkit-alias": "npm:@aizign/adapter-testkit@0.1.0"
+            }
+        });
+        assert_eq!(dependency_findings("@aizign/protocol", &manifest).len(), 2);
     }
 }

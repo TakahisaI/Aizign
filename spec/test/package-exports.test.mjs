@@ -7,7 +7,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
@@ -156,20 +156,33 @@ const surfaces = [
 const sourceDependencySurfaces = [
   {
     root: 'packages/protocol/src',
+    tsconfig: 'packages/protocol/tsconfig.json',
     allowed: ['@aizign/protocol'],
   },
   {
     root: 'packages/adapter-testkit/src',
+    tsconfig: 'packages/adapter-testkit/tsconfig.json',
     allowed: ['@aizign/adapter-testkit', '@aizign/protocol'],
   },
   {
     root: 'adapters/dsh/src',
+    tsconfig: 'adapters/dsh/tsconfig.json',
     allowed: ['@aizign/adapter-dsh', '@aizign/protocol'],
   },
   {
     root: 'adapters/dsh/test',
+    tsconfig: 'adapters/dsh/tsconfig.json',
     allowed: ['@aizign/adapter-dsh', '@aizign/adapter-testkit', '@aizign/protocol'],
   },
+];
+
+const workspacePackagePaths = [
+  { name: '@aizign/protocol', root: realpathSync(join(ROOT, 'packages/protocol')) },
+  {
+    name: '@aizign/adapter-testkit',
+    root: realpathSync(join(ROOT, 'packages/adapter-testkit')),
+  },
+  { name: '@aizign/adapter-dsh', root: realpathSync(join(ROOT, 'adapters/dsh')) },
 ];
 
 function sorted(values) {
@@ -247,16 +260,22 @@ function moduleSpecifiers(path) {
     if (
       (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
       node.moduleSpecifier !== undefined &&
-      ts.isStringLiteral(node.moduleSpecifier)
+      ts.isStringLiteralLike(node.moduleSpecifier)
     ) {
       specifiers.push(node.moduleSpecifier.text);
     } else if (
       ts.isCallExpression(node) &&
       node.expression.kind === ts.SyntaxKind.ImportKeyword &&
       node.arguments.length === 1 &&
-      ts.isStringLiteral(node.arguments[0])
+      ts.isStringLiteralLike(node.arguments[0])
     ) {
       specifiers.push(node.arguments[0].text);
+    } else if (
+      ts.isImportTypeNode(node) &&
+      ts.isLiteralTypeNode(node.argument) &&
+      ts.isStringLiteralLike(node.argument.literal)
+    ) {
+      specifiers.push(node.argument.literal.text);
     }
     ts.forEachChild(node, visit);
   }
@@ -264,9 +283,30 @@ function moduleSpecifiers(path) {
   return specifiers;
 }
 
-function aizignPackageName(specifier) {
-  const match = /^(@aizign\/[^/]+)/u.exec(specifier);
-  return match?.[1];
+function compilerOptionsFromConfig(path) {
+  const configPath = join(ROOT, path);
+  const loaded = ts.readConfigFile(configPath, ts.sys.readFile);
+  if (loaded.error !== undefined) {
+    assert.fail(`${path}: ${diagnosticSummary([loaded.error]).join('; ')}`);
+  }
+  const parsed = ts.parseJsonConfigFileContent(loaded.config, ts.sys, dirname(configPath));
+  assert.deepEqual(diagnosticSummary(parsed.errors), [], `${path} diagnostics`);
+  return parsed.options;
+}
+
+function resolvedWorkspacePackage(specifier, containingFile, compilerOptions) {
+  const resolution = ts.resolveModuleName(
+    specifier,
+    containingFile,
+    compilerOptions,
+    ts.sys,
+  ).resolvedModule;
+  if (resolution === undefined) return undefined;
+  const resolved = realpathSync(resolution.resolvedFileName);
+  return workspacePackagePaths.find(
+    (workspacePackage) =>
+      resolved === workspacePackage.root || resolved.startsWith(`${workspacePackage.root}${sep}`),
+  )?.name;
 }
 
 test('compiler-visible export audit expands type-only export stars', () => {
@@ -312,9 +352,13 @@ test('TypeScript package manifests expose only the accepted closed subpaths', ()
 
 test('workspace source imports match the exact package dependency directions', () => {
   for (const surface of sourceDependencySurfaces) {
+    const compilerOptions = compilerOptionsFromConfig(surface.tsconfig);
     for (const path of sourceFiles(join(ROOT, surface.root))) {
       for (const specifier of moduleSpecifiers(path)) {
-        const packageName = aizignPackageName(specifier);
+        const packageName = resolvedWorkspacePackage(specifier, path, compilerOptions);
+        if (specifier.startsWith('@aizign/')) {
+          assert.notEqual(packageName, undefined, `${path} must resolve ${specifier}`);
+        }
         if (packageName === undefined) continue;
         assert.ok(
           surface.allowed.includes(packageName),
@@ -322,6 +366,31 @@ test('workspace source imports match the exact package dependency directions', (
         );
       }
     }
+  }
+});
+
+test('workspace source audit includes template-literal dynamic imports and import types', () => {
+  const temporaryRoot = mkdtempSync(join(ROOT, 'adapters/dsh/.package-import-syntax-'));
+  try {
+    const path = join(temporaryRoot, 'forbidden.ts');
+    writeFileSync(
+      path,
+      [
+        'export async function load() {',
+        '  return import(`@aizign/adapter-testkit`);',
+        '}',
+        "export type LeakedFactory = import('@aizign/adapter-testkit').CoreClientFactory;",
+      ].join('\n'),
+    );
+    const specifiers = moduleSpecifiers(path);
+    assert.deepEqual(specifiers, ['@aizign/adapter-testkit', '@aizign/adapter-testkit']);
+    const compilerOptions = compilerOptionsFromConfig('adapters/dsh/tsconfig.json');
+    assert.deepEqual(
+      specifiers.map((specifier) => resolvedWorkspacePackage(specifier, path, compilerOptions)),
+      ['@aizign/adapter-testkit', '@aizign/adapter-testkit'],
+    );
+  } finally {
+    rmSync(temporaryRoot, { force: true, recursive: true });
   }
 });
 
