@@ -166,12 +166,9 @@ cargo xtask check
 
 ## Merge policy
 
-- default branchは `main`。直接pushは禁止
-- squash mergeのみ。merge commitとrebase mergeは無効
-- required checksが緑であること
-- unresolved conversationがあるPRはmergeしない
-- maintainer自身のPRは、green CIとPR checklistを満たせばself-merge可
-- 第二maintainer参加後は、non-author approvalを1件必須にする
+See [`GOVERNANCE.md#merge-policy`](GOVERNANCE.md#merge-policy) for the
+canonical merge and branch rules. This document does not restate or override
+those rules.
 
 ## 旧実装からの採用
 
