@@ -45,8 +45,12 @@ tests/
 └── reconcile_workflow_signal.rs accepted / conflict / absent / journal・replay failure / append不在
 ```
 
-非observed APIは通常の`load_committed`と`append`だけを呼び、observer portを通りません。
-observed APIとstore実装はcaller-supplied observerを`BestEffortObserver`で包み、callback panicがworkflow outcomeやcommit publicationを変えないようにします。
+Each plain/observed public API pair delegates to one internal executor for
+submit and one for reconciliation. The plain mode calls only `load_committed`
+and `append`; it never enters the observer port. The observed mode and store
+implementations wrap the caller-supplied observer in `BestEffortObserver` and
+add only stage callbacks to the same use-case transition. A callback panic
+cannot change the workflow outcome or commit publication.
 
 ## Use case: `handle_workflow_signal`
 
