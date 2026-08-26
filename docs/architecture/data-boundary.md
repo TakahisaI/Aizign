@@ -114,11 +114,11 @@ outcome service.
 | Boundary | Allowed output |
 |---|---|
 | `aizign` stdout | Exactly one Protocol v1 response frame |
-| `aizign` stderr | Normal content-free operational diagnostics. Opt-in child-runtime timing is provisional operational evidence; its current classification/code disclosure comes from `spec/classification/`, not from a stable public compatibility promise. |
+| `aizign` stderr | Normal content-free operational diagnostics. Opt-in child-runtime timing is provisional operational evidence. Until the ordered classification implementation lands, the child keeps its independent mapping and may diverge from this contract; afterward, classification/code disclosure must be driven by the exact rows owned by `spec/classification/`. Neither stage creates a stable public compatibility promise. |
 | Human-readable Protocol error message | Operational control-plane diagnostic. Store and OS failures can include the configured state path or platform detail. It is not a model-safe field. |
 | DSH model-facing `HarnessError` | Stable code plus a fixed safe message for argument decoding, local Protocol validation, submit rejection, or unknown outcome. Raw argument keys, Protocol messages, and unknown detail are not forwarded; local Protocol errors are not retained as causes. |
 | Adapter log | Adapter-owned metadata under its documented policy; native IDs do not cross into the core |
-| Adapter/parent timing sink | Closed metadata-only parent transport observations when explicitly configured. Classification/code disclosure follows `spec/classification/`; timing remains provisional operational evidence, not a stable public compatibility contract. Sink failure is isolated from workflow outcomes; sink retention/access remain caller-owned. |
+| Adapter/parent timing sink | Closed metadata-only parent transport observations when explicitly configured. Until the ordered classification implementation lands, parent consumers keep their independent mappings and may diverge from this contract; afterward, classification/code disclosure must be driven by the exact rows owned by `spec/classification/`. Timing remains provisional operational evidence, not a stable public compatibility contract. Sink failure is isolated from workflow outcomes; sink retention/access remain caller-owned. |
 | DSH child environment | `PATH` and explicitly configured client variables only; the parent harness environment is not inherited wholesale |
 
 Operational identity can itself be sensitive metadata. Log retention and sink
