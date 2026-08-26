@@ -1,9 +1,12 @@
 //! Pure, deterministic decisions for Aizign software-change workflows.
 //!
 //! This crate is the *functional core* of Aizign. It owns workflow state,
-//! identity and binding, command validation, event application, duplicate
-//! and conflict detection, next-action decisions, effect intents,
-//! authorization state, and recovery dispositions.
+//! identity and binding, command validation, accepted-event application,
+//! duplicate and conflict detection, and pure recovery dispositions.
+//!
+//! The current crate has no external-effect intent, claim, result, or
+//! reconciliation operation. Those concepts require a separately accepted
+//! future contract before becoming part of this crate's public API.
 //!
 //! The basic shapes are:
 //!

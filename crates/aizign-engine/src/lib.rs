@@ -1,5 +1,7 @@
-//! The Aizign application engine: use cases around `aizign-core`, and the ports
-//! through which the shell supplies persistence, time, and effects.
+//! The Aizign application engine: current signal submit/reconcile use cases and
+//! the journal, clock, and optional observation ports supplied by the shell.
+//!
+//! No external-effect port or operation is part of the current engine.
 //!
 //! The engine owns the *ports* it needs (ADR-0005): a store crate implements
 //! [`JournalReader`] and [`Journal`], while the composition root implements

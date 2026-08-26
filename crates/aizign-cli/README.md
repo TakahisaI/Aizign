@@ -43,12 +43,34 @@ echo '<request frame>' | aizign handle --state ./.aizign-state
 
 ## Opt-in timing
 
-`AIZIGN_TIMING_JSON=1`を設定すると、`handle`は通常のlogに加えて`aizign_timing:`で始まるmetadata-only JSONをstderrへ一行出します。
-request read、decode、journal open、committed-prefix read、verification hash、decode、replay、decision、appendと`sync_all`、publish-prefix hash、response encode、response write、handler totalを到達したstageだけ記録します。
-値にはallowlist済みoperation kind、semantic outcome、stable error code、journal physical byte数とcommitted entry数を含められますが、request ID、state path、本文、credentialは含めません。
-timingの生成や出力に失敗してもresponseとexit codeは変わりません。
-環境変数を設定しない通常経路はstage clock、observer、追加のjournal statを実行せず、非observed engine APIを使います。
+Setting `AIZIGN_TIMING_JSON=1` makes `handle` emit one additional
+metadata-only JSON line on stderr, prefixed with `aizign_timing:`. This is an
+internal, provisional child-runtime observation, not Protocol v1, package
+compatibility, workflow authority, or a stable public schema. Its current
+`schema_version: 1` is only an internal producer/consumer guard and provides no
+external stability or migration promise.
 
-fieldごとの計測区間は[`benchmarks/performance/README.md`](../../benchmarks/performance/README.md#計測区間)を参照してください。
+The record includes only reached stages: request read, decode, journal open,
+committed-prefix read, verification hash, decode, replay, decision, append and
+`sync_all`, publish-prefix hash, response encode, response write, and handler
+total. Values may include an allowlisted operation kind, the child runtime's
+`outcome` observation, a stable error code, journal physical bytes, and
+committed entries. Request IDs, state paths, content, and credentials are not
+included.
+
+The child `outcome` observation is source-qualified. It is not the returned
+client outcome or a parent transport observation, and these sources must not
+be treated as one universal semantic outcome. The
+[classification contract](../../spec/classification/README.md) defines the
+target authority; this contract-only slice does not make the current producer
+corpus-driven.
+
+Timing generation and output are best effort: failure does not change the
+response or exit code. Without the environment variable, the normal path does
+not run stage clocks, the observer, or the additional journal stat and uses the
+unobserved engine API.
+
+See the [performance runner documentation](../../benchmarks/performance/README.md#measurement-intervals)
+for field-level measurement intervals and the provisional lifecycle.
 
 `hello` responseの `journalSchemaVersion` は `aizign-store-jsonl` の定数から、`package.version` はこのcrateのversionから取ります。検証済みの `x86_64-unknown-linux-gnu` buildだけがsubmitとreconcileをadvertiseします。x32を含む別ABIや別architecture / libcのLinux、macOS、BSD、Windowsなどの未検証storage targetでは両capabilityをadvertiseせず、直接送られたrequestはstateへ触れず `CAPABILITY_UNSUPPORTED` を返します。

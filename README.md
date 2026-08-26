@@ -1,9 +1,15 @@
 # Aizign
 
 **Aizign is a provider-neutral orchestration core for software-change workflows.**
-A deterministic Rust core decides; harness-specific adapters act. The two talk over a
-versioned NDJSON process boundary, and every decision is backed by a metadata-only,
-append-only control journal — never by natural language, idle detection, or screen state.
+The current runtime accepts structured workflow signals, records accepted signals in a
+metadata-only append-only control journal, and performs bounded read-only reconciliation.
+Harness-specific adapters and the Rust core communicate through a versioned NDJSON process
+boundary. Natural language, idle detection, and screen state are never completion authority.
+
+The current Protocol v1 operation inventory is exactly `hello`,
+`workflow.signal.submit`, and `workflow.signal.reconcile`. Aizign does not yet dispatch,
+claim, record results for, or reconcile external effects. Those concepts are future and
+provisional; see the [architecture overview](docs/architecture/overview.md#futureprovisional-inventory).
 
 Aizignは、LLM harnessを使ったソフトウェア変更workflowのための、provider-neutralなorchestration coreです。
 判断はRust製の決定論的coreが行い、harness固有の操作は独立したadapter packageが行います。
@@ -18,7 +24,8 @@ Aizignは、LLM harnessを使ったソフトウェア変更workflowのための�
 LLM agentに実装・レビュー・修正を割り当てると、次の問題が繰り返し起きます。
 
 - agentの「終わりました」という発話やidle状態を完了と誤認する
-- 外部作用（prompt送信、commit、ref更新）の結果が不明なまま再送して二重実行する
+- future external effects such as prompt delivery, commits, or ref updates being retried
+  after an unknown result and therefore executing twice
 - harness固有のsession IDや thread IDがworkflowの識別子に混入し、harnessを差し替えられなくなる
 - promptやmodel outputが監査logへ漏れ、公開や共有ができなくなる
 
@@ -35,7 +42,7 @@ repository全体で固定した[hard invariants](docs/architecture/invariants.md
    aizign  (binary)
      ├── aizign-protocol      wire DTO / version / capability negotiation
      ├── aizign-store-jsonl   append-only, metadata-only control journal
-     └── aizign-engine        use case / effect claim / port definitions
+     └── aizign-engine        current submit/reconcile use cases and journal ports
              │
              ▼
          aizign-core          pure decisions: State + Command -> Decision

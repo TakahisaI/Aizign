@@ -1,16 +1,22 @@
 # Error codes
 
-stable short error codeの登録簿です。形式は `^[A-Z][A-Z0-9_]{0,63}$`。
-一度releaseしたcodeの意味を変えません。不要になったcodeは `deprecated` にし、再利用しません。
+This is the index of implemented stable short error codes. The wire syntax is
+`^[A-Z][A-Z0-9_]{0,63}$`. A released code is never reused or silently given a
+different meaning.
 
-wire schemaとdecoderが受理する構文集合はopenであり、この登録簿へのmembershipを
-decode時には要求しません。各operation clientは、認識済みの確定的codeだけを強い
-semantic outcomeへ分類します。正形式でも未認識のcodeは`unknown`であり、
-control-plane向け`reportedCode`としてのみ保持できます。operation別規則は
-[Protocol v1](../../spec/protocol/v1/README.md#operation-specific-client-classification)が正本です。
+Protocol schema and decoder membership remains open: a well-formed code does
+not have to appear in this index to decode. An unrecognized code has no stable
+classification meaning, remains client `unknown`, authorizes no retry, and may
+be retained only as a bounded control-plane `reportedCode` diagnostic. It is
+omitted from timing code disclosure.
 
-Statusは `reserved`（文書上で予約。実装はまだ）または `implemented`（source / fixtureに存在）。
-protocol fixtureが入った後は、`spec/protocol/v1/` が wire上のcodeの正本になり、この文書は索引になります。
+[`spec/protocol/v1/`](../../spec/protocol/v1/README.md#error-codes) owns wire
+syntax and fixed-code meaning. The
+[current-operation classification contract](../../spec/classification/README.md)
+owns source-qualified semantic classification and the later language-neutral
+rows. This index does not reserve names for future operations. In particular,
+future `EFFECT_*` vocabulary is not a current reservation or compatibility
+commitment.
 
 ## Protocol
 
@@ -58,13 +64,6 @@ protocol fixtureが入った後は、`spec/protocol/v1/` が wire上のcodeの�
 | `JOURNAL_OUTCOME_UNKNOWN` | appendのfile / metadata / directory barrierが確定しない、またはpublished boundaryを越えるtailがある。自動再送・reader側のpromote / repairをしない | implemented（同上） |
 | `JOURNAL_BOUND_EXCEEDED` | cold readのboundを超えた | implemented（同上） |
 
-## Effect
-
-| Code | 意味 | Status |
-|---|---|---|
-| `EFFECT_NOT_CLAIMED` | claimなしにeffect resultが報告された | reserved |
-| `EFFECT_OUTCOME_UNKNOWN` | effectの結果が確定できない。自動再送しない | reserved |
-
 ## Harness-facing（adapterが投げる）
 
 protocolのcodeではなく、adapterがharnessへ返す `HarnessError.code`。各adapterのREADMEが正本で、ここは索引。
@@ -75,8 +74,11 @@ protocolのcodeではなく、adapterがharnessへ返す `HarnessError.code`。�
 | `AIZIGN_INCOMPATIBLE` | protocol version / capabilityが合わない | `@aizign/adapter-dsh` |
 | `AIZIGN_OUTCOME_UNKNOWN` | 提出の結果が不明。再送しない | `@aizign/adapter-dsh` |
 
-## 追加の手順
+## Adding a code
 
-1. この表に `reserved` で追加する
-2. 実装とfixtureを追加し、`implemented` にする
-3. protocol上のcodeは `spec/protocol/v1/` にも登録する
+1. Establish the current operation, owner, wire meaning, and classification in
+   an accepted contract. Do not reserve a name for a future operation here.
+2. Add the implementation and Protocol fixture/schema evidence.
+3. Add the implemented code to this index and, in the Issue #75 implementation
+   slice or later, add its source-qualified classification row to the shared
+   corpus.

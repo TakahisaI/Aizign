@@ -42,7 +42,7 @@ assumptions, threat classification, and known limitations are defined in
 | Trusted bounded opaque handle | A length-limited string issued by a trusted boundary. The core compares/stores it but does not interpret external content. |
 | Model-supplied bounded metadata | The current DSH tool accepts `artifactRef` and `shortErrorCode` from the model, validates only their closed shape/value constraints, and may persist them in an accepted signal. |
 | Structured signal | A closed DTO containing kind and bounded optional metadata such as `findingCount`, `artifactRef`, or `shortErrorCode`. Closed shape does not imply trusted value provenance. |
-| Source-qualified disposition | Submit, core reconciliation, and harness-native observations keep separate authorities even when words such as `accepted` or `unknown` overlap. |
+| Source-qualified classification | Submit server disposition, client outcome, reconciliation disposition, child runtime observation, parent transport observation, and harness-native observation retain separate authorities even when words overlap. Cross-language classification ownership is defined by [`spec/classification/`](../../spec/classification/README.md); its corpus is planned for a later implementation slice. |
 | Recognized Protocol error code | A fixed code whose meaning is registered and recognized for the operation; safe for that operation's classification, not a raw provider error body. |
 | Model-supplied signal `shortErrorCode` or unrecognized peer code | A bounded diagnostic-shaped string matching `^[A-Z][A-Z0-9_]{0,63}$`. Shape alone provides no semantic provenance or content-safety guarantee. |
 | Bounded timestamp | Supplied by the shell. The deterministic core does not read a clock. |
@@ -74,7 +74,6 @@ cross the protocol boundary, and it does not permit `unknown` to be reclassified
 | Signal kind, disposition, and short error code | Environment, credential, secret, or token |
 | Digest and bounded opaque handle | Harness/provider/session/call/thread/delivery identity |
 | Bounded timestamp and append sequence | Browser profile or credential location |
-| Future effect-intent claim identity, only after its own contract exists | Unbounded external payload or artifact bytes |
 
 Journal records use a closed schema. `workflow.commit.json` contains only store
 metadata version, committed byte length, entry count, and SHA-256 of the
@@ -88,16 +87,38 @@ allowed string. Producers remain obligated by hard invariant 10 not to put
 such content there, but end-to-end allowed-value exclusion is not guaranteed in
 v0.1 while model-supplied `artifactRef` or `shortErrorCode` remains supported.
 
+Future effect-intent, claim, result, and reconciliation fields are not journal
+data today. Adding any such field requires an accepted contract that names the
+consumer and owner; Protocol kind/capability; durable record, authority, and
+state shape; failure and reconciliation semantics; and tests. This document
+does not reserve a field or design the store work in #81.
+
+## Source-qualified classifications
+
+| Source | Current meaning |
+|---|---|
+| Submit server disposition | The successful `workflow.signal.submit` response says only `accepted` or `duplicate`. A Protocol error response is not a submit disposition. |
+| Submit client outcome | A core client reports `accepted`, `duplicate`, `rejected`, or `unknown` after response decoding, correlation, operation-specific code classification, and transport observation. A local pre-transport failure produces no submit outcome. |
+| Reconciliation disposition | An exact committed snapshot produces `accepted`, `conflict`, or `absent`. Client inability to establish one of those facts remains `unknown`; it is not a server snapshot disposition. |
+| Child runtime observation | The `aizign` child may emit metadata-only operational timing about the handler path. It does not upgrade a wire result or establish what the parent observed. |
+| Parent transport observation | A caller may emit metadata-only timing about spawn, response, correlation, and the client outcome. It does not replace the child observation or harness evidence. |
+| Harness-native observation | Adapter-specific evidence is classified only under that adapter's documented source, attribution, durability, and retention contract. It cannot override the journal. |
+
+The [classification contract](../../spec/classification/README.md) owns the
+target cross-language classification and disclosure rows; its corpus is not
+present in this contract-only slice. These terms do not form a universal
+outcome service.
+
 ## Diagnostics and process environment
 
 | Boundary | Allowed output |
 |---|---|
 | `aizign` stdout | Exactly one Protocol v1 response frame |
-| `aizign` stderr | Normal diagnostics: stage, stable identity, kind, disposition, and stable code. Opt-in `aizign_timing:` JSON: allowlisted operation kind, durations/counts, semantic outcome, stable code, and unknown reason without request/event ID, path, or raw content. |
+| `aizign` stderr | Normal content-free operational diagnostics. Opt-in child-runtime timing is provisional operational evidence. Until the ordered classification implementation lands, the child keeps its independent mapping and may diverge from this contract; afterward, classification/code disclosure must be driven by the exact rows owned by `spec/classification/`. Neither stage creates a stable public compatibility promise. |
 | Human-readable Protocol error message | Operational control-plane diagnostic. Store and OS failures can include the configured state path or platform detail. It is not a model-safe field. |
 | DSH model-facing `HarnessError` | Stable code plus a fixed safe message for argument decoding, local Protocol validation, submit rejection, or unknown outcome. Raw argument keys, Protocol messages, and unknown detail are not forwarded; local Protocol errors are not retained as causes. |
 | Adapter log | Adapter-owned metadata under its documented policy; native IDs do not cross into the core |
-| Adapter/parent timing sink | Closed metadata-only timing values when explicitly configured. `error_code` is restricted to an exact fixed allowlist; a well-formed but unrecognized peer code remains on the returned control-plane outcome and is omitted from timing. Sink failure is isolated from workflow outcomes; sink retention/access remain caller-owned. |
+| Adapter/parent timing sink | Closed metadata-only parent transport observations when explicitly configured. Until the ordered classification implementation lands, parent consumers keep their independent mappings and may diverge from this contract; afterward, classification/code disclosure must be driven by the exact rows owned by `spec/classification/`. Timing remains provisional operational evidence, not a stable public compatibility contract. Sink failure is isolated from workflow outcomes; sink retention/access remain caller-owned. |
 | DSH child environment | `PATH` and explicitly configured client variables only; the parent harness environment is not inherited wholesale |
 
 Operational identity can itself be sensitive metadata. Log retention and sink

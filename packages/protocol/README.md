@@ -73,8 +73,22 @@ process spawn前に `ProtocolError(REQUEST_TOO_LARGE)` でrejectします。こ�
 `rejected`でもtransport後の`unknown`でもなく、`SubmitOutcome`を生成しないlocal
 failureです。
 
-`CoreClientConfig.timingSink`は任意のmetadata-only observation portです。
-clientは`spawn_to_exit_ms`、`response_first_byte_ms`、operation kind、semantic outcome、stable codeまたはunknown reasonだけを通知します。
-`unknown`は診断codeによって確定outcomeへ縮約しません。
-共通のbest-effort emitterが同期throwと非同期Promise rejectionを隔離するため、sink failureはworkflowへ伝播しません。
-request ID、signal identity、path、本文はmeasurement型に存在しません。
+`CoreClientConfig.timingSink` is an optional metadata-only parent observation
+port. It reports `spawn_to_exit_ms`, `response_first_byte_ms`, operation kind,
+the parent's source-qualified `outcome` observation, and an allowlisted stable
+code or unknown reason. A diagnostic code never narrows `unknown` to a definite
+outcome.
+
+This API remains available, but it is internal, provisional operational
+evidence rather than Protocol v1, package compatibility, workflow authority,
+or a stable public timing schema. A parent transport observation is distinct
+from the client outcome and from a child runtime observation; the three must
+not be treated as one universal semantic outcome. The
+[classification contract](../../spec/classification/README.md) defines the
+target authority; this contract-only slice leaves the existing API and source
+unchanged until the ordered corpus/consumer implementation.
+
+The shared best-effort emitter isolates synchronous throws and asynchronous
+Promise rejections, so sink failure cannot propagate into the workflow.
+Request IDs, signal identity, paths, and content do not exist in the
+measurement type.

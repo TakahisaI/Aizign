@@ -1,6 +1,6 @@
 # Compatibility
 
-## 三つのversion
+## Version boundaries
 
 | Version | 現在 | 管理 |
 |---|---|---|
@@ -14,6 +14,32 @@ adapterはpackage versionの完全一致ではなく、`hello` で得たprotocol
 初期のcommitted-prefix JSONL storeは `x86_64-unknown-linux-gnu` だけが検証済みで、x32を含む別ABIや別architecture / libcのLinuxなど、その他のbuildはsubmit / reconcile capabilityをadvertiseしません。
 x32は、64-bit targetと誤認しないことをCIでcross-compileするnegative boundaryに限定し、runtime support、release artifact、support claimは提供しません。
 同じstate directoryを旧binaryで開くdowngradeはunsupportedであり、技術的には防止していません。旧binaryがcommit metadataを無視できるため、operatorは別のstate directoryを使用する必要があります。
+
+## Provisional timing evidence
+
+Opt-in timing is internal, provisional operational evidence. It is not part of
+Protocol v1, package compatibility, workflow authority, or a stable public
+schema. In particular, the child timing record's current `schema_version: 1`
+is only an internal producer/consumer guard. It carries no external stability
+or migration promise.
+
+The existing child and parent timing sources and APIs remain available, but
+their observations are source-qualified. A child runtime observation and a
+parent transport observation must not be interpreted as one universal
+semantic outcome. The
+[classification contract](../../spec/classification/README.md) defines the
+target cross-language authority; the planned corpus and consumer migration
+follow the ordered implementation work described there. That ownership does
+not promote timing into a compatibility surface or claim that current
+producers are already corpus-driven.
+
+This contract-only classification changes no timing API or producer. Its
+provisional status does not weaken the current metadata-only shape or the
+guarantee that observer/sink failure cannot change a workflow result.
+
+Stabilizing timing later requires a separate accepted decision that defines an
+owner, an independent version and lifecycle, intended consumers, and explicit
+compatibility and migration rules.
 
 ## Security and guarantee limits
 

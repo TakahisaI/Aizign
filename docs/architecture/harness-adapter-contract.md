@@ -13,6 +13,7 @@ The authorities are deliberately separate:
 | Core--adapter wire format, schemas, kinds, and stable codes | [`spec/protocol/v1/`](../../spec/protocol/v1/README.md) |
 | Decoder acceptance and full-codec round-trip fixtures | [`spec/conformance/`](../../spec/conformance/README.md) |
 | Language-neutral directional encoder scenarios | [`spec/conformance/encoder-scenarios.md`](../../spec/conformance/encoder-scenarios.md) |
+| Cross-language classification ownership and planned timing-disclosure rows for current operations | [`spec/classification/`](../../spec/classification/README.md) |
 | Harness-native behavior | The adapter's README, source, and native tests |
 | TypeScript reference APIs and runner behavior | [`packages/protocol/`](../../packages/protocol/README.md) and [`packages/adapter-testkit/`](../../packages/adapter-testkit/README.md) |
 
@@ -52,8 +53,9 @@ A v0.1 signal-submission adapter must:
    `requestId`;
 7. validate response `requestId`, `kind`, and, where applicable, `eventId`
    correlation;
-8. preserve the submit classification as `accepted`, `duplicate`, `rejected`,
-   or `unknown`;
+8. preserve the submit client outcome as `accepted`, `duplicate`, `rejected`,
+   or `unknown`, without presenting a client-derived result as a server
+   disposition;
 9. never infer success, rejection, or absence from `unknown`, and never blindly
    retry an unknown submission;
 10. use the closed protocol field set, add no dedicated raw-content or
@@ -89,17 +91,21 @@ the Aizign wire authority.
 Each request uses an adapter-owned nonce for `requestId`. Native harness
 identifiers must not be repurposed as correlation or workflow identity.
 
-## Source-qualified outcomes
+## Source-qualified classifications
 
 Similar words from different sources do not carry the same authority.
 
-| Source | Outcome vocabulary | Meaning |
+| Source | Vocabulary | Meaning |
 |---|---|---|
-| Signal submission | `accepted`, `duplicate`, `rejected`, `unknown` | Result of the attempted core submit operation |
-| Core journal reconciliation | `accepted`, `conflict`, `absent`, `unknown` | Read-only classification of the exact full signal against the committed Aizign journal |
+| Submit server disposition | `accepted`, `duplicate` | Success payload returned by `workflow.signal.submit`; an error response is not a disposition |
+| Submit client outcome | `accepted`, `duplicate`, `rejected`, `unknown` | Result produced by a client after response, code, correlation, and transport classification |
+| Reconciliation disposition | `accepted`, `conflict`, `absent` | Server classification of the exact complete signal against a decoded committed snapshot |
+| Reconciliation client observation | the disposition above, or `unknown` | What the client can establish after response and transport checks; `unknown` is not a snapshot disposition |
+| Child runtime observation | Current metadata-only handler timing vocabulary | What the `aizign` child observed while handling an operation; provisional operational evidence only |
+| Parent transport observation | Current metadata-only spawn/response/client timing vocabulary | What the caller observed across the process boundary; provisional operational evidence only |
 | Harness-native observation | Adapter-specific | Classification of native records under that adapter's documented evidence contract |
 
-Submission classifications have these meanings:
+Submit client outcomes have these meanings:
 
 - `accepted`: the core reports that the exact signal was accepted and durably
   recorded under the journal contract;
@@ -109,11 +115,20 @@ Submission classifications have these meanings:
   rejection code recognized for this operation; and
 - `unknown`: the client cannot establish whether this request took effect.
 
-The Protocol error-code syntax is open. A submit client may return `rejected`
+The Protocol error-code syntax is open. The current operation/code mappings are
+owned by the [classification contract](../../spec/classification/README.md),
+whose corpus is planned for a later implementation slice, not by a duplicated
+table in this document. A submit client may return `rejected`
 only for its closed allowlist of codes whose operation semantics establish a
 definitive refusal. It must preserve any well-formed but unrecognized code as
 diagnostic `reportedCode`, classify the submit as `unknown`, and never retry it
-implicitly. Reconciliation classifies every error response as `unknown`.
+implicitly. Reconciliation clients classify every error response as `unknown`.
+
+Child runtime timing, parent transport timing, and harness-native evidence are
+separate observations; none can be substituted for another or used to upgrade
+a server disposition or client outcome. Timing is provisional operational
+evidence, not a stable public compatibility contract. This vocabulary split
+does not create a universal classification or outcome service.
 
 `unknown` is terminal knowledge about the observation, not permission to retry.
 A caller may perform a separately defined read-only reconciliation or another
@@ -345,12 +360,20 @@ tests.
 
 ## Provisional operations
 
-Interrupt, effect dispatch, resource release, session or agent ownership,
-general lifecycle hooks, remote reconnect, and an adapter-owned durable sidecar
-have no generic v0.1 contract. Do not publish stable capability tokens,
-placeholder dispatch, or shared runtime abstractions for them. A dedicated
-Issue or ADR must first define the consumer, authority, failure and absence
-semantics, and data boundary.
+External-effect intent, claim, dispatch, result recording, and effect
+reconciliation have no current consumer, owner, Protocol kind/capability,
+public API, durable record, state shape, or runtime operation. Interrupt,
+resource release, session or agent ownership, general lifecycle hooks, remote
+reconnect, and an adapter-owned durable sidecar likewise have no generic v0.1
+contract.
+
+Do not publish stable capability tokens, placeholder dispatch, or shared
+runtime abstractions for these concepts. Promotion requires a dedicated
+accepted Issue and any required ADR that name the consumer and owner; define
+the Protocol kind/capability; define the durable record, authority, and state
+shape; define failure, unknown, retry, absence, and reconciliation semantics;
+and identify executable tests. This inventory does not decide #83, #78, #81,
+#72, or #87.
 
 ## Negative constraints
 

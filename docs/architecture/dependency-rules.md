@@ -80,9 +80,16 @@ contractの正本は[`harness-adapter-contract.md`](harness-adapter-contract.md)
 | `Journal` | `aizign-engine` | `aizign-store-jsonl`、`aizign-testkit`（`MemoryJournal`） | 実装済み（`JournalReader`を拡張） |
 | `Clock` | `aizign-engine` | `aizign-cli`（system）、`aizign-testkit`（`FixedClock`） | 実装済み |
 | `EngineObserver` | `aizign-engine` | `aizign-cli`（opt-in timing） | 実装済み。engineは時計とI/Oを持たず、callback panicをbest-effort境界で隔離する |
-| `EffectSink` | `aizign-engine` | `aizign-cli`（protocol responseとして返す） | 後続 |
 | Harness adapter behavioral contract | `docs/architecture/harness-adapter-contract.md` | 各adapter |
 | Core--adapter wire contract | `spec/protocol/` | Rust / TypeScript codec、各adapter |
+
+There is no current external-effect port. A future port or executor dependency
+is provisional and is not reserved to `aizign-engine`, `aizign-cli`, or any
+other package. Promotion requires an accepted Issue and any required ADR that
+name the consumer and owner; define the Protocol kind/capability; define the
+durable record, authority, and state shape; define failure, unknown, retry, and
+reconciliation semantics; and identify tests. This rule preserves dependency
+direction without deciding #87.
 
 ## 横断的な置き場の禁止
 

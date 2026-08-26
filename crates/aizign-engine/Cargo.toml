@@ -1,6 +1,6 @@
 [package]
 name = "aizign-engine"
-description = "Aizign application engine: use cases, ports, and effect claims around the core"
+description = "Aizign application engine for signal submission and reconciliation"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
