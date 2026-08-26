@@ -7,30 +7,42 @@ import { spawn } from 'node:child_process';
 import {
   type CallOptions,
   type CoreClient,
-  type CoreClientConfig,
   checkCorrelation,
   decodeResponse,
-  emitBestEffort,
   encodeRequest,
   type HelloOutcome,
   isSubmitRejectionCode,
-  isTimingErrorCode,
   isUnknownOutcomeCode,
   MAX_FRAME_BYTES,
   OneShotFrameCollector,
-  type ParentOperationKind,
-  type ParentTimingMeasurement,
-  parentTimingOutcome,
   type ReconcileOutcome,
   type ReconcileUnknown,
   type Response,
   type SentRequest,
   type SubmitOutcome,
-  type TimingOutcome,
   type UnknownOutcome,
   type WorkflowSignalReconcilePayload,
   type WorkflowSignalSubmitPayload,
 } from '@aizign/protocol';
+import {
+  emitBestEffort,
+  isTimingErrorCode,
+  type ParentOperationKind,
+  type ParentTimingMeasurement,
+  type ParentTimingSink,
+  parentTimingOutcome,
+  type TimingOutcome,
+} from '../timing.ts';
+
+/** DSH-owned configuration for one direct child process per Protocol operation. */
+export interface OneShotCoreClientConfig {
+  readonly command: string;
+  readonly args?: readonly string[];
+  readonly env?: Readonly<Record<string, string>>;
+  readonly stateDir: string;
+  readonly timeoutMs: number;
+  readonly timingSink?: ParentTimingSink;
+}
 
 type TransportTiming = Pick<ParentTimingMeasurement, 'spawn_to_exit_ms' | 'response_first_byte_ms'>;
 
@@ -60,9 +72,9 @@ function reportedUnknown(code: string, message: string): UnknownOutcome {
 }
 
 export class OneShotCoreClient implements CoreClient {
-  readonly #config: CoreClientConfig;
+  readonly #config: OneShotCoreClientConfig;
 
-  constructor(config: CoreClientConfig) {
+  constructor(config: OneShotCoreClientConfig) {
     this.#config = config;
   }
 

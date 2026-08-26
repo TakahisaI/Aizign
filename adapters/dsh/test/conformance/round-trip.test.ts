@@ -12,7 +12,8 @@ import { test } from 'node:test';
 import { assertMetadataOnly, readFakeRequests } from '@aizign/adapter-testkit';
 import type { Config } from '../../src/config.ts';
 import { readSignalEvidence } from '../../src/evidence/cold-read.ts';
-import { apply, codes, TOOL_NAME } from '../../src/index.ts';
+import { apply } from '../../src/index.ts';
+import { adapterCodes as codes, TOOL_NAME } from '../../src/mapping/tool.ts';
 import { FakeDsh, fakeBinary } from '../helpers/fake-dsh.ts';
 
 function config(binary: string, stateDir: string): Config {

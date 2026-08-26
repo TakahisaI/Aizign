@@ -2,7 +2,7 @@
   "name": "@aizign/adapter-testkit",
   "version": "0.1.0",
   "private": true,
-  "description": "Fake core process, one-shot client, and TypeScript reference core-client conformance runner",
+  "description": "Fake core process, fixtures, assertions, and production-client conformance runners",
   "license": "Apache-2.0 OR MIT",
   "repository": {
     "type": "git",

@@ -2,6 +2,11 @@
 
 The performance runner uses the release-profile `aizign` binary and TypeScript clients. Baseline mode produces full manual/scheduled observations. PR-smoke mode uses a smaller matrix and generous absolute ceilings for gross-regression detection.
 
+Current runner version 6 labels the TypeScript transport
+`typescript_dsh` and exercises the production DSH `OneShotCoreClient` through
+declared package subpaths. Historical v2/v3/v5 artifacts and their labels are
+retained unchanged; they are not comparable evidence for a new v6 baseline.
+
 ## 実行環境
 
 storage capabilityを検証済みの`x86_64-unknown-linux-gnu` binaryが必要です。
@@ -49,8 +54,9 @@ schema. The child record's current `schema_version: 1` is only an internal
 producer/consumer guard. It provides no external stability or migration
 promise.
 
-The existing child, parent, and DSH timing sources and APIs remain unchanged by
-this contract-only alignment. Their observations are source-qualified: child
+The existing child and DSH-owned parent/evidence timing semantics remain
+unchanged by the transport-owner migration. Their observations are
+source-qualified: child
 runtime observation, returned client outcome, parent transport observation,
 and DSH evidence observation are not one universal semantic outcome. The
 [classification contract](../../spec/classification/README.md) defines the
@@ -100,7 +106,9 @@ opt inしていない通常経路は追加のstage clock、observer、journal st
 | `error_code` | error responseに含まれるstable code |
 | `operation_kind` | `hello`、`workflow.signal.submit`、`workflow.signal.reconcile`、`unknown`の有限集合。decode前の入力文字列は転記しない |
 
-Parent timing is enabled with `CoreClientConfig.timingSink`.
+Parent timing is enabled with DSH-owned
+`OneShotCoreClientConfig.timingSink` from the closed provisional
+`@aizign/adapter-dsh/experimental/transport` subpath.
 `spawn_to_exit_ms` measures from the spawn call to Node's child `exit` event,
 and `response_first_byte_ms` measures to the first stdout byte. Because the CLI
 writes one response frame at once, the first byte approximates response-ready
@@ -124,11 +132,11 @@ runnerは一つの大きな直積を作らず、問いごとにfixtureを限定�
 |---|---|
 | `journal-scale` | accepted、duplicate、bound exceeded、absent lookupがjournal規模でどう変わるか |
 | `outcomes` | submitとreconcileの各semantic outcomeでstage構成がどう違うか |
-| `transport` | 同じfixtureでdirect Node runnerと`ReferenceOneShotClient`のparent観測がどう違うか |
+| `transport` | 同じfixtureでbenchmark-only direct Node runnerとproduction DSH `OneShotCoreClient`のparent観測がどう違うか |
 | `max-payload` | 128-byte識別子と256-byte `artifactRef`を使う1,000 / 10,000-entryのsubmitとreconcile |
 | `concurrency` | 同じstate directoryと独立state directoryで、同時実行数1、2、4、8がどう振る舞うか |
 | `dsh` | 100、1,000、10,000 eventのin-memory evidence scanとdeterministic file-backed read |
-| `scenarios` | reference clientによるassignment submitと、実際のlost acknowledgement後の明示的なreconcile |
+| `scenarios` | production DSH clientによるassignment submitと、実際のlost acknowledgement後の明示的なreconcile |
 
 accepted fixtureはjournal上限10,000の一つ手前まで、duplicate fixtureは照合対象を含む1 entry以上だけを生成します。
 bound exceededは10,000 entryから新規submitし、lookupはread-onlyのまま0から10,000 entryを走査します。
@@ -146,7 +154,8 @@ same-state submitは`accepted`または`JOURNAL_LOCKED`だけを許可し、最�
 different-state submitは全件`accepted`、reconcileは両modeとも全件`absent`を要求し、それ以外の結果ではartifactを保存せずrunを失敗させます。
 summaryはbatch latency、成功throughput、accepted数、`JOURNAL_LOCKED`数、想定外件数、error codeを専用tableへ出力します。
 
-lost acknowledgement scenarioは、同じstate directoryを使う二つの`ReferenceOneShotClient` instanceを用意します。
+lost acknowledgement scenarioは、同じstate directoryを使う二つのproduction
+DSH `OneShotCoreClient` instanceを用意します。
 preflightとreconcileは実binaryへ直接接続し、submitだけをbenchmark専用proxyへ接続します。
 proxyは実binaryによるdurable appendとresponse生成を完了させてからsubmitのstdout frameだけを破棄します。
 runnerはclientが`unknown/no_response`を返したこと、proxy経由のsubmitが一回だけであること、direct clientから一度だけreconcileして`accepted`になることをassertします。

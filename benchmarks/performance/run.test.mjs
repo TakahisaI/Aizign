@@ -16,15 +16,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { isTimingErrorCode } from '@aizign/adapter-dsh/experimental/transport';
 import {
   checkCorrelation,
   decodeResponse,
   extractFrame,
   isSubmitRejectionCode,
-  isTimingErrorCode,
   MAX_FRAME_BYTES,
   OneShotFrameCollector,
-} from '../../packages/protocol/lib/index.js';
+} from '@aizign/protocol';
 import { BoundedBuffer } from './bounded-buffer.mjs';
 import {
   evaluatePrSmokeBudgets,
@@ -64,10 +64,12 @@ import {
   MAX_BENCHMARK_STDERR_BYTES,
   main,
   parseArgs,
+  RUNNER_VERSION,
   renderStageAttribution,
   renderSummary,
   runProcess,
   seedFixture,
+  TYPESCRIPT_TRANSPORT,
   writeSmokeFailure,
 } from './run.mjs';
 
@@ -80,6 +82,11 @@ const PROTOCOL = {
   MAX_FRAME_BYTES,
   OneShotFrameCollector,
 };
+
+test('runner v6 names the production TypeScript transport explicitly', () => {
+  assert.equal(RUNNER_VERSION, 6);
+  assert.equal(TYPESCRIPT_TRANSPORT, 'typescript_dsh');
+});
 
 function renderAggregates(aggregates, samples = 2) {
   return renderSummary({
@@ -871,7 +878,7 @@ test('lost-ACK scenario proxies only submit and verifies its counter outside e2e
   const root = mkdtempSync(join(tmpdir(), 'aizign-scenario-routing-'));
   const instances = [];
   const events = [];
-  class FakeReferenceOneShotClient {
+  class FakeOneShotCoreClient {
     constructor(config) {
       this.config = config;
       this.route = config.command === process.execPath ? 'proxy' : 'direct';
@@ -923,7 +930,7 @@ test('lost-ACK scenario proxies only submit and verifies its counter outside e2e
         config: { binary: '/fake/aizign' },
         nextState: (label) => join(root, `${++stateSequence}-${label}`),
         dependencies: {
-          ReferenceOneShotClient: FakeReferenceOneShotClient,
+          OneShotCoreClient: FakeOneShotCoreClient,
           preflight: async (client, options) => {
             await client.hello();
             options.timingSink({ operation_kind: 'preflight', preflight_ms: 4, outcome: 'ok' });

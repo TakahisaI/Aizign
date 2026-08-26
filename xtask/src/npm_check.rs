@@ -2,9 +2,9 @@
 //! reproducible install, then `npm run check` (lint, build, typecheck, test,
 //! pack inspection). On the verified `x86_64-unknown-linux-gnu` target, the
 //! real `aizign` binary is built first and handed to the tests through
-//! `AIZIGN_BINARY`, so the TypeScript reference client is exercised against
-//! the storage/process boundary, not only the fake core. Other targets run
-//! the fake-core suite.
+//! `AIZIGN_BINARY`, so the production DSH client is exercised against the
+//! storage/process boundary, not only the fake core. Other targets run the
+//! same DSH client against the fake-core suite.
 //! Skipped with a notice when the workspace has no packages yet, so the
 //! Rust-only path keeps working without Node.
 

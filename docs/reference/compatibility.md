@@ -23,19 +23,22 @@ schema. In particular, the child timing record's current `schema_version: 1`
 is only an internal producer/consumer guard. It carries no external stability
 or migration promise.
 
-The existing child and parent timing sources and APIs remain available, but
-their observations are source-qualified. A child runtime observation and a
-parent transport observation must not be interpreted as one universal
-semantic outcome. The
+The existing child timing source and DSH-owned provisional parent/evidence
+timing APIs remain available, but their observations are source-qualified. A
+child runtime observation and a parent transport observation must not be
+interpreted as one universal semantic outcome. Process, preflight, and parent
+timing are not Protocol package compatibility; repository consumers reach them
+only through the closed DSH experimental subpaths. The
 [classification contract](../../spec/classification/README.md) defines the
 target cross-language authority; the planned corpus and consumer migration
 follow the ordered implementation work described there. That ownership does
 not promote timing into a compatibility surface or claim that current
 producers are already corpus-driven.
 
-This contract-only classification changes no timing API or producer. Its
-provisional status does not weaken the current metadata-only shape or the
-guarantee that observer/sink failure cannot change a workflow result.
+The Issue #89 ownership move changes the package/import owner but not timing
+fields, units, intervals, classification, or sink isolation. Its provisional
+status does not weaken the current metadata-only shape or the guarantee that
+observer/sink failure cannot change a workflow result.
 
 Stabilizing timing later requires a separate accepted decision that defines an
 owner, an independent version and lifecycle, intended consumers, and explicit
@@ -83,4 +86,4 @@ Node.jsは `24.19.0`（LTS）、npmは `12.0.2` に固定しています。DSH a
 
 | Harness | Adapter | Supported version | Status |
 |---|---|---|---|
-| DSH | `@aizign/adapter-dsh` | `0.1.1-rc.2`（`@deepseek-ai/cordis` 4.0.1、`schemastery` 3.18.1） | preflight + scope-bound tool + core client。fake harnessに加え、第三者（別harness・別model）によるDSH × Firefoxのlive smokeがpass（2026-08-23、commit `fd0e208`、[Issue #11](https://github.com/TakahisaI/Aizign/issues/11)） |
+| DSH | `@aizign/adapter-dsh` | `0.1.1-rc.2`（`@deepseek-ai/cordis` 4.0.1、`schemastery` 3.18.1） | stable rootはplugin entryのみ。preflight + scope-bound tool +唯一のproduction TypeScript one-shot clientを持ち、repository control-plane用transport/evidenceはclosed experimental subpath。fake harnessに加え、第三者（別harness・別model）によるDSH × Firefoxのlive smokeがpass（2026-08-23、commit `fd0e208`、[Issue #11](https://github.com/TakahisaI/Aizign/issues/11)） |

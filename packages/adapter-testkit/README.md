@@ -1,19 +1,19 @@
 # @aizign/adapter-testkit
 
-Exercise the TypeScript reference `CoreClient` against a fake core — including
-every way an outcome can be **unknown** — without the real `aizign` binary, a
-harness, or a network.
+Apply language-neutral `CoreClient` scenarios to a supplied production client
+against a fake core — including every way an outcome can be **unknown** —
+without a harness or a network.
 
 | | |
 |---|---|
-| **Responsibility** | fake core process（Protocol v1、JSON state、fault injection）、`runCoreScenarios`（fakeでも実binaryでも）、`runFaultScenarios`（fakeのみ）、`runCoreClientConformance`（両方）、`ReferenceOneShotClient`（参照実装）、`assertMetadataOnly`、`samplePayload` |
-| **Non-responsibility** | 本番でのcore client（adapterが所有）、harness固有のfake（adapter側の `test/` が持つ） |
-| **Inputs** | `CoreClientFactory`（`CoreClientConfig` → `CoreClient`） |
+| **Responsibility** | fake core process（Protocol v1、JSON state、fault injection）、`runCoreScenarios`（fakeでも実binaryでも）、内部fault scenarioを含む`runCoreClientConformance`、`assertMetadataOnly`、`samplePayload` |
+| **Non-responsibility** | production core client、process/timing policy、harness固有のfake（すべてadapter側が持つ） |
+| **Inputs** | `CoreClientFactory`（testkit-owned `CoreClientFixtureConfig` → Protocol `CoreClient`） |
 | **Outputs** | `node:assert` による検証。違反で例外 |
-| **Hard invariants** | no-response / garbage / invalid UTF-8 / hang / `JOURNAL_OUTCOME_UNKNOWN` / 未認識だが正形式のpeer code / spawn失敗は **すべて `unknown`**（成功にも失敗にも縮約しない、再送しない）、submit / reconciliationの相関不一致でもerror codeを診断用`reportedCode`として保持、未認識codeはmetadata-only timingから除外、reconciliationのaccepted / conflict / absentを検証、lost acknowledgement後もblind submit retryしない、harness IDや本文がframeに現れない |
+| **Hard invariants** | supplied production clientに対してno-response / garbage / invalid UTF-8 / hang / `JOURNAL_OUTCOME_UNKNOWN` / 未認識だが正形式のpeer code / spawn失敗を **すべて `unknown`** と検査する（成功にも失敗にも縮約しない、再送しない）、submit / reconciliationの相関不一致でもerror codeを診断用`reportedCode`として保持、reconciliationのaccepted / conflict / absentを検証、lost acknowledgement後もblind submit retryしない、harness IDや本文がframeに現れない |
 | **Allowed dependencies** | `@aizign/protocol` |
 | **Test command** | `npm test -w @aizign/adapter-testkit` |
-| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md) |
+| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0020](../../docs/adr/0020-narrow-typescript-exports-and-own-dsh-transport.md) |
 
 ## Security boundary
 
@@ -26,7 +26,7 @@ and environment-isolation tests. See the
 
 言語中立のscenario requirementは
 [`harness-adapter-contract.md`](../../docs/architecture/harness-adapter-contract.md)
-が所有します。このpackageはTypeScript reference / convenience layerであり、
+が所有します。このpackageはTypeScript test convenience layerであり、
 全adapterに共通の実行可能interfaceではありません。現在のrunnerはsubmitと
 reconcileのcore-client operation surfaceを検査します。runnerの通過だけでは、
 identity provenance、model-visible schema、native registration / preflightなどの
@@ -40,13 +40,14 @@ src/
 ├── index.ts
 ├── fake-core.ts           node fake-core.js hello | handle --state <dir>。submit / reconcile stateとfault injection
 ├── fake-core-path.ts      fakeCoreCommand(): { command: process.execPath, args: [fake-core] }
-├── reference-client.ts    ReferenceOneShotClient: spawn → 1 frame → 1 frame → unknownの分類
 ├── conformance.ts         runCoreScenarios / runFaultScenarios / runCoreClientConformance、samplePayload、assertMetadataOnly
-├── reference-client.test.ts   fake coreに対する全scenario
-└── real-binary.test.ts        AIZIGN_BINARY が指す実binaryに対する core scenario（未設定ならskip）
+└── conformance.test.ts    testkit-owned assertionのunit test
 ```
 
-`cargo xtask npm-check` は `x86_64-unknown-linux-gnu` 上で `aizign` をbuildして `AIZIGN_BINARY` を渡すので、TypeScript client ↔ 実binary ↔ JSONL journal の往復も通常の検査に含まれます。未検証storage targetでは実binary scenarioをskipし、x86_64 GNU/Linux CIを正本とします。
+`cargo xtask npm-check` は `x86_64-unknown-linux-gnu` 上で `aizign` をbuildして
+`AIZIGN_BINARY` をDSH conformanceへ渡します。production
+`OneShotCoreClient` ↔ 実binary ↔ JSONL journal の往復が通常の検査に含まれます。
+未検証storage targetでは実binary scenarioをskipし、x86_64 GNU/Linux CIを正本とします。
 
 ## adapterからの使い方
 
@@ -95,5 +96,8 @@ provenanceまでは証明しません。adapter側は、実際のnative ID値が
 のどこにも現れないことと、`requestId`がadapter-owned nonceであることを別途検査
 します。
 
-`ReferenceOneShotClient`は`CoreClientConfig.timingSink`がある場合だけparent timingを通知します。
-計測を無効にした既定動作は変わらず、sinkがthrowしてもcore-client scenarioのoutcomeは変わりません。
+このpackageはparent timingを定義・検査しません。DSH固有のtiming shape、code
+disclosure、sink isolationはproduction `OneShotCoreClient`のDSH testsが所有します。
+`runFaultScenarios`と`FORBIDDEN_KEYS`はroot exportではなく、公開runner/assertionの
+内部実装です。root runtime/type exportはexact allowlistであり、deep importは
+supportされません。

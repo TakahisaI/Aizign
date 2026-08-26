@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { MAX_FRAME_BYTES } from '../../packages/protocol/lib/index.js';
+import { MAX_FRAME_BYTES } from '@aizign/protocol';
 import { BoundedBuffer } from './bounded-buffer.mjs';
 
 function requestEnvelope(input) {

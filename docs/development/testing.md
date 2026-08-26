@@ -40,7 +40,7 @@ See [`xtask/README.md`](../../xtask/README.md#quick-profiles) for each profile's
 
 - 通常のtestはfake harnessとfake core processで完結する。実harness、browser、providerを起動しない
 - core CI（`Rust` job）はNodeやDSHがなくても単独で成功する
-- `TypeScript` jobは実 `aizign` binaryをbuildし、TypeScript client → binary → JSONL journal の往復を `@aizign/adapter-testkit` の `runCoreScenarios` で検査する
+- `TypeScript` jobは実 `aizign` binaryをbuildし、production DSH `OneShotCoreClient` → binary → JSONL journal の往復を、DSH conformanceから `@aizign/adapter-testkit` の `runCoreScenarios` を直接適用して検査する。testkit自身はproduction clientを持たない
 - live smokeは `workflow_dispatch` またはlocal opt-inだけ。成否を通常releaseのrequired checkにしない
 - runtime performance baselineはscheduledまたはmanualだけで実行し、pull request gateにしない。契約とsamplingは[`benchmarks/performance/README.md`](../../benchmarks/performance/README.md)を参照する
 

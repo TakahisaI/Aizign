@@ -8,17 +8,19 @@ import {
   CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
   type CoreClient,
   checkCompatibility,
-  emitBestEffort,
   type HelloInfo,
-  isTimingErrorCode,
-  type ParentTimingMeasurement,
-  type ParentTimingSink,
   PROTOCOL_VERSION,
   codes as protocolCodes,
-  type TimingOutcome,
 } from '@aizign/protocol';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import { adapterCodes } from '../mapping/tool.ts';
+import {
+  emitBestEffort,
+  isTimingErrorCode,
+  type ParentTimingMeasurement,
+  type ParentTimingSink,
+  type TimingOutcome,
+} from '../timing.ts';
 
 export const REQUIRED = {
   protocolVersion: PROTOCOL_VERSION,

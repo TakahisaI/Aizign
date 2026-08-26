@@ -7,13 +7,13 @@ interface.
 | | |
 |---|---|
 | **Responsibility** | `decodeRequest` / `encodeRequest` / `decodeResponse` / `encodeResponse`（両方向 `MAX_FRAME_BYTES`）、`extractFrame`（完全なstdoutがframe 1つだけか）、`OneShotFrameCollector`（LFまでのframeをboundedに保持し末尾ASCII whitespaceを保存せず検査）、`checkCorrelation`（`requestId` / `kind` / `eventId` の照合）、`hello` の `checkCompatibility`、submit / reconcileのpayload型とclosed decoder、`CoreClient` / submit・reconcile outcomeの契約型 |
-| **Non-responsibility** | process起動、filesystem、harness固有型、判断（coreの責務。decoderはcoreと同じ入力規則で **事前に** 拒否するだけ） |
+| **Non-responsibility** | process起動・environment・timeout・preflight・parent timing、filesystem、harness固有型、判断（coreの責務。decoderはcoreと同じ入力規則で **事前に** 拒否するだけ） |
 | **Inputs** | frame（`Uint8Array` / `string`）、payload object |
 | **Outputs** | `Request` / `Response`、`DecodeFailure`（復元した `requestId` / `kind` 付き）、`ProtocolError` |
 | **Hard invariants** | BOMなしUTF-8、well-formed Unicode、closed schema（未知field、`null`、未登録kindを拒否）、submit / reconcileのsignalをRustと同じ規則でdecode、`spec/conformance` の全fixtureでRust実装と同じcodeと復元IDを返す、reconciliationの全failureは`unknown`、valid error codeは相関検査より先に`reportedCode`へ保持、blind retryしない |
 | **Allowed dependencies** | なし（runtime）。dev: workspace rootの `typescript` / `@biomejs/biome` / `@types/node` |
 | **Test command** | `npm test -w @aizign/protocol`（`node --test`、型はNodeがstripする） |
-| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md) |
+| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0020](../../docs/adr/0020-narrow-typescript-exports-and-own-dsh-transport.md) |
 
 ## Security boundary
 
@@ -37,7 +37,7 @@ src/
 ├── error.ts              ProtocolError、codes、SHORT_ERROR_CODE_PATTERN
 ├── hello.ts              HelloInfo、decodeHelloInfo、checkCompatibility
 ├── workflow-signal.ts    shared signal、submit / reconcile payload、result decoder
-├── client.ts             CoreClient、CoreClientConfig、Hello / Submit / ReconcileOutcome、UNKNOWN_OUTCOME_CODES
+├── client.ts             Node-free CoreClient、correlation、Hello / Submit / ReconcileOutcome、current classification helpers
 ├── shape.ts              isPlainObject、assertOnlyKeys、IDENTIFIER_PATTERN
 └── *.test.ts             conformance（spec/conformance全件）、hello、envelope
 ```
@@ -73,22 +73,16 @@ process spawn前に `ProtocolError(REQUEST_TOO_LARGE)` でrejectします。こ�
 `rejected`でもtransport後の`unknown`でもなく、`SubmitOutcome`を生成しないlocal
 failureです。
 
-`CoreClientConfig.timingSink` is an optional metadata-only parent observation
-port. It reports `spawn_to_exit_ms`, `response_first_byte_ms`, operation kind,
-the parent's source-qualified `outcome` observation, and an allowlisted stable
-code or unknown reason. A diagnostic code never narrows `unknown` to a definite
-outcome.
+Process configuration, preflight, and parent timing are owned by the DSH
+adapter and are not Protocol exports. Repository control-plane consumers use
+the closed provisional
+`@aizign/adapter-dsh/experimental/transport` subpath. Parent timing remains
+source-qualified operational evidence rather than Protocol v1 or stable
+package compatibility. The
+[classification contract](../../spec/classification/README.md) remains the
+target cross-language authority; Issue #75 owns the later corpus/consumer
+migration.
 
-This API remains available, but it is internal, provisional operational
-evidence rather than Protocol v1, package compatibility, workflow authority,
-or a stable public timing schema. A parent transport observation is distinct
-from the client outcome and from a child runtime observation; the three must
-not be treated as one universal semantic outcome. The
-[classification contract](../../spec/classification/README.md) defines the
-target authority; this contract-only slice leaves the existing API and source
-unchanged until the ordered corpus/consumer implementation.
-
-The shared best-effort emitter isolates synchronous throws and asynchronous
-Promise rejections, so sink failure cannot propagate into the workflow.
-Request IDs, signal identity, paths, and content do not exist in the
-measurement type.
+The root runtime and declaration exports are exact allowlists verified by
+`spec/test/package-exports.test.mjs`. Deep `src/` or generated `lib/` imports
+are not supported.

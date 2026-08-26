@@ -8,21 +8,16 @@ import {
   CAPABILITY_WORKFLOW_SIGNAL_RECONCILE,
   CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
   type CoreClient,
-  type ParentTimingMeasurement,
 } from '@aizign/protocol';
 import type { Context } from '@deepseek-ai/cordis';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools';
+import type { Config } from '../../src/config.ts';
 import { OneShotCoreClient } from '../../src/core-client/one-shot-client.ts';
-import {
-  apply,
-  type Config,
-  Config as ConfigSchema,
-  codes,
-  inject,
-  name,
-} from '../../src/index.ts';
+import { apply, Config as ConfigSchema, inject, name } from '../../src/index.ts';
 import { preflight } from '../../src/lifecycle/preflight.ts';
+import { adapterCodes as codes } from '../../src/mapping/tool.ts';
+import type { ParentTimingMeasurement } from '../../src/timing.ts';
 import { fakeBinary } from '../helpers/fake-dsh.ts';
 
 /** A fake that wraps the fake core script so `binary` alone is enough. */

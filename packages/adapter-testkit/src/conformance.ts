@@ -12,17 +12,24 @@ import {
   CAPABILITY_WORKFLOW_SIGNAL_RECONCILE,
   CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
   type CoreClient,
-  type CoreClientConfig,
   codes,
   MAX_REQUEST_BYTES,
-  type ParentTimingMeasurement,
   PROTOCOL_VERSION,
   ProtocolError,
   type WorkflowSignalSubmitPayload,
 } from '@aizign/protocol';
 import { fakeCoreCommand } from './fake-core-path.ts';
 
-export type CoreClientFactory = (config: CoreClientConfig) => CoreClient;
+/** Process fixture values supplied to a production client by the test runner. */
+export interface CoreClientFixtureConfig {
+  readonly command: string;
+  readonly args?: readonly string[];
+  readonly env?: Readonly<Record<string, string>>;
+  readonly stateDir: string;
+  readonly timeoutMs: number;
+}
+
+export type CoreClientFactory = (config: CoreClientFixtureConfig) => CoreClient;
 
 export interface ConformanceOptions {
   /** Timeout used for the hang scenario; keep it short. Default 500ms. */
@@ -294,15 +301,11 @@ export async function runFaultScenarios(
     }
 
     const uncorrelatedCodeState = join(root, 'fault-unknown-code-wrong-request-id');
-    const uncorrelatedCodeMeasurements: ParentTimingMeasurement[] = [];
     const uncorrelatedCodeClient = factory({
       ...fake,
       env: { AIZIGN_FAKE_FAULT: 'unknown-valid-error-code-wrong-request-id' },
       stateDir: uncorrelatedCodeState,
       timeoutMs: 10_000,
-      timingSink: (measurement) => {
-        uncorrelatedCodeMeasurements.push(measurement);
-      },
     });
     const uncorrelatedCode = await uncorrelatedCodeClient.submitWorkflowSignal(
       'req-unknown-code-wrong-request-id',
@@ -317,14 +320,6 @@ export async function runFaultScenarios(
       readFakeRequests(uncorrelatedCodeState).length,
       1,
       'an uncorrelated error response never causes a retry',
-    );
-    assert.equal(uncorrelatedCodeMeasurements.length, 1);
-    assert.equal(uncorrelatedCodeMeasurements[0]?.outcome, 'unknown');
-    assert.equal(uncorrelatedCodeMeasurements[0]?.unknown_reason, 'correlation_mismatch');
-    assert.equal(uncorrelatedCodeMeasurements[0]?.error_code, undefined);
-    assert.ok(
-      !JSON.stringify(uncorrelatedCodeMeasurements).includes('FUTURE_OUTCOME_UNKNOWN'),
-      'an unrecognized peer code stays out of metadata-only timing',
     );
 
     const hang = await make(
@@ -380,15 +375,11 @@ export async function runFaultScenarios(
       'reconciliation does not retry an uncorrelated watchdog response',
     );
 
-    const conflictMeasurements: ParentTimingMeasurement[] = [];
     const reportedConflict = factory({
       ...fake,
       env: { AIZIGN_FAKE_FAULT: 'event-conflict-error' },
       stateDir: join(root, 'reconcile-event-conflict-error'),
       timeoutMs: 10_000,
-      timingSink: (measurement) => {
-        conflictMeasurements.push(measurement);
-      },
     });
     const conflictUnknown = await reportedConflict.reconcileWorkflowSignal(
       'req-reconcile-event-conflict-error',
@@ -399,18 +390,6 @@ export async function runFaultScenarios(
       assert.equal(conflictUnknown.reason, 'reported_unknown');
       assert.equal(conflictUnknown.reportedCode, 'EVENT_CONFLICT');
     }
-    assert.deepEqual(
-      {
-        outcome: conflictMeasurements[0]?.outcome,
-        error_code: conflictMeasurements[0]?.error_code,
-        unknown_reason: conflictMeasurements[0]?.unknown_reason,
-      },
-      {
-        outcome: 'unknown',
-        error_code: 'EVENT_CONFLICT',
-        unknown_reason: 'reported_unknown',
-      },
-    );
 
     const reconciliationFaults: Array<[string, string]> = [
       ['garbage', 'undecodable_response'],
@@ -499,29 +478,14 @@ export async function runFaultScenarios(
       2,
       'one submit and one reconciliation occur without a blind submit retry',
     );
-
-    const rejectingSink = factory({
-      ...fake,
-      stateDir: join(root, 'async-rejecting-timing-sink'),
-      timeoutMs: 10_000,
-      timingSink: async () => {
-        throw new Error('metric backend unavailable');
-      },
-    });
-    const accepted = await rejectingSink.submitWorkflowSignal(
-      'req-async-rejecting-sink',
-      samplePayload('evt-async-rejecting-sink'),
-    );
-    assert.equal(accepted.kind, 'accepted');
-    await new Promise<void>((resolve) => setImmediate(resolve));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 }
 
 /**
- * The complete TypeScript reference `CoreClient` scenario set, against the
- * fake core.
+ * The complete language-neutral `CoreClient` scenario set, against the fake
+ * core and a supplied production client factory.
  */
 export async function runCoreClientConformance(
   factory: CoreClientFactory,
