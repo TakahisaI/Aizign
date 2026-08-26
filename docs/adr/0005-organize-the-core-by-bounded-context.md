@@ -31,6 +31,15 @@ Aizuの目的の一つは、変更時にLLMと人が読む必要のあるcontext
 - testは所有contextの近くに置く。Rust unit testは対象module、cross-module testはcrateの `tests/`、adapter conformanceは `test/conformance/`、protocol fixtureだけをrepository共通の `spec/conformance/` に置く。
 - 各crate、adapter、主要contextには、Responsibility、Non-responsibility、Inputs、Outputs、Hard invariants、Allowed dependencies、Test command、関連ADRを記載した `README.md` を置く。`AGENTS.md` はnavigationと編集制約だけを書き、新しい仕様書にしない。
 
+## Historical supersession
+
+[ADR-0016](0016-adopt-a-repository-owned-higher-risk-change-contract.md)
+supersedes only this ADR's earlier assignment of editing constraints to
+`AGENTS.md` in the final decision above. `AGENTS.md` is navigation only;
+README files, source and tests, and normative documents own their contracts,
+boundaries, and checks. All other decisions in this ADR remain Accepted and
+unchanged.
+
 ## Consequences
 
 ### Positive

@@ -27,6 +27,13 @@ defines:
   change; and
 - visible evidence gaps and a separate Maintainer merge decision.
 
+This ADR supersedes only ADR-0005's prior statement that `AGENTS.md` owns
+editing constraints. It does not supersede ADR-0005's bounded-context,
+dependency, API, test-placement, or README decisions; those remain Accepted.
+README files, source and tests, and normative documents own their contracts,
+boundaries, and checks. `AGENTS.md` routes readers to those sources as
+navigation only.
+
 Templates collect these records and `AGENTS.md` remains navigation only. The
 repository does not require a particular skill, model, agent implementation,
 session arrangement, or review tool. Detailed operational notes and optional
