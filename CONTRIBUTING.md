@@ -39,9 +39,11 @@ Classify the proposal before implementation.
   more than one context are also higher-risk.
 
 When classification is uncertain, use Higher-risk until the Maintainer records
-another decision. Ordinary changes use the usual Issue, pull request, and CI
-path. Higher-risk changes use the records and independent review requirements
-below.
+another decision. Ordinary changes use the [Ordinary change Issue
+form](.github/ISSUE_TEMPLATE/ordinary.yml), then the usual pull request and CI
+path. Higher-risk changes use the [Higher-risk proposal
+form](.github/ISSUE_TEMPLATE/proposal.yml) and the records and independent
+review requirements below.
 
 ### Records before implementation
 
