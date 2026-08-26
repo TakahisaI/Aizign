@@ -18,16 +18,16 @@ impl ReconcileMode<'_> {
         &mut self,
         journal: &mut impl JournalReader,
     ) -> Result<Vec<crate::journal::JournalEntry>, JournalError> {
-        let Self::Observed(observer) = self else {
-            return journal.load_committed();
-        };
-
-        observer.stage_started(EngineStage::JournalLoadDecode);
-        let loaded = journal.load_committed_observed(observer);
-        observer.stage_finished(
-            EngineStage::JournalLoadDecode,
-            loaded.as_ref().ok().map(Vec::len),
-        );
+        if let Self::Observed(observer) = self {
+            observer.stage_started(EngineStage::JournalLoadDecode);
+        }
+        let loaded = journal.load_committed();
+        if let Self::Observed(observer) = self {
+            observer.stage_finished(
+                EngineStage::JournalLoadDecode,
+                loaded.as_ref().ok().map(Vec::len),
+            );
+        }
         loaded
     }
 

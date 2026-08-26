@@ -114,7 +114,7 @@ outcome service.
 | Boundary | Allowed output |
 |---|---|
 | `aizign` stdout | Exactly one Protocol v1 response frame |
-| `aizign` stderr | Normal content-free operational diagnostics. Opt-in child-runtime timing is provisional operational evidence. Until the ordered classification implementation lands, the child keeps its independent mapping and may diverge from this contract; afterward, classification/code disclosure must be driven by the exact rows owned by `spec/classification/`. Neither stage creates a stable public compatibility promise. |
+| `aizign` stderr | Normal content-free operational diagnostics. Opt-in child-runtime timing is provisional operational evidence. Engine use-case stages and JSONL physical stages retain separate owners and are composed by CLI without exposing a path or content. Until the ordered classification implementation lands, the child keeps its independent mapping and may diverge from this contract; afterward, classification/code disclosure must be driven by the exact rows owned by `spec/classification/`. Neither stage creates a stable public compatibility promise. |
 | Human-readable Protocol error message | Operational control-plane diagnostic. Store and OS failures can include the configured state path or platform detail. It is not a model-safe field. |
 | DSH model-facing `HarnessError` | Stable code plus a fixed safe message for argument decoding, local Protocol validation, submit rejection, or unknown outcome. Raw argument keys, Protocol messages, and unknown detail are not forwarded; local Protocol errors are not retained as causes. |
 | Adapter log | Adapter-owned metadata under its documented policy; native IDs do not cross into the core |

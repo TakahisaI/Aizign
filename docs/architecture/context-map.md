@@ -38,6 +38,7 @@ engineはuse caseとportを持ちます。contextの切り方はcoreと揃えま
 | Use case | `handle_workflow_signal`: journal load → replay → core → append → engine result | 実装済み |
 | Use case | `reconcile_workflow_signal`: committed load → replay → exact signal classification。append / clock / effectなし | 実装済み |
 | Port | `JournalReader`（committed load）、これを拡張する`Journal`（append）、`JournalEntry`、`JournalError`、`Clock`（bounded timestamp） | 実装済み |
+| Observation | `EngineObserver` owns only aggregate load / replay / decide / append use-case stages. Store-physical stages are not engine vocabulary. | 実装済み |
 | 所有 | portはengineが定義。store、testkit、cliが実装 | — |
 
 ## Protocol (`crates/aizign-protocol`, `packages/protocol`)
@@ -55,6 +56,7 @@ engineはuse caseとportを持ちます。contextの切り方はcoreと揃えま
 | Record | schema version付きのclosed record。metadata-only。`workflow.signal.accepted` |
 | Store | `JsonlJournal` writer（exclusive lock、durable append / commit publish）、`JsonlJournalReader`（shared lock、strictly read-only committed cold read）、`aizign-testkit::MemoryJournal` |
 | Commit point | `workflow.commit.json` がcommitted byte length / entry count / SHA-256を公開。extra tailはunknownでpromoteしない |
+| Observation | `StoreObserver` and observed JSONL wrappers own open, physical-byte, committed-prefix read/hash/decode, and publication-hash observation. Pathless engine journals do not implement this seam. |
 | 正本 | recordは`spec/journal/v1/`、store metadataは`spec/store/v1/` |
 
 ## Adapter (`adapters/<harness>/`)

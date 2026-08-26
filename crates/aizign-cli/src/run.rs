@@ -23,7 +23,10 @@ use aizign_store_jsonl::{
 };
 
 use crate::exit;
-use crate::timing::{HandlerTiming, StageTimingObserver, enabled as timing_enabled, milliseconds};
+use crate::timing::{
+    EngineTimingObserver, HandlerTiming, StoreTimingObserver, enabled as timing_enabled,
+    milliseconds,
+};
 
 /// Upper bound on reading and processing one request. Past it, the response
 /// reports `HANDLER_TIMEOUT` and the process exits; any append in flight is
@@ -290,25 +293,24 @@ fn submit_response(
     state: &Path,
     timing: Option<&mut HandlerTiming>,
 ) -> ResponseBody {
-    let open_started = timing.is_some().then(Instant::now);
-    let opened = JsonlJournal::open(state);
-    let mut timing = timing;
-    if let (Some(timing), Some(started)) = (timing.as_deref_mut(), open_started) {
-        timing.journal_open_ms = Some(milliseconds(started.elapsed()));
-    }
-    let mut journal = match opened {
-        Ok(journal) => journal,
-        Err(error) => {
-            return ResponseBody::Error(ProtocolError::new(error.code(), error.to_string()));
-        }
-    };
     let handled = if let Some(timing) = timing {
-        timing.journal_physical_bytes = std::fs::metadata(journal.path())
-            .ok()
-            .map(|metadata| metadata.len());
-        let mut observer = StageTimingObserver::new(timing);
-        handle_workflow_signal_observed(&mut journal, &SystemClock, command, &mut observer)
+        let (engine_timing, store_timing) = (&mut timing.engine, &mut timing.store);
+        let mut store_observer = StoreTimingObserver::new(store_timing);
+        let mut journal = match JsonlJournal::open_observed(state, &mut store_observer) {
+            Ok(journal) => journal,
+            Err(error) => {
+                return ResponseBody::Error(ProtocolError::new(error.code(), error.to_string()));
+            }
+        };
+        let mut engine_observer = EngineTimingObserver::new(engine_timing);
+        handle_workflow_signal_observed(&mut journal, &SystemClock, command, &mut engine_observer)
     } else {
+        let mut journal = match JsonlJournal::open(state) {
+            Ok(journal) => journal,
+            Err(error) => {
+                return ResponseBody::Error(ProtocolError::new(error.code(), error.to_string()));
+            }
+        };
         handle_workflow_signal(&mut journal, &SystemClock, command)
     };
     match handled {
@@ -332,25 +334,24 @@ fn reconcile_response(
     state: &Path,
     timing: Option<&mut HandlerTiming>,
 ) -> ResponseBody {
-    let open_started = timing.is_some().then(Instant::now);
-    let opened = JsonlJournalReader::open(state);
-    let mut timing = timing;
-    if let (Some(timing), Some(started)) = (timing.as_deref_mut(), open_started) {
-        timing.journal_open_ms = Some(milliseconds(started.elapsed()));
-    }
-    let mut journal = match opened {
-        Ok(journal) => journal,
-        Err(error) => {
-            return ResponseBody::Error(ProtocolError::new(error.code(), error.to_string()));
-        }
-    };
     let reconciled = if let Some(timing) = timing {
-        timing.journal_physical_bytes = std::fs::metadata(journal.path())
-            .ok()
-            .map(|metadata| metadata.len());
-        let mut observer = StageTimingObserver::new(timing);
-        reconcile_workflow_signal_observed(&mut journal, signal, &mut observer)
+        let (engine_timing, store_timing) = (&mut timing.engine, &mut timing.store);
+        let mut store_observer = StoreTimingObserver::new(store_timing);
+        let mut journal = match JsonlJournalReader::open_observed(state, &mut store_observer) {
+            Ok(journal) => journal,
+            Err(error) => {
+                return ResponseBody::Error(ProtocolError::new(error.code(), error.to_string()));
+            }
+        };
+        let mut engine_observer = EngineTimingObserver::new(engine_timing);
+        reconcile_workflow_signal_observed(&mut journal, signal, &mut engine_observer)
     } else {
+        let mut journal = match JsonlJournalReader::open(state) {
+            Ok(journal) => journal,
+            Err(error) => {
+                return ResponseBody::Error(ProtocolError::new(error.code(), error.to_string()));
+            }
+        };
         reconcile_workflow_signal(&mut journal, signal)
     };
     match reconciled {

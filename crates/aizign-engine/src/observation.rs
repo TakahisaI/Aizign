@@ -2,25 +2,17 @@
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-/// A bounded stage inside a submit or reconciliation use case.
+/// A bounded use-case stage inside submit or reconciliation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EngineStage {
     /// Load and decode the committed journal snapshot.
     JournalLoadDecode,
-    /// Read commit metadata and the exact committed journal prefix.
-    CommittedPrefixRead,
-    /// Verify the committed prefix against its published SHA-256 digest.
-    CommittedPrefixHash,
-    /// Decode the verified prefix into journal entries.
-    CommittedPrefixDecode,
     /// Replay committed events into workflow state.
     Replay,
     /// Run the pure submit decision or reconciliation classification.
     Decide,
     /// Durably append and publish an accepted event.
     AppendSync,
-    /// Hash the whole prefix used by the next published commit point.
-    PublishPrefixHash,
 }
 
 /// Optional observer supplied by the shell.
@@ -37,7 +29,7 @@ pub trait EngineObserver {
     fn stage_finished(&mut self, stage: EngineStage, journal_entries: Option<usize>);
 }
 
-/// Prevents an observer panic from crossing an engine or store boundary.
+/// Prevents an observer panic from crossing the engine boundary.
 ///
 /// The first panic disables the wrapped observer for the rest of the operation.
 pub struct BestEffortObserver<'a> {

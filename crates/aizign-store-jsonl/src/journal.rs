@@ -13,12 +13,10 @@ use std::path::{Path, PathBuf};
 
 use aizign_core::BoundedTimestamp;
 use aizign_core::workflow::WorkflowEvent;
-use aizign_engine::{
-    BestEffortObserver, EngineObserver, EngineStage, Journal, JournalEntry, JournalError,
-    JournalReader, MAX_JOURNAL_ENTRIES,
-};
+use aizign_engine::{Journal, JournalEntry, JournalError, JournalReader, MAX_JOURNAL_ENTRIES};
 
 use crate::commit::{CommitPoint, MAX_COMMIT_METADATA_BYTES, hash_bytes};
+use crate::observation::{BestEffortStoreObserver, StoreObservation, StoreObserver, StoreStage};
 use crate::record;
 
 /// File name of the journal inside the state directory.
@@ -72,6 +70,23 @@ pub struct JsonlJournalReader {
     _lock: File,
 }
 
+/// Append-capable JSONL journal with store-owned physical observations.
+///
+/// The wrapper keeps the observer alive for every ordinary load/append call;
+/// callers still use the regular engine [`Journal`] and [`JournalReader`]
+/// ports.  Dropping it releases the underlying writer lock with the inner
+/// journal.
+pub struct ObservedJsonlJournal<'a> {
+    inner: JsonlJournal,
+    observer: BestEffortStoreObserver<'a>,
+}
+
+/// Read-only JSONL snapshot reader with store-owned physical observations.
+pub struct ObservedJsonlJournalReader<'a> {
+    inner: JsonlJournalReader,
+    observer: BestEffortStoreObserver<'a>,
+}
+
 struct Snapshot {
     bytes: Vec<u8>,
     entries: Vec<JournalEntry>,
@@ -118,6 +133,22 @@ impl std::fmt::Debug for JsonlJournalReader {
     }
 }
 
+impl std::fmt::Debug for ObservedJsonlJournal<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ObservedJsonlJournal")
+            .field("inner", &self.inner)
+            .finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Debug for ObservedJsonlJournalReader<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ObservedJsonlJournalReader")
+            .field("inner", &self.inner)
+            .finish_non_exhaustive()
+    }
+}
+
 fn unavailable(detail: impl Into<String>) -> JournalError {
     JournalError::Unavailable {
         detail: detail.into(),
@@ -135,6 +166,30 @@ impl JsonlJournal {
     /// necessary, and takes the exclusive state lock.
     pub fn open(state_dir: &Path) -> Result<Self, JournalError> {
         Self::open_with_initialization_hook(state_dir, &mut |_| Ok(()))
+    }
+
+    /// Opens the writer while exposing store-owned physical observations.
+    ///
+    /// The `JournalOpen` interval surrounds exactly the existing raw open
+    /// operation, including an error.  A successful open then performs one
+    /// best-effort journal-length metadata read and emits
+    /// [`StoreObservation::JournalPhysicalBytes`]; a metadata error is simply
+    /// omitted from the observation stream.
+    pub fn open_observed<'a>(
+        state_dir: &Path,
+        observer: &'a mut dyn StoreObserver,
+    ) -> Result<ObservedJsonlJournal<'a>, JournalError> {
+        let mut observer = BestEffortStoreObserver::new(observer);
+        observer.observe(StoreObservation::StageStarted(StoreStage::JournalOpen));
+        let opened = Self::open(state_dir);
+        observer.observe(StoreObservation::StageFinished(StoreStage::JournalOpen));
+        let inner = opened?;
+
+        if let Ok(bytes) = inner.file.metadata().map(|metadata| metadata.len()) {
+            observer.observe(StoreObservation::JournalPhysicalBytes(bytes));
+        }
+
+        Ok(ObservedJsonlJournal { inner, observer })
     }
 
     fn open_with_initialization_hook<H>(
@@ -226,19 +281,13 @@ impl JsonlJournal {
         })
     }
 
-    /// Path of the journal file.
-    #[must_use]
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
     fn append_with<F, P>(
         &mut self,
         event: &WorkflowEvent,
         at: BoundedTimestamp,
         journal_barrier: F,
         publish: P,
-        mut observer: Option<&mut dyn EngineObserver>,
+        mut observer: Option<&mut dyn StoreObserver>,
     ) -> Result<JournalEntry, JournalError>
     where
         F: FnOnce(&File) -> std::io::Result<()>,
@@ -278,7 +327,7 @@ impl JsonlJournal {
         })?;
 
         snapshot.bytes.extend_from_slice(&line);
-        let point = observe_stage(&mut observer, EngineStage::PublishPrefixHash, || {
+        let point = observe_stage(&mut observer, StoreStage::PublishPrefixHash, || {
             CommitPoint::for_prefix(&snapshot.bytes, seq)
         });
         publish(&self.state_dir, &self.commit_path, &point).map_err(|error| {
@@ -289,6 +338,21 @@ impl JsonlJournal {
         snapshot.entries.push(entry.clone());
         self.snapshot = Some(snapshot);
         Ok(entry)
+    }
+
+    fn load_committed_observed_by_store(
+        &mut self,
+        observer: &mut dyn StoreObserver,
+    ) -> Result<Vec<JournalEntry>, JournalError> {
+        if let Some(snapshot) = &self.snapshot {
+            return Ok(snapshot.entries.clone());
+        }
+        let mut commit_file = open_private_read_file(&self.commit_path)?;
+        let mut observer = Some(observer as &mut dyn StoreObserver);
+        let snapshot = read_snapshot_observed(&mut self.file, &mut commit_file, &mut observer)?;
+        let entries = snapshot.entries.clone();
+        self.snapshot = Some(snapshot);
+        Ok(entries)
     }
 }
 
@@ -328,26 +392,43 @@ impl JsonlJournalReader {
         })
     }
 
-    /// Path of the journal file.
-    #[must_use]
-    pub fn path(&self) -> &Path {
-        &self.path
+    /// Opens a read-only committed snapshot while exposing store-owned
+    /// physical observations.
+    ///
+    /// `JournalOpen` surrounds exactly the existing raw reader open,
+    /// including an error.  On success one best-effort metadata read reports
+    /// the physical journal length; a stat error omits that event and leaves
+    /// the reader result unchanged.
+    pub fn open_observed<'a>(
+        state_dir: &Path,
+        observer: &'a mut dyn StoreObserver,
+    ) -> Result<ObservedJsonlJournalReader<'a>, JournalError> {
+        let mut observer = BestEffortStoreObserver::new(observer);
+        observer.observe(StoreObservation::StageStarted(StoreStage::JournalOpen));
+        let opened = Self::open(state_dir);
+        observer.observe(StoreObservation::StageFinished(StoreStage::JournalOpen));
+        let inner = opened?;
+
+        if let Ok(bytes) = inner.file.metadata().map(|metadata| metadata.len()) {
+            observer.observe(StoreObservation::JournalPhysicalBytes(bytes));
+        }
+
+        Ok(ObservedJsonlJournalReader { inner, observer })
+    }
+
+    fn load_committed_observed_by_store(
+        &mut self,
+        observer: &mut dyn StoreObserver,
+    ) -> Result<Vec<JournalEntry>, JournalError> {
+        let mut observer = Some(observer as &mut dyn StoreObserver);
+        read_snapshot_observed(&mut self.file, &mut self.commit_file, &mut observer)
+            .map(|snapshot| snapshot.entries)
     }
 }
 
 impl JournalReader for JsonlJournalReader {
     fn load_committed(&mut self) -> Result<Vec<JournalEntry>, JournalError> {
         read_snapshot(&mut self.file, &mut self.commit_file).map(|snapshot| snapshot.entries)
-    }
-
-    fn load_committed_observed(
-        &mut self,
-        observer: &mut dyn EngineObserver,
-    ) -> Result<Vec<JournalEntry>, JournalError> {
-        let mut observer = BestEffortObserver::new(observer);
-        let mut observer = Some(&mut observer as &mut dyn EngineObserver);
-        read_snapshot_observed(&mut self.file, &mut self.commit_file, &mut observer)
-            .map(|snapshot| snapshot.entries)
     }
 }
 
@@ -362,22 +443,6 @@ impl JournalReader for JsonlJournal {
         self.snapshot = Some(snapshot);
         Ok(entries)
     }
-
-    fn load_committed_observed(
-        &mut self,
-        observer: &mut dyn EngineObserver,
-    ) -> Result<Vec<JournalEntry>, JournalError> {
-        if let Some(snapshot) = &self.snapshot {
-            return Ok(snapshot.entries.clone());
-        }
-        let mut commit_file = open_private_read_file(&self.commit_path)?;
-        let mut observer = BestEffortObserver::new(observer);
-        let mut observer = Some(&mut observer as &mut dyn EngineObserver);
-        let snapshot = read_snapshot_observed(&mut self.file, &mut commit_file, &mut observer)?;
-        let entries = snapshot.entries.clone();
-        self.snapshot = Some(snapshot);
-        Ok(entries)
-    }
 }
 
 impl Journal for JsonlJournal {
@@ -388,21 +453,35 @@ impl Journal for JsonlJournal {
     ) -> Result<JournalEntry, JournalError> {
         self.append_with(event, at, File::sync_all, publish_commit, None)
     }
+}
 
-    fn append_observed(
+impl JournalReader for ObservedJsonlJournalReader<'_> {
+    fn load_committed(&mut self) -> Result<Vec<JournalEntry>, JournalError> {
+        self.inner
+            .load_committed_observed_by_store(&mut self.observer)
+    }
+}
+
+impl Journal for ObservedJsonlJournal<'_> {
+    fn append(
         &mut self,
         event: &WorkflowEvent,
         at: BoundedTimestamp,
-        observer: &mut dyn EngineObserver,
     ) -> Result<JournalEntry, JournalError> {
-        let mut observer = BestEffortObserver::new(observer);
-        self.append_with(
+        self.inner.append_with(
             event,
             at,
             File::sync_all,
             publish_commit,
-            Some(&mut observer),
+            Some(&mut self.observer),
         )
+    }
+}
+
+impl JournalReader for ObservedJsonlJournal<'_> {
+    fn load_committed(&mut self) -> Result<Vec<JournalEntry>, JournalError> {
+        self.inner
+            .load_committed_observed_by_store(&mut self.observer)
     }
 }
 
@@ -413,9 +492,9 @@ fn read_snapshot(file: &mut File, commit_file: &mut File) -> Result<Snapshot, Jo
 fn read_snapshot_observed(
     file: &mut File,
     commit_file: &mut File,
-    observer: &mut Option<&mut dyn EngineObserver>,
+    observer: &mut Option<&mut dyn StoreObserver>,
 ) -> Result<Snapshot, JournalError> {
-    let (point, bytes) = observe_stage(observer, EngineStage::CommittedPrefixRead, || {
+    let (point, bytes) = observe_stage(observer, StoreStage::CommittedPrefixRead, || {
         let point = read_commit_point(commit_file)?;
         let physical_len = file
             .metadata()
@@ -449,7 +528,7 @@ fn read_snapshot_observed(
         }
         Ok((point, bytes))
     })?;
-    let digest = observe_stage(observer, EngineStage::CommittedPrefixHash, || {
+    let digest = observe_stage(observer, StoreStage::CommittedPrefixHash, || {
         hash_bytes(&bytes)
     });
     if digest != point.digest {
@@ -457,7 +536,7 @@ fn read_snapshot_observed(
             "journal prefix does not match the published SHA-256 digest",
         ));
     }
-    let entries = observe_stage(observer, EngineStage::CommittedPrefixDecode, || {
+    let entries = observe_stage(observer, StoreStage::CommittedPrefixDecode, || {
         let contents =
             core::str::from_utf8(&bytes).map_err(|_| corrupt("journal is not UTF-8 text"))?;
         let entries = decode_contents(contents)?;
@@ -472,16 +551,16 @@ fn read_snapshot_observed(
 }
 
 fn observe_stage<T>(
-    observer: &mut Option<&mut dyn EngineObserver>,
-    stage: EngineStage,
+    observer: &mut Option<&mut dyn StoreObserver>,
+    stage: StoreStage,
     operation: impl FnOnce() -> T,
 ) -> T {
     if let Some(observer) = observer.as_deref_mut() {
-        observer.stage_started(stage);
+        observer.observe(StoreObservation::StageStarted(stage));
     }
     let result = operation();
     if let Some(observer) = observer.as_deref_mut() {
-        observer.stage_finished(stage, None);
+        observer.observe(StoreObservation::StageFinished(stage));
     }
     result
 }

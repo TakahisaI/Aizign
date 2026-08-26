@@ -61,6 +61,11 @@ corpus and consumer implementation follows the ownership cleanup sequence
 [#88](https://github.com/TakahisaI/Aizign/issues/88) →
 [#89](https://github.com/TakahisaI/Aizign/issues/89).
 
+Within the child source, engine aggregate stages and JSONL physical stages have
+separate owners and are composed by the CLI into the same flat record. This
+ownership split does not change the field names, units, measurement intervals,
+or provisional lifecycle documented below.
+
 Stabilizing timing later requires a separate accepted decision defining an
 owner, independent version and lifecycle, intended consumers, and explicit
 compatibility and migration rules. This lifecycle classification does not

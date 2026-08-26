@@ -12,11 +12,13 @@
 mod commit;
 mod journal;
 mod json_member;
+mod observation;
 mod record;
 
 pub use commit::{MAX_COMMIT_METADATA_BYTES, STORE_METADATA_VERSION};
 pub use journal::{
     COMMIT_FILE_NAME, JOURNAL_FILE_NAME, JsonlJournal, JsonlJournalReader, LOCK_FILE_NAME,
-    STORE_PLATFORM_SUPPORTED,
+    ObservedJsonlJournal, ObservedJsonlJournalReader, STORE_PLATFORM_SUPPORTED,
 };
+pub use observation::{BestEffortStoreObserver, StoreObservation, StoreObserver, StoreStage};
 pub use record::{JOURNAL_SCHEMA_VERSION, decode_record, encode_record};

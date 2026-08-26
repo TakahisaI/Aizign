@@ -23,16 +23,16 @@ impl SubmitMode<'_> {
         &mut self,
         journal: &mut impl Journal,
     ) -> Result<Vec<JournalEntry>, JournalError> {
-        let Self::Observed(observer) = self else {
-            return journal.load_committed();
-        };
-
-        observer.stage_started(EngineStage::JournalLoadDecode);
-        let loaded = journal.load_committed_observed(observer);
-        observer.stage_finished(
-            EngineStage::JournalLoadDecode,
-            loaded.as_ref().ok().map(Vec::len),
-        );
+        if let Self::Observed(observer) = self {
+            observer.stage_started(EngineStage::JournalLoadDecode);
+        }
+        let loaded = journal.load_committed();
+        if let Self::Observed(observer) = self {
+            observer.stage_finished(
+                EngineStage::JournalLoadDecode,
+                loaded.as_ref().ok().map(Vec::len),
+            );
+        }
         loaded
     }
 
@@ -64,13 +64,13 @@ impl SubmitMode<'_> {
         event: &aizign_core::workflow::WorkflowEvent,
         at: aizign_core::BoundedTimestamp,
     ) -> Result<JournalEntry, JournalError> {
-        let Self::Observed(observer) = self else {
-            return journal.append(event, at);
-        };
-
-        observer.stage_started(EngineStage::AppendSync);
-        let appended = journal.append_observed(event, at, observer);
-        observer.stage_finished(EngineStage::AppendSync, None);
+        if let Self::Observed(observer) = self {
+            observer.stage_started(EngineStage::AppendSync);
+        }
+        let appended = journal.append(event, at);
+        if let Self::Observed(observer) = self {
+            observer.stage_finished(EngineStage::AppendSync, None);
+        }
         appended
     }
 }
