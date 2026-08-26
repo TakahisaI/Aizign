@@ -46,10 +46,24 @@ unversioned directory is intentional: classification follows the set of
 current operations and does not create another public protocol, journal, store,
 or package version axis.
 
-The future corpus and schema own cross-language classification rows. Each row
-must identify at least:
+Until both JSON files exist, the normative transitional tables in the
+classification README are the sole classification-row authority. They
+enumerate every current fixed code and the generic well-formed-unrecognized
+case for each operation, plus every successful response case. This closes the
+authority gap without adding corpus data or changing consumers in the
+contract-only slice. The tables define target semantics and do not claim that
+current consumers conform.
+
+The future corpus and schema own cross-language classification rows only after
+the caller requested a current operation, extracted exactly one bounded frame,
+decoded Protocol v1, decoded an operation-specific response body, and passed
+all operation-specific correlation checks. `operation` is the requested
+operation, not a response field. Each row must identify at least:
 
 - `operation`;
+- `responseCase`, a closed discriminator for `error` or for `success` with one
+  operation-specific disposition: `hello` `ok`, submit `accepted` or
+  `duplicate`, or reconciliation `accepted`, `conflict`, or `absent`;
 - `reportedCode`, using an explicit discriminator for no code, one implemented
   fixed code, or the generic well-formed-unrecognized case rather than naming
   a speculative future code;
@@ -61,10 +75,24 @@ must identify at least:
 - `childObservation`, including the source field and value or an explicit
   absence;
 - `parentObservation`, including the parent transport field and value or an
-  explicit absence; and
+  explicit absence for a decoded and correlated response, and not defining a
+  public timing schema;
 - `timingCodeDisclosure`, a boolean that says whether the reported fixed code
   may cross the metadata-only timing boundary; and
 - `automaticRetryAuthorized`, which is `false` for every current row.
+
+Success requires `reportedCode: none`; error requires either one current fixed
+code or the generic well-formed-unrecognized discriminator. The exact row key
+is `(operation, responseCase.kind,
+responseCase.disposition-or-none, reportedCode.kind,
+reportedCode.value-or-none)`. Exactly one row must exist for every legal key.
+The schema closes every object and rejects duplicate keys, wildcard rows,
+illegal operation/disposition/code combinations, and future code names.
+
+The change that adds the corpus and schema must also delete the normative
+manual tables or retain them only as an explicitly non-normative projection
+generated from the JSON. JSON then becomes the sole row authority, and CI must
+reject simultaneous normative Markdown tables and a corpus/schema pair.
 
 Protocol schemas and the Protocol specification continue to own wire shapes,
 bounds, kinds, and error-code syntax. The error-code grammar has open
@@ -92,10 +120,27 @@ unsupported combination, or well-formed unrecognized peer code cannot be
 promoted to success, deterministic rejection, or retry authorization. For
 submit, `INTERNAL` and a well-formed unrecognized code produce client outcome
 `unknown` and authorize no retry. For reconciliation, every error response
-produces client outcome `unknown`. Missing, malformed, oversized, timed-out,
-aborted, or uncorrelated responses also remain unknown. A well-formed
-unrecognized code is retained only where a control-plane diagnostic field
-allows it and is omitted from timing code disclosure.
+produces client outcome `unknown`. Submit `EVENT_CONFLICT` remains a client
+rejection while its target child and parent timing observations are
+source-qualified `conflict`. For a correlated `hello` error, `INTERNAL`,
+`HANDLER_TIMEOUT`, `JOURNAL_OUTCOME_UNKNOWN`, and a well-formed unrecognized
+code are unknown; the other current fixed codes are client `error`.
+
+No response, undecodable response, oversized response, timeout, abort, spawn
+failure, and correlation mismatch are a separate closed transport-fault set,
+not semantic corpus rows. Each produces client and parent `unknown`, authorizes
+no retry, and permits no server, reconciliation, or child inference. A
+correlation mismatch may retain a decoded code as a diagnostic, but timing
+disclosure may consult only the safe `(requested operation, fixed code)`
+projection and must not apply that code's semantic row. Pre-transport encode
+or validation failures, `preflight`, unknown requested operations, and child
+`operation_kind: unknown` are also outside the corpus. `hello` remains inside
+when all applicability gates pass.
+
+A well-formed unrecognized code is retained only where a control-plane
+diagnostic field allows it and is omitted from timing code disclosure. Safe
+fixed-code disclosure copies only a bounded string; it proves neither
+correlation nor semantic classification.
 
 Future effect operation and `EFFECT_*` names are not current reservations,
 recognition entries, examples, timing values, or compatibility commitments.
@@ -131,6 +176,9 @@ decisions remain in force.
 - The contract-only slice intentionally lands before the corpus, schema, and
   consumers. Existing consumers may temporarily duplicate or diverge from the
   new contract until the ordered implementation slice completes.
+- The normative transitional table must be removed or demoted to a generated,
+  non-normative projection in the same change that introduces the JSON
+  authority.
 - The corpus must represent source-specific fields explicitly, which is more
   verbose than a single overloaded outcome column.
 - The unversioned authority requires contract review when the current operation
@@ -140,14 +188,18 @@ decisions remain in force.
 
 Apply the order: Issue #75 contract decision, then Issues #87, #88, and #89,
 then the Issue #75 implementation. The implementation slice must add the corpus
-and schema, migrate or delete manually synchronized classification tables, and
-make Rust, TypeScript, CLI, timing, and benchmark tests consume the same rows.
+and schema, delete or demote the normative transitional table, migrate or
+delete manually synchronized language-specific tables, add the one-authority
+CI check, and make Rust, TypeScript, CLI, timing, and benchmark tests consume
+the same rows.
 
 Required regression evidence must prove that:
 
 - submit `INTERNAL` and the generic well-formed-unrecognized case are unknown
   and non-retryable on every applicable surface;
 - every reconciliation error is a client unknown;
+- every legal response key has exactly one row and no transport fault selects
+  a semantic row;
 - an unrecognized code is omitted from timing code disclosure;
 - a future effect name fails current-recognition allowlists; and
 - no current operation lacks both Protocol schema ownership and, except for
