@@ -29,7 +29,7 @@ pub trait EngineObserver {
     fn stage_finished(&mut self, stage: EngineStage, journal_entries: Option<usize>);
 }
 
-/// Prevents an observer panic from crossing an engine or store boundary.
+/// Prevents an observer panic from crossing the engine boundary.
 ///
 /// The first panic disables the wrapped observer for the rest of the operation.
 pub struct BestEffortObserver<'a> {
