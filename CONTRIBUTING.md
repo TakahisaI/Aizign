@@ -119,9 +119,10 @@ requirements, and slice boundary.
 
 Movement of `main` alone does not invalidate readiness. A materially changed
 planning base, authority, owner, scope, old-path disposition, evidence
-requirement, or slice boundary does. When the pre-start inspection identifies
-such a change, update the checkpoint, repeat the necessary inspection, and
-obtain a new Maintainer readiness decision before continuing.
+requirement, or slice boundary does. When any inspection identifies such a
+change, implementation stops until the Issue or ADR is revised as required,
+the checkpoint is updated, the necessary inspection is repeated, and a
+Maintainer records renewed readiness.
 
 For Higher-risk work, each PR links the accepted Issue, any required ADR, the
 accepted implementation checkpoint, and the readiness decision. It identifies

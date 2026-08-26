@@ -5,8 +5,8 @@
 - Related: ADR-0016, Issue #97
 - Acceptance: [Maintainer decision for Issue #97, comment `5423689890`](https://github.com/TakahisaI/Aizign/issues/97#issuecomment-5423689890)
 - Initial readiness: [Checkpoint `I97-7FB4319-A` decision, comment `5423699249`](https://github.com/TakahisaI/Aizign/issues/97#issuecomment-5423699249)
-- Clarification: [Slice dependency and readiness retention, comment `5424140178`](https://github.com/TakahisaI/Aizign/issues/97#issuecomment-5424140178)
-- Clarification: [Checkpoint records and planned ADR timing, comment `5424300250`](https://github.com/TakahisaI/Aizign/issues/97#issuecomment-5424300250)
+- Clarification (slice dependency): [Readiness retention, comment `5424140178`](https://github.com/TakahisaI/Aizign/issues/97#issuecomment-5424140178)
+- Clarification (checkpoint records): [Planned ADR timing, comment `5424300250`](https://github.com/TakahisaI/Aizign/issues/97#issuecomment-5424300250)
 
 ## Context
 
@@ -109,8 +109,9 @@ uses older Issue-boundary language without restating the Higher-risk gate.
 ### Follow-up
 
 When the next adapter change is proposed, inspect
-`docs/development/adding-adapter.md` and either align its leaf-Issue guidance in
-that accepted scope or record why the guide retains a distinct responsibility.
+[`adding-adapter.md`](../development/adding-adapter.md) and either align its
+leaf-Issue guidance in that accepted scope or record why the guide retains a
+distinct responsibility.
 
 ## Alternatives considered
 
