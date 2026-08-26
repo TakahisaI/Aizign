@@ -8,6 +8,59 @@ use aizign_core::workflow::{ApplyError, WorkflowSignal, WorkflowState};
 use crate::journal::{JournalError, JournalReader};
 use crate::observation::{BestEffortObserver, EngineObserver, EngineStage};
 
+enum ReconcileMode<'a> {
+    Plain,
+    Observed(BestEffortObserver<'a>),
+}
+
+impl ReconcileMode<'_> {
+    fn load_committed(
+        &mut self,
+        journal: &mut impl JournalReader,
+    ) -> Result<Vec<crate::journal::JournalEntry>, JournalError> {
+        let Self::Observed(observer) = self else {
+            return journal.load_committed();
+        };
+
+        observer.stage_started(EngineStage::JournalLoadDecode);
+        let loaded = journal.load_committed_observed(observer);
+        observer.stage_finished(
+            EngineStage::JournalLoadDecode,
+            loaded.as_ref().ok().map(Vec::len),
+        );
+        loaded
+    }
+
+    fn replay(
+        &mut self,
+        entries: &[crate::journal::JournalEntry],
+    ) -> Result<WorkflowState, ApplyError> {
+        if let Self::Observed(observer) = self {
+            observer.stage_started(EngineStage::Replay);
+        }
+        let replayed = WorkflowState::replay(entries.iter().map(|entry| &entry.event));
+        if let Self::Observed(observer) = self {
+            observer.stage_finished(EngineStage::Replay, None);
+        }
+        replayed
+    }
+
+    fn reconcile(
+        &mut self,
+        state: &WorkflowState,
+        signal: &WorkflowSignal,
+    ) -> SignalReconciliation {
+        if let Self::Observed(observer) = self {
+            observer.stage_started(EngineStage::Decide);
+        }
+        let disposition = reconcile(state, signal);
+        if let Self::Observed(observer) = self {
+            observer.stage_finished(EngineStage::Decide, None);
+        }
+        disposition
+    }
+}
+
 /// Why reconciliation could not obtain a trustworthy semantic result.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ReconcileError {
@@ -44,10 +97,19 @@ pub fn reconcile_workflow_signal(
     journal: &mut impl JournalReader,
     signal: &WorkflowSignal,
 ) -> Result<SignalReconciliation, ReconcileError> {
-    let entries = journal.load_committed().map_err(ReconcileError::Journal)?;
-    let state = WorkflowState::replay(entries.iter().map(|entry| &entry.event))
-        .map_err(ReconcileError::Replay)?;
-    Ok(reconcile(&state, signal))
+    execute_reconciliation(journal, signal, ReconcileMode::Plain)
+}
+
+fn execute_reconciliation(
+    journal: &mut impl JournalReader,
+    signal: &WorkflowSignal,
+    mut mode: ReconcileMode<'_>,
+) -> Result<SignalReconciliation, ReconcileError> {
+    let entries = mode
+        .load_committed(journal)
+        .map_err(ReconcileError::Journal)?;
+    let state = mode.replay(&entries).map_err(ReconcileError::Replay)?;
+    Ok(mode.reconcile(&state, signal))
 }
 
 /// Reconciles one signal while marking the same load, replay, and decision
@@ -57,22 +119,9 @@ pub fn reconcile_workflow_signal_observed(
     signal: &WorkflowSignal,
     observer: &mut impl EngineObserver,
 ) -> Result<SignalReconciliation, ReconcileError> {
-    let mut observer = BestEffortObserver::new(observer);
-    observer.stage_started(EngineStage::JournalLoadDecode);
-    let loaded = journal.load_committed_observed(&mut observer);
-    observer.stage_finished(
-        EngineStage::JournalLoadDecode,
-        loaded.as_ref().ok().map(Vec::len),
-    );
-    let entries = loaded.map_err(ReconcileError::Journal)?;
-
-    observer.stage_started(EngineStage::Replay);
-    let replayed = WorkflowState::replay(entries.iter().map(|entry| &entry.event));
-    observer.stage_finished(EngineStage::Replay, None);
-    let state = replayed.map_err(ReconcileError::Replay)?;
-
-    observer.stage_started(EngineStage::Decide);
-    let disposition = reconcile(&state, signal);
-    observer.stage_finished(EngineStage::Decide, None);
-    Ok(disposition)
+    execute_reconciliation(
+        journal,
+        signal,
+        ReconcileMode::Observed(BestEffortObserver::new(observer)),
+    )
 }

@@ -13,6 +13,68 @@ use crate::clock::{Clock, ClockError};
 use crate::journal::{Journal, JournalEntry, JournalError};
 use crate::observation::{BestEffortObserver, EngineObserver, EngineStage};
 
+enum SubmitMode<'a> {
+    Plain,
+    Observed(BestEffortObserver<'a>),
+}
+
+impl SubmitMode<'_> {
+    fn load_committed(
+        &mut self,
+        journal: &mut impl Journal,
+    ) -> Result<Vec<JournalEntry>, JournalError> {
+        let Self::Observed(observer) = self else {
+            return journal.load_committed();
+        };
+
+        observer.stage_started(EngineStage::JournalLoadDecode);
+        let loaded = journal.load_committed_observed(observer);
+        observer.stage_finished(
+            EngineStage::JournalLoadDecode,
+            loaded.as_ref().ok().map(Vec::len),
+        );
+        loaded
+    }
+
+    fn replay(&mut self, entries: &[JournalEntry]) -> Result<WorkflowState, ApplyError> {
+        if let Self::Observed(observer) = self {
+            observer.stage_started(EngineStage::Replay);
+        }
+        let replayed = WorkflowState::replay(entries.iter().map(|entry| &entry.event));
+        if let Self::Observed(observer) = self {
+            observer.stage_finished(EngineStage::Replay, None);
+        }
+        replayed
+    }
+
+    fn decide(&mut self, state: &WorkflowState, command: Command) -> Decision {
+        if let Self::Observed(observer) = self {
+            observer.stage_started(EngineStage::Decide);
+        }
+        let decision = decide(state, command);
+        if let Self::Observed(observer) = self {
+            observer.stage_finished(EngineStage::Decide, None);
+        }
+        decision
+    }
+
+    fn append(
+        &mut self,
+        journal: &mut impl Journal,
+        event: &aizign_core::workflow::WorkflowEvent,
+        at: aizign_core::BoundedTimestamp,
+    ) -> Result<JournalEntry, JournalError> {
+        let Self::Observed(observer) = self else {
+            return journal.append(event, at);
+        };
+
+        observer.stage_started(EngineStage::AppendSync);
+        let appended = journal.append_observed(event, at, observer);
+        observer.stage_finished(EngineStage::AppendSync, None);
+        appended
+    }
+}
+
 /// What happened to a submitted signal. `Accepted` is returned only after
 /// the entry is durable (hard invariant 2).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -81,13 +143,23 @@ pub fn handle_workflow_signal(
     clock: &impl Clock,
     command: Command,
 ) -> Result<SignalOutcome, HandleError> {
-    let entries = journal.load_committed().map_err(HandleError::Journal)?;
-    let state = WorkflowState::replay(entries.iter().map(|entry| &entry.event))
-        .map_err(HandleError::Replay)?;
-    match decide(&state, command) {
+    execute_workflow_signal(journal, clock, command, SubmitMode::Plain)
+}
+
+fn execute_workflow_signal(
+    journal: &mut impl Journal,
+    clock: &impl Clock,
+    command: Command,
+    mut mode: SubmitMode<'_>,
+) -> Result<SignalOutcome, HandleError> {
+    let entries = mode.load_committed(journal).map_err(HandleError::Journal)?;
+    let state = mode.replay(&entries).map_err(HandleError::Replay)?;
+    match mode.decide(&state, command) {
         Decision::Accepted { event } => {
             let at = clock.now().map_err(HandleError::Clock)?;
-            let entry = journal.append(&event, at).map_err(HandleError::Journal)?;
+            let entry = mode
+                .append(journal, &event, at)
+                .map_err(HandleError::Journal)?;
             Ok(SignalOutcome::Accepted { entry })
         }
         Decision::Duplicate { event_id } => Ok(SignalOutcome::Duplicate { event_id }),
@@ -103,34 +175,10 @@ pub fn handle_workflow_signal_observed(
     command: Command,
     observer: &mut impl EngineObserver,
 ) -> Result<SignalOutcome, HandleError> {
-    let mut observer = BestEffortObserver::new(observer);
-    observer.stage_started(EngineStage::JournalLoadDecode);
-    let loaded = journal.load_committed_observed(&mut observer);
-    observer.stage_finished(
-        EngineStage::JournalLoadDecode,
-        loaded.as_ref().ok().map(Vec::len),
-    );
-    let entries = loaded.map_err(HandleError::Journal)?;
-
-    observer.stage_started(EngineStage::Replay);
-    let replayed = WorkflowState::replay(entries.iter().map(|entry| &entry.event));
-    observer.stage_finished(EngineStage::Replay, None);
-    let state = replayed.map_err(HandleError::Replay)?;
-
-    observer.stage_started(EngineStage::Decide);
-    let decision = decide(&state, command);
-    observer.stage_finished(EngineStage::Decide, None);
-
-    match decision {
-        Decision::Accepted { event } => {
-            let at = clock.now().map_err(HandleError::Clock)?;
-            observer.stage_started(EngineStage::AppendSync);
-            let appended = journal.append_observed(&event, at, &mut observer);
-            observer.stage_finished(EngineStage::AppendSync, None);
-            let entry = appended.map_err(HandleError::Journal)?;
-            Ok(SignalOutcome::Accepted { entry })
-        }
-        Decision::Duplicate { event_id } => Ok(SignalOutcome::Duplicate { event_id }),
-        Decision::Rejected { error } => Err(HandleError::Rejected(error)),
-    }
+    execute_workflow_signal(
+        journal,
+        clock,
+        command,
+        SubmitMode::Observed(BestEffortObserver::new(observer)),
+    )
 }
