@@ -1,11 +1,15 @@
 # Architecture overview
 
-この文書は **現在のarchitecture** を記述します。決定の理由と経緯は [ADR](../adr/) にあります。
+This document describes the **current architecture**. ADRs record the reasons
+and decision history. Future concepts are listed separately and have no current
+Protocol v1, public API, durable-record, or runtime effect.
 
-## 一文で
+## In one sentence
 
-Aizignは、harness（LLM agentを動かす実行環境）から来る **structured signal** と、harnessへ送る **effect intent** を、
-決定論的なcoreで判断し、その判断をmetadata-onlyなjournalへdurableに記録するorchestration coreです。
+Aizign's current runtime deterministically classifies structured workflow
+signals, durably appends accepted signals to a metadata-only journal, and
+performs bounded read-only reconciliation against the published committed
+snapshot.
 
 ## 構造
 
@@ -24,10 +28,10 @@ Aizignは、harness（LLM agentを動かす実行環境）から来る **structu
 └─────────────────────────────┘
 ```
 
-| Layer | 役割 | 禁止 |
+| Layer | Current responsibility | Prohibited |
 |---|---|---|
-| `aizign-core` | workflow state、identity、command validation、event application、duplicate / conflict、next action、effect intent、authorization state、recovery disposition | I/O、clock、async、SDK、serialization、harness固有名 |
-| `aizign-engine` | committed journal load、command適用、event append、read-only reconciliation、effect claim、effect resultの還元、timeoutとbounded operation、port定義 | harness固有型 |
+| `aizign-core` | Workflow state, identity/binding validation, event application, duplicate/conflict decisions, and pure reconciliation disposition | I/O, clock, async, SDKs, serialization, harness-specific names, external-effect execution |
+| `aizign-engine` | Committed journal load, signal decision, accepted-event append, read-only reconciliation, bounded stage observation, and journal/clock ports | Harness-specific types and external-effect dispatch/claim/result/reconciliation |
 | `aizign-protocol` | NDJSON envelope、protocol version、capability negotiation、stable error code、DTO <-> domain変換、input size制限 | domain型の直接serialize |
 | `aizign-store-jsonl` | append-only、owner-only、writer-published commit point、bounded read-only cold read、record / store metadata version、shared / exclusive lock | raw conversation data、reader-side sync / repair / tail promotion |
 | `aizign-cli` | composition root。`aizign handle`、`aizign hello` | business logic |
@@ -38,18 +42,52 @@ adapterが満たす言語中立のbehavioral boundaryは
 Protocol v1のwire schemaは `spec/protocol/v1/` が所有し、TypeScript packageはその
 reference / convenience layerです。
 
-## 一つのrequestの流れ
+## Current signal-submission flow
 
 1. adapterがharnessのnative event（例: tool call）を受け取り、structured evidenceへ変換する。
 2. adapterが `aizign handle --state <dir>` を起動し、stdinへ一つのrequest envelopeを書く。
 3. `aizign-protocol` がenvelopeをclosed schemaでdecodeし、domain commandへ変換する。
 4. `aizign-engine` がjournalをbounded cold readし、`aizign-core` にstateとcommandを渡す。
-5. `aizign-core` が `Decision` を返す。内容は domain event の追加、effect intent、またはrejection。
-6. engineはeventをjournalへappendする。effect intentがあれば **effect前にclaimをappend** する。
+5. `aizign-core` returns a decision to accept, classify as a duplicate, or
+   reject the signal.
+6. For a new acceptance, the engine durably appends the accepted-signal event
+   before the server returns the `accepted` disposition.
 7. `aizign-protocol` がresponse envelopeへ変換し、stdoutへ一行で書く。logはstderr。processは終了する。
-8. adapterはresponseのdispositionに従って次の動作を行う。`unknown` を成功や失敗へ推測しない。
+8. The adapter validates the response and correlation, then preserves the
+   source-qualified client outcome. It never infers success or failure from
+   `unknown`.
 
-restart後の照合では、adapterが同じfull signalを`workflow.signal.reconcile`で問い合わせます。storeのread-only readerは`workflow.commit.json`が公開したexact prefixだけを読み、engine / coreは`accepted`、`conflict`、`absent`を返します。missing storage、active writer、corruption、unpublished tail、transport / correlation failureはすべて`unknown`であり、reconciliationはstateを作成・同期・修復しません。初期store implementationはdurability contractとopen-flag ABIをCIで検証する `x86_64-unknown-linux-gnu` だけでcapabilityをadvertiseし、x32を含む別ABIや別architecture / libcのLinuxなどの未検証targetはfail closedします。
+After restart, an adapter may query the same complete signal through
+`workflow.signal.reconcile`. The reader inspects only the exact prefix
+published by `workflow.commit.json`; the server reconciliation disposition is
+`accepted`, `conflict`, or `absent`. Missing or inconsistent storage, an active
+writer, corruption, an unpublished tail, and transport or correlation failure
+cannot produce those dispositions and are preserved by the client as
+`unknown`. Reconciliation creates, synchronizes, repairs, and appends nothing.
+The initial store advertises the capability only on
+`x86_64-unknown-linux-gnu`, where CI verifies its durability contract and
+open-flag ABI; unverified Linux ABIs, architectures, and libc combinations fail
+closed.
+
+Cross-language classification ownership for current operation/code
+combinations belongs to the
+[classification contract](../../spec/classification/README.md). Its planned
+corpus is intentionally absent from this contract-only slice. Wire shapes and
+server codes remain owned by the Protocol specification. Architecture
+documents do not create a universal outcome service or a second semantic
+table.
+
+## Future/provisional inventory
+
+The following inventory preserves durable design principles without claiming
+that an effect runtime exists.
+
+| Provisional concept | Current status | Promotion trigger |
+|---|---|---|
+| External-effect intent, durable claim, dispatch, result recording, and effect reconciliation | No consumer, owner, Protocol kind/capability, public API, durable record, state machine, or runtime operation exists. | A dedicated accepted Issue and any required ADR must name the consumer and owner; define the Protocol kind/capability; define the durable record, authority, and state shape; define failure, unknown, retry, and reconciliation semantics; and identify executable tests. Only then may current architecture and compatibility claims include the operation. |
+
+This trigger does not decide the diagnostics work in #83, capability work in
+#78, store design in #81, provenance work in #72, or executor work in #87.
 
 ## Functional core / imperative shell
 
@@ -61,7 +99,7 @@ restart後の照合では、adapterが同じfull signalを`workflow.signal.recon
 
 | 場所 | 状態 |
 |---|---|
-| `crates/aizign-core` | `identity`、`workflow`、pureな`recovery` context（full signalのaccepted / conflict / absent分類）。candidate lifecycle registry、external evidence provenance、repair causation、`execution` 以降は後続 |
+| `crates/aizign-core` | `identity`, `workflow`, and pure `recovery` (classification of a complete signal as accepted/conflict/absent). Candidate lifecycle, provenance, repair causation, execution, and effects are not current. |
 | `crates/aizign-protocol`、`spec/protocol/v1/` | Protocol v1: envelope、`hello`、signal submit / reconcile、closed decoder、schemaとexample |
 | `crates/aizign-engine` | `JournalReader` / `Journal` / `Clock` / best-effort stage observation port、submit / reconcile use case |
 | `crates/aizign-store-jsonl`、`spec/journal/v1/`、`spec/store/v1/` | JSONL journal: owner-only、shared / exclusive lock、writer-published committed prefix、bounded read-only cold read、closed record / metadata |

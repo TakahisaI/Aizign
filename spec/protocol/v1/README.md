@@ -4,7 +4,7 @@ NDJSON over stdin / stdout。**1 request frame in、1 response frame out**。fra
 request / response のJSON frame本体はともに `65536` bytes（`MAX_FRAME_BYTES`）以下。終端LFと、その後に許可されるASCII whitespaceはframe sizeに含めない。process clientはLFまでのframeだけをboundedに保持し、LF後は保存せず検査する。
 
 - stdinは **frame 1つ + 末尾 whitespace** だけを許す。2つ目のframeや末尾の非whitespaceは `INVALID_ENVELOPE`（何もappendしない）
-- stdoutも **frame 1つ + 末尾 whitespace** だけ。clientは2つ目のframe・末尾の非whitespace・boundの超過を `unknown` として扱う（effectが実行済みの可能性があるため、拒否ではなく不明）
+- stdoutも **frame 1つ + 末尾 whitespace** だけ。clientは2つ目のframe・末尾の非whitespace・boundの超過を `unknown` として扱う（signalがすでにdurableにappendされた可能性があるため、拒否ではなく不明）
 - clientはresponseの `requestId` / `kind` / （signalでは）`eventId` を送信したものと照合し、不一致は `unknown`（correlation mismatch）にする
 
 ```text
@@ -41,6 +41,13 @@ adapter ──(request frame)──▶ aizign handle --state <dir> ──(respon
 - 互換性はpackage versionではなく `version` と `hello` の `capabilities` で判定する
 
 ## Kinds
+
+The current v0.1 operation set is exactly `hello`,
+`workflow.signal.submit`, and read-only `workflow.signal.reconcile`. `hello` is
+the bootstrap operation. A non-hello operation is current only when this
+specification owns its request and response kind/schema and the serving binary
+advertises the matching capability. See the
+[current-operation classification contract](../../classification/README.md).
 
 | Kind | Request payload | Response payload |
 |---|---|---|
@@ -88,16 +95,17 @@ classificationへ使う。正形式だが未認識のcodeを確定的な成功�
 
 ### Operation-specific client classification
 
-| Operation | Error code class | Client classification |
-|---|---|---|
-| `workflow.signal.submit` | validation / mismatch / conflict、`CAPABILITY_UNSUPPORTED`、`JOURNAL_OUTCOME_UNKNOWN`以外の既知`JOURNAL_*` | `rejected` |
-| `workflow.signal.submit` | `JOURNAL_OUTCOME_UNKNOWN` / `HANDLER_TIMEOUT` / `EFFECT_OUTCOME_UNKNOWN` | `unknown`、codeは診断用`reportedCode` |
-| `workflow.signal.submit` | `INTERNAL`または正形式だが未認識のcode | `unknown`、codeは診断用`reportedCode` |
-| `workflow.signal.reconcile` | すべてのerror response | `unknown`、codeは診断用`reportedCode` |
+The source-qualified semantic rules are owned by the
+[current-operation classification contract](../../classification/README.md).
+This Protocol specification continues to own wire syntax and fixed-code
+meaning; it does not maintain a second semantic classification table.
 
-この分類はresponseの相関が成立した後のsemantic outcomeである。相関不一致なら
-operationに関係なく`unknown / correlation_mismatch`とし、codeは未相関responseから
-得た診断情報としてのみ保持する。`unknown`から自動retryへ進まない。
+The required fail-closed cases are: submit `INTERNAL` and a syntactically valid
+unrecognized submit code are client `unknown` and non-retryable; every
+reconciliation error is client `unknown`; and an unrecognized code is omitted
+from timing code disclosure. Transport, decode, timeout, abort, and correlation
+failures remain `unknown` and do not authorize retry. Timing is provisional
+operational evidence rather than a stable Protocol compatibility surface.
 
 | Code | いつ |
 |---|---|

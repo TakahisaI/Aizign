@@ -20,3 +20,19 @@
 10. Control journalはmetadata-onlyのclosed field setとし、producerはraw prompt、model output、reasoning、credentialをallowed opaque valueにも入れない。
 11. Remote publication、repository visibility変更、force updateを自動実行しない。
 12. 同一identity・同一内容はduplicate、同一identity・異内容はconflictにする。
+
+## Current and future applicability
+
+These invariants are durable principles, but an invariant does not imply that
+every domain named by it is implemented.
+
+- Invariant 2 applies when a future external-effect operation exists. The
+  current runtime has no external-effect intent, claim, dispatch, result, or
+  effect-reconciliation operation, record, capability, or public API.
+- The no-blind-retry principle in invariants 3 and 4 applies today to signal
+  submission when the accepted-event append or acknowledgement outcome is
+  unknown. `unknown` is preserved and does not authorize resubmission. It must
+  also apply to future effects if and when the promotion trigger in the
+  [architecture overview](overview.md#futureprovisional-inventory) is met.
+- Invariant 9 applies today to `workflow.signal.reconcile`, which is bounded
+  and read-only. It does not imply a future effect-reconciliation design.

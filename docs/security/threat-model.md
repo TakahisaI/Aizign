@@ -11,10 +11,12 @@ format schemas remain authoritative for their wire and storage shapes.
 
 ## Scope
 
-The current runtime accepts structured workflow signals through a harness
-adapter, a one-shot Protocol v1 process, a deterministic core, and a local
-metadata-only JSONL store. It can reconcile an exact signal against a
-writer-published committed journal prefix without modifying state.
+The current Protocol v1 operations are exactly `hello`,
+`workflow.signal.submit`, and read-only `workflow.signal.reconcile`. The
+runtime accepts structured workflow signals through a harness adapter, a
+one-shot process, a deterministic core, and a local metadata-only JSONL store.
+It can reconcile an exact signal against a writer-published committed journal
+prefix without modifying state.
 
 The threat model does not add cryptographic signing, remote attestation,
 multi-tenant isolation, a remote artifact store, credential management,
@@ -105,6 +107,29 @@ tail, unsupported platform, transport failure, timeout, or correlation failure
 remain `unknown`. A wrong but valid initialized state directory is not
 detectable because v0.1 has no durable state-instance identity.
 
+### Provisional timing evidence
+
+Opt-in timing is internal, provisional operational evidence. It is not
+Protocol v1, package compatibility, workflow authority, or a stable public
+schema. The child record's current `schema_version: 1` is only an internal
+producer/consumer guard, with no external stability or migration promise.
+
+Timing observations remain qualified by their source. A child runtime
+observation, a returned client outcome, and a parent transport observation do
+not establish one universal semantic outcome. The
+[classification contract](../../spec/classification/README.md) defines the
+target cross-language authority without turning timing into a compatibility
+surface or claiming that current producers are already corpus-driven.
+
+Current timing producers enforce metadata-only shapes and best-effort
+observer/sink isolation: request and event identity, paths, content, and
+credentials are excluded, and observation failure does not change the
+workflow result. The allowed durations, counts, operation kind, recognized
+code, and source-qualified observation remain operational metadata whose
+retention and access are caller-owned. Stabilization requires a separate
+decision defining an owner, independent version and lifecycle, consumers, and
+compatibility and migration rules.
+
 ## Inputs by trust level
 
 Treat these as untrusted and validate before use:
@@ -156,11 +181,11 @@ threat crosses layers, the row uses the weakest end-to-end level.
 | Wrong but valid state directory | Trusted assumption | Operator/control plane | Use the configured initialized store | No runtime proof in v0.1 | No state-instance manifest exists |
 | Same-user state modification | Not guaranteed | No separate same-user security boundary | Detect only incomplete/inconsistent rewrites | Corruption and mismatch tests cover accidental/incomplete changes | No MAC, signature, privilege separation, or attestation |
 | Missing, reordered, forged, or expired harness persistence | Not guaranteed | Adapter-specific evidence reader | DSH returns unknown/throws for detected missing or unverified observations | DSH cold-read tests | Matching forged metadata, real persistence durability/retention, and source-side bounds are not established |
-| Timeout, abort, response loss, or `JOURNAL_OUTCOME_UNKNOWN` | Detected and fail closed | Engine and core clients | Preserve `unknown` and do not retry blindly | Engine lost-ack tests and core-client fault scenarios | Read-only reconciliation cannot resolve missing/corrupt/unpublished state |
+| Submit timeout, abort, response loss, or uncertain append reported as `JOURNAL_OUTCOME_UNKNOWN` | Detected and fail closed | Engine and core clients | Preserve the submit/append result as `unknown` and do not retry the submission blindly | Engine lost-ack tests and core-client fault scenarios | Read-only reconciliation cannot resolve missing/corrupt/unpublished state |
 | Reconciliation returns `absent` | Runtime enforced | Core-client orchestration | Return the observation without implicit submit | Core-client absent/no-submit and store read-only tests | A later writer can make the observation stale after lock release |
 | Protocol or local-validation diagnostic detail reaches the model-facing DSH tool error | Runtime enforced | DSH input/outcome mapping | Preserve the stable code but replace local-validation, rejected, and unknown diagnostic text with fixed safe messages; do not retain the local Protocol error as a cause | DSH tool mapping tests cover synthetic private-path peer detail and invalid local input without cause-chain recovery | Direct trusted `CoreClient` consumers still receive operational Protocol messages and must apply their own presentation policy |
 | CLI diagnostic output contains a raw request/content body | Runtime enforced | CLI diagnostic mapping | Emit bounded stage, identity, kind, outcome, and stable code only | CLI stderr-content test | Identity metadata itself may be sensitive; external log sinks are operator-owned |
-| Opt-in timing leaks request/event identity or content, or a timing sink changes the workflow result | Runtime enforced | CLI/engine observation mapping and TypeScript/DSH timing helpers | Emit only allowlisted operation/timing/count/outcome fields and exact fixed error codes; omit unrecognized peer codes; isolate synchronous/asynchronous sink failure | CLI timing tests, engine observation tests, TypeScript/DSH timing tests, unknown-code fault scenarios, and benchmark artifact allowlist tests | Durations, counts, operation kind, recognized code, and outcome remain operational metadata; raw unrecognized code stays on the returned control-plane outcome; external sink retention/access are caller-owned |
+| Provisional opt-in timing leaks request/event identity or content, or an observer/sink changes the workflow result | Runtime enforced | CLI/engine observation mapping and TypeScript/DSH timing helpers | Emit only allowlisted operation/timing/count/source-qualified observation fields and exact fixed error codes; omit unrecognized peer codes; isolate synchronous/asynchronous observer and sink failure | CLI timing tests, engine observation tests, TypeScript/DSH timing tests, unknown-code fault scenarios, and benchmark artifact allowlist tests | Durations, counts, operation kind, recognized code, and source-qualified observations remain operational metadata; raw unrecognized code stays on the returned control-plane outcome; timing has no stable public schema or compatibility promise; external sink retention/access are caller-owned |
 | Tracked path violates the forbidden name/component policy, or an eligible text file contains a fixed known secret/private-path pattern | Regression evidence | `cargo xtask public-audit` | Check every tracked path; content-scan tracked UTF-8 text without NUL except the rule-definition source | `xtask` audit unit tests and the repository gate | Binary, NUL-containing, non-UTF-8, exempt-source, runtime, untracked/generated, package-artifact, opaque-value, and full-history content is not scanned |
 | Package manifest violates the checked policy, or a package manager cannot enumerate a packable file set | Regression evidence | Manifest audit, `cargo package --list`, and `npm pack --dry-run` gates | Reject checked manifest rules or a failed package enumeration command | Package/public-audit gates | The enumerated file list is not evaluated against a repository safety policy and package artifact contents are not secret-scanned |
 | Old binary opens current state directory | Not guaranteed | Operator procedure | Documentation requires a separate state directory | Compatibility and store contract documentation | No downgrade fence; an old binary may ignore commit metadata |
@@ -180,7 +205,7 @@ mechanism. Their repository locations are:
 | Unknown preservation, lost acknowledgement, and reconciliation mapping | `crates/aizign-engine/tests/handle_workflow_signal.rs` and `reconcile_workflow_signal.rs` |
 | Store barriers, commit publication, corruption, tail, bounds, locks, permissions, path shape, and read-only behavior | `crates/aizign-store-jsonl/tests/jsonl_journal.rs` plus store unit fault injection |
 | CLI framing, timeout, stderr, capability, and unsupported-target behavior | `crates/aizign-cli/tests/handle.rs` |
-| Metadata-only timing shape and observer-failure isolation | `crates/aizign-engine/tests/observation.rs`, CLI/TypeScript/DSH timing tests, and `benchmarks/performance/run.test.mjs` |
+| Provisional metadata-only timing shape and observer/sink-failure isolation | `crates/aizign-engine/tests/observation.rs`, CLI/TypeScript/DSH timing tests, and `benchmarks/performance/run.test.mjs` |
 | TypeScript one-shot faults, correlation, no-retry, no-submit-after-absent, and no-spawn-on-oversize | `packages/adapter-testkit/src/conformance.ts` and `reference-client.test.ts` |
 | DSH config/tool schema, native identity exclusion, environment isolation, diagnostic normalization, preflight, round trip, and cold read | `adapters/dsh/test/unit/` and `adapters/dsh/test/conformance/` |
 | Tracked-path policy and eligible UTF-8-text fixed-pattern scan | `xtask/src/audit/secrets.rs` through `cargo xtask public-audit` |
@@ -195,7 +220,7 @@ general provider, network, or persistence guarantees.
 |---|---|---|
 | 1. Natural language, idle, and UI are not completion authority | Core accepts only structured commands/events; journal is authoritative | Core workflow tests, closed protocol/journal schemas, adapter mapping tests |
 | 2. Claim before external effect | Architectural invariant; no external-effect runtime exists in v0.1 | Not claimed as implemented until an effect slice adds runtime tests |
-| 3. Do not blindly retry an unknown effect | Engine/client preserve `OutcomeUnknown`; current submission path does not retry | Lost-ack and client fault tests |
+| 3. Do not blindly retry an unknown effect | Current evidence is limited to submit/append uncertainty: engine and clients preserve `unknown`, and the submission path does not retry automatically. No external-effect runtime is implemented. | Lost-ack and client fault tests |
 | 4. Do not guess `unknown` as success/failure | Engine, protocol clients, adapter mapping | Engine and adapter-testkit unknown scenarios |
 | 5. Bind evidence to workflow, assignment, attempt, and candidate | Core validation and accepted event content | Core mismatch-order, protocol, journal, replay tests |
 | 6. Review pass alone does not integrate | Repository/workflow policy; no integration runtime exists in v0.1 | Not a current runtime guarantee |

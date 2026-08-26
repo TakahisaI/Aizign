@@ -2,7 +2,14 @@
 
 - Status: Accepted
 - Date: 2026-08-23
-- Related: ADR-0003, ADR-0005
+- Related: ADR-0003, ADR-0005, ADR-0017
+
+> **Partial supersession:** [ADR-0017](0017-bound-v0-1-classification-to-current-operations.md)
+> supersedes only this ADR's effect-intent and effect-claim statements as
+> descriptions of current v0.1 scope. The Rust implementation choice,
+> `no_std`, dependency isolation, functional-core shape, and every other
+> decision below remain Accepted. Effect material is future design unless a
+> later accepted contract supplies its consumer, authority, shape, and tests.
 
 ## Context
 

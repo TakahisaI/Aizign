@@ -4,10 +4,10 @@ Pure, deterministic decisions for Aizign software-change workflows.
 
 | | |
 |---|---|
-| **Responsibility** | workflow state、identityとbinding、command validation、event application、duplicateとconflict、next actionの決定、effect intent、authorization state、recovery disposition、usage observationの共通型 |
+| **Responsibility** | Workflow-signal state, identity and binding, command validation, accepted-event application, duplicate/conflict decisions, and pure recovery disposition |
 | **Non-responsibility** | I/O、clock、process、network、environment、async runtime、harness / provider SDK、Git、serialization（wire / journal）、harness固有名 |
 | **Inputs** | `State`、`Command`、`Event`、shellが与えるbounded timestamp |
-| **Outputs** | `Decision`（追加するevent、effect intent、または説明可能なrejection）、次の `State` |
+| **Outputs** | `Decision` (accepted event, duplicate, or explainable rejection) and replayed `State` |
 | **Hard invariants** | [docs/architecture/invariants.md](../../docs/architecture/invariants.md) の12項目。特に 1、4、5、8、12 はこのcrateが直接担う |
 | **Allowed dependencies** | なし（`dependencies`、`dev-dependencies` ともに空。`#![no_std]` + `core` / `alloc` のみ） |
 | **Test command** | `cargo test -p aizign-core` |
@@ -69,6 +69,15 @@ tests/workflow_recovery.rs  exact content / conflict / absentのpure reconciliat
 - `reconcile_workflow_signal(state, signal)` はreplay済みstateを変更せず、同一`eventId`の保存済みsignalとoptional fieldを含むexact contentを比較する
 - exact matchは`Accepted`、同一IDで内容差は`Conflict`、IDが存在しなければ`Absent`
 - durability、I/O failure、storage missingはcoreの語彙に含めず、engine / storeがcoreを呼ぶ前に処理する
+
+## Current/future boundary
+
+This crate currently has no external-effect intent, claim state, dispatch
+decision, result, or effect-reconciliation operation. Those names are not part
+of its public API. A future contract must first satisfy the consumer, owner,
+Protocol kind/capability, durable record/authority/state shape,
+failure/reconciliation, and test trigger in the
+[architecture overview](../../docs/architecture/overview.md#futureprovisional-inventory).
 
 ## 依存規則の検査
 

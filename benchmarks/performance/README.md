@@ -41,7 +41,32 @@ The initial workflow is informational because it is not a required branch-protec
 
 The evaluator requires the exact profile, warmup, sample count, ordered sweep list, 23 aggregate identities, 33 unique budget IDs, one aggregate per identity, and three raw metric values per budget. A missing timing, duplicate aggregate, partial matrix, or noncanonical direct-runner configuration cannot produce `PASS`.
 
-## 計測区間
+## Timing lifecycle
+
+All timing in this runner is internal, provisional operational evidence. It is
+not Protocol v1, package compatibility, workflow authority, or a stable public
+schema. The child record's current `schema_version: 1` is only an internal
+producer/consumer guard. It provides no external stability or migration
+promise.
+
+The existing child, parent, and DSH timing sources and APIs remain unchanged by
+this contract-only alignment. Their observations are source-qualified: child
+runtime observation, returned client outcome, parent transport observation,
+and DSH evidence observation are not one universal semantic outcome. The
+[classification contract](../../spec/classification/README.md) defines the
+target cross-language authority, but does not make timing a compatibility
+surface or claim that the existing sources are already corpus-driven. Planned
+corpus and consumer implementation follows the ownership cleanup sequence
+[#87](https://github.com/TakahisaI/Aizign/issues/87) →
+[#88](https://github.com/TakahisaI/Aizign/issues/88) →
+[#89](https://github.com/TakahisaI/Aizign/issues/89).
+
+Stabilizing timing later requires a separate accepted decision defining an
+owner, independent version and lifecycle, intended consumers, and explicit
+compatibility and migration rules. This lifecycle classification does not
+change the existing performance budgets.
+
+## Measurement intervals
 
 child側の計測は`AIZIGN_TIMING_JSON=1`でopt inします。
 `aizign handle`は通常のlogに加え、`aizign_timing:`で始まるmetadata-only JSONをstderrへ一行出力します。
@@ -66,19 +91,25 @@ opt inしていない通常経路は追加のstage clock、observer、journal st
 | `response_encode_ms` | protocol responseのencode |
 | `response_write_ms` | stdoutへのresponse frame書き込みとflush |
 | `handler_total_ms` | `handle`がworkerを起動する直前からresponse flushが終わるまで |
-| `outcome` | `accepted`、`duplicate`、`conflict`、`rejected`、`absent`、`unknown`などのsemantic outcome |
+| `outcome` | Source-qualified child runtime observation such as `accepted`, `duplicate`, `conflict`, `rejected`, `absent`, or `unknown`; not a universal semantic outcome |
 | `error_code` | error responseに含まれるstable code |
 | `operation_kind` | `hello`、`workflow.signal.submit`、`workflow.signal.reconcile`、`unknown`の有限集合。decode前の入力文字列は転記しない |
 
-parent側は`CoreClientConfig.timingSink`でopt inします。
-`spawn_to_exit_ms`はspawn呼び出しからNodeのchild `exit` eventまで、`response_first_byte_ms`は最初のstdout byteまでを測ります。
-CLIは一つのresponse frameをまとめて書くため、first byteはstreaming progressではなくresponse-readyの近似です。
-DSH preflightは`preflight_ms`、evidence cold readは`harness_cold_read_ms`と`events_returned`を別のsinkへ通知します。
+Parent timing is enabled with `CoreClientConfig.timingSink`.
+`spawn_to_exit_ms` measures from the spawn call to Node's child `exit` event,
+and `response_first_byte_ms` measures to the first stdout byte. Because the CLI
+writes one response frame at once, the first byte approximates response-ready
+time rather than streaming progress. The parent `outcome` field is a
+source-qualified parent transport observation; it must not be substituted for
+the returned client outcome or the child's runtime observation. DSH preflight
+reports `preflight_ms`, while evidence cold read reports
+`harness_cold_read_ms` and `events_returned` to a separate sink.
 
-どのsinkにもrequest ID、event ID、path、本文、credentialを渡しません。
-同期throwと非同期Promise rejectionを含むsinkの失敗、およびchild timingのencode失敗はworkflow結果を変えません。
-APIが`unknown`を返す場合、診断codeが`EVENT_CONFLICT`でもtiming outcomeは`unknown`のままです。
-公開TypeScript APIも`TimingOutcome`とsource固有のunknown reason unionを使い、timing vocabularyを型として閉じます。
+No sink receives a request ID, event ID, path, content, or credential. Sink
+failure, including synchronous throws and asynchronous Promise rejections, and
+child-timing encode failure cannot change the workflow result. If the API
+returns `unknown`, a diagnostic code such as `EVENT_CONFLICT` does not narrow
+any source-qualified observation to a definite outcome.
 
 ## Sweep
 
@@ -147,7 +178,9 @@ summaryとmachine-readable resultは、全warm aggregateで最も遅い`handler_
 `result.json`はmachine-readableなenvironment、GitHub runner image version、timeout設定、aggregate、生sampleを持ちます。PR smokeの予算根拠は[versioned native baseline manifest](native-baseline-v3.json)から読み、run ID、runner/image version、CPU、result/summary SHA-256、各budgetの最大native p95を固定します。
 `summary.md`は同じaggregateをレビュー用tableへ変換します。
 runnerはchild、parent、DSH timingごとにexact-key allowlistを検査し、未登録fieldが一つでもあればartifactを保存しません。
-timingのschema version、時間値、byte数、entry数、event数も型と範囲を検査します。
+The runner validates the internal timing `schema_version` producer/consumer
+guard, duration values, byte counts, entry counts, and event counts by type and
+range. This validation does not establish a public timing-schema lifecycle.
 時間値は有限の非負数、countは非負のsafe integerだけを許可します。
 direct transportの`transport_kind`も`correlated_response`または`unknown`だけを許可します。
 private filesystem pathとidentity keyの検査も重ねます。

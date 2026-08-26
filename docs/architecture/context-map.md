@@ -8,8 +8,7 @@
 | Context | Module | 責務 | 非責務 | v0.1 |
 |---|---|---|---|---|
 | Identity | `identity` | workflow / assignment / attempt / candidate revision / event の stable ID、digest、bounded timestampの最小語彙 | harness ID、provider ID | ✔ |
-| Workflow | `workflow/` | workflow signalのcommand、event、state、decision、duplicate / conflict、expected assignmentとのattempt / candidate pair照合 | candidate lifecycle registry、external evidence provenance、repair causation、実行、配送、integration | ✔ |
-| Execution | `execution/` | session / attemptのstate、effect intent、claim状態、terminal disposition、`unknown` | harness session操作そのもの | later |
+| Workflow | `workflow/` | Workflow-signal command, accepted event, state, decision, duplicate/conflict, and expected-assignment/candidate-pair checks | Candidate lifecycle registry, provenance, repair causation, execution, delivery, integration, effects | ✔ |
 | Evidence | `evidence/` | structured evidenceのbinding検証、digest照合、evidence disposition | harness persistenceの読み取り | later |
 | Workspace | `workspace/` | writer lease、candidate revision、check evidenceのbinding | Git command、filesystem | later |
 | Authorization | `authorization/` | revision-bound human authorizationのstateとconsume | CLI、operator UI | later |
@@ -17,8 +16,18 @@
 | Recovery | `recovery/` | replay済みworkflow stateに対するfull signalのpureなaccepted / conflict / absent分類 | durability判断、journal I/O、process監視 | ✔ |
 | Usage | `usage/` | usage observationの共通型 | 収集、集計CLI | later |
 
-`later` のcontextは、最初のstructured workflow signalが縦に通った後、旧実装をcontext単位で再評価して追加します。
-そのときもこの表に行を足してからcodeを書きます。
+`later` means that a context is not part of the current runtime or public
+contract. It requires its own accepted contract before code placement becomes
+current.
+
+### Future/provisional effect placement
+
+`execution/`, an effect port, or another executor boundary is not reserved by
+this document. Before any external-effect context or port is added, a dedicated
+accepted Issue and any required ADR must name its consumer and owner; define
+its Protocol kind/capability; define its durable record, authority, and state
+shape; define failure, unknown, retry, and reconciliation semantics; and name
+its tests. This is an inventory trigger, not a decision for #87.
 
 ## Engine (`crates/aizign-engine/src/`)
 
@@ -26,10 +35,9 @@ engineはuse caseとportを持ちます。contextの切り方はcoreと揃えま
 
 | 要素 | 内容 | 状態 |
 |---|---|---|
-| Use case | `handle_workflow_signal`: journal load → replay → core → append → outcome | 実装済み |
+| Use case | `handle_workflow_signal`: journal load → replay → core → append → engine result | 実装済み |
 | Use case | `reconcile_workflow_signal`: committed load → replay → exact signal classification。append / clock / effectなし | 実装済み |
 | Port | `JournalReader`（committed load）、これを拡張する`Journal`（append）、`JournalEntry`、`JournalError`、`Clock`（bounded timestamp） | 実装済み |
-| Port | `EffectSink`（effect intentの配送） | 後続 |
 | 所有 | portはengineが定義。store、testkit、cliが実装 | — |
 
 ## Protocol (`crates/aizign-protocol`, `packages/protocol`)
