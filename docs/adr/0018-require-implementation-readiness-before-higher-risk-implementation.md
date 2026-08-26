@@ -64,8 +64,8 @@ references. Templates collect records only and do not authorize decisions.
 
 This ADR extends ADR-0016. It retains ADR-0016's repository ownership,
 tool-neutral operation, exact-target review, visible gaps, and separate
-Maintainer merge decision. Readiness is additional preparation authority; it is
-not review evidence, merge approval, milestone approval, or release authority.
+Maintainer merge decision. Readiness is an additional implementation gate; it
+is not review evidence, merge approval, milestone approval, or release authority.
 
 ## Consequences
 
