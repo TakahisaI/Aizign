@@ -2,55 +2,57 @@
 
 ## Status and authority
 
-`GOVERNANCE.md` defines Maintainer, merge, and release authority.
-`CONTRIBUTING.md` is the contribution-policy authority. This file is the
-required operational procedure delegated by `CONTRIBUTING.md` for Boundary
-changes and Milestone reviews.
+This is the **pilot operating procedure** for Boundary changes and Milestone
+reviews. It is intentionally sized for Aizign before v0.1: one Maintainer,
+ordinary coding sessions, and three optional personal/workspace skills.
 
-This procedure does not define product behavior, Protocol contracts, durable
-formats, hard invariants, security guarantees, compatibility promises, or
-support boundaries. Those remain owned by their existing normative repository
-authorities.
+`GOVERNANCE.md` defines Maintainer, merge, milestone, and release authority.
+`CONTRIBUTING.md` is the contribution-policy authority. Product and runtime
+contracts remain owned by their existing specifications, architecture
+documents, accepted ADRs, maintained source, and tests.
 
-An Issue, checkpoint, model response, role handoff, closure note, review packet,
-Breaker report, adjudication, or completed template is workflow evidence. It
-does not replace a normative authority or a Maintainer decision.
+This procedure is workflow guidance. An Issue, review brief, skill output,
+Breaker report, adjudication, or completed template is evidence; it does not
+replace a normative repository authority or a Maintainer decision.
 
-The decision to adopt this procedure is recorded in
+The decision to pilot this procedure is recorded in
 [ADR-0016](../adr/0016-adopt-the-conductor-led-boundary-change-workflow.md).
-The fixed-context interface and its batch validator are described in
-[Fixed review packets](review-packet.md).
+The manual fixed-context format is described in
+[Review brief](review-brief.md).
 
-## Applicability
+## Current execution model
 
-Classify the change before implementation.
+The pilot assumes only these explicit-invocation skills:
 
-Use this predicate everywhere this repository asks whether work is Routine:
+- `$aizign-conduct`
+- `$aizign-break`
+- `$aizign-adjudicate`
 
-> Routine is allowed only when the change remains within an accepted
-> owner-local contract and satisfies none of the Boundary-change predicates. A
-> bug fix may change observed behavior only to restore that accepted contract;
-> changing the contract or public claim is Boundary work.
+They are optional adapters installed outside the repository. Do not activate
+them from an ordinary coding or review request.
+
+There is no required `$aizign-design`, `$aizign-implement`, packet generator,
+schema validator, workflow bot, or Aizign runtime automation. Contract design
+and implementation use ordinary human or coding-agent sessions. A Conductor
+may prepare a handoff for such a session but does not perform the implementation
+while acting as Conductor.
+
+## Change classes
 
 ### Routine change
 
-A Routine change satisfies the predicate above.
+A change is Routine only when it stays inside an already accepted owner-local
+contract and does not change a public or repository-level claim.
 
-Examples include:
+Typical examples:
 
-- a typo or prose correction with no claim change;
-- an internal refactor that preserves every accepted boundary; or
-- a bounded bug fix that restores already accepted behavior without changing
-  the controlling contract or public claim.
+- typo and prose corrections that do not change a maintained claim;
+- internal refactoring that preserves accepted behavior and boundaries; and
+- a bounded bug fix that restores already accepted behavior.
 
-Required:
-
-- owner-local tests when behavior changes;
-- normal CI; and
-- ordinary review where otherwise required.
-
-A standing checkpoint, independent Breaker, or multiple-perspective review is
-not required.
+Routine work uses the ordinary Issue/PR/CI path. It does not require a
+Conductor, review brief, Breaker, or Adjudicator unless the Maintainer requests
+one for a concrete risk.
 
 ### Boundary change
 
@@ -61,568 +63,284 @@ A change is Boundary work when it changes or establishes any of:
 - a hard invariant, architecture or package/crate boundary, dependency
   direction, security or data boundary;
 - support, compatibility, retry, unknown, lifecycle, release, or migration
-  policy;
-- an adapter or process boundary; or
-- contribution, review, merge, automation, or repository-governance policy.
+  policy; or
+- contribution, review, merge, automation, adapter, or repository-governance
+  policy.
 
-Required:
-
-- Development Conductor assessment;
-- checkpoint content prepared by the Conductor and approved by a Maintainer;
-- one canonical owner and complete old-path disposition;
-- structured claims, ranges, evidence requirements, and review assignments;
-- a fresh Implementer session for the candidate artifacts;
-- targeted fresh-session Breaker review;
-- separate fresh source adjudication;
-- Conductor transition-readiness assessment; and
-- separate Maintainer merge decision.
+Boundary work uses the pilot sequence below.
 
 ### Milestone review
 
-A Milestone review evaluates an exact candidate such as a Foundation freeze,
-release candidate, or dogfood entry point. It may be review-only and therefore
-does not imply an Implementer session.
+A Milestone review evaluates one exact candidate such as a Foundation freeze,
+dogfood entry point, release candidate, or v0.1 acceptance candidate. It may be
+review-only and does not require an artificial implementation session.
 
-Required:
+A previous review campaign is not automatically reused. The Conductor derives
+perspectives from the current candidate, accepted claims, and known risks.
 
-- exact candidate and evidence binding;
-- milestone-specific claims, failure models, and review assignments;
-- one fresh Breaker session per perspective;
-- separate fresh adjudication; and
-- Maintainer milestone or release decision.
+## Pilot sequence
 
-A previous campaign plan is not automatically reused.
+### 1. Accept the decision
 
-## Permanent rules
+Before implementation, the Issue and, when required, an ADR state:
 
-### No silent contract change
+- the problem;
+- the changed contract or process decision;
+- in-scope and out-of-scope areas;
+- the canonical authority or owner;
+- the disposition of overlapping old paths; and
+- at least one concrete failure case and expected evidence.
 
-An Implementer must not change an authority, invariant, public claim, support
-boundary, compatibility decision, lifecycle scope, stable code, schema field,
-or durable field merely to agree with an implementation discovery. The
-affected work stops and returns to `proposed`.
+The Maintainer records acceptance in the Issue or ADR under the authority in
+`GOVERNANCE.md`. No cryptographic checkpoint or approval digest is required
+during the pilot.
 
-### Single policy owner
+### 2. Conduct the change
 
-Each changed acceptance rule, classification, retry decision, support claim,
-or other policy has one canonical owner. Independent implementations consume
-that policy; they do not redefine it separately.
+Invoke `$aizign-conduct` explicitly when the change is Boundary or Milestone
+work. The Conductor reads the repository and current Issue/PR, classifies the
+change, identifies missing decisions, and prepares the smallest useful handoff.
 
-### Delete before add
+For implementation work, the handoff names:
 
-A new path with an existing responsibility requires a disposition for every
-old path:
+- accepted authorities and decision;
+- files or bounded contexts allowed to change;
+- prohibited changes;
+- canonical owner and old-path disposition;
+- required evidence; and
+- known gaps.
 
-- deleted;
-- migrated to the canonical owner;
-- provisional with an owner and removal or promotion trigger; or
-- retained for a distinct named responsibility.
+If design is still unresolved, use an ordinary specialist session and return
+the resulting decision to the Issue or ADR. A separate Contract Designer skill
+is not required.
 
-### Falsification before completion
+### 3. Implement in an ordinary coding session
 
-Each Boundary claim has a stable `claim_id`, a concrete counterexample or
-failure sequence, and an evidence requirement that must detect it. A final
-result alone does not prove an unobserved mechanism.
+Implementation is ordinary repository work. It may be performed by the same
+human who maintained the Issue, but not by the same model session that is
+currently acting as Conductor.
 
-### Review exact code and authority
+The Implementer stops and returns to the Issue or ADR when the implementation
+would change the accepted contract, authority, support claim, compatibility
+decision, lifecycle scope, schema, durable field, stable code, canonical owner,
+or old-path disposition.
 
-Review uses an exact revision, approved checkpoint content, applicable
-normative authorities, declared ranges, and relevant evidence. An Implementer
-narrative and green test counts are not substitutes for source evidence.
+### 4. Establish evidence
 
-`No finding` means the assigned evidence was inspected and no counterexample
-was established. Missing access or evidence is `INCOMPLETE`.
+Run the owner-local tests and normal repository checks. Record:
 
-## Roles
+- exact commands and results;
+- the concrete failure case exercised;
+- source, test, fixture, conformance, or inspection evidence;
+- known limitations; and
+- unresolved evidence gaps.
 
-Role separation is logical. A role may be performed by a person, model,
-provider, or future Aizign automation. For a Boundary change, one model session
-must not both design the contract and edit the candidate artifacts that realize
-it, and must not self-complete implementation, Breaker review, and
-adjudication.
+Green CI and an Implementer narrative are supporting evidence, not proof by
+themselves.
 
-Candidate artifacts include production code, process documents, templates,
-schemas, automation, configuration, and skill definitions.
+### 5. Freeze a manual review brief
 
-### Normative authority
+After the candidate is ready for independent review, the Conductor creates one
+manual Markdown review brief using
+[`docs/development/review-brief.md`](review-brief.md).
 
-Normative authority is the applicable versioned repository source that
-determines what is currently true. Use the repository authority map in
-`AGENTS.md` to locate it.
+The brief binds:
 
-A Maintainer, Conductor, specialist model, Issue comment, skill, or review
-report does not become product authority merely by making a statement.
+- repository, Issue/PR, exact target SHA, base, merge-base, and changed paths;
+- controlling authorities;
+- accepted decision, scope, owner, and old-path disposition;
+- claims, concrete failure cases, evidence, and gaps; and
+- one bounded question per Breaker perspective.
+
+No JSON schema, generated packet, content hash, or batch validator is required.
+The exact target commit already binds its tree. Copy the accepted decision text
+into the brief when mutable Issue or PR wording would otherwise be ambiguous.
+
+A target, authority, accepted decision, scope, or perspective change creates a
+new `brief_id`. Later CI results for the same target may be appended as
+observational evidence without replacing the brief.
+
+### 6. Run independent Breakers
+
+Invoke `$aizign-break` in one fresh session per perspective. Each session
+receives:
+
+- the same review brief;
+- exactly one perspective assignment;
+- access to the exact target and named authorities; and
+- no other Breaker report.
+
+A Breaker returns findings only and classifies each candidate as
+`established`, `not established`, or `incomplete`. It does not implement,
+integrate reports, assign final severity, or recommend merge.
+
+### 7. Adjudicate
+
+After all expected Breaker reports arrive, invoke `$aizign-adjudicate` in a
+separate fresh session. The Adjudicator independently reinspects the exact
+source and authorities, classifies every raw finding as `established`,
+`rejected`, or `incomplete`, integrates verified root causes, assigns severity
+from impact, and states the required correction or proof.
+
+The Adjudicator may recommend `blocked`, `needs evidence`, or `ready for
+Maintainer decision`. It does not approve, merge, release, or implement fixes.
+
+### 8. Decide
+
+The Conductor checks that the exact target is still current, required evidence
+exists, adjudicated blockers are closed, and no contract divergence remains.
+This is a readiness assessment, not approval.
+
+The Maintainer separately records the merge, milestone, or release decision.
+Repository checks and merge policy still apply.
+
+## Proportional review depth
+
+Use the smallest number of perspectives that covers the material failure
+models.
+
+| Change | Default independent review |
+|---|---|
+| Routine | Ordinary review only |
+| Normal Boundary change | 1 Breaker + 1 Adjudicator |
+| High-impact Boundary change | 2–3 Breakers + 1 Adjudicator |
+| Milestone review | 2–4 Breakers + 1 Adjudicator |
+
+Treat a Boundary change as high-impact when it affects security or data
+boundaries, wire or durable formats, compatibility or release policy, more than
+one bounded context, repository governance, or a failure mode that has already
+escaped review.
+
+The Maintainer may reduce or increase the count with a brief reason in the
+Issue or review brief. Perspective count is not evidence quality.
+
+## Roles and boundaries
 
 ### Maintainer
 
-The Maintainer exercises the authority defined by `GOVERNANCE.md`.
+The Maintainer exercises the authority defined by `GOVERNANCE.md`, including
+Issue/ADR decisions, merge, milestone, and release decisions.
 
-Produces:
-
-- policy or ADR decision;
-- checkpoint approval or rejection;
-- implementation authorization where required;
-- merge decision; and
-- milestone or release decision.
-
-A Maintainer must not treat a Conductor readiness report, completed template,
-or green CI as sufficient proof by itself.
-
-The same human may also act as Conductor, but the record must separate:
+When the same human also conducts the change, keep these records visibly
+separate:
 
 ```text
-Conductor assessment:
+Conductor readiness assessment:
 Maintainer decision:
 ```
 
 ### Development Conductor
 
-The Development Conductor owns composition, evidence status, role handoffs,
-fixed review context, and transition-readiness assessment rather than universal
-technical expertise.
+The Conductor owns workflow composition and handoffs.
 
-Inputs:
+It may:
 
-- current repository and exact revision;
-- current Issue and pull request;
-- `GOVERNANCE.md`, `CONTRIBUTING.md`, this procedure, and applicable
-  `AGENTS.md` files;
-- current normative authorities; and
-- known findings and evidence.
+- classify the change;
+- locate authorities;
+- summarize accepted scope;
+- identify canonical and overlapping owners;
+- prepare implementation and review handoffs;
+- choose proportional perspectives;
+- create the review brief; and
+- assess transition readiness.
 
-Produces:
+It must not, while acting as Conductor:
 
-- change class and current workflow state;
-- structured claims;
-- commitment, lifecycle, and consumer ranges;
-- evidence requirements and review assignments;
-- canonical owner and duplicate-owner candidates;
-- checkpoint content;
-- Contract Designer and Implementer handoffs;
-- fixed review batch and packets;
-- Adjudicator handoff; and
-- transition-readiness report for the Maintainer.
-
-Must not:
-
-- implement or edit the candidate artifacts that realize the Boundary change,
-  including production code, process documents, templates, schemas,
-  automation, configuration, or skill definitions;
-- perform Breaker review;
-- perform source adjudication;
-- approve in the Maintainer role without a separately recorded decision;
-- merge, close, tag, publish, or release; or
-- fill missing evidence from prior-session memory.
-
-The Conductor may delegate difficult technical decisions to stronger
-specialists. The Conductor does not need to reproduce every specialist argument
-from scratch, but must prevent specialist output from silently replacing
-repository authority.
-
-### Contract Designer
-
-Inputs:
-
-- problem;
-- current authorities;
-- existing owners and paths;
-- known findings; and
-- allowed decision range.
-
-Produces:
-
-- contract delta and non-goals;
-- current-versus-future boundary;
-- canonical owner;
-- duplicate owners and old-path disposition;
-- alternatives and trade-offs;
-- compatibility or migration decision;
-- structured claims and ranges;
-- evidence requirements; and
-- candidate review assignments.
-
-Must not:
-
-- implement or edit the candidate artifacts that realize the Boundary change
-  in the same session, including production code, process documents,
-  templates, schemas, automation, configuration, or skill definitions; or
-- change a contract merely because one implementation is convenient.
+- edit the candidate artifacts that realize the Boundary change;
+- perform Breaker review or adjudication;
+- invent missing authority or evidence from prior-session memory;
+- approve as Maintainer without a separate record; or
+- merge, close, tag, publish, or release.
 
 ### Implementer
 
-Inputs:
-
-- approved checkpoint content, digest, and approval reference;
-- normative authorities;
-- bounded contexts or process surfaces;
-- allowed implementation freedom;
-- prohibited changes;
-- evidence requirements; and
-- old-path disposition.
-
-Produces:
-
-- candidate artifacts;
-- focused tests and lifecycle evidence;
-- closure note;
-- discovered contract divergence; and
-- unresolved evidence gaps.
-
-Must not silently change the checkpoint, add an unauthorized stable claim or
-path, retain an old path indefinitely as a precaution, or rewrite authority or
-tests merely to make the candidate pass.
+The Implementer is an ordinary coding session, not a required skill. It follows
+the accepted Issue/ADR and Conductor handoff, produces candidate artifacts and
+evidence, and reports divergence instead of silently changing the decision.
 
 ### Breaker
 
-One fresh Breaker session receives one validated fixed packet and one assigned
-perspective.
-
-Produces findings only:
-
-- claim or range under review;
-- candidate counterexample or failure sequence;
-- exact repository evidence;
-- `established`, `not established`, or `incomplete` status; and
-- evidence still required.
-
-Must not implement corrections, view other Breaker reports, integrate findings,
-assign final severity, recommend merge, or silently expand the assigned
-perspective.
+A Breaker receives one bounded perspective in a fresh session, inspects exact
+source and authority, constructs counterexamples, and returns findings only.
 
 ### Adjudicator
 
-A separate fresh Adjudicator receives the validated batch, exact target,
-approved checkpoint, raw Breaker reports, normative authorities, and declared
-claims/ranges.
-
-Produces:
-
-- source-finding register;
-- independently verified `established`, `rejected`, or `incomplete`
-  dispositions;
-- integrated root causes and severity;
-- required correction, deletion, claim reduction, provisional status, or
-  bounded defer;
-- required proof; and
-- next-state recommendation.
-
-Must not use majority vote, treat reports as proof, implement fixes, merge, or
-release.
-
-## Structured checkpoint model
-
-A Boundary or Milestone checkpoint uses stable identifiers.
-
-### Claims
-
-Each claim contains:
-
-- `claim_id`;
-- exact statement;
-- controlling authority references; and
-- concrete falsification.
-
-### Ranges
-
-Only three concepts are called ranges:
-
-- commitment;
-- lifecycle; and
-- consumer.
-
-Each range entry contains:
-
-- `range_id`;
-- `kind`;
-- `value`;
-- `disposition`: `included`, `out_of_range`, or `evidence_gap`;
-- reason; and
-- owner or follow-up when needed.
-
-Commitment values are:
-
-- `WIRE`;
-- `DURABLE`;
-- `SUPPORT`;
-- `PROVISIONAL`;
-- `INTERNAL`; and
-- `PROCESS`.
-
-`INTERNAL` or `PROCESS` must not hide an effect that belongs to another class.
-`PROVISIONAL` requires an owner and a removal or promotion condition.
-
-Product/runtime lifecycle values include:
-
-- single call;
-- concurrent calls;
-- child process lifetime;
-- model-visible tool lifetime;
-- adapter/plugin lifetime;
-- process restart;
-- operator follow-up; and
-- release/tag lifecycle.
-
-Repository/process lifecycle values include:
-
-- proposal and decision;
-- checkpoint preparation;
-- Maintainer approval;
-- role handoff;
-- implementation pull request;
-- review batch;
-- adjudication;
-- merge authorization;
-- release authorization; and
-- post-merge or post-release follow-up.
-
-Product/runtime consumers include:
-
-- normative documents;
-- Rust implementation;
-- TypeScript implementation;
-- CLI;
-- adapter;
-- testkit/fake;
-- benchmark/timing;
-- release workflow; and
-- public documentation.
-
-Repository/process consumers include:
-
-- Maintainers;
-- contributors;
-- coding agents;
-- repository documentation;
-- Issue templates;
-- pull-request templates;
-- personal or workspace skill adapters;
-- CI or release tooling; and
-- public contributor documentation.
-
-### Evidence requirements
-
-Proof is represented by `evidence_requirements`, not by a fourth range type.
-Each entry contains:
-
-- `evidence_id`;
-- the claim and range IDs it supports;
-- the test, fixture, mutation, failure sequence, or observation;
-- expected detection behavior; and
-- owner.
-
-### Review assignments
-
-Review is represented by `review_assignments`, not by a fifth range type. Each
-entry contains:
-
-- `perspective_id`;
-- one bounded question;
-- failure models;
-- claim, range, and evidence IDs assigned to it; and
-- explicit out-of-range areas.
-
-Every claim, every non-`out_of_range` range, and every evidence requirement must
-be assigned to at least one perspective before a review batch can start.
-
-## Checkpoint content and approval envelope
-
-The Conductor prepares `checkpoint_content`. The digest and approval record are
-outside that content.
-
-```json
-{
-  "checkpoint_content": {
-    "schema": "aizign.checkpoint/v1",
-    "checkpoint_id": "issue-94-checkpoint-v1",
-    "workflow_revision": "<exact commit>",
-    "change_class": "Boundary change",
-    "contract_revision": "<immutable reference>",
-    "normative_authorities": [],
-    "canonical_owners": [],
-    "duplicate_owners_to_remove": [],
-    "old_path_dispositions": [],
-    "claims": [],
-    "ranges": [],
-    "evidence_requirements": [],
-    "review_assignments": [],
-    "implementation_scope": "ADR/specification | implementation | review-only",
-    "known_evidence_gaps": []
-  },
-  "checkpoint_sha256": "sha256:<canonical checkpoint_content digest>",
-  "approval": {
-    "decision": "awaiting | approved | rejected",
-    "approved_checkpoint_sha256": "sha256:<same digest or null while awaiting>",
-    "maintainer_identity": "<verified identity or null>",
-    "approved_at": "<timestamp or null>",
-    "approval_reference": "<permalink or immutable reference or null>"
-  }
-}
-```
-
-Rules:
-
-1. canonicalize and hash `checkpoint_content` only;
-2. do not include `checkpoint_sha256` or `approval` in the hash input;
-3. an approved envelope must repeat the exact digest in
-   `approved_checkpoint_sha256`;
-4. changing `checkpoint_content` creates a new digest and requires a new
-   approval; and
-5. adding or changing approval metadata does not change the checkpoint digest.
-
-For ADR-first work, approve the ADR/specification scope first. Approve
-implementation only after the controlling authority merges and the checkpoint
-content is updated.
-
-## Workflow states
-
-### Boundary implementation path
-
-```text
-proposed
-→ checkpoint prepared
-→ checkpoint approved
-→ implementing
-→ evidence complete
-→ reviewed
-→ adjudicated
-→ merge-ready
-→ merged
-→ released (when applicable)
-```
-
-| Transition | Required input | Prepared or performed by | Decision authority | Stop or rollback |
-|---|---|---|---|---|
-| Enter `proposed` | problem, current authorities, known findings, candidate class | Conductor and Contract Designer | design work only | authority or decision range cannot be bounded |
-| `proposed → checkpoint prepared` | checkpoint content with owners, claims, ranges, evidence, review assignments, and ADR decision | Conductor from Contract Designer evidence | none | ambiguous owner, omitted subject, undisposed path, or unresolved decision |
-| `checkpoint prepared → checkpoint approved` | checkpoint digest and approval request | Maintainer | Maintainer | disputed authority, range, evidence, or content |
-| `checkpoint approved → implementing` | verified approval and fresh Implementer handoff | Conductor prepares; Implementer executes | approved checkpoint | checkpoint, authority, or assigned scope changes |
-| `implementing → evidence complete` | fixed candidate revision, required evidence, closure note, limitations | Implementer; Conductor checks completeness | none | contract divergence, missing evidence, or undisposed path |
-| `evidence complete → reviewed` | validated batch and exact target/base binding | Conductor freezes; Breakers review | none | target, batch, or required evidence is incomplete |
-| `reviewed → adjudicated` | all required uncontaminated reports and fixed context | Adjudicator | none | missing, contaminated, or inconsistent input |
-| `adjudicated → merge-ready` | blocking dispositions closed and all subjects covered | Conductor assesses readiness | none | blocker, incomplete finding, changed contract, or stale target |
-| `merge-ready → merged` | exact candidate, required CI, repository requirements | configured actor performs | Maintainer | candidate or evidence changed, or blocker remains |
-| `merged → released` | exact release candidate and release requirements | configured mechanism performs | Maintainer and release authority | candidate, approval, or release evidence mismatch |
-
-### Review-only Milestone path
-
-```text
-proposed
-→ checkpoint prepared
-→ checkpoint approved
-→ candidate/evidence frozen
-→ reviewed
-→ adjudicated
-→ milestone-ready
-→ Maintainer milestone decision
-```
-
-| Transition | Required input | Prepared or performed by | Decision authority | Stop or rollback |
-|---|---|---|---|---|
-| `checkpoint approved → candidate/evidence frozen` | exact candidate, authority set, evidence set, gaps, and validated review batch | Conductor | approved checkpoint | candidate, evidence, or checkpoint is not fixed |
-| `candidate/evidence frozen → reviewed` | one validated packet per perspective | fresh Breakers | none | packet or evidence inconsistency |
-| `reviewed → adjudicated` | all required uncontaminated reports | fresh Adjudicator | none | missing or contaminated report |
-| `adjudicated → milestone-ready` | blocking dispositions closed and all subjects covered | Conductor assesses readiness | none | blocker, incomplete finding, or stale candidate |
-| `milestone-ready → Maintainer milestone decision` | exact candidate and adjudication record | Maintainer | Maintainer | candidate or required evidence changed |
-
-A Milestone that first creates or changes candidate artifacts uses the Boundary
-implementation path to produce them, then starts a separate review-only
-Milestone checkpoint for the exact candidate.
-
-### Mandatory return to `proposed`
-
-The affected work stops and returns to a proposed contract delta when it
-requires any of:
-
-- public-contract or normative-authority change;
-- invariant, support, security, data, dependency, or compatibility change;
-- expanded lifecycle or consumer range;
-- materially different canonical owner;
-- a new reason to retain an old path;
-- a new stable code;
-- a new schema or durable field; or
-- an adjudication disposition that changes approved checkpoint content.
-
-## Targeted multiple-perspective review
-
-A Boundary change has no permanent lens list.
-
-The Conductor derives a bounded plan from approved checkpoint content and
-creates the stable `review_assignments`. Two, three, four, or another bounded
-number of perspectives may be used.
-
-Every Breaker receives:
-
-- the same validated frozen batch context;
-- one perspective assignment;
-- no other Breaker report; and
-- the exact evidence and out-of-range statement for that assignment.
-
-A separate fresh Adjudicator runs after all required reports arrive. See
-[Fixed review packets](review-packet.md) for the batch interface, validator,
-invalidation rules, and manual procedures.
-
-## Workflow-change bootstrap
-
-A pull request that introduces or changes this workflow cannot treat its
-candidate text as accepted review authority.
-
-For the initial Issue #94 pull request:
-
-- controlling authorities are named by path, section, and the base SHA;
-- Issue #94 and the PR body are captured as exact snapshots with digests;
-- the exact base, merge-base, target SHA, target tree, and changed-file paths are
-  recorded;
-- candidate workflow files are evidence under review, not review authority;
-- included subjects, out-of-range areas, evidence, gaps, and PA-1/PA-2/PA-3
-  coverage are frozen;
-- a new immutable-by-process comment is posted for each batch ID and is never
-  edited; any change creates a new batch ID and comment;
-- three ordinary fresh Breaker sessions inspect governance/authority,
-  executability/proportionality, and fixed-context/campaign containment;
-- a separate ordinary fresh Adjudicator verifies the reports; and
-- a Maintainer separately decides merge.
-
-For later workflow revisions, use the last merged workflow revision as the
-review authority and treat the candidate revision as the target.
-
-## Campaign-specific review plans
-
-R01-R14 is the external review plan for the current pre-v0.1 Foundation
-campaign only. The existing adjudication requires one complete rerun after the
-current remediation, so that rerun remains a completion condition of the same
-campaign.
-
-R01-R14 is not a normal pull-request gate, permanent taxonomy, generic skill
-payload, or automatic plan for a future milestone. Future plans are derived
-from the claims and risks present at that milestone.
-
-## Manual execution
-
-The workflow remains usable without a skill:
-
-1. read current governance, contribution policy, the Issue, applicable
-   `AGENTS.md`, and normative authorities;
-2. classify the change using the canonical Routine predicate;
-3. record owners, old paths, structured claims, ranges, evidence requirements,
-   review assignments, and gaps;
-4. commission a fresh Contract Designer when a decision is unresolved;
-5. prepare `checkpoint_content`, compute its digest, and obtain a separate
-   approval envelope;
-6. create a fresh Implementer handoff only for a Boundary implementation path;
-7. freeze the exact candidate and create all packet files;
-8. run `node scripts/validate-review-batch.mjs <packet...>`;
-9. run one fresh Breaker session per validated packet without sharing reports;
-10. run a separate fresh Adjudicator after all reports arrive;
-11. have the Conductor assess transition readiness; and
-12. have a Maintainer separately make the merge, milestone, or release decision.
-
-## Optional explicit skills
-
-Personal or workspace skills may assist with Conduct, Break, and Adjudicate.
-They are created and installed outside the repository. Each skill states in its
-`description` and body that it is used only through explicit `$skill-name`
-invocation.
-
-Skills are optional adapters, not authorities. They read current tracked
-procedure and authorities at invocation time, remain manually replaceable, and
-do not make repository or GitHub writes merely because they were invoked.
+An Adjudicator receives the review brief and all expected raw reports in a
+fresh session, independently verifies them, integrates root causes, and
+recommends the next state without implementing or approving.
+
+### Optional specialist
+
+A difficult contract, security, compatibility, or architecture question may be
+delegated to an ordinary specialist session. Its output becomes evidence for
+the Issue/ADR decision; it does not become authority by itself.
+
+## Permanent rules retained during the pilot
+
+### One canonical owner
+
+Each changed policy, contract, classification, or implementation responsibility
+has one canonical owner. Other paths consume that owner or have a distinct
+named responsibility.
+
+### Dispose old paths
+
+Every overlapping old path is deleted, migrated, provisional with an owner and
+trigger, or retained for a distinct named responsibility.
+
+### No silent contract change
+
+Implementation discoveries that change an accepted authority, contract, public
+claim, support boundary, compatibility decision, lifecycle scope, schema,
+durable field, stable code, owner, or old-path disposition return to the Issue
+or ADR before implementation continues.
+
+### Review exact source and authority
+
+Review binds one exact target and the authority revision that controls it.
+Missing access or evidence is `incomplete`, not success.
+
+### Keep evidence gaps visible
+
+A gap has an owner or next action. A limitation is not hidden by a green test
+count, a completed template, or reviewer agreement.
+
+## Bootstrap for PR #95
+
+PR #95 does not need to prove a future automated workflow by using that
+automation before it exists.
+
+For this initial workflow change:
+
+1. base-revision `GOVERNANCE.md` and `CONTRIBUTING.md`, plus the accepted
+   direction in Issue #94, control the review;
+2. the candidate ADR and workflow are evidence under review, not accepted
+   authority;
+3. `$aizign-conduct`, `$aizign-break`, and `$aizign-adjudicate` may be used as
+   explicit personal/workspace adapters;
+4. prepare one manual review brief for the exact PR head;
+5. use two Breaker perspectives: authority/role separation and
+   proportionality/executability;
+6. run one separate Adjudicator session; and
+7. obtain the normal Maintainer merge decision.
+
+Earlier digest/checkpoint/batch records for PR #95 are historical and must not
+be reused. No replacement v6 digest or generated packet batch is required.
+
+## Pilot exit and retrospective
+
+Review this procedure after the Issue #84 dogfood pilot and two subsequent
+Boundary pull requests, or before the v0.1 Milestone review, whichever comes
+first.
+
+The retrospective records:
+
+- where context actually drifted;
+- where scope or ownership was ambiguous;
+- which evidence was repeatedly missing;
+- how many sessions and handoffs were useful or wasteful; and
+- which checks, if any, deserve automation.
+
+Add a schema, validator, packet generator, or bot only for an observed repeated
+failure that the manual review brief did not control. Until then, keep the
+manual path canonical.

@@ -8,15 +8,22 @@ Aizignは **proposal-first** で開発します。挙動、API、schema、依存
 
 ## Conductor-led Boundary and Milestone changes
 
-Boundary changes and Milestone reviews must follow the
-[conductor-led Boundary change workflow](docs/development/change-workflow.md),
-whether the work is performed manually or with AI assistance.
+Boundary changes and Milestone reviews follow the pilot workflow in
+[docs/development/change-workflow.md](docs/development/change-workflow.md).
+Routine changes continue to use the ordinary contribution process.
 
-`CONTRIBUTING.md` remains the contribution-policy authority.
-`GOVERNANCE.md` continues to define Maintainer, merge, and release authority.
-Product and runtime contracts remain owned by their existing normative
-repository authorities. Routine changes continue to use the ordinary
-contribution process.
+The pilot is deliberately manual. It assumes one Maintainer, ordinary coding
+sessions, and only these optional explicit-invocation personal/workspace skills:
+
+- `$aizign-conduct`
+- `$aizign-break`
+- `$aizign-adjudicate`
+
+No Implementer, Contract Designer, packet-generator, validator, bot, or Aizign
+runtime automation is required. The skills are adapters, not repository
+authority. `GOVERNANCE.md` continues to define Maintainer, merge, milestone,
+and release authority, and product/runtime contracts remain owned by their
+existing normative repository sources.
 
 ## 受け付けるもの
 

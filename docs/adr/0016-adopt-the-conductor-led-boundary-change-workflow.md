@@ -1,4 +1,4 @@
-# ADR-0016: Adopt the conductor-led Boundary change workflow
+# ADR-0016: Pilot a conductor-led Boundary change workflow
 
 - Status: Accepted
 - Date: 2026-08-25
@@ -6,211 +6,145 @@
 
 ## Context
 
-The first fixed-SHA adversarial review found defects that ordinary green CI and
-self-reported completion did not expose. Several failures shared process-level
-causes: a contract or claim had more than one owner, implementation and review
-reconstructed different context, lifecycle scopes were left implicit, an old
-path remained beside a new path, or one reasoning session effectively confirmed
-its own work.
+The first fixed-SHA adversarial review exposed process failures that green CI
+and self-reported completion did not catch: authority drift, duplicate
+ownership, silent contract changes, incomplete lifecycle evidence, reviewer
+context drift, and one reasoning session effectively confirming its own work.
 
-Aizign already uses proposal-first changes, ADRs for architecture and policy,
-and exact-SHA release review. It needs a small operational workflow that makes
-those boundaries explicit without turning every typo or owner-local correction
-into a large independent campaign.
+Aizign is still before v0.1 and has one Maintainer. It does not yet have a
+running Aizign workflow engine, review bot, packet generator, or stable body of
+dogfood evidence. The practical operating tools available now are ordinary
+coding sessions and three optional personal/workspace skills:
 
-The workflow must remain usable when a specialist model has stronger technical
-reasoning than the session coordinating the change. Coordination should
-preserve authority, claims, evidence, and role separation rather than require
-one coordinator to reproduce every specialist result.
+- `$aizign-conduct`
+- `$aizign-break`
+- `$aizign-adjudicate`
+
+The process must address the observed failures without designing an automation
+platform before the manual workflow has been exercised.
 
 ## Decision
 
-Adopt a conductor-led workflow for **Boundary changes** and **Milestone
-reviews**. Routine changes continue to use the ordinary contribution process.
-The rule applies by change class whether work is manual or AI-assisted.
+Pilot a conductor-led workflow for Boundary changes and Milestone reviews.
+Routine changes continue to use the ordinary contribution process.
 
-Use one canonical Routine predicate:
+Keep existing authority unchanged:
 
-> Routine is allowed only when the change remains within an accepted
-> owner-local contract and satisfies none of the Boundary-change predicates. A
-> bug fix may change observed behavior only to restore that accepted contract;
-> changing the contract or public claim is Boundary work.
-
-Keep existing governance authority unchanged:
-
-- `GOVERNANCE.md` owns Maintainer, merge, and release authority;
+- `GOVERNANCE.md` owns Maintainer, merge, milestone, and release authority;
 - `CONTRIBUTING.md` owns contribution policy;
 - [`docs/development/change-workflow.md`](../development/change-workflow.md)
-  owns the required operational procedure delegated by `CONTRIBUTING.md`;
-- [`docs/development/review-packet.md`](../development/review-packet.md) owns
-  the fixed review-context interface; and
-- product and runtime contracts remain owned by their existing specifications,
-  architecture documents, accepted ADRs, maintained source, and tests.
+  owns the pilot operating procedure; and
+- product and runtime contracts remain owned by their existing normative
+  repository sources.
 
-Introduce a **Development Conductor** role. The Conductor determines change
-class, prepares structured claims and ranges, identifies canonical and duplicate
-owners, prepares checkpoint content, creates fresh-session handoffs, freezes
-review batches, and reports transition readiness. The Conductor does not edit
-the candidate artifacts that realize the Boundary change, perform Breaker
-review, perform source adjudication, approve as a Maintainer, merge, or release.
-Candidate artifacts include production code, process documents, templates,
-schemas, automation, configuration, and skill definitions.
+Use the following execution model during the pilot:
 
-A Contract Designer likewise does not implement or edit those candidate
-artifacts in the same Boundary-change session. An Implementer receives approved
-checkpoint content and produces the candidate artifacts in a separate session.
+1. an Issue and, when required, an ADR accept the changed contract or process
+   decision before implementation;
+2. an explicitly invoked Development Conductor prepares scope, ownership,
+   evidence, and handoffs;
+3. an ordinary fresh coding session implements the candidate;
+4. the Conductor prepares one manual Markdown review brief for the exact target;
+5. one fresh `$aizign-break` session runs per bounded perspective;
+6. a separate `$aizign-adjudicate` session independently verifies the reports;
+7. the Conductor assesses readiness; and
+8. the Maintainer separately decides merge, milestone, or release.
 
-A Maintainer separately approves policy and ADR decisions, approves exact
-checkpoint content where required, and makes merge, milestone, or release
-decisions. The same human may perform both Maintainer and Conductor roles, but
-the record distinguishes the Conductor assessment from the Maintainer decision.
+Only the three named skills are assumed. There is no required Contract Designer
+or Implementer skill. Difficult design questions may use an ordinary specialist
+session, and implementation remains ordinary coding work.
 
-Represent the checkpoint as two layers:
+Retain these rules:
 
-1. `checkpoint_content`, containing authorities, owners, claims, ranges,
-   evidence requirements, review assignments, and scope; and
-2. an external digest and approval envelope.
+- one canonical owner for each changed policy, contract, or responsibility;
+- explicit deletion, migration, provisional treatment, or distinct retention
+  for overlapping old paths;
+- return to the Issue or ADR when implementation discovers a contract delta;
+- review of one exact target against named authorities;
+- one bounded perspective per fresh Breaker session;
+- separate source adjudication; and
+- visible evidence gaps and limitations.
 
-Hash canonical `checkpoint_content` only. Do not include the digest or approval
-metadata in its own hash input. An approved envelope repeats the exact
-checkpoint digest. Editing checkpoint content requires a new digest and
-approval; adding approval metadata does not change the checkpoint digest.
-Approved identity and reference fields are non-blank, and approval time is a
-valid RFC 3339 timestamp.
+Use proportional independent review:
 
-Use stable IDs for:
+- normal Boundary change: one Breaker and one Adjudicator;
+- high-impact Boundary change: two or three Breakers and one Adjudicator; and
+- Milestone review: two to four Breakers and one Adjudicator.
 
-- claims;
-- commitment, lifecycle, and consumer ranges;
-- evidence requirements;
-- unresolved evidence gaps; and
-- review perspectives.
+Security/data boundaries, wire or durable formats, compatibility/release
+policy, cross-context changes, repository governance, and repeated escaped
+failures are high-impact by default.
 
-Proof and review are not additional range types. They are represented by
-`evidence_requirements` and `review_assignments`. Every claim and every included
-or evidence-gap range has at least one falsifying evidence requirement. Every
-evidence requirement resolves to one or more retained or repository evidence
-records. Every claim, reviewable range, evidence requirement, and unresolved gap
-maps to one or more perspectives before review begins.
+Use a manual Markdown review brief instead of a closed JSON packet interface.
+The brief records the Issue/PR, exact target SHA, base and merge-base, changed
+paths, controlling authorities, accepted decision, scope, owner, old paths,
+claims, failure cases, evidence, gaps, and perspective assignments.
 
-For each Boundary change:
+A target or material context change creates a new brief version. No checkpoint
+digest, approval envelope, full mutable-body snapshot, packet schema, packet
+generator, batch validator, or validator test suite is required during the
+pilot. The exact commit, accepted Issue/ADR record, unedited brief version, and
+separate Maintainer decision provide the needed traceability at this stage.
 
-1. identify one canonical owner for every changed policy or surface;
-2. dispose every old or competing path as deleted, migrated, explicitly
-   provisional, or retained for a distinct named responsibility;
-3. define structured claims and commitment/lifecycle/consumer ranges;
-4. define concrete falsification and resolvable evidence requirements;
-5. stop and return to proposal when implementation discovers a contract delta;
-6. review one exact target with one frozen shared context;
-7. use one fresh Breaker session per perspective; and
-8. use a separate fresh Adjudicator to verify findings against source.
+For the initial PR #95 review, use base-revision governance and contribution
+policy plus the accepted direction in Issue #94. Candidate workflow files are
+evidence under review. The three explicit skills may be used. Review the exact
+head with two perspectives—authority/role separation and
+proportionality/executability—then run separate adjudication and the normal
+Maintainer merge decision. Earlier checkpoint/digest/batch records are not
+reused, and no replacement formal batch is required.
 
-A review-only Milestone follows an explicit path from approved checkpoint to
-frozen candidate/evidence, review, adjudication, milestone readiness, and a
-Maintainer decision. It does not require an artificial Implementer session. A
-Milestone that first changes candidate artifacts uses the Boundary path to
-produce them and then starts a separate review-only Milestone checkpoint.
-
-Review packets bind the target SHA and tree, base and merge-base, exact changed
-paths, controlling authority revisions, checkpoint content/digest/approval,
-frozen Issue and pull-request bodies, execution instructions, structured
-subjects, evidence, and known gaps. Reviewers do not independently reconstruct
-mutable project context.
-
-Add one tracked Node validator at `scripts/validate-review-batch.mjs`. It uses
-the repository-pinned Ajv dependency and adds no new dependency. It validates
-all packet files in one batch, including the closed field set, approval
-provenance, nested content/artifact digests, cross-field constraints,
-byte-equivalent shared context, unique perspective packets, evidence links, and
-complete stable-ID coverage. Digest agreement alone is not packet validity.
-Repository-relative artifacts are checked after real-path resolution so a
-symlink cannot escape the repository root.
-
-Allow optional personal or workspace Codex skills for Conduct, Break, and
-Adjudicate. Each skill says in its `description` and body that it is used only
-through explicit `$skill-name` invocation. Skills are installed outside the
-repository, remain non-authoritative, and have a tracked manual equivalent.
-
-The initial Issue #94 / PR #95 bootstrap uses a frozen **manual** execution
-adapter in ordinary fresh sessions. It does not use the personal/workspace
-skills as bootstrap evidence. A later formal batch may use a skill only when its
-exact instructions, name, version, and digest are frozen in the batch.
-
-Treat R01-R14 as the external review plan for the current pre-v0.1 Foundation
-campaign and its required complete rerun only. It is not a normal pull-request
-gate, permanent perspective taxonomy, or generic skill payload.
+Review the pilot after the Issue #84 dogfood exercise and two subsequent
+Boundary pull requests, or before the v0.1 Milestone review, whichever comes
+first. Add automation only for an observed repeated failure that the manual
+brief did not control.
 
 ## Consequences
 
 ### Positive
 
-- Authority, implementation, evidence, review, and approval become separate
-  records.
-- Checkpoint approval no longer creates a digest or approval self-reference.
-- Approval provenance cannot be represented by empty identity, time, or
-  reference values.
-- A stronger specialist can contribute without silently replacing repository
-  authority or Maintainer decisions.
-- Reviewers receive one validated exact-revision context and one frozen
-  instruction source instead of reconstructing mutable metadata independently.
-- Stable IDs and evidence references make declared coverage omissions
-  mechanically detectable.
-- Bootstrap authority is constrained to the base revision and PR targets bind
-  the exact PR snapshot.
-- Review-only Milestones have an executable state path.
-- Duplicate ownership and undisposed old paths are addressed before completion.
-- Routine changes retain a lightweight path.
-- The process remains executable without Codex or any skill.
+- The workflow can be used immediately with the tools that actually exist.
+- Independent review and adjudication still prevent simple self-confirmation.
+- Exact target, authority, scope, ownership, old paths, evidence, and gaps stay
+  visible.
+- Routine changes remain lightweight.
+- Review depth follows risk instead of a permanent fixed campaign.
+- The repository does not acquire more than 1,600 lines of packet schema,
+  validator, and validator tests before a pilot demonstrates their value.
+- Skill use remains explicit and outside repository authority.
+- Future automation can be based on observed operational failure data.
 
-### Negative / Risks
+### Negative / risks
 
-- Boundary changes require more preparation and fresh sessions than ordinary
-  pull requests.
-- The batch validator adds a small tracked script and interface that must be
-  maintained with the workflow.
-- The validator proves declared packet consistency, not the truth or absolute
-  completeness of the technical claims selected by the Conductor.
-- Poor classification can either overburden Routine work or under-review a real
-  Boundary change.
-- Role separation is logical rather than an identity-security boundary; a
-  Maintainer must still ensure sessions receive the intended inputs.
-- A completed template or validated packet remains evidence metadata, not proof
-  that the underlying claim is true.
+- Manual briefs can contain omissions or formatting drift.
+- The Conductor and Maintainer must notice when a brief needs a new version.
+- Role separation is procedural rather than an identity-security boundary.
+- Review quality still depends on good perspective selection and exact source
+  inspection.
+- Deferring mechanical validation may allow an avoidable context mismatch; the
+  retrospective must record whether this actually occurs.
 
-### Follow-up
+## Follow-up
 
-- Add the tracked workflow, packet schema, validator, tests, and contribution
-  templates in the pull request for Issue #94.
-- Recreate the PR #95 checkpoint and bootstrap batch under new IDs for the exact
-  corrected head.
-- Run PA-1, PA-2, and PA-3 with the fixed manual adapter, then run a separate
-  manual Adjudicator session.
-- Smoke-test the personal/workspace `$aizign-conduct`, `$aizign-break`, and
-  `$aizign-adjudicate` skills after the tracked workflow merges.
-- Use Issue #84 as the first complete pilot while preparing contract decisions
-  for Issues #72, #75, and #81.
-- Run one retrospective after the four contract decisions and another after
-  the first three implementation pull requests.
+- Merge the pilot workflow and manual review brief.
+- Replace the personal/workspace skill instructions with versions that consume
+  the manual brief.
+- Use Issue #84 as the first full dogfood pilot.
+- Run the required retrospective after the trigger in this ADR.
+- Propose schema, validator, packet generation, or bot work only when linked to
+  a repeated observed failure.
 
 ## Alternatives considered
 
-- **Use the existing PR checklist only.** Rejected because a checklist does not
-  fix mutable reviewer context, role self-confirmation, or duplicate ownership.
-- **Keep digest-only packet verification.** Rejected because malformed or
-  mutually inconsistent packet files can still have correct individual hashes.
-- **Allow unpinned personal skills in the initial bootstrap.** Rejected because
-  reviewers could receive different effective instructions even with the same
-  packet metadata.
-- **Treat proof and review as free-text ranges.** Rejected because stable
-  evidence and assignment IDs provide clearer ownership and mechanical
-  coverage checks.
-- **Require an Implementer for every Milestone review.** Rejected because a
-  review-only exact candidate may need no candidate edit.
-- **Require the full adversarial campaign for every pull request.** Rejected
-  because review depth must follow the changed claims and ranges; Routine work
-  should remain lightweight.
-- **Give an autonomous Conductor approval, merge, or release authority.**
-  Rejected because repository governance assigns those decisions to a
-  Maintainer and configured repository mechanisms.
-- **Create a permanent review-lens registry.** Rejected because perspectives
-  should be derived from each accepted checkpoint and its failure models.
+- **Adopt the closed packet schema and batch validator now.** Deferred because
+  the interface is larger than the current operating system and has not been
+  justified by dogfood data.
+- **Use the PR checklist only.** Rejected because it does not provide exact
+  shared context, fresh independent review, or separate adjudication.
+- **Require dedicated Designer and Implementer skills.** Rejected because those
+  skills do not exist and ordinary specialist/coding sessions are sufficient
+  for the pilot.
+- **Run the full R01-R14 campaign for every change.** Rejected because review
+  depth should follow the current change and risk.
+- **Give the Conductor approval or merge authority.** Rejected because
+  `GOVERNANCE.md` assigns those decisions to the Maintainer.

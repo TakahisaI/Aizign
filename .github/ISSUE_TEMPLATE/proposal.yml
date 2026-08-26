@@ -1,79 +1,62 @@
 name: Proposal
-description: Propose a change to behavior, API, schema, boundaries, or repository process before implementation.
+description: Propose a contract, boundary, architecture, or repository-process change before implementation.
 title: "proposal: "
 labels: ["type:proposal"]
 body:
   - type: markdown
     attributes:
       value: |
-        Aizign is proposal-first. Agree on the scope and contract before opening an implementation pull request.
-        Use an umbrella Issue for a large goal and divide it into reviewable leaf Issues.
-
-        Routine is allowed only when the change remains within an accepted owner-local contract and satisfies none of the Boundary-change predicates. A bug fix may change observed behavior only to restore that accepted contract; changing the contract or public claim is Boundary work.
-
-        Boundary predicates include normative authority, accepted contract/public claim, Protocol/API/stable code/schema/durable state, hard invariant, architecture/package/dependency direction, security/data, support/compatibility/retry/unknown/lifecycle/release/migration, adapter/process, contribution/review/merge/automation, and repository-governance changes.
+        Aizign is proposal-first. Agree on the changed contract or process decision before implementation.
+        Routine changes stay on the ordinary contribution path. Boundary changes and Milestone reviews use the pilot conductor workflow in `docs/development/change-workflow.md`.
   - type: textarea
     id: problem
     attributes:
       label: Problem to solve
+      description: Describe the observed problem and why it matters now.
     validations:
       required: true
   - type: dropdown
     id: change_class
     attributes:
       label: Change class
-      description: Routine is allowed only when the change remains within an accepted owner-local contract and satisfies none of the Boundary-change predicates. A bug fix may change observed behavior only to restore that accepted contract; changing the contract or public claim is Boundary work.
+      description: Choose the closest class. The Conductor may correct the classification before implementation.
       options:
         - Routine change
         - Boundary change
         - Milestone review
+        - Unsure
     validations:
       required: true
   - type: textarea
-    id: contract
+    id: decision
     attributes:
       label: Proposed contract or process decision
-      description: Describe the concrete command, event, decision, Protocol kind, journal record, error code, capability, support claim, or repository process rule that changes.
+      description: State what will become true. Name public behavior, API, schema, durable data, architecture, support, security, or repository-process changes.
     validations:
       required: true
   - type: textarea
-    id: contexts
+    id: scope
     attributes:
-      label: Bounded contexts or process surfaces touched
-      description: For product/runtime work, name entries from docs/architecture/context-map.md. For repository/process work, name the affected governance, contribution, review, merge, release, template, skill, automation, or tooling surfaces. Explain why more than one is required.
-      placeholder: "Product/runtime: <context and path>\nRepository/process: <surface and path>\nNot applicable — Routine prose-only change; no product context or process authority changes."
+      label: In scope and out of scope
+      description: Name the affected bounded contexts or process surfaces and the important exclusions.
+      placeholder: |
+        In scope:
+        - <path, context, or process surface>
+
+        Out of scope:
+        - <area and reason>
     validations:
       required: true
   - type: textarea
-    id: canonical_owners
+    id: ownership
     attributes:
-      label: Canonical owner and duplicate candidates
-      description: Name the single authority or implementation owner for each changed policy or surface and every competing owner or path.
-      placeholder: "<surface> — canonical: <path>; duplicate candidates: <paths or none>\nNot applicable — Routine change; no policy ownership or normative authority changes."
-    validations:
-      required: true
+      label: Canonical owner and old paths
+      description: For Boundary work, name the authoritative owner and say whether overlapping old paths are deleted, migrated, provisional, or retained for a distinct reason.
   - type: textarea
-    id: old_path_disposition
+    id: evidence
     attributes:
-      label: Old-path disposition
-      description: Record each existing path with the same apparent responsibility as deleted, migrated, provisional with a trigger, or retained for a distinct named responsibility.
-      placeholder: "<path> — deleted | migrated to <owner> | provisional until <trigger> | retained for <distinct responsibility>\nNot applicable — Routine change; no alternate path is introduced, changed, or retained."
-    validations:
-      required: true
-  - type: textarea
-    id: claims_and_ranges
-    attributes:
-      label: Claims and commitment, lifecycle, and consumer ranges
-      description: For Boundary/Milestone work, assign stable IDs to claims and range entries using docs/development/change-workflow.md. Record included areas, explicit exclusions with reasons/owners, and evidence gaps.
-      placeholder: "Claim IDs: <CLM-... and statement>\nCommitment: <RNG-...; WIRE | DURABLE | SUPPORT | PROVISIONAL | INTERNAL | PROCESS; disposition>\nLifecycle: <RNG-...; scope; disposition>\nConsumers: <RNG-...; consumer; disposition>\nNot applicable — Routine change remains within one accepted owner-local contract."
-    validations:
-      required: true
-  - type: textarea
-    id: evidence_and_review
-    attributes:
-      label: Evidence requirements and targeted review
-      description: For Boundary/Milestone work, assign stable IDs to falsifying evidence and review perspectives. Map every claim, included/evidence-gap range, and evidence requirement to at least one perspective. Routine work may use the exact Not applicable form shown below.
-      placeholder: "Evidence: <EVD-...; subject IDs; mutation/failure sequence; expected detection>\nReview: <perspective ID; subject IDs; failure model>\nNot applicable — Routine change; no independent Breaker required."
+      label: Failure case and required evidence
+      description: Give at least one concrete way the proposal could be wrong and the test, inspection, or observation that should detect it.
     validations:
       required: true
   - type: dropdown
@@ -83,17 +66,15 @@ body:
       description: ADRs are required for architecture, boundary, contribution/review/merge policy, Protocol or journal shape, runtime dependency, data boundary, retry policy, toolchain support, and release or compatibility policy.
       options:
         - "No"
-        - "Yes — an ADR must be added and accepted before the corresponding implementation transition"
+        - "Yes — include the ADR before implementing the affected decision"
+        - "Unsure"
     validations:
       required: true
   - type: textarea
     id: invariants
     attributes:
       label: Related hard invariants
-      description: Reference numbered entries in docs/architecture/invariants.md and explain why the proposed contract preserves or changes them. When none apply, write `Not applicable — <reason>`.
-      placeholder: "Invariant <number> — <preserved or changed and why>\nNot applicable — <reason>."
-    validations:
-      required: true
+      description: Reference `docs/architecture/invariants.md`, or state why no hard invariant applies.
   - type: textarea
     id: legacy
     attributes:

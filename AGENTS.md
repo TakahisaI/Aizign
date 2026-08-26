@@ -28,8 +28,8 @@ Do not copy those contracts into `AGENTS.md`. Update the authoritative file inst
 | Harness adapter behavior | [docs/architecture/harness-adapter-contract.md](docs/architecture/harness-adapter-contract.md) |
 | Security or trust boundaries | [docs/security/threat-model.md](docs/security/threat-model.md) |
 | Contribution process | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| Conductor-led Boundary changes | [docs/development/change-workflow.md](docs/development/change-workflow.md) |
-| Fixed review packets | [docs/development/review-packet.md](docs/development/review-packet.md) |
+| Boundary and Milestone pilot workflow | [docs/development/change-workflow.md](docs/development/change-workflow.md) |
+| Manual review brief | [docs/development/review-brief.md](docs/development/review-brief.md) |
 
 Read the `AGENTS.md` nearest to the file being edited. The nearest file narrows this repository-level navigation.
 
