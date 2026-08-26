@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Aizign is proposal-first. Agree on the changed contract or process decision before implementation.
-        Routine changes stay on the ordinary contribution path. Boundary changes and Milestone reviews use the pilot conductor workflow in `docs/development/change-workflow.md`.
+        Use the Ordinary class for changes that preserve an accepted owner-local contract. Use Higher-risk for changes that alter a public or repository-level contract, claim, or boundary.
   - type: textarea
     id: problem
     attributes:
@@ -19,11 +19,10 @@ body:
     id: change_class
     attributes:
       label: Change class
-      description: Choose the closest class. The Conductor may correct the classification before implementation.
+      description: Choose Ordinary when the accepted owner-local contract and public claims remain unchanged; otherwise choose Higher-risk. Use Unsure when the Maintainer must decide.
       options:
-        - Routine change
-        - Boundary change
-        - Milestone review
+        - Ordinary change
+        - Higher-risk change
         - Unsure
     validations:
       required: true
@@ -48,10 +47,15 @@ body:
     validations:
       required: true
   - type: textarea
-    id: ownership
+    id: authority_owner
     attributes:
-      label: Canonical owner and old paths
-      description: For Boundary work, name the authoritative owner and say whether overlapping old paths are deleted, migrated, provisional, or retained for a distinct reason.
+      label: Canonical authority, owner, and old paths
+      description: >-
+        Name authority/owner. For old paths, state deleted, migrated, provisional
+        (owner/trigger), or retained (distinct responsibility). For Ordinary,
+        identify the owner-local contract or write "None".
+    validations:
+      required: true
   - type: textarea
     id: evidence
     attributes:
@@ -63,20 +67,10 @@ body:
     id: adr
     attributes:
       label: Is an ADR required?
-      description: ADRs are required for architecture, boundary, contribution/review/merge policy, Protocol or journal shape, runtime dependency, data boundary, retry policy, toolchain support, and release or compatibility policy.
+      description: ADRs are required for architecture, boundaries, contribution/review/merge policy, Protocol or journal shape, runtime dependency, data boundary, retry, toolchain, release, or compatibility policy.
       options:
         - "No"
         - "Yes — include the ADR before implementing the affected decision"
         - "Unsure"
     validations:
       required: true
-  - type: textarea
-    id: invariants
-    attributes:
-      label: Related hard invariants
-      description: Reference `docs/architecture/invariants.md`, or state why no hard invariant applies.
-  - type: textarea
-    id: legacy
-    attributes:
-      label: Adoption from the legacy implementation, if applicable
-      description: State Adopt, Reject, or Defer. Rewrite every adopted contract as a new test under ADR-0006.

@@ -6,39 +6,39 @@ Closes #
 
 <!-- One pull request = one reviewable slice. State what changes and what does not. -->
 
-## Scope
+## Required records
 
-- **Change class:** <!-- Routine change | Boundary change | Milestone review -->
-- **Accepted decision:** <!-- Issue or ADR link. -->
-- **Affected contexts or process surfaces:**
+- **Change class:** <!-- Ordinary change | Higher-risk change -->
+- **Accepted decision:** <!-- Higher-risk: link the accepted Issue or ADR. Ordinary: name the accepted owner-local contract or the allowed no-Issue exception. -->
+- **Affected paths or contexts:**
 - **Explicitly out of scope:**
-
-## Authority and ownership
-
-- **Canonical authority:** <!-- Normative document, accepted ADR, specification, or owner-local source/tests. -->
-- **Canonical implementation owner:**
-- **Old or duplicate paths:** <!-- deleted | migrated | provisional with trigger | retained for a distinct responsibility -->
-
-## Evidence
-
-- **Commands and tests run:**
+- **Canonical authority and owner:**
+- **Old or duplicate paths and disposition:** <!-- deleted | migrated | provisional with owner and trigger | retained for a distinct responsibility -->
+- **Commands, tests, or inspections run:**
 - **Concrete failure case checked:**
-- **Known limitations or evidence gaps:**
-- **Contract divergence discovered:** <!-- None, or link the returned proposal/ADR change. -->
+- **Known limitations or evidence gaps:** <!-- Include an owner or next action. -->
+- **Contract divergence:** <!-- None, or link the Issue/ADR decision updated before implementation. -->
 
-## Independent review
+## Independent review for higher-risk changes
 
 <!--
-Routine: "Not applicable — remains within <accepted owner-local contract>."
-Boundary/Milestone: link the review brief, Breaker reports, and adjudication.
-The review brief is a manual Markdown record; no generated packet or digest is required during the pilot.
+Ordinary: write "Not required — remains within the accepted owner-local contract."
+Higher-risk: bind review to the exact candidate commit and record the authorities,
+review question, reviewer, findings, evidence, and unresolved gaps. A Markdown
+record, pull-request review, or equivalent retained project record is sufficient;
+no particular tool or format is required.
 -->
 
-- **Review brief:**
-- **Breaker reports:**
-- **Adjudication:**
-- **Conductor readiness assessment:**
-- **Maintainer decision:** <!-- Keep separate from the Conductor assessment. -->
+- **Exact target commit SHA (higher-risk):**
+- **Authorities and revisions inspected (higher-risk):**
+- **Review scope/question and reviewer (higher-risk):**
+- **Review record and findings (higher-risk):**
+
+## Maintainer decision
+
+<!-- Record this separately from review evidence. It is the merge decision, not a reviewer or checklist result. -->
+
+- **Decision:**
 
 ## Checklist
 
@@ -48,5 +48,6 @@ The review brief is a manual Markdown record; no generated packet or digest is r
 - [ ] Changes requiring an ADR include one, or ADR is not applicable under `CONTRIBUTING.md`.
 - [ ] Every affected old or duplicate path has an explicit disposition.
 - [ ] Tests or inspections cover at least one concrete failure case, or the change is an allowed prose-only exception.
-- [ ] Boundary/Milestone work follows the proportional review depth in `docs/development/change-workflow.md`.
+- [ ] Higher-risk changes include an exact-target independent review record, or the PR records why the change is Ordinary.
+- [ ] Known limitations and evidence gaps have an owner or next action.
 - [ ] The change contains no raw prompt, model output, credential, private path, or reference to the legacy private repository.

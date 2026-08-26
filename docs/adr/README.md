@@ -25,4 +25,4 @@
 | [0013](0013-add-bounded-read-only-workflow-signal-reconciliation.md) | Add bounded read-only workflow signal reconciliation | Accepted |
 | [0014](0014-use-rustcrypto-sha2-for-committed-prefix-hashing.md) | Use RustCrypto sha2 for committed-prefix hashing | Accepted |
 | [0015](0015-define-v0-1-trust-boundaries-and-guarantee-levels.md) | Define v0.1 trust boundaries and guarantee levels | Accepted |
-| [0016](0016-adopt-the-conductor-led-boundary-change-workflow.md) | Adopt the conductor-led Boundary change workflow | Accepted |
+| [0016](0016-adopt-the-conductor-led-boundary-change-workflow.md) | Adopt a repository-owned higher-risk change contract | Accepted |

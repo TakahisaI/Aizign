@@ -6,24 +6,88 @@
 Aizignは **proposal-first** で開発します。挙動、API、schema、依存境界を変える変更は、
 先にIssueで契約を確定してからPRを出してください。未合意の大規模rewriteは受け付けません。
 
-## Conductor-led Boundary and Milestone changes
+## Public contribution contract
 
-Boundary changes and Milestone reviews follow the pilot workflow in
-[docs/development/change-workflow.md](docs/development/change-workflow.md).
-Routine changes continue to use the ordinary contribution process.
+This section is the repository's public contract for proposing and reviewing
+changes. It applies regardless of the tools used to prepare a change. No
+particular skill, model, agent implementation, or session arrangement is
+required; the records below can be prepared with ordinary Issues, pull
+requests, and local commands.
 
-The pilot is deliberately manual. It assumes one Maintainer, ordinary coding
-sessions, and only these optional explicit-invocation personal/workspace skills:
+### Authority and decisions
 
-- `$aizign-conduct`
-- `$aizign-break`
-- `$aizign-adjudicate`
+[`GOVERNANCE.md`](GOVERNANCE.md) assigns the Maintainer authority to approve
+ADRs, review and merge pull requests, handle conflicts, and release. This
+contract adds no authority beyond that source. An accepted Issue or ADR is the
+authority for a changed contract before implementation begins; a PR cannot
+silently widen that decision. A review record is evidence, not approval, and a
+Maintainer records the merge decision separately.
 
-No Implementer, Contract Designer, packet-generator, validator, bot, or Aizign
-runtime automation is required. The skills are adapters, not repository
-authority. `GOVERNANCE.md` continues to define Maintainer, merge, milestone,
-and release authority, and product/runtime contracts remain owned by their
-existing normative repository sources.
+### Change classes
+
+Classify the proposal before implementation.
+
+- **Ordinary change:** stays within an accepted owner-local contract and does
+  not change a public or repository-level claim. Examples include a typo that
+  does not alter a maintained claim, an internal refactor that preserves
+  behavior and boundaries, or a bug fix that restores accepted behavior.
+- **Higher-risk change:** establishes or changes a public behavior, API,
+  protocol, schema, durable format or state, architecture or dependency
+  boundary, hard invariant, security or data boundary, support or compatibility
+  claim, retry or migration policy, release policy, or contribution/review/
+  merge policy. Changes crossing bounded contexts or whose failure could affect
+  more than one context are also higher-risk.
+
+When classification is uncertain, use Higher-risk until the Maintainer records
+another decision. Ordinary changes use the usual Issue, pull request, and CI
+path. Higher-risk changes use the records and independent review requirements
+below.
+
+### Records before implementation
+
+The accepted Issue or ADR for a higher-risk change records:
+
+- the problem and why it matters;
+- the proposed contract or process decision;
+- what is in scope and explicitly out of scope;
+- the canonical authority and owner;
+- the disposition of every overlapping old path (deleted, migrated,
+  provisional with an owner and trigger, or retained for a distinct named
+  responsibility); and
+- at least one concrete failure case and the evidence expected to detect it.
+
+For higher-risk work, the PR links that accepted record. For an allowed
+ordinary no-Issue change, it names the owner-local contract and the applicable
+exception. Every PR names its change class, affected paths or contexts,
+authority, owner, old-path dispositions, commands/tests/inspections, the
+concrete failure case checked, and known limitations or evidence gaps.
+
+### Independent review for higher-risk changes
+
+Bind independent review to the exact candidate commit. The PR records the
+target SHA, changed paths, accepted decision, and the revisions of the
+authorities used by the reviewer. At least one reviewer who did not author the
+candidate inspects that exact target against the stated scope and failure case;
+additional reviewers or perspectives are added when the impact warrants it.
+Each review records its question, findings, supporting evidence, and any
+incomplete or unresolved item. A changed target, authority, decision, scope,
+owner, or old-path disposition requires a new review record.
+
+No particular review artifact or tool is required: a clear Markdown record,
+pull-request review, or equivalent retained project record is sufficient. If an
+independent reviewer or required evidence is unavailable, record the gap and
+its owner or next action instead of treating the change as complete.
+
+### Contract changes and evidence gaps
+
+Stop and return to the Issue or ADR before continuing when implementation would
+change the accepted authority, contract, public claim, scope, support or
+compatibility boundary, lifecycle, schema, durable field, canonical owner, or
+old-path disposition. Do not make that change silently.
+
+Keep limitations and missing evidence visible in the PR, with an owner or next
+action. Passing CI, completing a template, or agreeing in review does not by
+itself establish a claim.
 
 ## 受け付けるもの
 
