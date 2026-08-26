@@ -20,11 +20,16 @@ requests, and local commands.
 ADRs, review and merge pull requests, handle conflicts, and release. This
 contract adds no authority beyond that source. Governance's broad rule that
 architecture, boundary, and policy changes require an ADR controls; the ADR
-examples below are illustrative, not exhaustive. A Higher-risk change requires
-an accepted Issue before implementation and an ADR whenever Governance or this
-contract requires one. An accepted decision cannot be silently widened by a
-PR. A review record is evidence, not approval, and a Maintainer records the
-merge decision separately.
+examples below are illustrative, not exhaustive.
+
+A Higher-risk change requires an accepted Issue before implementation
+preparation and an ADR whenever Governance or this contract requires one.
+Proposal acceptance authorizes repository inspection and planning only. Before
+candidate artifacts change, a Maintainer must separately mark an exact-base
+implementation checkpoint `Ready for implementation`. An accepted decision
+cannot be silently widened by a checkpoint or pull request. A readiness record
+is not a review or merge decision, review evidence is not approval, and a
+Maintainer records the merge decision separately.
 
 ### Change classes
 
@@ -48,42 +53,82 @@ cases listed in [the allowed no-Issue cases section](#受け付けるもの). Th
 cases proceed directly to the usual pull request and CI path while the PR
 records the accepted owner-local contract and applicable exception. Higher-risk
 changes use the [Higher-risk proposal
-form](.github/ISSUE_TEMPLATE/proposal.yml) and the records and independent
-review requirements below.
+form](.github/ISSUE_TEMPLATE/proposal.yml) and the records, readiness, and
+independent-review requirements below.
 
-### Records before implementation
+### Proposal acceptance
 
-The accepted Issue for a higher-risk change records:
+The accepted Issue for a Higher-risk change records:
 
 - the problem and why it matters;
 - the proposed contract or process decision;
 - what is in scope and explicitly out of scope;
-- the canonical authority and owner;
-- the disposition of every overlapping old path (deleted, migrated,
+- the canonical authority direction and owner;
+- the disposition policy for overlapping old paths (deleted, migrated,
   provisional with an owner and trigger, or retained for a distinct named
   responsibility); and
 - at least one concrete failure case and the evidence expected to detect it.
 
-When Governance or this contract requires an ADR, the accepted ADR accompanies
-the Issue and records the durable architecture or policy decision; it does not
-replace the Issue.
+When Governance or this contract requires an ADR, the ADR accompanies the
+Issue and records the durable architecture or policy decision; it does not
+replace the Issue. A planned ADR path may be recorded when the contract-setting
+ADR is part of the first authorized slice.
 
-For higher-risk work, the PR links the accepted Issue and any required ADR. For
-an allowed ordinary no-Issue change, it names the owner-local contract and the
-applicable exception. Every PR names its change class, affected paths or
-contexts, authority, owner, old-path dispositions, commands/tests/inspections,
-the concrete failure case checked, and known limitations or evidence gaps.
+Proposal acceptance does not make the change ready for implementation.
+File-level owners, duplicate paths, and pull-request slices that require current
+repository inspection should remain unresolved until implementation
+preparation rather than being guessed during proposal creation.
+
+### Implementation preparation and readiness
+
+Before changing source, normative documents, templates, schemas, automation,
+configuration, or other candidate artifacts for a Higher-risk change, inspect
+the repository at one exact `main` commit and record an implementation
+checkpoint in the accepted Issue. The checkpoint records:
+
+- a stable checkpoint identifier and the exact planning-base commit;
+- the accepted Issue decision and any required ADR/specification references,
+  including a planned ADR path when that ADR belongs to the authorized slice;
+- each changed decision or invariant and its normative authority;
+- the single implementation owner for each changed invariant;
+- consumers that may apply or test the authority but may not redefine it;
+- every overlapping or duplicate path and its disposition;
+- the reviewable implementation slices and their dependency order;
+- for each slice, what changes, what is deleted or migrated, what is preserved,
+  what evidence proves it, and what remains out of scope;
+- unresolved decisions and evidence gaps; and
+- stop conditions that require returning to the Issue or ADR instead of making
+  a new contract decision in code.
+
+A Maintainer then records a separate `Ready for implementation` decision that
+names the accepted checkpoint and the authorized slice or slices. Preparation
+may be performed manually in an Issue comment; no separate planning document,
+schema, bot, model, skill, or session arrangement is required.
+
+A materially changed planning base, authority, owner, scope, old-path
+disposition, or slice boundary invalidates the affected readiness decision.
+Update the checkpoint, repeat the necessary inspection, and obtain a new
+Maintainer readiness decision before continuing.
+
+For Higher-risk work, each PR links the accepted Issue, any required ADR, the
+accepted implementation checkpoint, and the readiness decision. It identifies
+one authorized slice and records its planning base, affected paths or contexts,
+authority, owner, old-path dispositions, commands/tests/inspections, concrete
+failure case, and known limitations or evidence gaps. For an allowed Ordinary
+no-Issue change, the PR names the owner-local contract and the applicable
+exception.
 
 ### Independent review for higher-risk changes
 
 Bind independent review to the exact candidate commit. The PR records the
-target SHA, changed paths, accepted decision, and the revisions of the
-authorities used by the reviewer. At least one reviewer who did not author the
-candidate inspects that exact target against the stated scope and failure case;
-additional reviewers or perspectives are added when the impact warrants it.
-Each review records its question, findings, supporting evidence, and any
-incomplete or unresolved item. A changed target, authority, decision, scope,
-owner, or old-path disposition requires a new review record.
+target SHA, changed paths, accepted decision, implementation checkpoint, and
+the revisions of the authorities used by the reviewer. At least one reviewer
+who did not author the candidate inspects that exact target against the stated
+scope, slice, and failure case; additional reviewers or perspectives are added
+when the impact warrants it. Each review records its question, findings,
+supporting evidence, and any incomplete or unresolved item. A changed target,
+authority, decision, scope, owner, old-path disposition, or authorized slice
+requires a new review record.
 
 No particular review artifact or tool is required: a clear Markdown record,
 pull-request review, or equivalent retained project record is sufficient. If an
@@ -95,12 +140,14 @@ its owner or next action instead of treating the change as complete.
 Stop and return to the accepted Issue and, when required, its ADR before
 continuing when implementation would change the accepted authority, contract,
 public claim, scope, support or compatibility boundary, lifecycle, schema,
-durable field, canonical owner, or old-path disposition. Do not make that
-change silently.
+durable field, canonical owner, old-path disposition, or authorized slice. Revise
+the implementation checkpoint and obtain a new `Ready for implementation`
+decision before resuming. Do not make that change silently.
 
-Keep limitations and missing evidence visible in the PR, with an owner or next
-action. Passing CI, completing a template, or agreeing in review does not by
-itself establish a claim.
+Keep limitations and missing evidence visible in the Issue checkpoint and PR,
+with an owner or next action. Passing CI, completing a template, receiving a
+readiness decision, or agreeing in review does not by itself establish a claim
+or authorize merge.
 
 ## 受け付けるもの
 
@@ -108,13 +155,22 @@ itself establish a claim.
 - Issueで合意済みのscopeに対するPR
 - typo、軽微な文書修正、自動dependency update（Issueなしで可）
 
-## 作業単位
+## Work units
 
-- **1 PR = 1 reviewable slice**
-- PRは原則として一つのleaf Issueをcloseする
-- 大きな目的はumbrella Issueにし、複数のleaf Issueへ分割する
-- 一つのIssueへ巨大PRを押し込まない
-- PRが二つ以上のbounded contextを変更する場合、PR本文に理由を書く
+- **1 PR = 1 reviewable slice.**
+- An Issue owns a problem and its outcome-level completion evidence; it may
+  require multiple implementation slices and multiple pull requests.
+- A leaf Issue is not automatically an implementation unit.
+- Each Higher-risk PR identifies one authorized slice from the accepted
+  implementation checkpoint.
+- Use `Refs #<number>` for an intermediate slice. Use `Closes #<number>` only
+  when that PR satisfies the Issue's remaining outcome-level completion
+  evidence.
+- Use an umbrella Issue for a large objective and bounded child Issues when the
+  child problems have independent outcomes; do not create child Issues merely
+  to mirror file or pull-request boundaries.
+- Do not push a giant change into one Issue or PR. When a PR changes two or more
+  bounded contexts, state why the slice must change them atomically.
 
 ### Branch名
 

@@ -6,7 +6,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Aizign is proposal-first. Agree on the changed contract or process decision before implementation.
+        Aizign is proposal-first. Agree on the changed contract or process decision before implementation preparation.
+        Proposal acceptance authorizes preparation only. Implementation starts after an exact-base checkpoint and a separate Maintainer `Ready for implementation` decision.
         This form is for Higher-risk proposals. Ordinary changes use the ordinary Issue/PR path described in CONTRIBUTING.md. If classification is uncertain, choose Unsure for Maintainer decision.
   - type: textarea
     id: problem
@@ -50,9 +51,10 @@ body:
     attributes:
       label: Canonical authority, owner, and old paths
       description: >-
-        Name the canonical authority and owner. For every old path, state
-        deleted, migrated, provisional (owner/trigger), or retained (distinct
-        responsibility).
+        Name the accepted authority direction and owner. State the policy for
+        old paths: deleted, migrated, provisional (owner/trigger), or retained
+        (distinct responsibility). Exact file-level mapping may remain for the
+        post-acceptance implementation checkpoint.
     validations:
       required: true
   - type: textarea
@@ -71,5 +73,33 @@ body:
         - "Yes"
         - "No"
         - "Unsure"
+    validations:
+      required: true
+  - type: textarea
+    id: implementation_readiness
+    attributes:
+      label: Pre-implementation readiness
+      description: >-
+        Keep the initial status as Not ready. After proposal acceptance,
+        inspect one exact main commit and record the concrete checkpoint in
+        this Issue, usually as a comment. Do not guess file-level answers while
+        opening the proposal.
+      value: |
+        Status: Not ready
+
+        Implementation must not begin until:
+        - [ ] the proposal decision is accepted;
+        - [ ] any required ADR/specification reference or planned ADR path is recorded;
+        - [ ] one exact `main` commit is recorded;
+        - [ ] normative authorities, single implementation owners, and consumers are identified;
+        - [ ] every overlapping or duplicate path has a disposition;
+        - [ ] reviewable implementation slices and their dependency order are recorded;
+        - [ ] each slice records changes, deletions or migrations, preserved behavior, evidence, and exclusions;
+        - [ ] unresolved decisions, evidence gaps, and stop conditions are recorded; and
+        - [ ] a Maintainer records `Ready for implementation` for the checkpoint.
+
+        Preparation result:
+        - Checkpoint:
+        - Ready decision:
     validations:
       required: true

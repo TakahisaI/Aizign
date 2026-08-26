@@ -27,6 +27,7 @@
 | [0015](0015-define-v0-1-trust-boundaries-and-guarantee-levels.md) | Define v0.1 trust boundaries and guarantee levels | Accepted |
 | [0016](0016-adopt-a-repository-owned-higher-risk-change-contract.md) | Adopt a repository-owned higher-risk change contract | Accepted |
 | [0017](0017-bound-v0-1-classification-to-current-operations.md) | Bind v0.1 classification to current operations | Accepted |
+| [0018](0018-require-implementation-readiness-before-higher-risk-implementation.md) | Require implementation readiness before higher-risk implementation | Accepted |
 
 ADR-0016 partially supersedes ADR-0005's earlier `AGENTS.md` editing-constraint
 statement only; ADR-0005's other accepted decisions remain in force.
@@ -34,3 +35,8 @@ statement only; ADR-0005's other accepted decisions remain in force.
 ADR-0017 partially supersedes only ADR-0002's effect-intent and effect-claim
 statements as claims of current v0.1 scope. ADR-0002's Rust, `no_std`,
 dependency-isolation, and functional-core decisions remain in force.
+
+ADR-0018 extends ADR-0016 by separating proposal acceptance from exact-base
+implementation preparation and a Maintainer `Ready for implementation`
+decision. ADR-0016's repository ownership, tool-neutral operation, exact-target
+review, visible-gap, and separate merge-decision rules remain in force.
