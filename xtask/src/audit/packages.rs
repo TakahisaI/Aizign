@@ -141,30 +141,99 @@ fn check_workspace_dependencies(
     manifest: &serde_json::Value,
     findings: &mut Findings,
 ) {
-    let Some((runtime, development)) = (match name {
-        "@aizign/protocol" => Some((&[][..], &[][..])),
-        "@aizign/adapter-testkit" => Some((&["@aizign/protocol"][..], &[][..])),
-        "@aizign/adapter-dsh" => {
-            Some((&["@aizign/protocol"][..], &["@aizign/adapter-testkit"][..]))
-        }
-        _ => None,
-    }) else {
+    if !matches!(
+        name,
+        "@aizign/protocol" | "@aizign/adapter-testkit" | "@aizign/adapter-dsh"
+    ) {
         return;
-    };
+    }
 
-    for (kind, allowed) in [("dependencies", runtime), ("devDependencies", development)] {
-        let actual: BTreeSet<&str> = manifest[kind]
-            .as_object()
-            .into_iter()
-            .flat_map(|entries| entries.keys())
-            .map(String::as_str)
-            .filter(|dependency| dependency.starts_with("@aizign/"))
+    for kind in [
+        "dependencies",
+        "devDependencies",
+        "peerDependencies",
+        "optionalDependencies",
+        "bundleDependencies",
+        "bundledDependencies",
+    ] {
+        let actual = declared_workspace_dependencies(rendered, kind, manifest, findings);
+        let expected: BTreeSet<&str> = expected_workspace_dependencies(name, kind)
+            .iter()
+            .copied()
             .collect();
-        let expected: BTreeSet<&str> = allowed.iter().copied().collect();
         if actual != expected {
             findings.push(format!(
                 "{rendered}: exact {kind} workspace packages are {actual:?}; expected {expected:?}"
             ));
+        }
+    }
+}
+
+fn expected_workspace_dependencies(name: &str, kind: &str) -> &'static [&'static str] {
+    match (name, kind) {
+        ("@aizign/adapter-testkit" | "@aizign/adapter-dsh", "dependencies") => {
+            &["@aizign/protocol"]
+        }
+        ("@aizign/adapter-dsh", "devDependencies") => &["@aizign/adapter-testkit"],
+        _ => &[],
+    }
+}
+
+fn declared_workspace_dependencies<'a>(
+    rendered: &str,
+    kind: &str,
+    manifest: &'a serde_json::Value,
+    findings: &mut Findings,
+) -> BTreeSet<&'a str> {
+    let value = &manifest[kind];
+    if matches!(kind, "bundleDependencies" | "bundledDependencies") {
+        return match value {
+            serde_json::Value::Null | serde_json::Value::Bool(false) => BTreeSet::new(),
+            serde_json::Value::Array(entries) => {
+                if entries.iter().any(|entry| !entry.is_string()) {
+                    findings.push(format!(
+                        "{rendered}: `{kind}` entries must all be package-name strings"
+                    ));
+                }
+                entries
+                    .iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .filter(|dependency| dependency.starts_with("@aizign/"))
+                    .collect()
+            }
+            serde_json::Value::Bool(true) => {
+                findings.push(format!(
+                    "{rendered}: `{kind}: true` can implicitly bundle workspace dependencies; use an explicit array"
+                ));
+                manifest["dependencies"]
+                    .as_object()
+                    .into_iter()
+                    .flat_map(|entries| entries.keys())
+                    .map(String::as_str)
+                    .filter(|dependency| dependency.starts_with("@aizign/"))
+                    .collect()
+            }
+            _ => {
+                findings.push(format!(
+                    "{rendered}: `{kind}` must be absent, false, or an array of package names"
+                ));
+                BTreeSet::new()
+            }
+        };
+    }
+
+    match value {
+        serde_json::Value::Null => BTreeSet::new(),
+        serde_json::Value::Object(entries) => entries
+            .keys()
+            .map(String::as_str)
+            .filter(|dependency| dependency.starts_with("@aizign/"))
+            .collect(),
+        _ => {
+            findings.push(format!(
+                "{rendered}: `{kind}` must be an object when present"
+            ));
+            BTreeSet::new()
         }
     }
 }
@@ -213,6 +282,7 @@ fn check_typescript_sources(
         let Some(text) = read_text(root, path)? else {
             continue;
         };
+
         for (index, line) in text.lines().enumerate() {
             let location = format!("{}:{}", display(path), index + 1);
             let trimmed = line.trim_start();
@@ -243,7 +313,9 @@ fn check_typescript_sources(
                 }
             }
 
-            if line.contains("ReferenceOneShotClient") {
+            if path != Path::new("spec/test/package-exports.test.mjs")
+                && line.contains("ReferenceOneShotClient")
+            {
                 findings.push(format!(
                     "{location}: duplicate reference transport must not return"
                 ));
@@ -251,4 +323,55 @@ fn check_typescript_sources(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn dependency_findings(name: &str, manifest: &serde_json::Value) -> Findings {
+        let mut findings = Findings::default();
+        check_workspace_dependencies("package.json", name, manifest, &mut findings);
+        findings
+    }
+
+    #[test]
+    fn accepted_dependency_sections_are_exact() {
+        let manifest = json!({
+            "dependencies": { "@aizign/protocol": "0.1.0" },
+            "devDependencies": { "@aizign/adapter-testkit": "0.1.0" },
+            "peerDependencies": { "external-package": "1.0.0" }
+        });
+        assert!(dependency_findings("@aizign/adapter-dsh", &manifest).is_empty());
+    }
+
+    #[test]
+    fn peer_and_optional_sections_cannot_bypass_direction() {
+        let peer = json!({ "peerDependencies": { "@aizign/adapter-dsh": "0.1.0" } });
+        let optional = json!({ "optionalDependencies": { "@aizign/adapter-dsh": "0.1.0" } });
+        assert_eq!(dependency_findings("@aizign/protocol", &peer).len(), 1);
+        assert_eq!(dependency_findings("@aizign/protocol", &optional).len(), 1);
+    }
+
+    #[test]
+    fn bundled_dependency_aliases_cannot_bypass_direction() {
+        let bundle = json!({ "bundleDependencies": ["@aizign/adapter-dsh"] });
+        let bundled = json!({ "bundledDependencies": ["@aizign/adapter-dsh"] });
+        assert_eq!(dependency_findings("@aizign/protocol", &bundle).len(), 1);
+        assert_eq!(dependency_findings("@aizign/protocol", &bundled).len(), 1);
+    }
+
+    #[test]
+    fn implicit_bundle_all_is_rejected() {
+        let manifest = json!({
+            "dependencies": { "@aizign/protocol": "0.1.0" },
+            "bundleDependencies": true
+        });
+        assert_eq!(
+            dependency_findings("@aizign/adapter-testkit", &manifest).len(),
+            2
+        );
+    }
 }

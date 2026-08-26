@@ -1,16 +1,34 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const CONSUMER_PATH = join(ROOT, 'spec/test/package-export-consumer.ts');
+const COMPILER_OPTIONS = {
+  module: ts.ModuleKind.NodeNext,
+  moduleResolution: ts.ModuleResolutionKind.NodeNext,
+  noEmit: true,
+  skipLibCheck: true,
+  strict: true,
+  target: ts.ScriptTarget.ESNext,
+  types: [],
+};
 
 const surfaces = [
   {
     specifier: '@aizign/protocol',
-    declaration: 'packages/protocol/lib/index.d.ts',
+    manifest: 'packages/protocol/package.json',
+    exportKey: '.',
     runtime: [
       'CAPABILITY_WORKFLOW_SIGNAL_RECONCILE',
       'CAPABILITY_WORKFLOW_SIGNAL_SUBMIT',
@@ -76,7 +94,8 @@ const surfaces = [
   },
   {
     specifier: '@aizign/adapter-testkit',
-    declaration: 'packages/adapter-testkit/lib/index.d.ts',
+    manifest: 'packages/adapter-testkit/package.json',
+    exportKey: '.',
     runtime: [
       'assertMetadataOnly',
       'fakeCoreCommand',
@@ -89,13 +108,15 @@ const surfaces = [
   },
   {
     specifier: '@aizign/adapter-dsh',
-    declaration: 'adapters/dsh/lib/index.d.ts',
+    manifest: 'adapters/dsh/package.json',
+    exportKey: '.',
     runtime: ['Config', 'apply', 'inject', 'name'],
     types: ['PluginConfig'],
   },
   {
     specifier: '@aizign/adapter-dsh/experimental/transport',
-    declaration: 'adapters/dsh/lib/experimental/transport.d.ts',
+    manifest: 'adapters/dsh/package.json',
+    exportKey: './experimental/transport',
     runtime: ['OneShotCoreClient', 'isTimingErrorCode', 'preflight'],
     types: [
       'OneShotCoreClientConfig',
@@ -109,7 +130,8 @@ const surfaces = [
   },
   {
     specifier: '@aizign/adapter-dsh/experimental/evidence',
-    declaration: 'adapters/dsh/lib/experimental/evidence.d.ts',
+    manifest: 'adapters/dsh/package.json',
+    exportKey: './experimental/evidence',
     runtime: [
       'DEFAULT_COLD_READ_TIMEOUT_MS',
       'DEFAULT_MAX_EVENTS',
@@ -131,56 +153,145 @@ const surfaces = [
   },
 ];
 
+const sourceDependencySurfaces = [
+  {
+    root: 'packages/protocol/src',
+    allowed: ['@aizign/protocol'],
+  },
+  {
+    root: 'packages/adapter-testkit/src',
+    allowed: ['@aizign/adapter-testkit', '@aizign/protocol'],
+  },
+  {
+    root: 'adapters/dsh/src',
+    allowed: ['@aizign/adapter-dsh', '@aizign/protocol'],
+  },
+  {
+    root: 'adapters/dsh/test',
+    allowed: ['@aizign/adapter-dsh', '@aizign/adapter-testkit', '@aizign/protocol'],
+  },
+];
+
 function sorted(values) {
   return [...values].sort();
 }
 
-function declarationExports(path) {
-  const source = ts.createSourceFile(
-    path,
-    readFileSync(join(ROOT, path), 'utf8'),
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TS,
+function diagnosticSummary(diagnostics) {
+  return diagnostics.map(
+    (diagnostic) =>
+      `TS${diagnostic.code}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')}`,
   );
-  const runtime = new Set();
-  const types = new Set();
-  for (const statement of source.statements) {
-    if (ts.isExportDeclaration(statement) && statement.exportClause !== undefined) {
-      if (!ts.isNamedExports(statement.exportClause)) continue;
-      for (const element of statement.exportClause.elements) {
-        (statement.isTypeOnly || element.isTypeOnly ? types : runtime).add(element.name.text);
-      }
-      continue;
-    }
-    const exported = statement.modifiers?.some(
-      (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
-    );
-    if (!exported) continue;
-    if (ts.isVariableStatement(statement)) {
-      for (const declaration of statement.declarationList.declarations) {
-        if (ts.isIdentifier(declaration.name)) runtime.add(declaration.name.text);
-      }
-    } else if (ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) {
-      if (statement.name !== undefined) runtime.add(statement.name.text);
-    } else if (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)) {
-      types.add(statement.name.text);
-    }
-  }
-  return { runtime: sorted(runtime), types: sorted(types) };
 }
 
-test('TypeScript package runtime and declaration exports match exact allowlists', async () => {
+function manifestTypesTarget(surface) {
+  const manifestPath = join(ROOT, surface.manifest);
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const entry = manifest.exports?.[surface.exportKey];
+  assert.equal(
+    typeof entry?.types,
+    'string',
+    `${surface.specifier} must declare an explicit exports types target`,
+  );
+  return realpathSync(resolve(dirname(manifestPath), entry.types));
+}
+
+function resolvedDeclaration(surface) {
+  const resolution = ts.resolveModuleName(
+    surface.specifier,
+    CONSUMER_PATH,
+    COMPILER_OPTIONS,
+    ts.sys,
+  ).resolvedModule;
+  assert.ok(resolution, `${surface.specifier} must resolve for a TypeScript consumer`);
+  const resolved = realpathSync(resolution.resolvedFileName);
+  assert.equal(
+    resolved,
+    manifestTypesTarget(surface),
+    `${surface.specifier} compiler resolution must match its manifest types target`,
+  );
+  return resolved;
+}
+
+function consumerVisibleExports(declaration, specifier) {
+  const program = ts.createProgram({ rootNames: [declaration], options: COMPILER_OPTIONS });
+  const diagnostics = ts.getPreEmitDiagnostics(program);
+  assert.deepEqual(diagnosticSummary(diagnostics), [], `${specifier} declaration diagnostics`);
+  const source = program.getSourceFile(declaration);
+  assert.ok(source, `${specifier} resolved declaration must be in the TypeScript program`);
+  const checker = program.getTypeChecker();
+  const moduleSymbol = checker.getSymbolAtLocation(source);
+  assert.ok(moduleSymbol, `${specifier} resolved declaration must be an external module`);
+  return sorted(checker.getExportsOfModule(moduleSymbol).map((symbol) => symbol.getName()));
+}
+
+function sourceFiles(root) {
+  const files = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) files.push(...sourceFiles(path));
+    else if (/\.(?:js|mjs|ts)$/.test(entry.name)) files.push(path);
+  }
+  return files;
+}
+
+function moduleSpecifiers(path) {
+  const source = ts.createSourceFile(
+    path,
+    readFileSync(path, 'utf8'),
+    ts.ScriptTarget.Latest,
+    true,
+    path.endsWith('.ts') ? ts.ScriptKind.TS : ts.ScriptKind.JS,
+  );
+  const specifiers = [];
+  function visit(node) {
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+      node.moduleSpecifier !== undefined &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
+      specifiers.push(node.moduleSpecifier.text);
+    } else if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments.length === 1 &&
+      ts.isStringLiteral(node.arguments[0])
+    ) {
+      specifiers.push(node.arguments[0].text);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  return specifiers;
+}
+
+function aizignPackageName(specifier) {
+  const match = /^(@aizign\/[^/]+)/u.exec(specifier);
+  return match?.[1];
+}
+
+test('compiler-visible export audit expands type-only export stars', () => {
+  const temporaryRoot = mkdtempSync(join(ROOT, '.package-export-star-'));
+  try {
+    const internal = join(temporaryRoot, 'internal.d.ts');
+    const entry = join(temporaryRoot, 'entry.d.ts');
+    writeFileSync(internal, 'export interface UnexpectedType { readonly value: string }\n');
+    writeFileSync(entry, "export type * from './internal.js';\n");
+    assert.deepEqual(consumerVisibleExports(entry, 'type-export-star fixture'), ['UnexpectedType']);
+  } finally {
+    rmSync(temporaryRoot, { force: true, recursive: true });
+  }
+});
+
+test('TypeScript package runtime and consumer-visible type exports match exact allowlists', async () => {
   for (const surface of surfaces) {
     const module = await import(surface.specifier);
     assert.deepEqual(sorted(Object.keys(module)), sorted(surface.runtime), surface.specifier);
-    const declarations = declarationExports(surface.declaration);
+    const declaration = resolvedDeclaration(surface);
     assert.deepEqual(
-      declarations.runtime,
-      sorted(surface.runtime),
-      `${surface.specifier} runtime d.ts`,
+      consumerVisibleExports(declaration, surface.specifier),
+      sorted([...surface.runtime, ...surface.types]),
+      `${surface.specifier} compiler-visible exports`,
     );
-    assert.deepEqual(declarations.types, sorted(surface.types), `${surface.specifier} type d.ts`);
   }
 });
 
@@ -199,6 +310,21 @@ test('TypeScript package manifests expose only the accepted closed subpaths', ()
   }
 });
 
+test('workspace source imports match the exact package dependency directions', () => {
+  for (const surface of sourceDependencySurfaces) {
+    for (const path of sourceFiles(join(ROOT, surface.root))) {
+      for (const specifier of moduleSpecifiers(path)) {
+        const packageName = aizignPackageName(specifier);
+        if (packageName === undefined) continue;
+        assert.ok(
+          surface.allowed.includes(packageName),
+          `${path} imports ${specifier}; allowed workspace packages are ${surface.allowed.join(', ')}`,
+        );
+      }
+    }
+  }
+});
+
 test('removed and deep package paths cannot bypass the closed export maps', async () => {
   for (const specifier of [
     '@aizign/protocol/src/client.js',
@@ -212,5 +338,56 @@ test('removed and deep package paths cannot bypass the closed export maps', asyn
       import(specifier),
       (error) => error?.code === 'ERR_PACKAGE_PATH_NOT_EXPORTED',
     );
+  }
+});
+
+test('TypeScript consumers cannot compile removed symbols or closed package paths', () => {
+  const cases = [
+    {
+      name: 'removed-protocol-config',
+      source: "import type { CoreClientConfig } from '@aizign/protocol';\n",
+      code: 2305,
+    },
+    {
+      name: 'removed-testkit-client',
+      source: "import { ReferenceOneShotClient } from '@aizign/adapter-testkit';\n",
+      code: 2305,
+    },
+    {
+      name: 'transport-hidden-from-stable-root',
+      source: "import { OneShotCoreClient } from '@aizign/adapter-dsh';\n",
+      code: 2305,
+    },
+    {
+      name: 'protocol-deep-path',
+      source: "import type { CoreClient } from '@aizign/protocol/src/client.js';\n",
+      code: 2307,
+    },
+    {
+      name: 'dsh-deep-path',
+      source:
+        "import { OneShotCoreClient } from '@aizign/adapter-dsh/src/core-client/one-shot-client.js';\n",
+      code: 2307,
+    },
+    {
+      name: 'undeclared-experimental-subpath',
+      source: "import type { SignalEvidence } from '@aizign/adapter-dsh/experimental/missing';\n",
+      code: 2307,
+    },
+  ];
+  const temporaryRoot = mkdtempSync(join(ROOT, '.package-export-consumer-'));
+  try {
+    for (const fixture of cases) {
+      const sourcePath = join(temporaryRoot, `${fixture.name}.ts`);
+      writeFileSync(sourcePath, fixture.source);
+      const program = ts.createProgram({ rootNames: [sourcePath], options: COMPILER_OPTIONS });
+      const diagnostics = ts.getPreEmitDiagnostics(program);
+      assert.ok(
+        diagnostics.some((diagnostic) => diagnostic.code === fixture.code),
+        `${fixture.name} must fail with TS${fixture.code}; got ${diagnosticSummary(diagnostics).join('; ')}`,
+      );
+    }
+  } finally {
+    rmSync(temporaryRoot, { force: true, recursive: true });
   }
 });
