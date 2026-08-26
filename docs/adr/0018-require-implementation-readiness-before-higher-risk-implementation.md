@@ -6,6 +6,7 @@
 - Acceptance: [Maintainer decision for Issue #97, comment `5423689890`](https://github.com/TakahisaI/Aizign/issues/97#issuecomment-5423689890)
 - Initial readiness: [Checkpoint `I97-7FB4319-A` decision, comment `5423699249`](https://github.com/TakahisaI/Aizign/issues/97#issuecomment-5423699249)
 - Clarification: [Slice dependency and readiness retention, comment `5424140178`](https://github.com/TakahisaI/Aizign/issues/97#issuecomment-5424140178)
+- Clarification: [Checkpoint records and planned ADR timing, comment `5424300250`](https://github.com/TakahisaI/Aizign/issues/97#issuecomment-5424300250)
 
 ## Context
 
@@ -29,6 +30,9 @@ Keep [`CONTRIBUTING.md`](../../CONTRIBUTING.md) as the sole repository owner of
 the public contribution contract and add a manual implementation-readiness gate
 for Higher-risk work.
 
+`CONTRIBUTING.md` is the operative policy text. This ADR records the decision
+and its rationale but does not own a second copy of the contribution contract.
+
 Separate the lifecycle into three records:
 
 1. **Proposal accepted.** The Issue owns the problem, target contract or process
@@ -45,8 +49,8 @@ Separate the lifecycle into three records:
 
 A checkpoint may be an ordinary Issue comment. No separate implementation-plan
 document, schema, validator, bot, model, skill, or session arrangement is
-required. When a contract-setting ADR is part of the authorized slice, the
-checkpoint may name its planned path before that ADR exists in `main`.
+required. When a contract-setting ADR is part of the first authorized slice,
+the checkpoint may name its planned path before that ADR exists in `main`.
 
 An independent slice may begin once authorized. An ordered slice must not begin
 until the predecessor condition recorded in the checkpoint is satisfied. The
@@ -78,9 +82,12 @@ references. Templates collect records only and do not authorize decisions.
 This ADR extends ADR-0016. It retains ADR-0016's repository ownership,
 tool-neutral operation, exact-target review, visible gaps, and separate
 Maintainer merge decision. Readiness is an additional implementation gate; it
-is not review evidence, merge approval, milestone approval, or release authority.
+is not review evidence, merge approval, milestone approval, or release
+authority.
 
 ## Consequences
+
+### Positive
 
 Authority and ownership decisions can be proposed from repository evidence
 instead of requiring the Maintainer to invent file-level instructions. An
@@ -89,10 +96,21 @@ coding. Duplicate paths must be disposed before activation, while an Issue may
 remain open across the multiple reviewable pull requests needed to complete its
 outcome.
 
+### Negative / Risks
+
 The process adds one explicit preparation and readiness record for Higher-risk
 work. That cost is intentionally limited to changes whose public or
 cross-context impact already requires a Higher-risk Issue. Ordinary changes and
 allowed no-Issue exceptions remain unchanged.
+
+The contribution contract and implementation guides may drift when a guide
+uses older Issue-boundary language without restating the Higher-risk gate.
+
+### Follow-up
+
+When the next adapter change is proposed, inspect
+`docs/development/adding-adapter.md` and either align its leaf-Issue guidance in
+that accepted scope or record why the guide retains a distinct responsibility.
 
 ## Alternatives considered
 

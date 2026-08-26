@@ -81,14 +81,15 @@ preparation rather than being guessed during proposal creation.
 
 ### Implementation preparation and readiness
 
-Before changing source, normative documents, templates, schemas, automation,
-configuration, or other candidate artifacts for a Higher-risk change, inspect
+Before changing any source, normative document, template, schema, automation,
+configuration, or other artifact intended for a Higher-risk candidate, inspect
 the repository at one exact `main` commit and record an implementation
 checkpoint in the accepted Issue. The checkpoint records:
 
 - a stable checkpoint identifier and the exact planning-base commit;
 - the accepted Issue decision and any required ADR/specification references,
-  including a planned ADR path when that ADR belongs to the authorized slice;
+  including a planned ADR path when that ADR belongs to the first authorized
+  slice;
 - each changed decision or invariant and its normative authority;
 - the single implementation owner for each changed invariant;
 - consumers that may apply or test the authority but may not redefine it;
@@ -111,10 +112,10 @@ ordered slice must not begin until its checkpoint's predecessor condition is
 satisfied. That condition must state whether the predecessor must be merged
 into `main` or whether stacked work against one exact predecessor commit is
 allowed; the implementer does not choose that mode during implementation.
-Before an ordered slice begins, record whether the current `main`, or the exact
-stacked predecessor when expressly authorized, still preserves the accepted
-authority, owner, scope, old-path dispositions, evidence requirements, and
-slice boundary.
+Before an ordered slice begins, the checkpoint must record whether the current
+`main`, or the exact stacked predecessor when expressly authorized, still
+preserves the accepted authority, owner, scope, old-path dispositions, evidence
+requirements, and slice boundary.
 
 Movement of `main` alone does not invalidate readiness. A materially changed
 planning base, authority, owner, scope, old-path disposition, evidence
@@ -152,9 +153,10 @@ its owner or next action instead of treating the change as complete.
 Stop and return to the accepted Issue and, when required, its ADR before
 continuing when implementation would change the accepted authority, contract,
 public claim, scope, support or compatibility boundary, lifecycle, schema,
-durable field, canonical owner, old-path disposition, or authorized slice. Revise
-the implementation checkpoint and obtain a new `Ready for implementation`
-decision before resuming. Do not make that change silently.
+durable field, canonical owner, old-path disposition, or authorized slice.
+Revise the implementation checkpoint and obtain a new
+`Ready for implementation` decision before resuming. Do not make that change
+silently.
 
 Keep limitations and missing evidence visible in the Issue checkpoint and PR,
 with an owner or next action. Passing CI, completing a template, receiving a

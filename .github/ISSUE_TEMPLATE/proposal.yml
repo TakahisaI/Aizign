@@ -90,7 +90,7 @@ body:
         Implementation must not begin until:
         - [ ] the proposal decision is accepted;
         - [ ] any required ADR/specification reference or planned ADR path is recorded;
-        - [ ] one exact `main` commit is recorded;
+        - [ ] a stable checkpoint identifier and one exact `main` commit are recorded;
         - [ ] normative authorities, single implementation owners, and consumers are identified;
         - [ ] every overlapping or duplicate path has a disposition;
         - [ ] reviewable implementation slices are classified as independent or ordered, with a predecessor condition for each ordered slice;
