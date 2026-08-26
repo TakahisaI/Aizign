@@ -35,7 +35,8 @@ source-qualified; the same spelling does not imply the same authority.
 | **Unknown** | A source-qualified client/observation result stating that the relevant fact could not be established. For current signal submission, an unknown append or acknowledgement is neither success nor failure and never authorizes blind retry. |
 | **Reconcile** | A bounded read-only comparison of a complete signal against a writer-published committed journal snapshot. The server disposition is `accepted`, `conflict`, or `absent`; a client that cannot establish one reports `unknown`. |
 | **Opaque handle** | adapterが発行し、coreは比較と保存にだけ使う不透明な文字列 |
-| **Capability** | adapterが提供できる操作の宣言。`hello` で交換する |
+| **Core Protocol capability** | The serving core's declaration that it provides a non-bootstrap Protocol operation. Current values are exchanged in `hello.capabilities`; they do not describe harness-adapter features. |
+| **Harness-adapter capability** | An adapter-owned feature declared and tested under that adapter's documentation and harness contract. Protocol v1 has no generic field for it; defining one belongs to a separately accepted capability design. |
 | **Protocol version** | wire contractの整数version。package versionと独立 |
 | **Journal schema version** | journal recordの整数version。package versionと独立 |
 | **Store metadata version** | committed-prefix documentの整数version。protocol versionとjournal record schema versionの双方から独立 |
