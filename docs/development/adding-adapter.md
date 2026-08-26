@@ -93,7 +93,7 @@ The reference layout is:
 adapters/<harness>/
 ├── package.json        @aizign/adapter-<harness>; private and unpublished for now
 ├── README.md           responsibility, boundaries, dependencies, tests, and ADRs
-├── AGENTS.md           navigation and editing constraints only
+├── AGENTS.md           navigation only
 ├── src/
 │   ├── index.ts        closed export surface
 │   ├── config.ts

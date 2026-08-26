@@ -25,3 +25,7 @@
 | [0013](0013-add-bounded-read-only-workflow-signal-reconciliation.md) | Add bounded read-only workflow signal reconciliation | Accepted |
 | [0014](0014-use-rustcrypto-sha2-for-committed-prefix-hashing.md) | Use RustCrypto sha2 for committed-prefix hashing | Accepted |
 | [0015](0015-define-v0-1-trust-boundaries-and-guarantee-levels.md) | Define v0.1 trust boundaries and guarantee levels | Accepted |
+| [0016](0016-adopt-a-repository-owned-higher-risk-change-contract.md) | Adopt a repository-owned higher-risk change contract | Accepted |
+
+ADR-0016 partially supersedes ADR-0005's earlier `AGENTS.md` editing-constraint
+statement only; ADR-0005's other accepted decisions remain in force.

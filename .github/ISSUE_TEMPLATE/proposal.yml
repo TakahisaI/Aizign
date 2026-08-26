@@ -1,55 +1,75 @@
-name: Proposal
-description: 挙動、API、schema、依存境界を変える提案（PRの前に契約を確定します）
+name: Higher-risk proposal
+description: Propose a higher-risk contract, boundary, architecture, or repository-process change before implementation.
 title: "proposal: "
 labels: ["type:proposal"]
 body:
   - type: markdown
     attributes:
       value: |
-        Aizignはproposal-firstです。ここでscopeと契約を合意してからPRを出してください。
-        大きな目的はumbrella Issueにし、leaf Issueへ分割します。
+        Aizign is proposal-first. Agree on the changed contract or process decision before implementation.
+        This form is for Higher-risk proposals. Ordinary changes use the ordinary Issue/PR path described in CONTRIBUTING.md. If classification is uncertain, choose Unsure for Maintainer decision.
   - type: textarea
     id: problem
     attributes:
-      label: 解きたい問題
+      label: Problem to solve
+      description: Describe the observed problem and why it matters now.
+    validations:
+      required: true
+  - type: dropdown
+    id: change_class
+    attributes:
+      label: Change class
+      description: Choose Higher-risk for this form. Use Unsure when the Maintainer must decide whether the proposal is Higher-risk. Ordinary changes use the ordinary Issue/PR path described in CONTRIBUTING.md.
+      options:
+        - Higher-risk change
+        - Unsure
     validations:
       required: true
   - type: textarea
-    id: contract
+    id: decision
     attributes:
-      label: 提案する契約
-      description: command / event / decision、protocol kind、journal record、error code、capabilityなど、変わるものを具体的に
+      label: Proposed contract or process decision
+      description: State what will become true. Name public behavior, API, schema, durable data, architecture, support, security, or repository-process changes.
     validations:
       required: true
   - type: textarea
-    id: contexts
+    id: scope
     attributes:
-      label: 触るbounded context
-      description: docs/architecture/context-map.md の行で答える。二つ以上なら理由
+      label: In scope and out of scope
+      description: Name the affected bounded contexts or process surfaces and the important exclusions.
+      placeholder: |
+        In scope:
+        - <path, context, or process surface>
+
+        Out of scope:
+        - <area and reason>
+    validations:
+      required: true
+  - type: textarea
+    id: authority_owner
+    attributes:
+      label: Canonical authority, owner, and old paths
+      description: >-
+        Name the canonical authority and owner. For every old path, state
+        deleted, migrated, provisional (owner/trigger), or retained (distinct
+        responsibility).
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Failure case and required evidence
+      description: Give at least one concrete way the proposal could be wrong and the test, inspection, or observation that should detect it.
     validations:
       required: true
   - type: dropdown
     id: adr
     attributes:
-      label: ADRが必要か
-      description: crate / package境界、依存方向、protocol、journal、接続方式、runtime dependency、data boundary、retry policy、toolchain、release policy
+      label: Is an ADR required?
+      description: Refer to CONTRIBUTING.md for whether an ADR is required. This field only records Yes, No, or Unsure; the form does not define ADR scope.
       options:
-        - 不要
-        - 必要（このIssueでADR番号を確定する）
+        - "Yes"
+        - "No"
+        - "Unsure"
     validations:
       required: true
-  - type: textarea
-    id: invariants
-    attributes:
-      label: 関係するhard invariants
-      description: root AGENTS.md の番号と、それを壊さない理由
-  - type: textarea
-    id: tests
-    attributes:
-      label: 検証方法
-      description: どのtest / fixture / conformanceで、守る境界を一度壊して検出できることを確認するか
-  - type: textarea
-    id: legacy
-    attributes:
-      label: 旧実装からの採用（該当する場合）
-      description: "Adopt / Reject / Defer を明示し、採用する契約は新しいtestとして書き直す（ADR-0006）"

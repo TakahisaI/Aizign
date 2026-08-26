@@ -1,0 +1,37 @@
+name: Ordinary change
+description: Propose a bounded change within an accepted owner-local contract.
+title: "ordinary: "
+labels: ["type:task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for a possible Ordinary change. Follow [CONTRIBUTING.md](../../CONTRIBUTING.md) for classification and routing. If the change may be Higher-risk or classification is uncertain, use the [Higher-risk proposal form](proposal.yml) or ask the Maintainer to classify it.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Identify the problem or maintenance task and why it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: owner_local_contract
+    attributes:
+      label: Accepted owner-local contract
+      description: Name or link the existing owner-local contract that this change must preserve.
+    validations:
+      required: true
+  - type: textarea
+    id: intended_change
+    attributes:
+      label: Bounded intended change
+      description: Describe the smallest change in scope and what remains out of scope.
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification and failure check
+      description: State the concrete test, inspection, or other check that will detect a failure to preserve the contract.
+    validations:
+      required: true

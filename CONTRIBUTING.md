@@ -6,6 +6,102 @@
 Aizignは **proposal-first** で開発します。挙動、API、schema、依存境界を変える変更は、
 先にIssueで契約を確定してからPRを出してください。未合意の大規模rewriteは受け付けません。
 
+## Public contribution contract
+
+This section is the repository's public contract for proposing and reviewing
+changes. It applies regardless of the tools used to prepare a change. No
+particular skill, model, agent implementation, or session arrangement is
+required; the records below can be prepared with ordinary Issues, pull
+requests, and local commands.
+
+### Authority and decisions
+
+[`GOVERNANCE.md`](GOVERNANCE.md) assigns the Maintainer authority to approve
+ADRs, review and merge pull requests, handle conflicts, and release. This
+contract adds no authority beyond that source. Governance's broad rule that
+architecture, boundary, and policy changes require an ADR controls; the ADR
+examples below are illustrative, not exhaustive. A Higher-risk change requires
+an accepted Issue before implementation and an ADR whenever Governance or this
+contract requires one. An accepted decision cannot be silently widened by a
+PR. A review record is evidence, not approval, and a Maintainer records the
+merge decision separately.
+
+### Change classes
+
+Classify the proposal before implementation.
+
+- **Ordinary change:** stays within an accepted owner-local contract and does
+  not change a public or repository-level claim. Examples include a typo that
+  does not alter a maintained claim, an internal refactor that preserves
+  behavior and boundaries, or a bug fix that restores accepted behavior.
+- **Higher-risk change:** establishes or changes a public behavior, API,
+  protocol, schema, durable format or state, architecture or dependency
+  boundary, hard invariant, security or data boundary, support or compatibility
+  claim, retry or migration policy, release policy, or contribution/review/
+  merge policy. Changes crossing bounded contexts or whose failure could affect
+  more than one context are also higher-risk.
+
+When classification is uncertain, use Higher-risk until the Maintainer records
+another decision. Ordinary changes use the [Ordinary change Issue
+form](.github/ISSUE_TEMPLATE/ordinary.yml) except for the allowed no-Issue
+cases listed in [the allowed no-Issue cases section](#受け付けるもの). Those
+cases proceed directly to the usual pull request and CI path while the PR
+records the accepted owner-local contract and applicable exception. Higher-risk
+changes use the [Higher-risk proposal
+form](.github/ISSUE_TEMPLATE/proposal.yml) and the records and independent
+review requirements below.
+
+### Records before implementation
+
+The accepted Issue for a higher-risk change records:
+
+- the problem and why it matters;
+- the proposed contract or process decision;
+- what is in scope and explicitly out of scope;
+- the canonical authority and owner;
+- the disposition of every overlapping old path (deleted, migrated,
+  provisional with an owner and trigger, or retained for a distinct named
+  responsibility); and
+- at least one concrete failure case and the evidence expected to detect it.
+
+When Governance or this contract requires an ADR, the accepted ADR accompanies
+the Issue and records the durable architecture or policy decision; it does not
+replace the Issue.
+
+For higher-risk work, the PR links the accepted Issue and any required ADR. For
+an allowed ordinary no-Issue change, it names the owner-local contract and the
+applicable exception. Every PR names its change class, affected paths or
+contexts, authority, owner, old-path dispositions, commands/tests/inspections,
+the concrete failure case checked, and known limitations or evidence gaps.
+
+### Independent review for higher-risk changes
+
+Bind independent review to the exact candidate commit. The PR records the
+target SHA, changed paths, accepted decision, and the revisions of the
+authorities used by the reviewer. At least one reviewer who did not author the
+candidate inspects that exact target against the stated scope and failure case;
+additional reviewers or perspectives are added when the impact warrants it.
+Each review records its question, findings, supporting evidence, and any
+incomplete or unresolved item. A changed target, authority, decision, scope,
+owner, or old-path disposition requires a new review record.
+
+No particular review artifact or tool is required: a clear Markdown record,
+pull-request review, or equivalent retained project record is sufficient. If an
+independent reviewer or required evidence is unavailable, record the gap and
+its owner or next action instead of treating the change as complete.
+
+### Contract changes and evidence gaps
+
+Stop and return to the accepted Issue and, when required, its ADR before
+continuing when implementation would change the accepted authority, contract,
+public claim, scope, support or compatibility boundary, lifecycle, schema,
+durable field, canonical owner, or old-path disposition. Do not make that
+change silently.
+
+Keep limitations and missing evidence visible in the PR, with an owner or next
+action. Passing CI, completing a template, or agreeing in review does not by
+itself establish a claim.
+
 ## 受け付けるもの
 
 - Issue、bug report、設計提案
@@ -42,7 +138,10 @@ chore(ci): pin cargo-deny action
 
 ## ADRが必要な変更
 
-次の変更はIssueだけでなく、[docs/adr/](docs/adr/) へのADRを要求します。
+Governance's broad rule controls: architecture, boundary, and policy changes
+require an ADR. The following examples are illustrative, not exhaustive. For a
+Higher-risk change, keep the accepted Issue and add an ADR whenever this rule
+requires one.
 
 - crate / package境界
 - dependency方向
@@ -53,6 +152,7 @@ chore(ci): pin cargo-deny action
 - security / data boundary
 - automatic retry policy
 - MSRVまたはNode support policy
+- contribution / review / merge policy
 - release / compatibility policy
 
 Accepted ADRは後からsilent rewriteしません。変更時は新しいADRでsupersedeします。
@@ -82,12 +182,9 @@ cargo xtask check
 
 ## Merge policy
 
-- default branchは `main`。直接pushは禁止
-- squash mergeのみ。merge commitとrebase mergeは無効
-- required checksが緑であること
-- unresolved conversationがあるPRはmergeしない
-- maintainer自身のPRは、green CIとPR checklistを満たせばself-merge可
-- 第二maintainer参加後は、non-author approvalを1件必須にする
+See [`GOVERNANCE.md#merge-policy`](GOVERNANCE.md#merge-policy) for the
+canonical merge and branch rules. This document does not restate or override
+those rules.
 
 ## 旧実装からの採用
 
