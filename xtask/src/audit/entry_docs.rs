@@ -1,6 +1,6 @@
-//! Every crate, package, and adapter carries its own entry documents
-//! (ADR-0005): a `README.md` with responsibilities and invariants, and an
-//! `AGENTS.md` that serves as a non-authoritative navigation entry document.
+//! Every crate, package, and adapter carries a `README.md` with responsibilities
+//! and invariants (ADR-0005). Every adapter and the named crates below also carry
+//! an `AGENTS.md` that serves as a non-authoritative navigation entry document.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
