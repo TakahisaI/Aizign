@@ -93,7 +93,8 @@ checkpoint in the accepted Issue. The checkpoint records:
 - the single implementation owner for each changed invariant;
 - consumers that may apply or test the authority but may not redefine it;
 - every overlapping or duplicate path and its disposition;
-- the reviewable implementation slices and their dependency order;
+- the reviewable implementation slices, whether they are independent or
+  ordered, and the predecessor condition for each ordered slice;
 - for each slice, what changes, what is deleted or migrated, what is preserved,
   what evidence proves it, and what remains out of scope;
 - unresolved decisions and evidence gaps; and
@@ -105,10 +106,21 @@ names the accepted checkpoint and the authorized slice or slices. Preparation
 may be performed manually in an Issue comment; no separate planning document,
 schema, bot, model, skill, or session arrangement is required.
 
-A materially changed planning base, authority, owner, scope, old-path
-disposition, or slice boundary invalidates the affected readiness decision.
-Update the checkpoint, repeat the necessary inspection, and obtain a new
-Maintainer readiness decision before continuing.
+An independent slice may begin when the readiness decision authorizes it. An
+ordered slice must not begin until its checkpoint's predecessor condition is
+satisfied. That condition must state whether the predecessor must be merged
+into `main` or whether stacked work against one exact predecessor commit is
+allowed; the implementer does not choose that mode during implementation.
+Before an ordered slice begins, record whether the current `main`, or the exact
+stacked predecessor when expressly authorized, still preserves the accepted
+authority, owner, scope, old-path dispositions, evidence requirements, and
+slice boundary.
+
+Movement of `main` alone does not invalidate readiness. A materially changed
+planning base, authority, owner, scope, old-path disposition, evidence
+requirement, or slice boundary does. When the pre-start inspection identifies
+such a change, update the checkpoint, repeat the necessary inspection, and
+obtain a new Maintainer readiness decision before continuing.
 
 For Higher-risk work, each PR links the accepted Issue, any required ADR, the
 accepted implementation checkpoint, and the readiness decision. It identifies

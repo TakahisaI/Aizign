@@ -51,7 +51,7 @@ body:
     attributes:
       label: Canonical authority, owner, and old paths
       description: >-
-        Name the accepted authority direction and owner. State the policy for
+        Name the proposed authority direction and owner. State the policy for
         old paths: deleted, migrated, provisional (owner/trigger), or retained
         (distinct responsibility). Exact file-level mapping may remain for the
         post-acceptance implementation checkpoint.
@@ -93,7 +93,7 @@ body:
         - [ ] one exact `main` commit is recorded;
         - [ ] normative authorities, single implementation owners, and consumers are identified;
         - [ ] every overlapping or duplicate path has a disposition;
-        - [ ] reviewable implementation slices and their dependency order are recorded;
+        - [ ] reviewable implementation slices are classified as independent or ordered, with a predecessor condition for each ordered slice;
         - [ ] each slice records changes, deletions or migrations, preserved behavior, evidence, and exclusions;
         - [ ] unresolved decisions, evidence gaps, and stop conditions are recorded; and
         - [ ] a Maintainer records `Ready for implementation` for the checkpoint.

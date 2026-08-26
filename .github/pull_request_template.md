@@ -17,6 +17,7 @@ Allowed Ordinary no-Issue work: write `No Issue — <applicable exception>`.
 - **Planning base:** <!-- Higher-risk: exact main commit inspected by the checkpoint. Ordinary: Not required. -->
 - **Ready for implementation decision:** <!-- Higher-risk: link the separate Maintainer decision. Ordinary: Not required. -->
 - **Slice ID and purpose:** <!-- Higher-risk: name one authorized slice. Ordinary: describe the owner-local slice. -->
+- **Dependency classification and predecessor condition:** <!-- Higher-risk: independent, or ordered with the checkpoint-defined predecessor condition and its satisfaction record. -->
 
 ## Required records
 
@@ -61,6 +62,7 @@ is required.
 - [ ] An accepted Issue is linked above when required; otherwise this is an allowed Ordinary no-Issue exception recorded in the Issue record above.
 - [ ] Changes requiring an ADR include one, or ADR is not applicable under `CONTRIBUTING.md`.
 - [ ] Higher-risk work links an accepted exact-base implementation checkpoint, a separate `Ready for implementation` decision, and one authorized slice.
+- [ ] An authorized Higher-risk slice is classified as independent or ordered; an ordered slice has not begun before its recorded predecessor condition and pre-start preservation check are satisfied.
 - [ ] The planning base, authority, owner, scope, old-path disposition, and slice still match the accepted checkpoint; otherwise the checkpoint was revised and readiness renewed before implementation continued.
 - [ ] Every affected old or duplicate path has an explicit disposition.
 - [ ] Tests or inspections cover at least one concrete failure case.

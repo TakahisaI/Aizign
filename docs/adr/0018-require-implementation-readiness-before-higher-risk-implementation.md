@@ -5,6 +5,7 @@
 - Related: ADR-0016, Issue #97
 - Acceptance: [Maintainer decision for Issue #97, comment `5423689890`](https://github.com/TakahisaI/Aizign/issues/97#issuecomment-5423689890)
 - Initial readiness: [Checkpoint `I97-7FB4319-A` decision, comment `5423699249`](https://github.com/TakahisaI/Aizign/issues/97#issuecomment-5423699249)
+- Clarification: [Slice dependency and readiness retention, comment `5424140178`](https://github.com/TakahisaI/Aizign/issues/97#issuecomment-5424140178)
 
 ## Context
 
@@ -36,7 +37,8 @@ Separate the lifecycle into three records:
 2. **Implementation prepared.** The repository is inspected at one exact
    `main` commit. An Issue checkpoint records the normative authorities, single
    implementation owners, consumers, all overlapping paths and dispositions,
-   reviewable slices and dependency order, evidence, unresolved items, and stop
+   reviewable slices, their independent or ordered classification, predecessor
+   conditions for ordered slices, evidence, unresolved items, and stop
    conditions.
 3. **Ready for implementation.** A Maintainer separately accepts the checkpoint
    and names the authorized slice or slices before candidate artifacts change.
@@ -46,10 +48,21 @@ document, schema, validator, bot, model, skill, or session arrangement is
 required. When a contract-setting ADR is part of the authorized slice, the
 checkpoint may name its planned path before that ADR exists in `main`.
 
-A materially changed planning base, authority, owner, scope, old-path
-disposition, or slice boundary invalidates the affected readiness decision.
-Implementation stops until the Issue or ADR is revised as required, the
-checkpoint is updated, and a Maintainer records renewed readiness.
+An independent slice may begin once authorized. An ordered slice must not begin
+until the predecessor condition recorded in the checkpoint is satisfied. The
+checkpoint chooses whether that condition requires the predecessor to be
+merged into `main` or permits stacked work against one exact predecessor
+commit; the implementer does not choose between those modes while coding.
+Before the ordered slice begins, the checkpoint records whether the current
+`main`, or the exact stacked predecessor when expressly authorized, preserves
+the accepted authority, owner, scope, old-path dispositions, evidence
+requirements, and slice boundary.
+
+Movement of `main` alone does not invalidate readiness. A materially changed
+planning base, authority, owner, scope, old-path disposition, evidence
+requirement, or slice boundary does. Implementation stops until the Issue or
+ADR is revised as required, the checkpoint is updated, and a Maintainer records
+renewed readiness.
 
 An Issue owns a problem and outcome-level completion evidence; it is not
 automatically an implementation unit. One Issue may contain multiple
