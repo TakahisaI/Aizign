@@ -11,7 +11,7 @@
 
 ## 意思決定
 
-- Routine changes are agreed in an Issue and reviewed in a PR. Issue-free work
+- Ordinary changes are agreed in an Issue and reviewed in a PR. Issue-free work
   is limited to the exceptions owned and listed in
   [CONTRIBUTING.md](CONTRIBUTING.md).
 - architecture、境界、policyの変更は [ADR](docs/adr/) で決定する

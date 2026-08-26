@@ -1,35 +1,25 @@
 # AGENTS.md — @aizign/adapter-dsh
 
-This file is navigation for automated coding agents.
-Human contributors may ignore it and should follow [CONTRIBUTING.md](../../CONTRIBUTING.md).
-The language-neutral adapter behavior is owned by the
+This file is non-authoritative navigation for automated coding agents.
+Human contributors should follow [CONTRIBUTING.md](../../CONTRIBUTING.md).
+The language-neutral adapter contract is owned by the
 [harness adapter contract](../../docs/architecture/harness-adapter-contract.md).
-DSH-native behavior is owned by [README.md](README.md), source, and tests, not
-by this navigation file.
+DSH-specific behavior is documented by [README.md](README.md), source, and
+tests. Nothing in this file is a contribution policy or behavioral authority.
 
-## Read scope
+## Start here
 
-1. [Harness adapter contract](../../docs/architecture/harness-adapter-contract.md)
-2. [README.md](README.md)
-3. [Hard invariants](../../docs/architecture/invariants.md)
-4. [Threat model](../../docs/security/threat-model.md)
-5. [Protocol v1](../../spec/protocol/v1/README.md)
-6. `packages/protocol/src/client.ts`
-7. [Adapter testkit](../../packages/adapter-testkit/README.md)
-8. The adapter directory being edited
+- [Contribution policy](../../CONTRIBUTING.md)
+- [Architecture overview](../../docs/architecture/overview.md)
+- [Harness adapter contract](../../docs/architecture/harness-adapter-contract.md)
+- [Hard invariants](../../docs/architecture/invariants.md)
+- [Threat model](../../docs/security/threat-model.md)
+- [Protocol v1](../../spec/protocol/v1/README.md)
+- [Adapter testkit](../../packages/adapter-testkit/README.md)
+- [Testing guidance](../../docs/development/testing.md)
+- [DSH adapter README](README.md)
+- `packages/protocol/src/client.ts`
+- The source or test directory for the behavior under discussion
 
-Do not read Rust crates unless the Issue explicitly requires investigation across the protocol boundary.
-
-## Editing boundary
-
-- Keep harness-specific types and SDK usage inside this adapter.
-- Protocol behavior is changed through `spec/` and conformance fixtures, not by reading or importing core internals.
-- SDK-version or runtime-dependency changes follow the Issue and ADR process in `CONTRIBUTING.md`.
-- Put behavior and invariants in source, tests, the adapter README, or architecture docs—not in this file.
-
-## Check
-
-```sh
-npm test -w @aizign/adapter-dsh
-cargo xtask check
-```
+Use the linked architecture, protocol, adapter, README, and testing documents
+for ownership, boundaries, and evidence; keep this file as navigation only.

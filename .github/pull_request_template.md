@@ -44,11 +44,11 @@ no particular tool or format is required.
 ## Checklist
 
 - [ ] The pull request title uses Conventional Commits format (`feat(core): ...`).
-- [ ] `cargo xtask check` passes locally, or the PR explains why a narrower documented check is sufficient.
+- [ ] `cargo xtask check` passes locally.
 - [ ] An accepted Issue is linked above when required; otherwise this is an allowed Ordinary no-Issue exception recorded in the Issue record above.
 - [ ] Changes requiring an ADR include one, or ADR is not applicable under `CONTRIBUTING.md`.
 - [ ] Every affected old or duplicate path has an explicit disposition.
-- [ ] Tests or inspections cover at least one concrete failure case, or the change is an allowed prose-only exception.
+- [ ] Tests or inspections cover at least one concrete failure case.
 - [ ] Higher-risk changes include an exact-target independent review record, or the PR records why the change is Ordinary.
 - [ ] Known limitations and evidence gaps have an owner or next action.
 - [ ] The change contains no raw prompt, model output, credential, private path, or reference to the legacy private repository.
