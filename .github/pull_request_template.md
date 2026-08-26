@@ -1,6 +1,7 @@
-## Closes
+## Issue record
 
-Closes #
+<!-- Issue-backed work: write `Closes #<number>`.
+Allowed Ordinary no-Issue work: write `No Issue — <applicable exception>`. -->
 
 ## What this slice does
 

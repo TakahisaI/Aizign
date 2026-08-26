@@ -40,8 +40,11 @@ Classify the proposal before implementation.
 
 When classification is uncertain, use Higher-risk until the Maintainer records
 another decision. Ordinary changes use the [Ordinary change Issue
-form](.github/ISSUE_TEMPLATE/ordinary.yml), then the usual pull request and CI
-path. Higher-risk changes use the [Higher-risk proposal
+form](.github/ISSUE_TEMPLATE/ordinary.yml) except for the allowed no-Issue
+cases listed in [the allowed no-Issue cases section](#受け付けるもの). Those
+cases proceed directly to the usual pull request and CI path while the PR
+records the accepted owner-local contract and applicable exception. Higher-risk
+changes use the [Higher-risk proposal
 form](.github/ISSUE_TEMPLATE/proposal.yml) and the records and independent
 review requirements below.
 
