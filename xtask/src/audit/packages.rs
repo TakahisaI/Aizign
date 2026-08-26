@@ -187,6 +187,12 @@ fn check_typescript_sources(
         "packages/adapter-testkit/lib/",
         "adapters/dsh/src/",
         "adapters/dsh/lib/",
+        "../protocol/src/",
+        "../protocol/lib/",
+        "../adapter-testkit/src/",
+        "../adapter-testkit/lib/",
+        "../dsh/src/",
+        "../dsh/lib/",
     ];
     const PROTOCOL_FORBIDDEN: &[&str] = &[
         "node:",
