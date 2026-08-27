@@ -2,10 +2,13 @@
 
 The performance runner uses the release-profile `aizign` binary and TypeScript clients. Baseline mode produces full manual/scheduled observations. PR-smoke mode uses a smaller matrix and generous absolute ceilings for gross-regression detection.
 
-Current runner version 6 labels the TypeScript transport
+Current runner version 7 labels the TypeScript transport
 `typescript_dsh` and exercises the production DSH `OneShotCoreClient` through
-declared package subpaths. Historical v2/v3/v5 artifacts and their labels are
-retained unchanged; they are not comparable evidence for a new v6 baseline.
+declared package subpaths. Release verification and DSH preflight use a framed,
+correlated hello through exact canonical `handle --state stateDir`; the
+lost-ACK proxy is a benchmark-private executable wrapper that receives the
+same argv. Historical v2/v3/v5/v6 artifacts and their labels are retained
+unchanged; they are not comparable evidence for a new v7 baseline.
 
 ## 実行環境
 

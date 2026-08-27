@@ -82,6 +82,14 @@ tests still contain the old direct-hello and permissive framing behavior.
 Issue #76 S2 owns their atomic migration. Until S2 lands, documentation must
 not describe those consumers as profile-v1 conforming.
 
+## Implementation note — 2026-08-27
+
+Issue #76 S2 migrated the Rust CLI, Protocol codecs, DSH production client,
+adapter-testkit fake executable, benchmark runner v7, and their shared
+fixtures to process profile v1. The executable evidence is projected from the
+stable case inventory in [`spec/process/v1/fixtures/cases.json`](../../spec/process/v1/fixtures/cases.json);
+the Markdown specification remains the sole normative owner.
+
 ## Consequences
 
 ### Positive

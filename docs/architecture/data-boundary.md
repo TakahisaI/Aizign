@@ -125,10 +125,9 @@ outcome service.
 Operational identity can itself be sensitive metadata. Log retention and sink
 access remain operator responsibilities.
 
-The process-profile wording above is the accepted target contract. Issue #76
-S2 owns migration of the current CLI, DSH client, fake core, and benchmark
-consumers; their older direct-hello and permissive post-LF behavior is not a
-second authority.
+The current CLI, DSH client, fake core, and benchmark consumers implement the
+process-profile wording above. Shared fixture evidence keeps their case IDs
+aligned without creating a second authority.
 
 ## Authority boundaries
 

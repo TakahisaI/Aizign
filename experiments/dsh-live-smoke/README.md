@@ -11,7 +11,7 @@
 |---|---|
 | exact version（DSH、Firefox、aizign） | 実際のinstall path、profile path |
 | parameterizedなscript（patch生成、journal要約） | browser profileの準備、login操作 |
-| preflight（`aizign hello`、plugin起動時の `AIZIGN_UNAVAILABLE` / `AIZIGN_INCOMPATIBLE`） | 実行時の環境設定 |
+| preflight（canonical framed `handle --state stateDir` hello、plugin起動時の `AIZIGN_UNAVAILABLE` / `AIZIGN_INCOMPATIBLE`） | 実行時の環境設定 |
 | 成功 / 失敗の判定表（下記）と記録schema（`result.schema.json`） | privateな実測の保管場所 |
 | 再現可能なfixture（`spec/conformance`） | local起動のrunbook |
 
@@ -27,7 +27,7 @@
 - `cargo build -p aizign-cli` 済みの `aizign` binary
 - `npm ci && npm run build` 済みのworkspace（adapterは `lib/` から読み込まれる）
 - `stateDir` は **存在しなければ `aizign` が `0700` で作る**（親directoryは必要）。先に作るなら `mkdir -m 0700`。
-  `0700` でない既存directoryは、最初のtool callで `JOURNAL_UNAVAILABLE`（`state directory must be owner-only (mode 0700)`）になる（preflightの `aizign hello` はjournalを開かないので、そこでは検出されない）
+  `0700` でない既存directoryは、最初のtool callで `JOURNAL_UNAVAILABLE`（`state directory must be owner-only (mode 0700)`）になる（framed helloもjournalを開かないので、preflightでは検出されない）
 - 架空のnon-confidentialなassignmentだけを使う
 
 ## DSH profile

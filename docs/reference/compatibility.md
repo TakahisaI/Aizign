@@ -5,7 +5,7 @@
 | Version | 現在 | 管理 |
 |---|---|---|
 | Aizign package version | `0.1.0`（未release） | 全artifact lockstep。`Cargo.toml`、各 `package.json` |
-| CLI process profile | `1`（Issue #76 S1 target。runtime migrationはS2 pending） | `spec/process/v1/`。argv、frame、EOF、watchdog、process lifecycle。wire fieldではない |
+| CLI process profile | `1`（current implementation） | `spec/process/v1/`。argv、frame、EOF、watchdog、process lifecycle。wire fieldではない |
 | Bootstrap envelope version | `1`（framed `hello` とpre-operation errorのstable subset） | `spec/protocol/v1/`。bootstrap axisとしてenvelopeの `version` を読む |
 | Operation Protocol version | `1`（`aizign-protocol` が実装。`workflow.signal.submit`、`workflow.signal.reconcile`） | `spec/protocol/v1/`。operation axisとしてenvelopeの `version` を読む |
 | Journal schema version | `1`（`aizign-store-jsonl` が実装） | `spec/journal/v1/`。recordの `schemaVersion` |
@@ -37,10 +37,8 @@ operation version with an unknown kind uses that operation version's
 error schemas are an independently stable subset, so a future operation client
 retains a bootstrap-v1 decoder for discovery and incompatibility responses.
 
-Issue #76 S1 records this compatibility target only. The current CLI and
-TypeScript consumers retain older direct-hello, EOF, and post-LF behavior until
-the atomic S2 runtime migration; those behaviors are migration debt, not a
-second accepted profile.
+The current CLI and TypeScript consumers implement this selection and framing.
+Direct `aizign hello` remains operator diagnostics only.
 
 初期のcommitted-prefix JSONL storeは `x86_64-unknown-linux-gnu` だけが検証済みで、x32を含む別ABIや別architecture / libcのLinuxなど、その他のbuildはsubmit / reconcile capabilityをadvertiseしません。
 x32は、64-bit targetと誤認しないことをCIでcross-compileするnegative boundaryに限定し、runtime support、release artifact、support claimは提供しません。

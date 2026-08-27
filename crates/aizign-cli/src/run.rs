@@ -1,8 +1,10 @@
 //! Wiring: frames in and out, the system clock, the JSONL journal, and a
 //! watchdog that bounds processing time.
 
-use std::io::{self, BufRead as _, Read as _, Write as _};
+use std::io::{self, Read as _, Write as _};
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -96,6 +98,8 @@ pub(crate) fn handle(state: &Path) -> u8 {
     let handler_started = timing_enabled.then(Instant::now);
     let timeout = handler_timeout();
     let state = state.to_path_buf();
+    let dispatch_started = Arc::new(AtomicBool::new(false));
+    let worker_dispatch_started = Arc::clone(&dispatch_started);
     let (sender, receiver) = mpsc::channel();
     std::thread::spawn(move || {
         let mut timing = timing_enabled.then(HandlerTiming::default);
@@ -105,23 +109,19 @@ pub(crate) fn handle(state: &Path) -> u8 {
             timing.request_read_ms = Some(milliseconds(started.elapsed()));
         }
         let outcome = stdin.map(|stdin| match stdin {
-            Stdin::Frame(frame) => respond(&frame, &state, timing.as_mut()),
-            Stdin::Extra => {
-                log("decode", None, None, codes::INVALID_ENVELOPE);
-                if let Some(timing) = timing.as_mut() {
-                    timing.operation_kind = Some("unknown");
-                    timing.outcome = Some("rejected");
-                    timing.error_code = Some(codes::INVALID_ENVELOPE.to_owned());
-                }
-                Response {
-                    request_id: None,
-                    kind: None,
-                    body: ResponseBody::Error(ProtocolError::new(
-                        codes::INVALID_ENVELOPE,
-                        "stdin must carry exactly one frame",
-                    )),
-                }
+            Stdin::Frame(frame) => {
+                respond(&frame, &state, timing.as_mut(), &worker_dispatch_started)
             }
+            Stdin::Invalid => framing_error(
+                codes::INVALID_ENVELOPE,
+                "stdin must be one non-empty body followed by LF and immediate EOF",
+                timing.as_mut(),
+            ),
+            Stdin::TooLarge => framing_error(
+                codes::REQUEST_TOO_LARGE,
+                format!("request body exceeds {MAX_REQUEST_BYTES} bytes"),
+                timing.as_mut(),
+            ),
         });
         // The receiver is gone only if the watchdog already answered.
         let _ = sender.send(outcome.map(|response| WorkerResponse { response, timing }));
@@ -133,35 +133,67 @@ pub(crate) fn handle(state: &Path) -> u8 {
             eprintln!("aizign: cannot read request frame: {error}");
             return exit::IO;
         }
-        Err(_) => {
-            eprintln!(
-                "aizign: request exceeded {}ms; any append outcome is unknown",
-                timeout.as_millis()
-            );
-            WorkerResponse {
-                response: Response {
-                    request_id: None,
-                    kind: None,
-                    body: ResponseBody::Error(ProtocolError::new(
-                        codes::HANDLER_TIMEOUT,
-                        format!(
-                            "processing exceeded {}ms; the journal outcome is unknown",
-                            timeout.as_millis()
-                        ),
-                    )),
-                },
-                timing: timing_enabled.then(|| HandlerTiming {
-                    operation_kind: Some("unknown"),
-                    outcome: Some("unknown"),
-                    error_code: Some(codes::HANDLER_TIMEOUT.to_owned()),
-                    ..HandlerTiming::default()
-                }),
-            }
-        }
+        Err(_) => timeout_response(
+            timeout,
+            dispatch_started.load(Ordering::Acquire),
+            timing_enabled,
+        ),
     };
     match (handled.timing.as_mut(), handler_started) {
         (Some(timing), Some(started)) => write_measured_frame(&handled.response, timing, started),
         _ => write_frame(&handled.response),
+    }
+}
+
+fn framing_error(
+    code: &str,
+    message: impl Into<String>,
+    timing: Option<&mut HandlerTiming>,
+) -> Response {
+    log("framing", None, None, code);
+    if let Some(timing) = timing {
+        timing.operation_kind = Some("unknown");
+        timing.outcome = Some("rejected");
+        timing.error_code = Some(code.to_owned());
+    }
+    Response {
+        request_id: None,
+        kind: None,
+        body: ResponseBody::Error(ProtocolError::new(code, message)),
+    }
+}
+
+fn timeout_response(timeout: Duration, dispatched: bool, timing_enabled: bool) -> WorkerResponse {
+    let elapsed = timeout.as_millis();
+    let (message, outcome) = if dispatched {
+        eprintln!(
+            "aizign: processing exceeded {elapsed}ms after dispatch; an effect may have occurred"
+        );
+        (
+            format!("processing exceeded {elapsed}ms after dispatch; the outcome is unknown"),
+            "unknown",
+        )
+    } else {
+        eprintln!(
+            "aizign: request framing exceeded {elapsed}ms before dispatch; no state effect occurred"
+        );
+        (
+            format!("request framing exceeded {elapsed}ms before dispatch"),
+            "rejected",
+        )
+    };
+    WorkerResponse {
+        response: Response {
+            request_id: None,
+            kind: None,
+            body: ResponseBody::Error(ProtocolError::new(codes::HANDLER_TIMEOUT, message)),
+        },
+        timing: timing_enabled.then(|| HandlerTiming {
+            operation_kind: Some("unknown"),
+            outcome: Some(outcome),
+            error_code: Some(codes::HANDLER_TIMEOUT.to_owned()),
+            ..HandlerTiming::default()
+        }),
     }
 }
 
@@ -173,41 +205,55 @@ struct WorkerResponse {
 /// What stdin carried: exactly one frame, or something that is not one.
 enum Stdin {
     Frame(Vec<u8>),
-    /// A second frame or trailing content followed the first newline.
-    Extra,
+    /// Empty, unterminated, CRLF-terminated, or followed by any byte.
+    Invalid,
+    /// More than the body bound appeared before the first LF.
+    TooLarge,
 }
 
-/// Reads stdin: the first line, bounded by the protocol limit (plus one byte
-/// to detect overflow), then the rest of the stream to EOF. Exactly one frame
-/// is allowed; anything but whitespace after the first newline is not a
-/// request. The trailing scan is unbounded on purpose: bounding it would let
-/// a second frame hide beyond the bound when the first frame is exactly at
-/// the size limit. This function runs inside the watchdog thread, so a stdin
-/// that never reaches EOF ends as `HANDLER_TIMEOUT`, not as a hang.
+/// Reads the complete process-profile stream. Dispatch is impossible until
+/// body, LF, and immediate EOF have all been established. The 65,537th body
+/// byte fails immediately, while a peer holding an in-bound stream open stays
+/// in this function until the watchdog emits a pre-dispatch timeout.
 fn read_stdin() -> io::Result<Stdin> {
     let stdin = io::stdin();
     let mut reader = stdin.lock();
     let mut frame = Vec::new();
-    (&mut reader)
-        .take(MAX_REQUEST_BYTES as u64 + 2)
-        .read_until(b'\n', &mut frame)?;
-    if frame.last() == Some(&b'\n') {
-        frame.pop();
-        let mut rest = [0_u8; 4096];
-        loop {
-            let read = reader.read(&mut rest)?;
-            if read == 0 {
-                break;
+    let mut newline_seen = false;
+    let mut chunk = [0_u8; 4096];
+    loop {
+        let read = reader.read(&mut chunk)?;
+        if read == 0 {
+            return Ok(if newline_seen {
+                Stdin::Frame(frame)
+            } else {
+                Stdin::Invalid
+            });
+        }
+        for &byte in &chunk[..read] {
+            if newline_seen {
+                return Ok(Stdin::Invalid);
             }
-            if rest[..read].iter().any(|byte| !byte.is_ascii_whitespace()) {
-                return Ok(Stdin::Extra);
+            if byte == b'\n' {
+                if frame.is_empty() || frame.last() == Some(&b'\r') {
+                    return Ok(Stdin::Invalid);
+                }
+                newline_seen = true;
+            } else if frame.len() == MAX_REQUEST_BYTES {
+                return Ok(Stdin::TooLarge);
+            } else {
+                frame.push(byte);
             }
         }
     }
-    Ok(Stdin::Frame(frame))
 }
 
-fn respond(frame: &[u8], state: &Path, mut timing: Option<&mut HandlerTiming>) -> Response {
+fn respond(
+    frame: &[u8],
+    state: &Path,
+    mut timing: Option<&mut HandlerTiming>,
+    dispatch_started: &AtomicBool,
+) -> Response {
     let decode_started = timing.is_some().then(Instant::now);
     let request = match decode_request(frame) {
         Ok(request) => {
@@ -232,11 +278,23 @@ fn respond(frame: &[u8], state: &Path, mut timing: Option<&mut HandlerTiming>) -
                 Some(safe_kind),
                 failure.error.code().as_str(),
             );
-            return Response {
+            let mut response = Response {
                 request_id: failure.request_id,
                 kind: failure.kind,
                 body: ResponseBody::Error(failure.error),
             };
+            if encode_response(&response).is_err() {
+                let code = match &response.body {
+                    ResponseBody::Error(error) => error.code().as_str().to_owned(),
+                    _ => unreachable!("decode failures are errors"),
+                };
+                response.kind = None;
+                response.body = ResponseBody::Error(ProtocolError::new(
+                    &code,
+                    "request rejected; recovered correlation was not safe to echo",
+                ));
+            }
+            return response;
         }
     };
     let Request { request_id, kind } = request;
@@ -245,6 +303,7 @@ fn respond(frame: &[u8], state: &Path, mut timing: Option<&mut HandlerTiming>) -
     if let Some(timing) = timing.as_deref_mut() {
         timing.operation_kind = Some(operation_kind);
     }
+    dispatch_started.store(true, Ordering::Release);
     let body = execute_request(kind, &kind_name, state, timing.as_deref_mut());
     let outcome = match &body {
         ResponseBody::Hello(_) => "ok",

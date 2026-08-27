@@ -19,6 +19,7 @@ export {
   type UnknownOutcome,
 } from './client.ts';
 export {
+  BOOTSTRAP_ENVELOPE_VERSION,
   type BoundedFrameExtraction,
   DecodeFailure,
   decodeRequest,

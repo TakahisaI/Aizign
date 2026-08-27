@@ -1,9 +1,22 @@
-/** Locates the fake core script next to this module, source or built. */
+/** Materializes a repository-test executable for the fake core. */
 
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-/** `command` and `args` that run the fake core under the current Node. */
-export function fakeCoreCommand(): { readonly command: string; readonly args: readonly string[] } {
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+/** Creates a test-only executable whose caller still supplies canonical argv. */
+export function fakeCoreExecutable(directory: string): string {
   const extension = import.meta.filename.endsWith('.ts') ? '.ts' : '.js';
-  return { command: process.execPath, args: [join(import.meta.dirname, `fake-core${extension}`)] };
+  const fakeCore = join(import.meta.dirname, `fake-core${extension}`);
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const executable = join(directory, 'aizign-fake');
+  writeFileSync(
+    executable,
+    `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(fakeCore)} "$@"\n`,
+    { mode: 0o755 },
+  );
+  return executable;
 }

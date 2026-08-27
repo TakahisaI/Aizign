@@ -10,13 +10,14 @@
 //! packages and of `aizign-store-jsonl`; validating them against the JSON
 //! Schemas is the job of the spec schema gate. They all read these files.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::report::{self, Findings};
 
 const FIXTURE_ROOT: &str = "spec/conformance";
+const PROCESS_FIXTURE: &str = "spec/process/v1/fixtures/cases.json";
 /// The wire directions plus both durable-format documents; each has its own
 /// decoder and JSON Schema, and the fixtures keep them aligned.
 const DIRECTIONS: [&str; 4] = ["request", "response", "journal", "store"];
@@ -40,9 +41,102 @@ pub(crate) fn run(root: &Path) -> Result<(), String> {
             &mut findings,
         )?;
     }
+    check_process_fixture(root, &mut findings)?;
 
     println!("{valid_count} valid, {invalid_count} invalid fixture(s)");
     findings.finish("conformance")
+}
+
+fn check_process_fixture(root: &Path, findings: &mut Findings) -> Result<(), String> {
+    let path = root.join(PROCESS_FIXTURE);
+    let bytes = fs::read(&path).map_err(|error| format!("{PROCESS_FIXTURE}: {error}"))?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("{PROCESS_FIXTURE}: not JSON: {error}"))?;
+    let Some(object) = value.as_object() else {
+        findings.push(format!("{PROCESS_FIXTURE}: root must be an object"));
+        return Ok(());
+    };
+    let expected_root: BTreeSet<&str> =
+        ["fixtureVersion", "authority", "normative", "cases"].into();
+    let actual_root: BTreeSet<&str> = object.keys().map(String::as_str).collect();
+    if actual_root != expected_root {
+        findings.push(format!(
+            "{PROCESS_FIXTURE}: root keys must be exactly {expected_root:?}"
+        ));
+    }
+    if object
+        .get("fixtureVersion")
+        .and_then(serde_json::Value::as_u64)
+        != Some(1)
+    {
+        findings.push(format!("{PROCESS_FIXTURE}: fixtureVersion must be 1"));
+    }
+    if object.get("authority").and_then(serde_json::Value::as_str)
+        != Some("spec/process/v1/README.md")
+    {
+        findings.push(format!(
+            "{PROCESS_FIXTURE}: authority must name spec/process/v1/README.md"
+        ));
+    }
+    if object.get("normative").and_then(serde_json::Value::as_bool) != Some(false) {
+        findings.push(format!("{PROCESS_FIXTURE}: normative must be false"));
+    }
+
+    let Some(cases) = object.get("cases").and_then(serde_json::Value::as_array) else {
+        findings.push(format!("{PROCESS_FIXTURE}: cases must be an array"));
+        return Ok(());
+    };
+    if cases.len() != 55 {
+        findings.push(format!(
+            "{PROCESS_FIXTURE}: expected 55 projected cases, found {}",
+            cases.len()
+        ));
+    }
+    let expected_case: BTreeSet<&str> = [
+        "id",
+        "group",
+        "stage",
+        "stimulus",
+        "responseVersion",
+        "responseCode",
+        "correlation",
+        "effect",
+        "parent",
+        "evidence",
+    ]
+    .into();
+    let mut ids = BTreeSet::new();
+    for (index, case) in cases.iter().enumerate() {
+        let Some(case) = case.as_object() else {
+            findings.push(format!(
+                "{PROCESS_FIXTURE}: cases[{index}] must be an object"
+            ));
+            continue;
+        };
+        let actual_case: BTreeSet<&str> = case.keys().map(String::as_str).collect();
+        if actual_case != expected_case {
+            findings.push(format!(
+                "{PROCESS_FIXTURE}: cases[{index}] keys must be exactly {expected_case:?}"
+            ));
+        }
+        match case.get("id").and_then(serde_json::Value::as_str) {
+            Some(id) if ids.insert(id) => {}
+            Some(id) => findings.push(format!("{PROCESS_FIXTURE}: duplicate case id `{id}`")),
+            None => findings.push(format!(
+                "{PROCESS_FIXTURE}: cases[{index}] has no string id"
+            )),
+        }
+        if case
+            .get("evidence")
+            .and_then(serde_json::Value::as_array)
+            .is_none_or(Vec::is_empty)
+        {
+            findings.push(format!(
+                "{PROCESS_FIXTURE}: cases[{index}].evidence must be non-empty"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn check_valid(dir: &Path, findings: &mut Findings) -> Result<usize, String> {

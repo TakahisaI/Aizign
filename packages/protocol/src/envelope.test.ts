@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  BOOTSTRAP_ENVELOPE_VERSION,
+  DecodeFailure,
+  decodeRequest,
   decodeResponse,
   encodeRequest,
   encodeResponse,
@@ -11,7 +14,51 @@ import {
 } from './envelope.ts';
 import { codes, ProtocolError } from './error.ts';
 
+const PROCESS_PROFILE_CASE_IDS = [
+  'hello-future-operation',
+  'version-bootstrap-unsupported',
+  'version-submit-unsupported',
+  'version-reconcile-unsupported',
+  'version-future-kind-unsupported',
+  'kind-future-accepted-version',
+] as const;
+
+test('process profile case IDs are unique', () => {
+  assert.equal(new Set(PROCESS_PROFILE_CASE_IDS).size, PROCESS_PROFILE_CASE_IDS.length);
+});
+
+test('version axis selection precedes kind membership', () => {
+  const failure = (kind: unknown, version: number) => {
+    try {
+      decodeRequest(
+        JSON.stringify({
+          protocol: 'aizign',
+          version,
+          requestId: 'req-version-axis',
+          kind,
+          payload: {},
+        }),
+      );
+      assert.fail('request unexpectedly decoded');
+    } catch (error) {
+      assert.ok(error instanceof DecodeFailure);
+      return error;
+    }
+  };
+
+  assert.equal(failure('hello', 2).error.code, codes.PROTOCOL_VERSION_UNSUPPORTED);
+  assert.equal(failure('workflow.signal.submit', 2).error.code, codes.PROTOCOL_VERSION_UNSUPPORTED);
+  assert.equal(
+    failure('workflow.signal.reconcile', 2).error.code,
+    codes.PROTOCOL_VERSION_UNSUPPORTED,
+  );
+  assert.equal(failure('future.operation', 2).error.code, codes.PROTOCOL_VERSION_UNSUPPORTED);
+  assert.equal(failure('future.operation', 1).error.code, codes.UNKNOWN_KIND);
+  assert.equal(failure(17, 2).error.code, codes.INVALID_ENVELOPE);
+});
+
 test('encoded frames are single lines with escaped newlines', () => {
+  assert.equal(BOOTSTRAP_ENVELOPE_VERSION, 1);
   const frame = encodeResponse({
     requestId: null,
     kind: null,
@@ -85,15 +132,16 @@ test('encoders reject ill-formed Unicode before returning a frame', () => {
   );
 });
 
-test('extractFrame accepts exactly one newline-terminated frame plus whitespace', async () => {
+test('extractFrame accepts exactly one LF-terminated frame and immediate close', async () => {
   const { extractFrame } = await import('./envelope.ts');
   const text = new TextDecoder('utf-8', { fatal: true });
   const first = extractFrame('{"a":1}\n');
   assert.equal(first.kind, 'frame');
   if (first.kind === 'frame') assert.equal(text.decode(first.frame), '{"a":1}');
-  const padded = extractFrame('{"a":1}\n  \n\t');
-  assert.equal(padded.kind, 'frame');
-  if (padded.kind === 'frame') assert.equal(text.decode(padded.frame), '{"a":1}');
+  assert.equal(extractFrame('{"a":1}\n ').kind, 'extra');
+  assert.equal(extractFrame('{"a":1}\n\t').kind, 'extra');
+  assert.equal(extractFrame('{"a":1}\n\n').kind, 'extra');
+  assert.equal(extractFrame('{"a":1}\r\n').kind, 'extra');
   assert.deepEqual(extractFrame(''), { kind: 'empty' });
   assert.deepEqual(extractFrame('\n'), { kind: 'empty' });
   assert.equal(extractFrame('{"a":1}').kind, 'extra', 'a frame that never ended');
@@ -113,11 +161,10 @@ test('extractFrame accepts exactly one newline-terminated frame plus whitespace'
   }
 });
 
-test('the process collector bounds only the frame and validates discarded trailing whitespace', () => {
+test('the process collector bounds the body and rejects every byte after LF', () => {
   const exact = new OneShotFrameCollector(4);
   assert.equal(exact.append(Uint8Array.from([0x31, 0x32])), true);
-  assert.equal(exact.append(Uint8Array.from([0x33, 0x34, 0x0a, 0x20, 0x09])), true);
-  assert.equal(exact.append(Uint8Array.from([0x0a, 0x0d])), true);
+  assert.equal(exact.append(Uint8Array.from([0x33, 0x34, 0x0a])), true);
   const extraction = exact.extract();
   assert.equal(extraction.kind, 'frame');
   if (extraction.kind === 'frame')
@@ -129,8 +176,12 @@ test('the process collector bounds only the frame and validates discarded traili
   assert.equal(oversized.extract().kind, 'oversized');
 
   const trailingContent = new OneShotFrameCollector(4);
-  assert.equal(trailingContent.append(Uint8Array.from([0x31, 0x0a, 0xc2, 0xa0])), true);
+  assert.equal(trailingContent.append(Uint8Array.from([0x31, 0x0a, 0x20])), true);
   assert.equal(trailingContent.extract().kind, 'extra');
+
+  const crlf = new OneShotFrameCollector(4);
+  assert.equal(crlf.append(Uint8Array.from([0x31, 0x0d, 0x0a])), true);
+  assert.equal(crlf.extract().kind, 'extra');
 });
 
 test('oversized or badly addressed responses are invalid envelopes', async () => {

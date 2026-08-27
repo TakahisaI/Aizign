@@ -13,6 +13,8 @@ use crate::workflow_signal::{self, ReconciliationResult, SignalResult};
 pub const PROTOCOL_NAME: &str = "aizign";
 /// The wire protocol version this crate implements.
 pub const PROTOCOL_VERSION: u32 = 1;
+/// Stable envelope version used before an operation version is accepted.
+pub const BOOTSTRAP_ENVELOPE_VERSION: u32 = 1;
 /// Upper bound on any frame, request or response, in bytes.
 pub const MAX_FRAME_BYTES: usize = 64 * 1024;
 /// Alias kept for callers that only deal with requests.
@@ -181,9 +183,9 @@ impl Recovered {
     }
 }
 
-/// Lenient first pass: checks size, protocol name, and version, and
-/// recovers correlation data, so that even a frame from a newer protocol
-/// version gets an addressed `PROTOCOL_VERSION_UNSUPPORTED` answer.
+/// Lenient first pass: checks size, protocol name, and the version axis chosen
+/// by the recovered kind. Exact `hello` uses the bootstrap axis; every other
+/// syntactically valid kind uses the operation axis before registry lookup.
 fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
     let unaddressed = |error: ProtocolError| DecodeFailure {
         request_id: None,
@@ -254,27 +256,45 @@ fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
             format!("protocol must be \"{PROTOCOL_NAME}\""),
         )));
     }
-    match probe.version.as_ref().and_then(serde_json::Value::as_u64) {
+    let version = match probe.version.as_ref().and_then(serde_json::Value::as_u64) {
         // `PROTOCOL_VERSION` is a `u32`, so versions beyond `u32::MAX` are
         // out of the protocol's integer range: `INVALID_ENVELOPE`, exactly
         // like the TypeScript decoder, which parses JSON numbers as `f64`
         // and applies the same bound. Only then can a version mismatch be
         // reported as `PROTOCOL_VERSION_UNSUPPORTED`.
-        Some(version) if version > u64::from(u32::MAX) => Err(recovered.fail(ProtocolError::new(
-            codes::INVALID_ENVELOPE,
-            format!("version must be an integer between 0 and {}", u32::MAX),
-        ))),
-        Some(version) if version == u64::from(PROTOCOL_VERSION) => Ok(recovered),
-        Some(version) => Err(recovered.fail(ProtocolError::new(
+        Some(version) if version > u64::from(u32::MAX) => {
+            return Err(recovered.fail(ProtocolError::new(
+                codes::INVALID_ENVELOPE,
+                format!("version must be an integer between 0 and {}", u32::MAX),
+            )));
+        }
+        Some(version) => version,
+        None => {
+            return Err(recovered.fail(ProtocolError::new(
+                codes::INVALID_ENVELOPE,
+                "version must be an unsigned integer",
+            )));
+        }
+    };
+
+    let Some(kind) = recovered.kind.as_deref() else {
+        // A non-string or missing kind cannot select an operation-version
+        // axis. The strict envelope pass reports the bootstrap-v1 shape
+        // failure instead of inventing an operation compatibility result.
+        return Ok(recovered);
+    };
+    let accepted = if kind == KIND_HELLO {
+        BOOTSTRAP_ENVELOPE_VERSION
+    } else {
+        PROTOCOL_VERSION
+    };
+    if version == u64::from(accepted) {
+        Ok(recovered)
+    } else {
+        Err(recovered.fail(ProtocolError::new(
             codes::PROTOCOL_VERSION_UNSUPPORTED,
-            format!(
-                "protocol version {version} is not supported; this binary speaks {PROTOCOL_VERSION}"
-            ),
-        ))),
-        None => Err(recovered.fail(ProtocolError::new(
-            codes::INVALID_ENVELOPE,
-            "version must be an unsigned integer",
-        ))),
+            format!("protocol version {version} is not supported; this axis speaks {accepted}"),
+        )))
     }
 }
 
@@ -298,7 +318,14 @@ pub fn decode_request(frame: &[u8]) -> Result<Request, DecodeFailure> {
             ),
         )));
     }
-    debug_assert_eq!(u64::from(envelope.version), u64::from(PROTOCOL_VERSION));
+    debug_assert_eq!(
+        envelope.version,
+        if envelope.kind == KIND_HELLO {
+            BOOTSTRAP_ENVELOPE_VERSION
+        } else {
+            PROTOCOL_VERSION
+        }
+    );
 
     let kind = match envelope.kind.as_str() {
         KIND_HELLO => {
@@ -355,7 +382,11 @@ pub fn encode_request(request: &Request) -> Result<String, ProtocolError> {
     };
     let envelope = RequestEnvelope {
         protocol: PROTOCOL_NAME.to_owned(),
-        version: PROTOCOL_VERSION,
+        version: if matches!(request.kind, RequestKind::Hello) {
+            BOOTSTRAP_ENVELOPE_VERSION
+        } else {
+            PROTOCOL_VERSION
+        },
         request_id: request.request_id.clone(),
         kind: request.kind.name().to_owned(),
         payload,
@@ -406,7 +437,12 @@ pub fn encode_response(response: &Response) -> Result<String, ProtocolError> {
     };
     let envelope = ResponseEnvelope {
         protocol: PROTOCOL_NAME.to_owned(),
-        version: PROTOCOL_VERSION,
+        version: match &response.body {
+            ResponseBody::Hello(_) | ResponseBody::Error(_) => BOOTSTRAP_ENVELOPE_VERSION,
+            ResponseBody::WorkflowSignal(_) | ResponseBody::WorkflowSignalReconciliation(_) => {
+                PROTOCOL_VERSION
+            }
+        },
         request_id: response.request_id.clone(),
         kind: response.kind.clone(),
         ok,
@@ -453,7 +489,7 @@ pub fn decode_response(frame: &[u8]) -> Result<Response, ProtocolError> {
             format!("protocol must be \"{PROTOCOL_NAME}\""),
         ));
     }
-    if envelope.version != PROTOCOL_VERSION {
+    if envelope.version != BOOTSTRAP_ENVELOPE_VERSION && envelope.version != PROTOCOL_VERSION {
         return Err(ProtocolError::new(
             codes::PROTOCOL_VERSION_UNSUPPORTED,
             format!(

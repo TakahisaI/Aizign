@@ -10,6 +10,7 @@
 | language-neutral adapter scenario authority | `docs/architecture/harness-adapter-contract.md` |
 | decoder fixture / full-codec round trip | `spec/conformance/valid/`、`spec/conformance/invalid/` |
 | directional encoder conformance | `spec/conformance/encoder-scenarios.md` + `spec/protocol/v1/examples/` |
+| process-profile fixture projection | `spec/process/v1/fixtures/cases.json`（authorityは隣接README） |
 | shared TypeScript core-client runner | `packages/adapter-testkit/` の `runCoreClientConformance` |
 | adapter-specific core-client invocation | `adapters/<harness>/test/conformance/core-client.*` |
 | harness-native behavior | adapterの `test/unit/` または責務が明示されたnative-conformance test |
@@ -62,5 +63,11 @@ protocol fixtureは [`spec/conformance/`](../../spec/conformance/README.md) に�
 - `invalid/{request,response}/<name>.frame` + `<name>.expect.json` — 拒否すべきframeと、期待するcode（requestは復元されるべき `requestId` / `kind` も）
 - `cargo xtask conformance` が構造を検査し、`crates/aizign-protocol/tests/conformance.rs`（Rust）と `packages/protocol/src/conformance.test.ts`（TypeScript）が同じfileで全件を通す
 - 新しい拒否経路を実装したら、fixtureも同じPRで追加する
+
+process lifecycleのstable case IDは
+[`spec/process/v1/README.md`](../../spec/process/v1/README.md)が所有し、
+`fixtures/cases.json`はそのnon-normative executable projectionです。
+`spec/test/process-profile.test.mjs`と`cargo xtask conformance`が55 caseの
+完全性・一意性・evidence ownerを検査します。
 
 fixtureはnon-confidentialな架空の値だけを使い、実際のpath、ID、本文を含めません。

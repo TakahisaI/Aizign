@@ -4,21 +4,20 @@ import { spawn } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { MAX_FRAME_BYTES } from '@aizign/protocol';
+import { extractFrame, MAX_FRAME_BYTES } from '@aizign/protocol';
 import { BoundedBuffer } from './bounded-buffer.mjs';
 
 function requestEnvelope(input) {
-  const line = input.split('\n').find((candidate) => candidate.trim().length > 0);
-  if (line === undefined) return undefined;
+  const extraction = extractFrame(input);
+  if (extraction.kind !== 'frame') return undefined;
   try {
-    return JSON.parse(line);
+    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(extraction.frame));
   } catch {
     return undefined;
   }
 }
 
-export function requestKind(args, input) {
-  if (args[0] === 'hello') return 'hello';
+export function requestKind(input) {
   const decoded = requestEnvelope(input);
   return typeof decoded?.kind === 'string' ? decoded.kind : 'unknown';
 }
@@ -47,14 +46,17 @@ async function readStdin() {
   for await (const chunk of process.stdin) {
     if (!input.append(chunk)) throw new Error('request input exceeded the protocol frame bound');
   }
-  return input.toString();
+  return input.toBuffer();
 }
 
 async function main(argv) {
   const [binary, ...args] = argv;
   if (binary === undefined) throw new Error('usage: lost-ack-proxy.mjs <aizign> <subcommand>');
+  if (args.length !== 3 || args[0] !== 'handle' || args[1] !== '--state' || !args[2]) {
+    throw new Error('lost-ack proxy requires canonical handle --state <dir> argv');
+  }
   const input = await readStdin();
-  const kind = requestKind(args, input);
+  const kind = requestKind(input);
   const counter = process.env.AIZIGN_LOST_ACK_COUNTER;
   if (counter !== undefined) appendFileSync(counter, `${kind}\n`, { mode: 0o600 });
 

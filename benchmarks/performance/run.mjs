@@ -2,7 +2,15 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { cpus, platform, release, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -27,7 +35,7 @@ import {
   TRANSPORT_CASES,
 } from './matrix.mjs';
 
-export const RUNNER_VERSION = 6;
+export const RUNNER_VERSION = 7;
 export const TYPESCRIPT_TRANSPORT = 'typescript_dsh';
 export const CORE_WATCHDOG_MS = 10_000;
 export const DSH_ADAPTER_TIMEOUT_MS = 15_000;
@@ -408,7 +416,7 @@ export function runProcess(
     child.once('exit', () => {
       spawnToExitMs ??= performance.now() - started;
     });
-    child.on('close', () => {
+    child.on('close', (code, signal) => {
       clearTimeout(timer);
       try {
         const transportTiming = {
@@ -445,6 +453,21 @@ export function runProcess(
               ...transportTiming,
               outcome: 'unknown',
               unknown_reason: 'timeout',
+            },
+            child: extractChildTiming(stderr.toString()),
+          });
+          return;
+        }
+        if (signal !== null || code === null || code !== 0) {
+          finish({
+            transport_kind: 'unknown',
+            outcome: 'unknown',
+            unknown_reason: 'undecodable_response',
+            parent: {
+              operation_kind: operationKind,
+              ...transportTiming,
+              outcome: 'unknown',
+              unknown_reason: 'undecodable_response',
             },
             child: extractChildTiming(stderr.toString()),
           });
@@ -1041,11 +1064,16 @@ export async function executeScenario(context, scenario, phase, index) {
     command: context.config.binary,
     env: { AIZIGN_TIMING_JSON: '1' },
   });
+  const lostAckExecutable = losesSubmitAcknowledgement
+    ? createLostAckExecutable(
+        context.nextState(`scenario-${scenario}-lost-ack-bin`),
+        context.config.binary,
+      )
+    : undefined;
   const lostAckClient = losesSubmitAcknowledgement
     ? new context.dependencies.OneShotCoreClient({
         ...clientConfig,
-        command: process.execPath,
-        args: [LOST_ACK_PROXY, context.config.binary],
+        command: lostAckExecutable,
         env: {
           AIZIGN_LOST_ACK_COUNTER: counterPath,
           AIZIGN_TIMING_JSON: '1',
@@ -1524,9 +1552,26 @@ function environmentMetadata(tempRoot) {
   };
 }
 
-export function verifyReleaseBinary(binary, protocol, timeoutMs = OPERATION_TIMEOUT_MS) {
-  const hello = spawnSync(binary, ['hello'], {
+function shellQuote(value) {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+export function createLostAckExecutable(directory, binary) {
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const executable = join(directory, 'aizign-lost-ack');
+  writeFileSync(
+    executable,
+    `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(LOST_ACK_PROXY)} ${shellQuote(binary)} "$@"\n`,
+    { mode: 0o755 },
+  );
+  return executable;
+}
+
+export function verifyReleaseBinary(binary, stateDir, protocol, timeoutMs = OPERATION_TIMEOUT_MS) {
+  const request = { requestId: 'req-benchmark-preflight', kind: 'hello' };
+  const hello = spawnSync(binary, ['handle', '--state', stateDir], {
     env: { PATH: process.env.PATH ?? '' },
+    input: `${protocol.encodeRequest(request)}\n`,
     timeout: timeoutMs,
     killSignal: 'SIGKILL',
   });
@@ -1551,6 +1596,12 @@ export function verifyReleaseBinary(binary, protocol, timeoutMs = OPERATION_TIME
   if (response?.body.type !== 'hello') {
     throw runError('release_binary_hello_failed', 'release binary hello was not decodable');
   }
+  if (protocol.checkCorrelation(request, response) !== undefined) {
+    throw runError('release_binary_hello_failed', 'release binary hello was not correlated');
+  }
+  if (existsSync(stateDir)) {
+    throw runError('release_binary_hello_failed', 'framed hello touched the configured state path');
+  }
   const capabilities = response.body.info.capabilities;
   if (
     !Array.isArray(capabilities) ||
@@ -1574,6 +1625,7 @@ async function loadDependencies() {
         MAX_FRAME_BYTES: protocol.MAX_FRAME_BYTES,
         checkCorrelation: protocol.checkCorrelation,
         decodeResponse: protocol.decodeResponse,
+        encodeRequest: protocol.encodeRequest,
         extractFrame: protocol.extractFrame,
         isTimingErrorCode: transport.isTimingErrorCode,
         OneShotFrameCollector: protocol.OneShotFrameCollector,
@@ -1922,7 +1974,12 @@ export async function main(
   try {
     const dependencies = await loadDependencies();
     current = { phase: 'release-binary-verification', case_name: 'hello' };
-    verifyReleaseBinary(config.binary, dependencies.protocol, releaseBinaryTimeoutMs);
+    verifyReleaseBinary(
+      config.binary,
+      join(tempRoot, 'release-binary-preflight-state'),
+      dependencies.protocol,
+      releaseBinaryTimeoutMs,
+    );
     context = createContext(config, dependencies, tempRoot);
     if (config.sweeps.includes('journal-scale')) {
       await runMatrixSweep(context, samples, 'journal-scale', JOURNAL_SCALE_CASES, ['rust_direct']);

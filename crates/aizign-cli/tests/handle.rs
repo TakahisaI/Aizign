@@ -26,6 +26,38 @@ use aizign_store_jsonl::JOURNAL_FILE_NAME;
 use aizign_store_jsonl::{COMMIT_FILE_NAME, JsonlJournal, LOCK_FILE_NAME};
 use aizign_testkit::{TempDir, signals};
 
+const PROCESS_PROFILE_CASE_IDS: &[&str] = &[
+    "req-empty-eof",
+    "req-empty-held",
+    "req-partial-held",
+    "req-max-held",
+    "req-no-lf-eof",
+    "req-valid",
+    "req-exact-bound",
+    "req-over-bound",
+    "req-crlf",
+    "req-max-crlf",
+    "req-json-space",
+    "req-post-lf-space",
+    "req-post-lf-tab",
+    "req-post-lf-cr",
+    "req-post-lf-second-lf",
+    "req-post-lf-second-frame",
+    "req-eof-held",
+    "hello-nonexistent-state",
+    "hello-no-lf-eof",
+    "hello-post-lf-byte",
+    "hello-over-bound",
+    "hello-held-open",
+    "kind-response-unsafe",
+];
+
+#[test]
+fn process_profile_case_ids_are_unique() {
+    let unique: std::collections::BTreeSet<_> = PROCESS_PROFILE_CASE_IDS.iter().collect();
+    assert_eq!(unique.len(), PROCESS_PROFILE_CASE_IDS.len());
+}
+
 fn aizign() -> Command {
     Command::new(env!("CARGO_BIN_EXE_aizign"))
 }
@@ -132,7 +164,9 @@ fn one_frame(output: &Output) -> aizign_protocol::Response {
         "stdout must be exactly one frame: {stdout:?}"
     );
     assert!(stdout.ends_with('\n'));
-    decode_response(stdout.trim_end().as_bytes()).expect("stdout is a protocol frame")
+    let body = stdout.strip_suffix('\n').expect("one terminating LF");
+    assert!(!body.contains('\n'), "no byte follows the response LF");
+    decode_response(body.as_bytes()).expect("stdout is a protocol frame")
 }
 
 fn timing_metric(output: &Output) -> serde_json::Value {
@@ -426,7 +460,7 @@ fn hello_request_frame_is_answered_with_its_request_id() {
     let dir = TempDir::new();
     let output = run_handle(
         &dir.state(),
-        r#"{"protocol":"aizign","version":1,"requestId":"req-h","kind":"hello","payload":{}}"#,
+        "{\"protocol\":\"aizign\",\"version\":1,\"requestId\":\"req-h\",\"kind\":\"hello\",\"payload\":{}}\n",
     );
     assert_eq!(output.status.code(), Some(0));
     let response = one_frame(&output);
@@ -576,6 +610,32 @@ fn invalid_raw_kind_is_never_copied_into_timing() {
     );
 }
 
+#[test]
+fn response_unsafe_unknown_kind_uses_bounded_null_correlation() {
+    let dir = TempDir::new();
+    let long_kind = "x".repeat(65_000);
+    let frame = format!(
+        "{{\"protocol\":\"aizign\",\"version\":1,\"requestId\":\"req-long-kind\",\"kind\":\"{long_kind}\",\"payload\":{{}}}}\n"
+    );
+    assert!(frame.len() <= MAX_REQUEST_BYTES + 1);
+    let output = run_handle(&dir.state(), &frame);
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stdout.len() <= aizign_protocol::MAX_FRAME_BYTES + 1);
+    let response = one_frame(&output);
+    assert_eq!(response.request_id.as_deref(), Some("req-long-kind"));
+    assert_eq!(response.kind, None);
+    let ResponseBody::Error(error) = response.body else {
+        panic!("long unknown kind must be a bounded error")
+    };
+    assert_eq!(error.code().as_str(), codes::UNKNOWN_KIND);
+    assert!(
+        !String::from_utf8(output.stderr)
+            .unwrap()
+            .contains(&long_kind)
+    );
+    assert!(!dir.state().exists());
+}
+
 #[cfg(all(
     target_os = "linux",
     target_arch = "x86_64",
@@ -695,6 +755,65 @@ fn malformed_and_oversized_frames_still_get_one_response() {
 }
 
 #[test]
+fn lf_less_crlf_and_post_lf_requests_fail_before_state() {
+    let cases = [
+        (
+            "lf-less-hello",
+            "{\"protocol\":\"aizign\",\"version\":1,\"requestId\":\"req-h\",\"kind\":\"hello\",\"payload\":{}}"
+                .to_owned(),
+            codes::INVALID_ENVELOPE,
+        ),
+        (
+            "lf-less-submit",
+            submit_frame("evt-lf-less", "req-lf-less")
+                .trim_end_matches('\n')
+                .to_owned(),
+            codes::INVALID_ENVELOPE,
+        ),
+        (
+            "crlf",
+            submit_frame("evt-crlf", "req-crlf").replace('\n', "\r\n"),
+            codes::INVALID_ENVELOPE,
+        ),
+        (
+            "post-lf-space",
+            format!("{} ", submit_frame("evt-space", "req-space")),
+            codes::INVALID_ENVELOPE,
+        ),
+        (
+            "post-lf-tab",
+            format!("{}\t", submit_frame("evt-tab", "req-tab")),
+            codes::INVALID_ENVELOPE,
+        ),
+        (
+            "post-lf-lf",
+            format!("{}\n", submit_frame("evt-lf", "req-lf")),
+            codes::INVALID_ENVELOPE,
+        ),
+    ];
+    for (name, stream, expected) in cases {
+        let dir = TempDir::new();
+        let response = one_frame(&run_handle(&dir.state(), &stream));
+        assert_eq!(response.request_id, None, "{name}");
+        assert_eq!(response.kind, None, "{name}");
+        let ResponseBody::Error(error) = response.body else {
+            panic!("{name}: expected framing error")
+        };
+        assert_eq!(error.code().as_str(), expected, "{name}");
+        assert!(!dir.state().exists(), "{name}: no state artifact");
+    }
+
+    let dir = TempDir::new();
+    let over_bound_crlf = format!("{}\r\n", " ".repeat(MAX_REQUEST_BYTES));
+    let ResponseBody::Error(error) = one_frame(&run_handle(&dir.state(), &over_bound_crlf)).body
+    else {
+        panic!("over-bound CRLF must fail")
+    };
+    assert_eq!(error.code().as_str(), codes::REQUEST_TOO_LARGE);
+    assert!(!dir.state().exists());
+}
+
+#[test]
 fn stdin_must_carry_exactly_one_frame() {
     let dir = TempDir::new();
     let two = format!(
@@ -717,26 +836,16 @@ fn stdin_must_carry_exactly_one_frame() {
     };
     assert_eq!(error.code().as_str(), codes::INVALID_ENVELOPE);
 
-    // Trailing whitespace after the newline is fine.
+    // Every byte after the terminating LF is a profile error, including whitespace.
     let whitespace = format!("{}\n  \n", submit_frame("evt-a", "req-ws"));
-    let body = one_frame(&run_handle(&dir.state(), &whitespace)).body;
-    #[cfg(all(
-        target_os = "linux",
-        target_arch = "x86_64",
-        target_env = "gnu",
-        target_pointer_width = "64"
-    ))]
-    assert!(matches!(body, ResponseBody::WorkflowSignal(_)));
-    #[cfg(not(all(
-        target_os = "linux",
-        target_arch = "x86_64",
-        target_env = "gnu",
-        target_pointer_width = "64"
-    )))]
-    assert!(matches!(
-        body,
-        ResponseBody::Error(error) if error.code().as_str() == codes::CAPABILITY_UNSUPPORTED
-    ));
+    let ResponseBody::Error(error) = one_frame(&run_handle(&dir.state(), &whitespace)).body else {
+        panic!("post-LF whitespace must fail")
+    };
+    assert_eq!(error.code().as_str(), codes::INVALID_ENVELOPE);
+    assert!(
+        !dir.state().exists(),
+        "profile rejection has no state effect"
+    );
 }
 
 /// Pads a frame with trailing spaces (inside the frame, before its newline)
@@ -799,43 +908,44 @@ fn trailing_content_is_still_rejected_at_the_frame_size_bound() {
 
 #[test]
 fn a_stdin_that_never_closes_ends_as_handler_timeout_not_a_hang() {
-    // The one-frame check scans to EOF, so the whole request (read included)
-    // must sit inside the watchdog: a caller holding stdin open after the
-    // trailing whitespace gets a bounded HANDLER_TIMEOUT, and the process
-    // exits without appending (#34).
-    let dir = TempDir::new();
-    let mut child = aizign()
-        .arg("handle")
-        .arg("--state")
-        .arg(dir.state())
-        .env("AIZIGN_HANDLE_TIMEOUT_MS", "300")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn aizign");
-    let mut stdin = child.stdin.take().unwrap();
-    stdin
-        .write_all(format!("{}  ", submit_frame("evt-held", "req-held")).as_bytes())
-        .unwrap();
-    stdin.flush().unwrap();
+    let exact_without_lf = " ".repeat(MAX_REQUEST_BYTES);
+    for (name, bytes) in [
+        ("zero", String::new()),
+        ("partial", "{\"protocol\":\"aizign\"".to_owned()),
+        ("exact-without-lf", exact_without_lf),
+        ("lf-awaiting-eof", submit_frame("evt-held", "req-held")),
+    ] {
+        let dir = TempDir::new();
+        let mut child = aizign()
+            .arg("handle")
+            .arg("--state")
+            .arg(dir.state())
+            .env("AIZIGN_HANDLE_TIMEOUT_MS", "300")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn aizign");
+        let mut stdin = child.stdin.take().unwrap();
+        stdin.write_all(bytes.as_bytes()).unwrap();
+        stdin.flush().unwrap();
 
-    // Keep stdin open; the watchdog must answer anyway, within bounded time.
-    let started = std::time::Instant::now();
-    let output = child.wait_with_output().expect("wait for aizign");
-    drop(stdin);
-    assert!(
-        started.elapsed() < Duration::from_secs(5),
-        "the process must exit on the watchdog, not wait for EOF"
-    );
-    let ResponseBody::Error(error) = one_frame(&output).body else {
-        panic!("error")
-    };
-    assert_eq!(error.code().as_str(), codes::HANDLER_TIMEOUT);
-    assert!(
-        !dir.state().join(JOURNAL_FILE_NAME).exists(),
-        "nothing is appended while stdin is still open"
-    );
+        let started = std::time::Instant::now();
+        let output = child.wait_with_output().expect("wait for aizign");
+        drop(stdin);
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "{name}: watchdog must not wait forever"
+        );
+        let ResponseBody::Error(error) = one_frame(&output).body else {
+            panic!("{name}: expected timeout")
+        };
+        assert_eq!(error.code().as_str(), codes::HANDLER_TIMEOUT, "{name}");
+        assert!(
+            !dir.state().exists(),
+            "{name}: pre-dispatch timeout has no state effect"
+        );
+    }
 }
 
 #[cfg(all(

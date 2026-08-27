@@ -2,7 +2,7 @@
 //! correlation data is recovered whenever it is safe to do so.
 
 use aizign_protocol::{
-    MAX_FRAME_BYTES, MAX_REQUEST_BYTES, PROTOCOL_VERSION, Request, RequestKind, Response,
+    BOOTSTRAP_ENVELOPE_VERSION, MAX_FRAME_BYTES, MAX_REQUEST_BYTES, Request, RequestKind, Response,
     ResponseBody, codes, decode_request, decode_response, encode_request, encode_response,
 };
 
@@ -86,6 +86,28 @@ fn newer_versions_are_reported_with_recovered_ids_even_with_unknown_fields() {
     let frame =
         r#"{"protocol":"aizign","version":"1","requestId":"req-3","kind":"hello","payload":{}}"#;
     assert_eq!(code_of(frame).2, codes::INVALID_ENVELOPE);
+}
+
+#[test]
+fn version_axis_selection_precedes_kind_membership() {
+    for kind in [
+        "hello",
+        "workflow.signal.submit",
+        "workflow.signal.reconcile",
+        "future.operation",
+    ] {
+        let frame = format!(
+            r#"{{"protocol":"aizign","version":2,"requestId":"req-axis","kind":"{kind}","payload":{{}}}}"#
+        );
+        assert_eq!(code_of(&frame).2, codes::PROTOCOL_VERSION_UNSUPPORTED);
+    }
+
+    let accepted_future = r#"{"protocol":"aizign","version":1,"requestId":"req-axis","kind":"future.operation","payload":{}}"#;
+    assert_eq!(code_of(accepted_future).2, codes::UNKNOWN_KIND);
+
+    let non_string_kind =
+        r#"{"protocol":"aizign","version":2,"requestId":"req-axis","kind":17,"payload":{}}"#;
+    assert_eq!(code_of(non_string_kind).2, codes::INVALID_ENVELOPE);
 }
 
 #[test]
@@ -199,7 +221,7 @@ fn encoded_frames_carry_the_protocol_version_and_escape_newlines() {
     };
     let frame = encode_response(&response).unwrap();
     assert!(!frame.contains('\n'));
-    assert!(frame.contains(&format!("\"version\":{PROTOCOL_VERSION}")));
+    assert!(frame.contains(&format!("\"version\":{BOOTSTRAP_ENVELOPE_VERSION}")));
     assert_eq!(decode_response(frame.as_bytes()).unwrap(), response);
 
     let request = Request {

@@ -1,6 +1,7 @@
 # aizign-cli
 
-The `aizign` binary: composition root, and the one-shot NDJSON process boundary (ADR-0003).
+The `aizign` binary: composition root and canonical one-shot process-profile
+child (ADR-0003, ADR-0022).
 
 | | |
 |---|---|
@@ -8,10 +9,10 @@ The `aizign` binary: composition root, and the one-shot NDJSON process boundary 
 | **Non-responsibility** | business logic（`aizign-core`）、use caseとengine stage語彙（`aizign-engine`）、wire format（`aizign-protocol`）、journal formatとphysical stage語彙（`aizign-store-jsonl`） |
 | **Inputs** | `aizign hello` / `aizign handle --state <dir>` + stdinの1 frame |
 | **Outputs** | stdoutに1 frame。exit code |
-| **Hard invariants** | stdoutにはresponse frame以外を書かない、stderrに本文を出さない（identity、kind、codeのみ）、submitの`accepted`はappend後だけ、reconciliationはread-only readerしか開かない、timeout時は `HANDLER_TIMEOUT`（outcome unknown）で再送しない |
+| **Hard invariants** | `handle`は非空body `<=65536` + LF + immediate EOFだけをdispatchし、CRLF・LF-less・全post-LF byteをstate access前に拒否、stdoutにはbounded response body + LF以外を書かない、stderrに本文を出さない、submitの`accepted`はappend後だけ、reconciliationはread-only readerしか開かない、pre-dispatch timeoutはno-effect、post-dispatch timeoutはpossible-effect `unknown`で再送しない |
 | **Allowed dependencies** | `aizign-core`、`aizign-engine`、`aizign-protocol`、`aizign-store-jsonl`。dev: `aizign-testkit` |
 | **Test command** | `cargo test -p aizign-cli` |
-| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0005](../../docs/adr/0005-organize-the-core-by-bounded-context.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0019](../../docs/adr/0019-separate-engine-and-store-observation-ownership.md) |
+| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0005](../../docs/adr/0005-organize-the-core-by-bounded-context.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0019](../../docs/adr/0019-separate-engine-and-store-observation-ownership.md)、[0022](../../docs/adr/0022-define-the-canonical-one-shot-process-profile.md) |
 
 ## Security boundary
 
@@ -25,7 +26,7 @@ See the [v0.1 threat model](../../docs/security/threat-model.md).
 
 ```sh
 aizign hello                                  # handshake。stateに触らない
-echo '<request frame>' | aizign handle --state ./.aizign-state
+printf '%s\n' '<request body>' | aizign handle --state ./.aizign-state
 ```
 
 | Exit code | 意味 |
@@ -36,9 +37,9 @@ echo '<request frame>' | aizign handle --state ./.aizign-state
 
 ## 挙動
 
-1. worker threadでstdinを読む: 1行目は `MAX_REQUEST_BYTES` + 1 までしかbufferせず、改行後はEOFまで走査して「frame 1つ + 末尾whitespace」以外を拒否する
+1. worker threadでstdinを読む: 非空bodyを `MAX_REQUEST_BYTES` までbufferし、LFとimmediate EOFを確認する。LF-less EOF、CRLF、65,537 byte目、LF後の全byteをProtocol decode・state access前に拒否する
 2. 同じworker threadで `decode_request` → `hello` ならhello info、`workflow.signal.submit` ならexclusive writerの `JsonlJournal::open` → `handle_workflow_signal`、`workflow.signal.reconcile` ならshared read-onlyな `JsonlJournalReader::open` → `reconcile_workflow_signal`
-3. 10秒で打ち切り（**stdinのread込み**。one-frame検査はEOFまで走査するので、stdinを閉じないcallerもこのboundで終わる）。打ち切り時は `HANDLER_TIMEOUT` を返す。進行中のappendの結果は不明として扱い、再送しない。boundはtest用に `AIZIGN_HANDLE_TIMEOUT_MS`（1..=600000）で上書きできる（adapterは子processへ `PATH` しか渡さないので、harness側からは届かない）
+3. 10秒で打ち切り（stdinのreadとrequired EOF待ちを含む）。dispatch前の `HANDLER_TIMEOUT` はstate effectなし、dispatch後は進行中のappend結果が不明として再送しない。boundはtest用に `AIZIGN_HANDLE_TIMEOUT_MS`（1..=600000）で上書きできる
 4. stderrに `aizign: stage=... requestId=... kind=... outcome=...` を1行
 
 ## Opt-in timing

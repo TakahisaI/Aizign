@@ -29,6 +29,8 @@ import {
 
 export const PROTOCOL_NAME = 'aizign';
 export const PROTOCOL_VERSION = 1;
+/** Stable envelope version used before an operation version is accepted. */
+export const BOOTSTRAP_ENVELOPE_VERSION = 1;
 /** Upper bound on any frame, request or response, in bytes. */
 export const MAX_FRAME_BYTES = 64 * 1024;
 /** Alias kept for callers that only deal with requests. */
@@ -272,10 +274,17 @@ export function decodeRequest(frame: Uint8Array | string): Request {
   if (!isVersionInRange(probe.version)) {
     throw fail(codes.INVALID_ENVELOPE, `version must be an integer between 0 and ${MAX_VERSION}`);
   }
-  if (probe.version !== PROTOCOL_VERSION) {
+  const recoveredKind = typeof probe.kind === 'string' ? probe.kind : undefined;
+  const acceptedVersion =
+    recoveredKind === undefined
+      ? undefined
+      : recoveredKind === KIND_HELLO
+        ? BOOTSTRAP_ENVELOPE_VERSION
+        : PROTOCOL_VERSION;
+  if (acceptedVersion !== undefined && probe.version !== acceptedVersion) {
     throw fail(
       codes.PROTOCOL_VERSION_UNSUPPORTED,
-      `protocol version ${probe.version} is not supported; this implementation speaks ${PROTOCOL_VERSION}`,
+      `protocol version ${probe.version} is not supported; this axis speaks ${acceptedVersion}`,
     );
   }
 
@@ -332,7 +341,7 @@ export function encodeRequest(request: Request): string {
         : encodeWorkflowSignalReconcile(request.payload);
   const frame = JSON.stringify({
     protocol: PROTOCOL_NAME,
-    version: PROTOCOL_VERSION,
+    version: request.kind === KIND_HELLO ? BOOTSTRAP_ENVELOPE_VERSION : PROTOCOL_VERSION,
     requestId: request.requestId,
     kind: request.kind,
     payload,
@@ -352,7 +361,10 @@ export function encodeRequest(request: Request): string {
 export function encodeResponse(response: Response): string {
   const base = {
     protocol: PROTOCOL_NAME,
-    version: PROTOCOL_VERSION,
+    version:
+      response.body.type === 'hello' || response.body.type === 'error'
+        ? BOOTSTRAP_ENVELOPE_VERSION
+        : PROTOCOL_VERSION,
     requestId: response.requestId,
     kind: response.kind,
   };
@@ -410,7 +422,7 @@ export function decodeResponse(frame: Uint8Array | string): Response {
     throw invalidEnvelope(`protocol must be "${PROTOCOL_NAME}"`);
   if (!isVersionInRange(value.version))
     throw invalidEnvelope(`version must be an integer between 0 and ${MAX_VERSION}`);
-  if (value.version !== PROTOCOL_VERSION) {
+  if (value.version !== BOOTSTRAP_ENVELOPE_VERSION && value.version !== PROTOCOL_VERSION) {
     throw new ProtocolError(
       codes.PROTOCOL_VERSION_UNSUPPORTED,
       `protocol version ${value.version} is not supported`,
@@ -480,35 +492,35 @@ export type BoundedFrameExtraction =
   | FrameExtraction
   | { readonly kind: 'oversized'; readonly detail: string };
 
-function isAsciiWhitespace(byte: number): boolean {
-  return byte === 0x20 || (byte >= 0x09 && byte <= 0x0d);
-}
-
 /**
- * A one-shot process must write exactly one frame followed by a newline and
- * nothing but ASCII whitespace after it. Anything else is not a response: a
- * second frame, trailing prose, or a frame that never ended. Process callers
- * must pass bytes so invalid UTF-8 remains available to the fatal decoder.
+ * A one-shot process must write exactly one non-empty body followed by LF and
+ * immediate stream close. CRLF and every byte after LF are profile failures.
+ * Process callers pass bytes so invalid UTF-8 remains available to the fatal
+ * decoder.
  */
 export function extractFrame(output: Uint8Array | string): FrameExtraction {
   const bytes = typeof output === 'string' ? encoder.encode(output) : output;
   const newline = bytes.indexOf(0x0a);
   if (newline < 0) {
-    return bytes.every(isAsciiWhitespace)
+    return bytes.length === 0
       ? { kind: 'empty' }
-      : { kind: 'extra', detail: 'frame is not newline-terminated' };
+      : { kind: 'extra', detail: 'frame is not LF-terminated' };
   }
   const frame = bytes.subarray(0, newline);
   const rest = bytes.subarray(newline + 1);
-  if (!rest.every(isAsciiWhitespace)) {
-    return { kind: 'extra', detail: 'more than one frame, or trailing content after the frame' };
+  if (frame.length === 0) return { kind: 'empty' };
+  if (frame.at(-1) === 0x0d) {
+    return { kind: 'extra', detail: 'CRLF is not a valid process-profile terminator' };
   }
-  return frame.every(isAsciiWhitespace) ? { kind: 'empty' } : { kind: 'frame', frame };
+  if (rest.length > 0) {
+    return { kind: 'extra', detail: 'a byte followed the terminating LF' };
+  }
+  return { kind: 'frame', frame };
 }
 
 /**
- * Incrementally retain one bounded frame while validating, but not retaining,
- * the ASCII whitespace permitted after its terminating LF.
+ * Incrementally retain one bounded body and remember any process-profile byte
+ * after LF. `extract()` is called only after process/stdout close.
  */
 export class OneShotFrameCollector {
   readonly #chunks: Uint8Array[] = [];
@@ -516,7 +528,7 @@ export class OneShotFrameCollector {
   #frameBytes = 0;
   #newlineSeen = false;
   #oversized = false;
-  #invalidTrailingContent = false;
+  #invalidProfile = false;
 
   constructor(maxFrameBytes: number) {
     if (!Number.isSafeInteger(maxFrameBytes) || maxFrameBytes < 0) {
@@ -544,9 +556,7 @@ export class OneShotFrameCollector {
       this.#newlineSeen = true;
       cursor = newline + 1;
     }
-    for (; cursor < chunk.length; cursor += 1) {
-      if (!isAsciiWhitespace(chunk[cursor] ?? -1)) this.#invalidTrailingContent = true;
-    }
+    if (cursor < chunk.length) this.#invalidProfile = true;
     return true;
   }
 
@@ -564,16 +574,20 @@ export class OneShotFrameCollector {
       offset += chunk.length;
     }
     if (!this.#newlineSeen) {
-      return frame.every(isAsciiWhitespace)
+      return frame.length === 0
         ? { kind: 'empty' }
-        : { kind: 'extra', detail: 'frame is not newline-terminated' };
+        : { kind: 'extra', detail: 'frame is not LF-terminated' };
     }
-    if (this.#invalidTrailingContent) {
+    if (frame.length === 0) return { kind: 'empty' };
+    if (frame.at(-1) === 0x0d) {
       return {
         kind: 'extra',
-        detail: 'more than one frame, or trailing content after the frame',
+        detail: 'CRLF is not a valid process-profile terminator',
       };
     }
-    return frame.every(isAsciiWhitespace) ? { kind: 'empty' } : { kind: 'frame', frame };
+    if (this.#invalidProfile) {
+      return { kind: 'extra', detail: 'a byte followed the terminating LF' };
+    }
+    return { kind: 'frame', frame };
   }
 }
