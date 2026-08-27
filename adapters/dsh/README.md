@@ -108,10 +108,14 @@ npx --yes \
   --package=pnpm@11.7.0 \
   --package=@deepseek-ai/dsh@0.1.1-rc.2 \
   -- \
-  dsh plugin --profile aizign-ci add -w \
+  dsh plugin --profile aizign-ci add -w --allow-build=koffi \
   @deepseek-ai/dsh-web-app@0.1.1-rc.2 \
   "link:${GITHUB_WORKSPACE}/adapters/dsh"
 ```
+
+`pnpm@11.7.0`のstrict build policyに合わせ、DSH web appが必要とする
+native `koffi`だけを明示的に許可します。ほかの依存packageのlifecycle
+scriptは実行しません。
 
 ここでのpnpmはDSH host登録fixture限定であり、Aizignの通常package manager
 (`npm@12.0.2`)やsupported toolingを変更しません。profileのbundle、absolute

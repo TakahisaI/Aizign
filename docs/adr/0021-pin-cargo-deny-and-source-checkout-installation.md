@@ -55,9 +55,10 @@ qualify an independently installable artifact.
 
 The clean-checkout CI fixture may bootstrap the third-party DSH host with the
 exact `@deepseek-ai/dsh@0.1.1-rc.2` and `pnpm@11.7.0` packages through `npx`.
-It sets a newly created temporary `DSH_HOME` and passes `add -w` so DSH's
-temporary profile workspace is the pnpm workspace-root target. This pnpm use is
-fixture-only: Aizign remains npm-authoritative at `npm@12.0.2`, and no
+It sets a newly created temporary `DSH_HOME`, passes `add -w` so DSH's
+temporary profile workspace is the pnpm workspace-root target, and allows only
+the DSH web-app's native `koffi` build with `--allow-build=koffi`. This pnpm use
+is fixture-only: Aizign remains npm-authoritative at `npm@12.0.2`, and no
 `@aizign/*` registry package, standalone adapter archive, publication, or
 bundling is supported by this decision. The fixture inspects only that temporary
 profile and discards the temporary home after the assertion.

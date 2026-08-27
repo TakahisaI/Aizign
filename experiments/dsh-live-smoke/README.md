@@ -38,7 +38,7 @@ adapterを入れたprofileでWeb UIを使うには、**専用のprofile**を作�
 
 ```sh
 # profile名と path はoperatorが決める。新規profileのworkspace rootへ -w で追加し、adapterは workspace の adapters/dsh を link する
-dsh plugin --profile <name> add -w @deepseek-ai/dsh-web-app@0.1.1-rc.2 'link:/abs/path/to/adapters/dsh'
+dsh plugin --profile <name> add -w --allow-build=koffi @deepseek-ai/dsh-web-app@0.1.1-rc.2 'link:/abs/path/to/adapters/dsh'
 
 # 合成後の tree を確認: aizign-workflow-signal が disabled: false と config 付きで現れる
 dsh --profile <name> --patch /abs/path/outside/repo/aizign-live.patch.yml --dump-config

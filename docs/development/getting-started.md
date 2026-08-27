@@ -133,7 +133,8 @@ packable file-setの列挙だけです。
 
 DSHのprofile登録を自動化するfixtureでは、DSH hostの要求に合わせて一時的に
 `pnpm@11.7.0`をbootstrapし、専用のtemporary `DSH_HOME`で`dsh plugin ... add -w`
-を実行します。これはAizignの通常package managerを変更しません。browser、
+を実行します。DSH web appのnative `koffi`だけを`--allow-build=koffi`で
+許可し、ほかのlifecycle scriptは実行しません。これはAizignの通常package managerを変更しません。browser、
 login、model、credentialを使うDSH/Firefox live smokeは通常のcheckouts/CIから
 分離されたoperator evidenceです。
 

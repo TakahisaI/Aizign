@@ -163,11 +163,13 @@ jobs:
           cleanup_dsh() { rm -rf -- "${dsh_home}"; }
           trap cleanup_dsh EXIT
           npm ls --all --offline
+          # DSH's web-app dependency includes the native koffi runtime; allow
+          # only that exact build script in the isolated profile workspace.
           DSH_HOME="${dsh_home}" npx --yes \
             --package=pnpm@11.7.0 \
             --package=@deepseek-ai/dsh@0.1.1-rc.2 \
             -- \
-            dsh plugin --profile aizign-ci add -w \
+            dsh plugin --profile aizign-ci add -w --allow-build=koffi \
             @deepseek-ai/dsh-web-app@0.1.1-rc.2 \
             "link:${GITHUB_WORKSPACE}/adapters/dsh"
           node experiments/dsh-live-smoke/make-patch.mjs \
