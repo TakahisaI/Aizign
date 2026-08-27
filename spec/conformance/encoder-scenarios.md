@@ -150,10 +150,28 @@ the production encoder.
 Every invalid request scenario asserts zero process spawns, zero parent-timing
 starts, zero stdin acquisitions, and zero request bytes written. Every invalid
 response scenario asserts zero stdout/transport bytes written. This applies to
-all invalid-source stages, not only size failure. The body-size boundary is
-proved in each direction at exactly 65,536 bytes (accepted when otherwise
-valid) and 65,537 bytes (request `REQUEST_TOO_LARGE`, response
-`INVALID_ENVELOPE`); the process-profile LF is excluded.
+all invalid-source stages, not only size failure.
+
+Response encoding proves the exact body boundary with an otherwise-valid
+65,536-byte response (accepted) and 65,537-byte response
+(`INVALID_ENVELOPE`); the process-profile LF is excluded. Current-v1 request
+DTO bounds make an otherwise-valid request at either size unreachable. Request
+encoding instead proves all of the following without widening a schema or
+delaying an earlier validation failure:
+
+- a maximal valid DTO for every current request kind encodes below 65,536
+  bytes;
+- invalid overlong fields and unknown padding fields fail at their normative
+  earlier validation stage, with zero spawn/write; and
+- the final request-body guard remains `REQUEST_TOO_LARGE` and is covered by
+  an implementation-internal seam or focused mutation sentinel explicitly
+  authorized by the S2 checkpoint. That seam is test-only evidence behind the
+  sole production frame encoder; it is not a serializer, public DTO, wire
+  shape, package export, or second production path.
+
+The raw request-frame boundary at exactly 65,536 and 65,537 bytes remains
+decoder/process-profile fixture evidence rather than typed request-encoder
+evidence.
 
 Malformed raw `ProtocolError` construction is also focused evidence. Rust raw
 text construction fails through `Result`; TypeScript construction throws

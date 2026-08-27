@@ -30,7 +30,7 @@ wireに流れるbytesそのもの（末尾の改行なし）。validなframeは1
   "kind": "workflow.future",
   "responseStage": "bootstrap",
   "responseVersion": 1,
-  "schema": true
+  "schema": false
 }
 ```
 
