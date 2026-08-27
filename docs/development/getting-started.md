@@ -55,7 +55,7 @@ The explicit `cargo fetch --locked` setup step populates a clean Cargo cache wit
 
 | 段階 | 内容 |
 |---|---|
-| `rust-check` | `cargo fmt --all --check`、`cargo clippy --workspace --all-targets --all-features -- -D warnings`、`cargo test --workspace`、`cargo doc --workspace --no-deps`（warning deny）、`cargo deny check` |
+| `rust-check` | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `cargo test --workspace`, `cargo doc --workspace --no-deps` (warnings denied), and `cargo deny check` |
 | `npm-check` | `npm ci` + `npm run check`（Biome、build、typecheck、`node --test`、packable set enumeration）。packageがなければskip |
 | `conformance` | `spec/conformance/` のfixtureを検査 |
 | `public-audit` | 依存境界、`aizign-core` の禁止import、tracked pathと対象UTF-8 textの固定secret / private-path pattern検査、closed `exports`、entry document、文書link |
