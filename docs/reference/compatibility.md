@@ -15,6 +15,7 @@ adapterはpackage versionの完全一致ではなく、canonical process profile
 `hello`を実行し、得られたoperation Protocol versionとcapabilityで互換性を判定します
 （[ADR-0003](../adr/0003-use-a-versioned-ndjson-process-boundary.md)、
 [ADR-0022](../adr/0022-define-the-canonical-one-shot-process-profile.md)、
+[ADR-0023](../adr/0023-define-protocol-lexical-and-outbound-validation-boundaries.md)、
 [ADR-0008](../adr/0008-use-lockstep-artifact-versions-before-1-0.md)）。
 process profile、bootstrap envelope、operation Protocolは独立したversion axisです。
 現在値がすべて`1`であることは、同時に改版されることを意味しません。
@@ -39,6 +40,34 @@ retains a bootstrap-v1 decoder for discovery and incompatibility responses.
 
 The current CLI and TypeScript consumers implement this selection and framing.
 Direct `aizign hello` remains operator diagnostics only.
+
+## Protocol-family lexical compatibility
+
+Every JSON number token in a Protocol frame uses the version-independent
+source spelling `0` or `-?[1-9][0-9]*`. Decimal notation, exponent notation,
+and negative zero are outside the Protocol family before bootstrap/operation
+version selection. This applies to otherwise unsupported future-version
+frames as well as current v1. A future operation version cannot introduce a
+different JSON number spelling without a superseding ADR and explicit
+compatibility decision; it must otherwise use a non-number representation.
+
+Canonical integer source text remains lossless until an accepted version
+supplies field semantics. Therefore an unsupported-version frame containing a
+very large canonical payload integer reaches `PROTOCOL_VERSION_UNSUPPORTED`
+without applying current-v1 payload bounds, while non-canonical lexical form
+still fails first. This family-level boundary is owned by
+[Protocol v1](../../spec/protocol/v1/README.md#version-independent-lexical-and-decode-pipeline)
+and ADR-0023, not by package versions, JSON Schema, or one language parser.
+
+ADR-0023 also establishes one validated frame encoder per direction and
+language. Serializer coercion, payload-encoder bypasses, malformed-code
+normalization, or source-object `toJSON` behavior are not compatibility paths.
+The outbound constructor/export tightening is a deliberate pre-release public
+surface change.
+
+These are target claims established by Issue #77 S1. The current codecs and
+public surfaces retain named migration debt until Issue #77 S2 lands; they must
+not yet be described as fully ADR-0023-conforming.
 
 初期のcommitted-prefix JSONL storeは `x86_64-unknown-linux-gnu` だけが検証済みで、x32を含む別ABIや別architecture / libcのLinuxなど、その他のbuildはsubmit / reconcile capabilityをadvertiseしません。
 x32は、64-bit targetと誤認しないことをCIでcross-compileするnegative boundaryに限定し、runtime support、release artifact、support claimは提供しません。

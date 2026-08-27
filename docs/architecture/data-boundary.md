@@ -110,6 +110,42 @@ cross-language classification and disclosure rows. Production owners retain
 only minimal runtime projections checked exhaustively from it. These terms do not form a universal
 outcome service.
 
+## Local outbound Protocol boundary
+
+The sole request/response frame encoders defined by
+[`spec/protocol/v1/`](../../spec/protocol/v1/README.md#outbound-frame-contract)
+validate caller-owned source values and construct a fresh closed wire graph
+before any serialization or I/O. Source objects, accessors, prototypes,
+symbols, non-enumerable properties, `toJSON`, and JavaScript `Error` runtime
+metadata have no direct wire authority.
+
+For a TypeScript error response, the one sanctioned non-plain source is an
+authentic non-subclass `ProtocolError`. The encoder revalidates its own data
+properties in `code`, then `message` order. Only those two values can cross
+into the fresh wire error object. `name`, `stack`, `cause`, custom metadata,
+prototype methods, accessors, and source `toJSON` do not cross and are not
+invoked to create wire data. A structural lookalike or mutated/forged error is
+rejected locally.
+
+An invalid outbound request produces a local `ProtocolError` before parent
+timing, process spawn, stdin acquisition, or a transport write. Since no peer
+was contacted, this boundary creates no submit/reconciliation outcome,
+`reportedCode`, peer `rejected`, or transport `unknown`. An invalid outbound
+response fails before the first stdout/transport byte. The canonical process
+profile owns the peer's treatment of the resulting no-frame/process fault; the
+classification corpus continues to own peer semantic outcomes.
+
+The encoder does not truncate, null, normalize, replace, or infer a fallback.
+ADR-0022-owned producers construct any bounded/null-correlation fallback first
+and supply the already selected response-version context. The same sole
+response encoder either emits that source unchanged as a valid bounded body or
+fails before output.
+
+[ADR-0023](../adr/0023-define-protocol-lexical-and-outbound-validation-boundaries.md)
+and Issue #77 S1 establish this target data boundary. Current codec, package,
+client, producer, and fault paths retain explicit S2 migration debt and must
+not yet be described as fully enforcing it.
+
 ## Diagnostics and process environment
 
 | Boundary | Allowed output |
