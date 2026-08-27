@@ -8,7 +8,7 @@ Repository tooling, invoked as `cargo xtask <command>` (alias in `.cargo/config.
 | `quick` | Network-free inner loop; the default profile checks the Rust and TypeScript workspaces |
 | `quick protocol` | Default profile plus protocol, journal, shared-fixture, and schema checks |
 | `quick adapter-dsh` | Default profile plus DSH adapter checks with a freshly built real binary |
-| `rust-check` | `cargo fmt --all --check`、`cargo clippy --workspace --all-targets --all-features -- -D warnings`、`cargo test --workspace`、`cargo doc --workspace --no-deps`（warning deny）、`.cargo-deny-version`と`cargo deny --version`のexact検査、`cargo deny check` |
+| `rust-check` | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `cargo test --workspace`, `cargo doc --workspace --no-deps` (warnings denied), exact `.cargo-deny-version` and `cargo deny --version` verification, and `cargo deny check` |
 | `conformance` | `spec/conformance/` のfixtureの構造検査。decoderを通すのは各protocol実装の責務 |
 | `public-audit` | 依存境界（`src/audit/dependencies.rs`）、secretとprivate path（`src/audit/secrets.rs`）、package manifest（`src/audit/packages.rs`）、entry document（`src/audit/entry_docs.rs`）、文書link（`src/audit/links.rs`） |
 | `performance-baseline` | release binaryとTypeScript clientをbuildし、目的別のmanual / scheduled performance sweepを実行。PR gateではない |
