@@ -31,6 +31,7 @@
 | [0019](0019-separate-engine-and-store-observation-ownership.md) | Separate engine and store observation ownership | Accepted |
 | [0020](0020-narrow-typescript-exports-and-own-dsh-transport.md) | Narrow TypeScript exports and own DSH transport | Accepted |
 | [0021](0021-pin-cargo-deny-and-source-checkout-installation.md) | Pin cargo-deny and define source-checkout installation | Accepted |
+| [0022](0022-define-the-canonical-one-shot-process-profile.md) | Define the canonical one-shot process profile | Accepted |
 
 ADR-0016 partially supersedes ADR-0005's earlier `AGENTS.md` editing-constraint
 statement only; ADR-0005's other accepted decisions remain in force.
@@ -43,3 +44,9 @@ ADR-0018 extends ADR-0016 by separating proposal acceptance from exact-base
 implementation preparation and a Maintainer `Ready for implementation`
 decision. ADR-0016's repository ownership, tool-neutral operation, exact-target
 review, visible-gap, and separate merge-decision rules remain in force.
+
+ADR-0022 partially supersedes only ADR-0003's direct `hello` adapter-preflight
+decision and incomplete adapter argv, framing, version-selection, and process-
+lifecycle portions. ADR-0003's subprocess boundary, independent language
+implementations, closed Protocol, stdout/stderr separation, and no-daemon
+decisions remain Accepted.

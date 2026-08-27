@@ -10,6 +10,7 @@ The authorities are deliberately separate:
 | Concern | Authority |
 |---|---|
 | Harness adapter behavior and capability boundaries | This document |
+| Adapter/core process argv, framing, lifecycle, bootstrap selection, and process faults | [`spec/process/v1/`](../../spec/process/v1/README.md) |
 | Core--adapter wire format, schemas, kinds, and stable codes | [`spec/protocol/v1/`](../../spec/protocol/v1/README.md) |
 | Decoder acceptance and full-codec round-trip fixtures | [`spec/conformance/`](../../spec/conformance/README.md) |
 | Language-neutral directional encoder scenarios | [`spec/conformance/encoder-scenarios.md`](../../spec/conformance/encoder-scenarios.md) |
@@ -76,17 +77,27 @@ Optional capabilities do not weaken any minimum requirement.
 
 ## Protocol and transport
 
-Protocol v1 currently uses one BOM-free UTF-8 NDJSON request and one NDJSON
-response over a one-shot process. The schemas, maximum sizes, version, kinds,
-capabilities, and stable error codes are owned by `spec/protocol/v1/`.
+The accepted adapter transport is the one-shot boundary selected by
+[ADR-0003](../adr/0003-use-a-versioned-ndjson-process-boundary.md) and closed by
+[ADR-0022](../adr/0022-define-the-canonical-one-shot-process-profile.md).
+[`CLI process profile v1`](../../spec/process/v1/README.md) owns the exact
+`handle --state <dir>` argv, one body + LF + EOF request, response close/exit,
+watchdog stages, bootstrap selection, and process-fault behavior. Protocol v1
+owns the JSON body schemas, bounds, kinds, capabilities, and stable codes.
 
-The currently accepted transport is the one-shot process boundary from
-[ADR-0003](../adr/0003-use-a-versioned-ndjson-process-boundary.md). A future
-transport accepted by an ADR may be added only if it preserves the same
-Protocol v1 envelope, closed decoding, size and frame-count bounds, correlation,
-and outcome semantics. This contract does not authorize an adapter to introduce
-another transport independently. MCP, a harness SDK, or a provider API is not
-the Aizign wire authority.
+Production preflight sends a framed correlated hello through the same canonical
+`handle` path as submit and reconcile. It decodes bootstrap v1, correlates
+request ID and kind, compares the advertised operation version, and then checks
+required capabilities. It sends no operation on incompatibility or `unknown`.
+Direct `aizign hello` is provisional operator diagnostics only and is not an
+interchangeable adapter contract.
+
+The target process profile is accepted, while current CLI, DSH, fake-core, and
+benchmark consumers await atomic migration in Issue #76 S2. Their old behavior
+does not authorize another transport. A future transport accepted by an ADR may
+be added only if it preserves the applicable Protocol envelope, closed
+decoding, process/frame bounds, correlation, and outcome semantics. MCP, a
+harness SDK, or a provider API is not the Aizign wire authority.
 
 Each request uses an adapter-owned nonce for `requestId`. Native harness
 identifiers must not be repurposed as correlation or workflow identity.
