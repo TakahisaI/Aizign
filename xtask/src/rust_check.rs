@@ -182,9 +182,12 @@ mod tests {
     #[cfg(unix)]
     mod executable_gate {
         use std::{
-            env, fs,
+            env,
+            ffi::OsStr,
+            fs,
             os::unix::fs::PermissionsExt,
             path::PathBuf,
+            process::Command,
             sync::atomic::{AtomicU64, Ordering},
             time::{SystemTime, UNIX_EPOCH},
         };
@@ -238,7 +241,7 @@ fi
                 Self { root, bin, log }
             }
 
-            fn env<'a>(&'a self, version: &'a str) -> [(&'a str, String); 4] {
+            fn env<'a>(&'a self, version: &'a str) -> Vec<(&'a str, String)> {
                 let inherited_path = env::var_os("PATH").unwrap_or_default();
                 let path = format!(
                     "{}:{}",
@@ -252,8 +255,8 @@ fi
                 &'a self,
                 version: &'a str,
                 path: String,
-            ) -> [(&'a str, String); 4] {
-                [
+            ) -> Vec<(&'a str, String)> {
+                vec![
                     ("PATH", path),
                     ("AIZIGN_CARGO_LOG", self.log.to_string_lossy().into_owned()),
                     ("AIZIGN_FAKE_DENY_VERSION", version.to_owned()),
@@ -288,14 +291,28 @@ fi
             run_with_values(fixture, &values)
         }
 
-        fn run_with_values(fixture: &Fixture, values: &[(&str, String); 4]) -> Result<(), String> {
-            let env = [
-                (values[0].0, values[0].1.as_str()),
-                (values[1].0, values[1].1.as_str()),
-                (values[2].0, values[2].1.as_str()),
-                (values[3].0, values[3].1.as_str()),
-            ];
+        fn run_with_values(fixture: &Fixture, values: &[(&str, String)]) -> Result<(), String> {
+            let env: Vec<(&str, &str)> = values
+                .iter()
+                .map(|(name, value)| (*name, value.as_str()))
+                .collect();
             run_deny_check(&fixture.root, &env)
+        }
+
+        fn write_executable(path: &std::path::Path, contents: &str) {
+            fs::write(path, contents).expect("write executable fixture");
+            let mut permissions = fs::metadata(path)
+                .expect("stat executable fixture")
+                .permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(path, permissions).expect("make fixture executable");
+        }
+
+        fn executable_on_path(program: &str, path: &OsStr) -> PathBuf {
+            env::split_paths(path)
+                .map(|directory| directory.join(program))
+                .find(|candidate| candidate.is_file())
+                .unwrap_or_else(|| panic!("{program} was not found on PATH"))
         }
 
         #[test]
@@ -355,6 +372,39 @@ fi
         }
 
         #[test]
+        fn shell_authority_reader_rejects_trailing_bytes() {
+            let fixture = Fixture::new(Some(b"0.20.2\ntrailing"));
+            let helper = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join(".github/scripts/read-cargo-deny-version.sh");
+            let output = Command::new("bash")
+                .arg(helper)
+                .arg(fixture.root.join(".cargo-deny-version"))
+                .output()
+                .expect("run cargo-deny authority reader");
+
+            assert!(!output.status.success());
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(stderr.contains("exactly one LF byte"), "{stderr}");
+        }
+
+        #[test]
+        fn shell_authority_reader_returns_exact_valid_value() {
+            let fixture = Fixture::new(Some(b"0.20.2\n"));
+            let helper = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join(".github/scripts/read-cargo-deny-version.sh");
+            let output = Command::new("bash")
+                .arg(helper)
+                .arg(fixture.root.join(".cargo-deny-version"))
+                .output()
+                .expect("run cargo-deny authority reader");
+
+            assert!(output.status.success());
+            assert_eq!(output.stdout, b"0.20.2\n");
+        }
+
+        #[test]
         fn non_zero_version_command_fails_before_audit() {
             let fixture = Fixture::new(Some(b"0.20.2\n"));
             let mut values = fixture.env("cargo-deny 0.20.2");
@@ -381,6 +431,61 @@ fi
             fixture.assert_no_deny_check();
             let log = fs::read_to_string(&fixture.log).expect("read fake cargo log");
             assert!(log.lines().any(|line| line == "deny --version"), "{log}");
+        }
+
+        #[test]
+        fn wrong_first_path_cargo_deny_fails_before_audit() {
+            let fixture = Fixture::new(Some(b"0.20.2\n"));
+            let inherited_path = env::var_os("PATH").unwrap_or_default();
+            let real_cargo = executable_on_path("cargo", &inherited_path);
+            let bad_bin = fixture.root.join("bad-cargo-deny");
+            let good_bin = fixture.root.join("good-cargo-deny");
+            fs::create_dir_all(&bad_bin).expect("create bad cargo-deny directory");
+            fs::create_dir_all(&good_bin).expect("create good cargo-deny directory");
+            write_executable(
+                &bad_bin.join("cargo-deny"),
+                r#"#!/usr/bin/env bash
+set -eu
+printf '%s\n' "$*" >> "$AIZIGN_DENY_LOG"
+                    if [[ "${1-}" == "deny" && "${2-}" == "--version" ]]; then
+                      printf '%s\n' 'cargo-deny 0.20.1'
+                    fi
+"#,
+            );
+            write_executable(
+                &good_bin.join("cargo-deny"),
+                r#"#!/usr/bin/env bash
+set -eu
+printf '%s\n' "$*" >> "$AIZIGN_DENY_LOG"
+                    if [[ "${1-}" == "deny" && "${2-}" == "--version" ]]; then
+                      printf '%s\n' 'cargo-deny 0.20.2'
+                    fi
+"#,
+            );
+
+            let mut path_entries = vec![
+                bad_bin,
+                good_bin,
+                real_cargo
+                    .parent()
+                    .expect("cargo has a parent directory")
+                    .to_path_buf(),
+            ];
+            path_entries.extend(env::split_paths(&inherited_path));
+            let path = env::join_paths(path_entries)
+                .expect("join competing cargo-deny PATH entries")
+                .to_string_lossy()
+                .into_owned();
+            let mut values = fixture.env_with_path("unused", path);
+            let deny_log = fixture.root.join("cargo-deny.log");
+            values.push(("AIZIGN_DENY_LOG", deny_log.to_string_lossy().into_owned()));
+
+            let error = run_with_values(&fixture, &values).unwrap_err();
+
+            assert!(error.contains("cargo-deny 0.20.1"), "{error}");
+            fixture.assert_no_deny_check();
+            let log = fs::read_to_string(deny_log).expect("read cargo-deny log");
+            assert_eq!(log.lines().collect::<Vec<_>>(), vec!["deny --version"]);
         }
 
         #[test]

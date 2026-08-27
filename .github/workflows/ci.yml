@@ -170,15 +170,29 @@ jobs:
             dsh plugin --profile aizign-ci add -w \
             @deepseek-ai/dsh-web-app@0.1.1-rc.2 \
             "link:${GITHUB_WORKSPACE}/adapters/dsh"
-          DSH_PROFILE_DIR="${dsh_home}/profiles/aizign-ci" \
-            GITHUB_WORKSPACE="${GITHUB_WORKSPACE}" \
-            node .github/scripts/check-source-workspace.mjs
+          node experiments/dsh-live-smoke/make-patch.mjs \
+            --binary "${GITHUB_WORKSPACE}/target/debug/aizign" \
+            --state "${dsh_home}/state" \
+            --event-id aizign-ci-event \
+            --workflow-id aizign-ci-workflow \
+            --assignment-id aizign-ci-assignment \
+            --attempt-id aizign-ci-attempt \
+            --role implementation \
+            --revision aizign-ci-revision \
+            --candidate-digest aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+            > "${RUNNER_TEMP}/aizign-dsh-config.patch.yml"
           DSH_HOME="${dsh_home}" npx --yes \
             --package=pnpm@11.7.0 \
             --package=@deepseek-ai/dsh@0.1.1-rc.2 \
             -- \
-            dsh --profile aizign-ci --dump-config > "${RUNNER_TEMP}/aizign-dsh-config.txt"
-          grep -F -- "aizign-workflow-signal" "${RUNNER_TEMP}/aizign-dsh-config.txt"
+            dsh --profile aizign-ci \
+            --patch "${RUNNER_TEMP}/aizign-dsh-config.patch.yml" \
+            --dump-config > "${RUNNER_TEMP}/aizign-dsh-config.txt"
+          export DSH_PROFILE_DIR="${dsh_home}/profiles/aizign-ci"
+          export DSH_CONFIG_PATH="${RUNNER_TEMP}/aizign-dsh-config.txt"
+          export DSH_EXPECTED_BINARY="${GITHUB_WORKSPACE}/target/debug/aizign"
+          export DSH_EXPECTED_STATE_DIR="${dsh_home}/state"
+          node .github/scripts/check-source-workspace.mjs
 
   repository:
     name: Repository

@@ -35,6 +35,10 @@ file. The security workflow uses the repository-pinned Rust toolchain and runs
 the same `cargo deny check advisories bans licenses sources` command rather than
 depending on a tool version embedded outside the repository.
 
+After installation, the security workflow runs
+`.github/scripts/check-cargo-deny-version.sh`, which compares the installed
+`cargo deny --version` stdout byte-for-byte with the authority before the audit.
+
 `cargo xtask rust-check` reads and validates the authority, then requires
 `cargo deny --version` stdout to be exactly `cargo-deny 0.20.2` plus one
 terminal LF before it invokes `cargo deny check`. Missing or malformed

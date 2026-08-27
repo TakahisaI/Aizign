@@ -19,11 +19,13 @@ checkoutでは、次のようにauthorityから読み取ったversionをinstall�
 ```sh
 cargo_deny_version="$(bash .github/scripts/read-cargo-deny-version.sh)"
 cargo install cargo-deny --version "${cargo_deny_version}" --locked
+bash .github/scripts/check-cargo-deny-version.sh
 ```
 
 `cargo xtask rust-check` は `cargo deny --version` がauthorityと完全一致する
 ことを `cargo deny check` の前に検査し、不一致なら同じsetup commandを表示して
-停止します。
+停止します。上記のverification scriptは、command substitutionで失われる
+newlineや余計な出力も含めて、installed commandのstdoutをbyte単位で比較します。
 
 ### rustupとHomebrewのcargoが両方ある場合
 

@@ -19,6 +19,12 @@ if [[ "${line_count}" != "1" ]]; then
   exit 1
 fi
 
+last_byte="$(LC_ALL=C tail -c 1 "${version_file}" | od -An -t x1 | tr -d '[:space:]')"
+if [[ "${last_byte}" != "0a" ]]; then
+  echo "cargo-deny version authority must end with exactly one LF byte (0x0A): ${version_file}" >&2
+  exit 1
+fi
+
 version="$(sed -n '1p' "${version_file}")"
 if [[ ! "${version}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
   echo "cargo-deny version authority must be MAJOR.MINOR.PATCH with no extra whitespace: ${version_file}" >&2
