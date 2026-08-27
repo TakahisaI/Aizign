@@ -13,7 +13,7 @@ The authorities are deliberately separate:
 | Core--adapter wire format, schemas, kinds, and stable codes | [`spec/protocol/v1/`](../../spec/protocol/v1/README.md) |
 | Decoder acceptance and full-codec round-trip fixtures | [`spec/conformance/`](../../spec/conformance/README.md) |
 | Language-neutral directional encoder scenarios | [`spec/conformance/encoder-scenarios.md`](../../spec/conformance/encoder-scenarios.md) |
-| Cross-language classification ownership and planned timing-disclosure rows for current operations | [`spec/classification/`](../../spec/classification/README.md) |
+| Cross-language classification ownership and timing-disclosure rows for current operations | [`spec/classification/`](../../spec/classification/README.md) |
 | Harness-native behavior | The adapter's README, source, and native tests |
 | TypeScript convenience APIs and runner behavior | [`packages/protocol/`](../../packages/protocol/README.md) and [`packages/adapter-testkit/`](../../packages/adapter-testkit/README.md) |
 
@@ -116,9 +116,9 @@ Submit client outcomes have these meanings:
 - `unknown`: the client cannot establish whether this request took effect.
 
 The Protocol error-code syntax is open. The current operation/code mappings are
-owned by the [classification contract](../../spec/classification/README.md),
-whose corpus is planned for a later implementation slice, not by a duplicated
-table in this document. A submit client may return `rejected`
+owned by the [classification corpus](../../spec/classification/README.md), not
+by a duplicated table in this document. Production projections are checked
+against all 78 rows. A submit client may return `rejected`
 only for its closed allowlist of codes whose operation semantics establish a
 definitive refusal. It must preserve any well-formed but unrecognized code as
 diagnostic `reportedCode`, classify the submit as `unknown`, and never retry it

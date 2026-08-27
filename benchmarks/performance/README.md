@@ -59,13 +59,14 @@ unchanged by the transport-owner migration. Their observations are
 source-qualified: child
 runtime observation, returned client outcome, parent transport observation,
 and DSH evidence observation are not one universal semantic outcome. The
-[classification contract](../../spec/classification/README.md) defines the
-target cross-language authority, but does not make timing a compatibility
-surface or claim that the existing sources are already corpus-driven. Planned
-corpus and consumer implementation follows the ownership cleanup sequence
-[#87](https://github.com/TakahisaI/Aizign/issues/87) →
-[#88](https://github.com/TakahisaI/Aizign/issues/88) →
-[#89](https://github.com/TakahisaI/Aizign/issues/89).
+[classification corpus](../../spec/classification/README.md) is the sole
+cross-language row authority. Benchmark normalization tests apply all 78 rows
+without turning the corpus into a runtime service or timing into a
+compatibility surface. The ownership cleanup sequence in
+[#87](https://github.com/TakahisaI/Aizign/issues/87),
+[#88](https://github.com/TakahisaI/Aizign/issues/88), and
+[#89](https://github.com/TakahisaI/Aizign/issues/89) landed before this
+consumer migration.
 
 Within the child source, engine aggregate stages and JSONL physical stages have
 separate owners and are composed by the CLI into the same flat record. This

@@ -67,9 +67,9 @@ stage meaning.
 The child `outcome` observation is source-qualified. It is not the returned
 client outcome or a parent transport observation, and these sources must not
 be treated as one universal semantic outcome. The
-[classification contract](../../spec/classification/README.md) defines the
-target authority; this contract-only slice does not make the current producer
-corpus-driven.
+[classification corpus](../../spec/classification/README.md) is the sole row
+authority. Exhaustive CLI tests apply all 78 rows to this child observation
+projection; the CLI does not load the corpus as a runtime service.
 
 Timing generation and output are best effort: failure does not change the
 response or exit code. Without the environment variable, the normal path uses

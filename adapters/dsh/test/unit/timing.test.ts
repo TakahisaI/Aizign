@@ -1,6 +1,31 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { emitBestEffort, isTimingErrorCode, parentTimingOutcome } from '../../src/timing.ts';
+import {
+  emitBestEffort,
+  isTimingErrorCode,
+  type ParentOperationKind,
+  parentTimingOutcome,
+  type TimingOutcome,
+} from '../../src/timing.ts';
+
+interface CorpusRow {
+  readonly operation: Exclude<ParentOperationKind, 'preflight'>;
+  readonly reportedCode:
+    | { readonly kind: 'none' }
+    | { readonly kind: 'fixed'; readonly value: string }
+    | { readonly kind: 'wellFormedUnrecognized' };
+  readonly clientOutcome: TimingOutcome;
+  readonly parentObservation: { readonly field: 'outcome'; readonly value: TimingOutcome };
+  readonly timingCodeDisclosure: boolean;
+}
+
+const corpus = JSON.parse(
+  readFileSync(
+    new URL('../../../../spec/classification/current-operations.json', import.meta.url),
+    'utf8',
+  ),
+) as { readonly rows: readonly CorpusRow[] };
 
 test('DSH timing keeps a closed fixed-code disclosure allowlist', () => {
   assert.equal(isTimingErrorCode('EVENT_CONFLICT'), true);
@@ -22,6 +47,31 @@ test('DSH timing preserves unknown before submit conflict normalization', () => 
     parentTimingOutcome('workflow.signal.submit', 'unknown', 'EVENT_CONFLICT'),
     'unknown',
   );
+});
+
+test('DSH parent timing and fixed-code disclosure follow every corpus row', () => {
+  assert.equal(corpus.rows.length, 78);
+  for (const row of corpus.rows) {
+    const reportedCode =
+      row.reportedCode.kind === 'fixed'
+        ? row.reportedCode.value
+        : row.reportedCode.kind === 'wellFormedUnrecognized'
+          ? 'FUTURE_OUTCOME_UNKNOWN'
+          : undefined;
+    assert.equal(
+      reportedCode === undefined ? false : isTimingErrorCode(reportedCode),
+      row.timingCodeDisclosure,
+    );
+    assert.equal(
+      parentTimingOutcome(
+        row.operation,
+        row.clientOutcome,
+        row.timingCodeDisclosure ? reportedCode : undefined,
+      ),
+      row.parentObservation.value,
+      `${row.operation} / ${JSON.stringify(row.reportedCode)}`,
+    );
+  }
 });
 
 test('DSH timing emission isolates synchronous and asynchronous sink failure', async () => {

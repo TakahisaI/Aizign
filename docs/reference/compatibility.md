@@ -29,11 +29,10 @@ child runtime observation and a parent transport observation must not be
 interpreted as one universal semantic outcome. Process, preflight, and parent
 timing are not Protocol package compatibility; repository consumers reach them
 only through the closed DSH experimental subpaths. The
-[classification contract](../../spec/classification/README.md) defines the
-target cross-language authority; the planned corpus and consumer migration
-follow the ordered implementation work described there. That ownership does
-not promote timing into a compatibility surface or claim that current
-producers are already corpus-driven.
+[classification corpus](../../spec/classification/README.md) is the sole
+cross-language row authority. Child, parent, and benchmark projections are
+exhaustively checked against all rows without loading a shared runtime service.
+That ownership does not promote timing into a compatibility surface.
 
 The Issue #89 ownership move changes the package/import owner but not timing
 fields, units, intervals, classification, or sink isolation. Its provisional

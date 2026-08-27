@@ -13,14 +13,18 @@ omitted from timing code disclosure.
 [`spec/protocol/v1/`](../../spec/protocol/v1/README.md#error-codes) owns wire
 syntax and fixed-code meaning. The
 [current-operation classification contract](../../spec/classification/README.md)
-owns source-qualified semantic classification and the later language-neutral
-rows. This index does not reserve names for future operations. In particular,
+owns the machine-readable source-qualified semantic rows. This file is a
+non-normative implemented-code index whose Protocol, Workflow, and Journal
+entries are checked for exact equality with the corpus/schema and Rust and
+TypeScript fixed-membership registries. This index does not reserve names for future operations. In particular,
 future `EFFECT_*` vocabulary is not a current reservation or compatibility
 commitment.
 
 ## Protocol
 
-`aizign-protocol` の `codes::*`。wire上の意味は [spec/protocol/v1](../../spec/protocol/v1/README.md#error-codes)。
+Rust の `aizign-protocol::CURRENT_FIXED_ERROR_CODES` と TypeScript の
+`@aizign/protocol` `codes` が完全なcurrent membershipを公開します。個々の
+実装ownerとwire上の意味は [spec/protocol/v1](../../spec/protocol/v1/README.md#error-codes) を参照してください。
 
 | Code | 意味 | Status |
 |---|---|---|
@@ -79,6 +83,5 @@ protocolのcodeではなく、adapterがharnessへ返す `HarnessError.code`。�
 1. Establish the current operation, owner, wire meaning, and classification in
    an accepted contract. Do not reserve a name for a future operation here.
 2. Add the implementation and Protocol fixture/schema evidence.
-3. Add the implemented code to this index and, in the Issue #75 implementation
-   slice or later, add its source-qualified classification row to the shared
-   corpus.
+3. Add the implemented code to this non-normative index and add every required
+   source-qualified row to the shared corpus in the same accepted change.

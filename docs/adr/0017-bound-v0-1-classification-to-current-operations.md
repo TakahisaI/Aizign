@@ -3,7 +3,18 @@
 - Status: Accepted
 - Date: 2026-08-26
 - Acceptance: [Maintainer decision for Issue #75, comment `5421537099`](https://github.com/TakahisaI/Aizign/issues/75#issuecomment-5421537099)
+- Implementation checkpoint: [`I75-5D36DC0-A`](https://github.com/TakahisaI/Aizign/issues/75#issuecomment-5432672706), amended by [`I75-5D36DC0-A1`](https://github.com/TakahisaI/Aizign/issues/75#issuecomment-5432845302)
+- Readiness: [Maintainer decision for slice `S1`](https://github.com/TakahisaI/Aizign/issues/75#issuecomment-5432909667)
 - Related: ADR-0002, ADR-0003, ADR-0013, Issue #75, Issue #87, Issue #88, Issue #89
+
+## Implementation note — 2026-08-27
+
+The ordered follow-up described below is implemented by the Issue #75 `S1`
+change after #87--#89. It adds the 78-row corpus and sibling schema, removes
+the transitional normative Markdown tables, and checks the Rust, TypeScript,
+CLI, DSH timing, and benchmark projections exhaustively. The decision text
+below remains the historical accepted decision and therefore retains its
+original prospective wording.
 
 ## Context
 

@@ -7,6 +7,15 @@
 - Implementation checkpoint: [`I89-A8A3FD0-A`](https://github.com/TakahisaI/Aizign/issues/89#issuecomment-5426502135), amended by [`I89-A8A3FD0-A1`](https://github.com/TakahisaI/Aizign/issues/89#issuecomment-5426909643)
 - Readiness: [Maintainer decision for slice `S1`](https://github.com/TakahisaI/Aizign/issues/89#issuecomment-5426990095)
 
+## Follow-up status — 2026-08-27
+
+The Issue #75 `S1` follow-up removes the temporary Protocol classification
+helpers retained by this decision. DSH remains the sole production TypeScript
+transport owner, keeps its existing experimental timing export, and applies a
+minimal operation projection checked against all 78 corpus rows. The decision
+text below remains the historical ownership decision and retains its original
+prospective wording.
+
 ## Context
 
 The TypeScript Protocol root mixed language-neutral wire/client semantics with

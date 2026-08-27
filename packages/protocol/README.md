@@ -37,7 +37,7 @@ src/
 ├── error.ts              ProtocolError、codes、SHORT_ERROR_CODE_PATTERN
 ├── hello.ts              HelloInfo、decodeHelloInfo、checkCompatibility
 ├── workflow-signal.ts    shared signal、submit / reconcile payload、result decoder
-├── client.ts             Node-free CoreClient、correlation、Hello / Submit / ReconcileOutcome、current classification helpers
+├── client.ts             Node-free CoreClient、correlation、Hello / Submit / ReconcileOutcome
 ├── shape.ts              isPlainObject、assertOnlyKeys、IDENTIFIER_PATTERN
 └── *.test.ts             conformance（spec/conformance全件）、hello、envelope
 ```
@@ -79,9 +79,10 @@ the closed provisional
 `@aizign/adapter-dsh/experimental/transport` subpath. Parent timing remains
 source-qualified operational evidence rather than Protocol v1 or stable
 package compatibility. The
-[classification contract](../../spec/classification/README.md) remains the
-target cross-language authority; Issue #75 owns the later corpus/consumer
-migration.
+[classification corpus](../../spec/classification/README.md) is the sole
+cross-language row authority. Protocol exposes fixed wire-code membership but
+no operation/outcome or timing classification helper; decoder membership
+remains open to well-formed unrecognized codes.
 
 The root runtime and declaration exports are exact allowlists verified by
 `spec/test/package-exports.test.mjs`. Deep `src/` or generated `lib/` imports

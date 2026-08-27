@@ -21,7 +21,6 @@ import {
   checkCorrelation,
   decodeResponse,
   extractFrame,
-  isSubmitRejectionCode,
   MAX_FRAME_BYTES,
   OneShotFrameCollector,
 } from '@aizign/protocol';
@@ -77,11 +76,20 @@ const PROTOCOL = {
   checkCorrelation,
   decodeResponse,
   extractFrame,
-  isSubmitRejectionCode,
   isTimingErrorCode,
   MAX_FRAME_BYTES,
   OneShotFrameCollector,
 };
+
+const CLASSIFICATION_ROWS = JSON.parse(
+  readFileSync(
+    join(
+      fileURLToPath(new URL('../..', import.meta.url)),
+      'spec/classification/current-operations.json',
+    ),
+    'utf8',
+  ),
+).rows;
 
 test('runner v6 names the production TypeScript transport explicitly', () => {
   assert.equal(RUNNER_VERSION, 6);
@@ -341,7 +349,6 @@ test('request fixtures preserve operation validity and response classification',
     classifyResponse(
       { body: { type: 'error', error: { code: 'EVENT_CONFLICT' } } },
       'workflow.signal.submit',
-      isSubmitRejectionCode,
       isTimingErrorCode,
     ),
     { outcome: 'conflict', error_code: 'EVENT_CONFLICT' },
@@ -350,7 +357,6 @@ test('request fixtures preserve operation validity and response classification',
     classifyResponse(
       { body: { type: 'error', error: { code: 'JOURNAL_LOCKED' } } },
       'workflow.signal.reconcile',
-      isSubmitRejectionCode,
       isTimingErrorCode,
     ),
     {
@@ -363,7 +369,6 @@ test('request fixtures preserve operation validity and response classification',
     classifyResponse(
       { body: { type: 'error', error: { code: 'INTERNAL' } } },
       'workflow.signal.submit',
-      isSubmitRejectionCode,
       isTimingErrorCode,
     ),
     { outcome: 'unknown', error_code: 'INTERNAL', unknown_reason: 'reported_unknown' },
@@ -372,7 +377,6 @@ test('request fixtures preserve operation validity and response classification',
     classifyResponse(
       { body: { type: 'error', error: { code: 'FUTURE_OUTCOME_UNKNOWN' } } },
       'workflow.signal.submit',
-      isSubmitRejectionCode,
       isTimingErrorCode,
     ),
     { outcome: 'unknown', unknown_reason: 'reported_unknown' },
@@ -382,6 +386,43 @@ test('request fixtures preserve operation validity and response classification',
   assert.equal(nearMax.payload.signal.eventId.length, 128);
   assert.equal(nearMax.payload.signal.artifactRef.length, 256);
   assert.equal(nearMax.payload.signal.kind, 'repair_submitted');
+});
+
+test('benchmark normalization follows every classification corpus row', () => {
+  assert.equal(CLASSIFICATION_ROWS.length, 78);
+  for (const row of CLASSIFICATION_ROWS) {
+    let body;
+    if (row.responseCase.kind === 'error') {
+      body = {
+        type: 'error',
+        error: {
+          code:
+            row.reportedCode.kind === 'fixed' ? row.reportedCode.value : 'FUTURE_OUTCOME_UNKNOWN',
+        },
+      };
+    } else if (row.operation === 'hello') {
+      body = { type: 'hello' };
+    } else if (row.operation === 'workflow.signal.submit') {
+      body = { type: 'workflow.signal', result: { disposition: row.responseCase.disposition } };
+    } else {
+      body = {
+        type: 'workflow.signal.reconciliation',
+        result: { disposition: row.responseCase.disposition },
+      };
+    }
+
+    const expected = {
+      outcome: row.parentObservation.value,
+      ...(row.timingCodeDisclosure ? { error_code: row.reportedCode.value } : {}),
+      ...(row.parentObservation.value === 'unknown' ? { unknown_reason: 'reported_unknown' } : {}),
+    };
+    assert.deepEqual(
+      classifyResponse({ body }, row.operation, isTimingErrorCode),
+      expected,
+      `${row.operation} / ${JSON.stringify(row.responseCase)} / ${JSON.stringify(row.reportedCode)}`,
+    );
+    assert.equal(row.automaticRetryAuthorized, false);
+  }
 });
 
 test('direct transport uses the production decoder and correlation contract', () => {

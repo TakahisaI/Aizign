@@ -238,12 +238,7 @@ export function seedFixture(stateDir, entries, fixtureTarget = 'absent', fixture
   for (const path of [lockPath, journalPath, commitPath]) chmodSync(path, 0o600);
 }
 
-export function classifyResponse(
-  response,
-  operationKind,
-  isSubmitRejectionCode,
-  isTimingErrorCode,
-) {
+export function classifyResponse(response, operationKind, isTimingErrorCode) {
   if (response.body.type !== 'error') {
     return { outcome: response.body.type === 'hello' ? 'ok' : response.body.result.disposition };
   }
@@ -252,11 +247,19 @@ export function classifyResponse(
   if (operationKind === 'workflow.signal.reconcile') {
     return { outcome: 'unknown', ...safeDiagnostic, unknown_reason: 'reported_unknown' };
   }
-  if (errorCode === 'EVENT_CONFLICT') return { outcome: 'conflict', error_code: errorCode };
-  if (isSubmitRejectionCode(errorCode)) {
+  if (
+    !isTimingErrorCode(errorCode) ||
+    ['INTERNAL', 'HANDLER_TIMEOUT', 'JOURNAL_OUTCOME_UNKNOWN'].includes(errorCode)
+  ) {
+    return { outcome: 'unknown', ...safeDiagnostic, unknown_reason: 'reported_unknown' };
+  }
+  if (operationKind === 'workflow.signal.submit' && errorCode === 'EVENT_CONFLICT') {
+    return { outcome: 'conflict', error_code: errorCode };
+  }
+  if (operationKind === 'workflow.signal.submit') {
     return { outcome: 'rejected', error_code: errorCode };
   }
-  return { outcome: 'unknown', ...safeDiagnostic, unknown_reason: 'reported_unknown' };
+  return { outcome: 'error', error_code: errorCode };
 }
 
 function extractChildTiming(stderr) {
@@ -468,7 +471,6 @@ export function runProcess(
         const classified = classifyResponse(
           decoded.response,
           operationKind,
-          protocol.isSubmitRejectionCode,
           protocol.isTimingErrorCode,
         );
         finish({
@@ -1573,7 +1575,6 @@ async function loadDependencies() {
         checkCorrelation: protocol.checkCorrelation,
         decodeResponse: protocol.decodeResponse,
         extractFrame: protocol.extractFrame,
-        isSubmitRejectionCode: protocol.isSubmitRejectionCode,
         isTimingErrorCode: transport.isTimingErrorCode,
         OneShotFrameCollector: protocol.OneShotFrameCollector,
       },

@@ -15,53 +15,6 @@ import type {
   WorkflowSignalSubmitPayload,
 } from './workflow-signal.ts';
 
-/**
- * Error codes that mean "the outcome is unknown", not "the request was
- * rejected". A client must surface them as {@link UnknownOutcome}.
- */
-export const UNKNOWN_OUTCOME_CODES: readonly string[] = Object.freeze([
-  'JOURNAL_OUTCOME_UNKNOWN',
-  'HANDLER_TIMEOUT',
-  'EFFECT_OUTCOME_UNKNOWN',
-]);
-
-export function isUnknownOutcomeCode(code: string): boolean {
-  return UNKNOWN_OUTCOME_CODES.includes(code);
-}
-
-/**
- * Codes that definitively reject `workflow.signal.submit` before acceptance.
- * This set is intentionally closed: a well-formed but unrecognized peer code
- * is an unknown outcome until this client understands its semantics.
- */
-export const SUBMIT_REJECTION_CODES: readonly string[] = Object.freeze([
-  'PROTOCOL_VERSION_UNSUPPORTED',
-  'INVALID_ENVELOPE',
-  'UNKNOWN_KIND',
-  'INVALID_PAYLOAD',
-  'REQUEST_TOO_LARGE',
-  'CAPABILITY_UNSUPPORTED',
-  'INVALID_EXPECTATION',
-  'INVALID_SIGNAL',
-  'WORKFLOW_MISMATCH',
-  'ASSIGNMENT_MISMATCH',
-  'ATTEMPT_MISMATCH',
-  'ROLE_MISMATCH',
-  'REVISION_MISMATCH',
-  'CANDIDATE_DIGEST_MISMATCH',
-  'EVENT_CONFLICT',
-  'JOURNAL_UNAVAILABLE',
-  'JOURNAL_CORRUPT',
-  'JOURNAL_SCHEMA_UNSUPPORTED',
-  'JOURNAL_LOCKED',
-  'JOURNAL_BOUND_EXCEEDED',
-]);
-
-/** Whether `code` is a known definitive rejection for signal submission. */
-export function isSubmitRejectionCode(code: string): boolean {
-  return SUBMIT_REJECTION_CODES.includes(code);
-}
-
 /** A result whose truth the adapter could not establish. Never retry it blindly. */
 export interface UnknownOutcome {
   readonly kind: 'unknown';

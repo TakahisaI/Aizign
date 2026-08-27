@@ -42,8 +42,6 @@ const surfaces = [
       'PROTOCOL_NAME',
       'PROTOCOL_VERSION',
       'ProtocolError',
-      'SUBMIT_REJECTION_CODES',
-      'UNKNOWN_OUTCOME_CODES',
       'checkCompatibility',
       'checkCorrelation',
       'codes',
@@ -58,8 +56,6 @@ const surfaces = [
       'extractFrame',
       'isIdentifier',
       'isShortErrorCode',
-      'isSubmitRejectionCode',
-      'isUnknownOutcomeCode',
     ],
     types: [
       'BoundedFrameExtraction',
@@ -416,6 +412,26 @@ test('TypeScript consumers cannot compile removed symbols or closed package path
       name: 'removed-protocol-config',
       source: "import type { CoreClientConfig } from '@aizign/protocol';\n",
       code: 2305,
+    },
+    {
+      name: 'removed-submit-rejection-classifier',
+      source: "import { isSubmitRejectionCode } from '@aizign/protocol';\n",
+      code: 2305,
+    },
+    {
+      name: 'removed-unknown-outcome-classifier',
+      source: "import { isUnknownOutcomeCode } from '@aizign/protocol';\n",
+      code: 2724,
+    },
+    {
+      name: 'removed-submit-rejection-codes',
+      source: "import { SUBMIT_REJECTION_CODES } from '@aizign/protocol';\n",
+      code: 2305,
+    },
+    {
+      name: 'removed-unknown-outcome-codes',
+      source: "import { UNKNOWN_OUTCOME_CODES } from '@aizign/protocol';\n",
+      code: 2724,
     },
     {
       name: 'removed-testkit-client',

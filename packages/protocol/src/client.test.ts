@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkCorrelation, isSubmitRejectionCode } from './client.ts';
+import { checkCorrelation } from './client.ts';
 import type { Response } from './envelope.ts';
 import { codes, ProtocolError } from './error.ts';
 
@@ -57,12 +57,4 @@ test('reconciliation success also correlates the queried event id', () => {
     })?.field,
     'eventId',
   );
-});
-
-test('submit rejection classification is closed and fails unknown codes safely', () => {
-  assert.equal(isSubmitRejectionCode('EVENT_CONFLICT'), true);
-  assert.equal(isSubmitRejectionCode('JOURNAL_UNAVAILABLE'), true);
-  assert.equal(isSubmitRejectionCode('JOURNAL_OUTCOME_UNKNOWN'), false);
-  assert.equal(isSubmitRejectionCode('INTERNAL'), false);
-  assert.equal(isSubmitRejectionCode('FUTURE_OUTCOME_UNKNOWN'), false);
 });
