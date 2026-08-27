@@ -1,4 +1,5 @@
-# cargo-deny configuration. Checked by `cargo xtask rust-check` and CI.
+# cargo-deny policy configuration. The tool version authority is `.cargo-deny-version`.
+# Checked by `cargo xtask rust-check` and CI.
 
 [graph]
 all-features = true

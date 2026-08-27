@@ -76,10 +76,26 @@ The normative classifications and test scope are in the
 | Rust | `rust-toolchain.toml`、`Cargo.toml` の `rust-version` |
 | Node.js | `.node-version`、`package.json` の `engines` / `devEngines` |
 | npm | `package.json` の `packageManager` |
+| cargo-deny | `.cargo-deny-version` (shared by CI, release, security, and xtask) |
 | TypeScript / Biome / @types/node | root `package.json` の `devDependencies`（exact）と `package-lock.json` |
 | GitHub Actions | commit SHAで固定 |
 
 Node.jsは `24.19.0`（LTS）、npmは `12.0.2` に固定しています。DSH adapterが入る時点で、harness SDKの要求に合わせて再評価します（専用PR）。
+
+## v0.1 supported installation
+
+The supported v0.1 installation form is a reviewed or released SHA source
+checkout with tooling pinned by `rust-toolchain.toml`, `.node-version`,
+`packageManager`, and `.cargo-deny-version`. After `cargo fetch --locked`,
+`npm ci`, and the Rust/TypeScript workspace build, `@aizign/protocol` and
+`@aizign/adapter-dsh` resolve through workspace links inside the checkout.
+
+An `@aizign/*` registry install, a standalone adapter `.tgz`, registry
+publication, or bundling is not a supported v0.1 distribution. `npm pack
+--dry-run` and `cargo package --list` only enumerate file sets; they do not
+demonstrate installability or artifact qualification. A future archive or
+registry form requires a separate accepted decision covering paired
+artifact/bundling and a registry-free clean install.
 
 ## Harness
 

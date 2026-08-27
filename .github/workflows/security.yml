@@ -6,9 +6,13 @@ on:
     - cron: "17 3 * * 1"
   pull_request:
     paths:
+      - .cargo-deny-version
       - Cargo.lock
       - deny.toml
       - package-lock.json
+      - .github/scripts/read-cargo-deny-version.sh
+      - .github/scripts/check-cargo-deny-version.sh
+      - .github/scripts/check-source-workspace.mjs
       - .github/workflows/security.yml
   workflow_dispatch:
 
@@ -26,8 +30,28 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Advisories, bans, licenses, sources
-        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+      - name: Install the pinned Rust toolchain (rust-toolchain.toml)
+        run: |
+          rustup toolchain install
+          rustup show
+
+      - name: Fetch locked Rust dependencies
+        run: cargo fetch --locked
+
+      - name: Read the repository cargo-deny pin
+        id: cargo_deny_version
+        shell: bash
+        run: |
+          version="$(bash .github/scripts/read-cargo-deny-version.sh)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@6cd13508893c0e7eab5f273c2575d3859bd7229a # v2.86.6
         with:
-          command: check advisories bans licenses sources
-          rust-version: "1.97.1"
+          tool: cargo-deny@${{ steps.cargo_deny_version.outputs.version }}
+
+      - name: Verify the installed cargo-deny executable
+        run: bash .github/scripts/check-cargo-deny-version.sh
+
+      - name: Advisories, bans, licenses, sources
+        run: cargo deny check advisories bans licenses sources

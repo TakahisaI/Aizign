@@ -30,6 +30,7 @@
 | [0018](0018-require-implementation-readiness-before-higher-risk-implementation.md) | Require implementation readiness before higher-risk implementation | Accepted |
 | [0019](0019-separate-engine-and-store-observation-ownership.md) | Separate engine and store observation ownership | Accepted |
 | [0020](0020-narrow-typescript-exports-and-own-dsh-transport.md) | Narrow TypeScript exports and own DSH transport | Accepted |
+| [0021](0021-pin-cargo-deny-and-source-checkout-installation.md) | Pin cargo-deny and define source-checkout installation | Accepted |
 
 ADR-0016 partially supersedes ADR-0005's earlier `AGENTS.md` editing-constraint
 statement only; ADR-0005's other accepted decisions remain in force.

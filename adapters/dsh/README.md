@@ -90,6 +90,43 @@ operatorのpatchはその entry を **id で上書き**して有効化します�
 `dsh --profile <name> --patch <file> --dump-config` で、合成後の tree に `aizign-workflow-signal` が `disabled: false` と上記 `config` で現れることを確認できます。
 [`experiments/dsh-live-smoke/make-patch.mjs`](../../experiments/dsh-live-smoke/make-patch.mjs) はこの形を生成します。
 
+## v0.1 source-checkout installation
+
+The supported v0.1 form for using this adapter is a reviewed or released SHA
+Aizign source checkout. Run `npm ci` and `npm run build`, then register
+`adapters/dsh` in the DSH profile as a workspace `link:`. `@aizign/protocol` is
+also resolved through the npm workspace link inside the checkout. An adapter
+standalone `.tgz`, an `@aizign/*` registry install, publication, or bundling is
+not a supported distribution form.
+
+A new profile is a pnpm workspace root on the DSH side, so registration must
+target that profile root explicitly. The DSH-host registration fixture below
+temporarily bootstraps the DSH release's `pnpm@11.7.0` and uses only a new
+`DSH_HOME`.
+
+```sh
+DSH_HOME="${RUNNER_TEMP}/aizign-dsh-home" \
+npx --yes \
+  --package=pnpm@11.7.0 \
+  --package=@deepseek-ai/dsh@0.1.1-rc.2 \
+  -- \
+  dsh plugin --profile aizign-ci add -w --allow-build=koffi \
+  @deepseek-ai/dsh-web-app@0.1.1-rc.2 \
+  "link:${GITHUB_WORKSPACE}/adapters/dsh"
+```
+
+Because of `pnpm@11.7.0`'s strict build policy, explicitly allow only the
+native `koffi` build required by the DSH web app. No lifecycle script from any
+other dependency is run.
+
+This pnpm use is limited to the DSH-host registration fixture and does not
+change Aizign's normal package manager (`npm@12.0.2`) or supported tooling.
+Inspect the profile bundle, absolute workspace link, package import, and
+composed patch entry. Live smoke requiring a browser, login, model, or
+credential remains operator evidence under
+[Issue #11](https://github.com/TakahisaI/Aizign/issues/11). Discard the
+temporary `DSH_HOME` after verification.
+
 ## Capability classification
 
 This adapter satisfies the current minimum signal-submission behavior through

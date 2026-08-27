@@ -58,7 +58,9 @@ jobs:
           tag="${GITHUB_REF_NAME#v}"
           cargo_version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
           npm_version="$(node -p "require('./package.json').version")"
-          if [[ "${tag}" != "${cargo_version}" || "${tag}" != "${npm_version}" ]]; then
+          if [[ "${tag}" == "${cargo_version}" && "${tag}" == "${npm_version}" ]]; then
+            :
+          else
             echo "::error::tag v${tag} does not match Cargo.toml (${cargo_version}) / package.json (${npm_version})"
             exit 1
           fi
@@ -79,10 +81,17 @@ jobs:
           rustup toolchain install
           rustup show
 
+      - name: Read the repository cargo-deny pin
+        id: cargo_deny_version
+        shell: bash
+        run: |
+          version="$(bash .github/scripts/read-cargo-deny-version.sh)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
       - name: Install cargo-deny
         uses: taiki-e/install-action@6cd13508893c0e7eab5f273c2575d3859bd7229a # v2.86.6
         with:
-          tool: cargo-deny@0.20.2
+          tool: cargo-deny@${{ steps.cargo_deny_version.outputs.version }}
 
       - name: Fetch locked Rust dependencies
         run: cargo fetch --locked

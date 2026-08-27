@@ -44,10 +44,17 @@ jobs:
       - name: Fetch locked Rust dependencies
         run: cargo fetch --locked
 
+      - name: Read the repository cargo-deny pin
+        id: cargo_deny_version
+        shell: bash
+        run: |
+          version="$(bash .github/scripts/read-cargo-deny-version.sh)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
       - name: Install cargo-deny
         uses: taiki-e/install-action@6cd13508893c0e7eab5f273c2575d3859bd7229a # v2.86.6
         with:
-          tool: cargo-deny@0.20.2
+          tool: cargo-deny@${{ steps.cargo_deny_version.outputs.version }}
 
       - name: Format, lint, test, doc, deny
         run: cargo xtask rust-check
@@ -58,7 +65,10 @@ jobs:
   typescript:
     name: TypeScript
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A clean npx bootstrap resolves the full pinned DSH release graph before
+    # the isolated profile registration starts; allow that one-time fixture
+    # setup to finish without changing the normal workspace toolchain.
+    timeout-minutes: 30
     steps:
       # Node is set up before the checkout on purpose: setup-node invokes the
       # runner's bundled npm, and with package.json present that npm would be
@@ -145,6 +155,49 @@ jobs:
         run: npm run check
         env:
           AIZIGN_BINARY: ${{ github.workspace }}/target/debug/aizign
+
+      - name: Register and inspect the source workspace with DSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          dsh_home="${RUNNER_TEMP}/aizign-dsh-home"
+          [[ ! -e "${dsh_home}" ]] || { echo "::error::temporary DSH_HOME already exists: ${dsh_home}"; exit 1; }
+          mkdir "${dsh_home}"
+          cleanup_dsh() { rm -rf -- "${dsh_home}"; }
+          trap cleanup_dsh EXIT
+          npm ls --all --offline
+          # DSH's web-app dependency includes the native koffi runtime; allow
+          # only that exact build script in the isolated profile workspace.
+          DSH_HOME="${dsh_home}" npx --yes \
+            --package=pnpm@11.7.0 \
+            --package=@deepseek-ai/dsh@0.1.1-rc.2 \
+            -- \
+            dsh plugin --profile aizign-ci add -w --allow-build=koffi \
+            @deepseek-ai/dsh-web-app@0.1.1-rc.2 \
+            "link:${GITHUB_WORKSPACE}/adapters/dsh"
+          node experiments/dsh-live-smoke/make-patch.mjs \
+            --binary "${GITHUB_WORKSPACE}/target/debug/aizign" \
+            --state "${dsh_home}/state" \
+            --event-id aizign-ci-event \
+            --workflow-id aizign-ci-workflow \
+            --assignment-id aizign-ci-assignment \
+            --attempt-id aizign-ci-attempt \
+            --role implementation \
+            --revision aizign-ci-revision \
+            --candidate-digest aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+            > "${RUNNER_TEMP}/aizign-dsh-config.patch.yml"
+          DSH_HOME="${dsh_home}" npx --yes \
+            --package=pnpm@11.7.0 \
+            --package=@deepseek-ai/dsh@0.1.1-rc.2 \
+            -- \
+            dsh --profile aizign-ci \
+            --patch "${RUNNER_TEMP}/aizign-dsh-config.patch.yml" \
+            --dump-config > "${RUNNER_TEMP}/aizign-dsh-config.txt"
+          export DSH_PROFILE_DIR="${dsh_home}/profiles/aizign-ci"
+          export DSH_CONFIG_PATH="${RUNNER_TEMP}/aizign-dsh-config.txt"
+          export DSH_EXPECTED_BINARY="${GITHUB_WORKSPACE}/target/debug/aizign"
+          export DSH_EXPECTED_STATE_DIR="${dsh_home}/state"
+          node .github/scripts/check-source-workspace.mjs
 
   repository:
     name: Repository

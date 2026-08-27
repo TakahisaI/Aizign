@@ -5,11 +5,28 @@
 | Tool | Version | 固定場所 |
 |---|---|---|
 | Rust toolchain | `rust-toolchain.toml` に記載（rustup経由） | `rust-toolchain.toml`、`Cargo.toml` の `rust-version` |
-| cargo-deny | 最新安定版 | CIはaction、localは `cargo install cargo-deny --locked` |
+| cargo-deny | Listed in `.cargo-deny-version` | The same pin is used by CI, release, security, and local checks |
 | Node.js | `.node-version` に記載 | `.node-version`、`package.json` の `engines` / `devEngines` |
 | npm | `package.json` の `packageManager` に記載 | 同左 |
 
 toolchainは `latest` に追従させません。更新は専用PRで行います（[ADR-0008](../adr/0008-use-lockstep-artifact-versions-before-1-0.md)）。
+
+### cargo-deny
+
+`.cargo-deny-version` is the sole cargo-deny version authority. From a source
+checkout, install the version read from that authority:
+
+```sh
+cargo_deny_version="$(bash .github/scripts/read-cargo-deny-version.sh)"
+cargo install cargo-deny --version "${cargo_deny_version}" --locked
+bash .github/scripts/check-cargo-deny-version.sh
+```
+
+`cargo xtask rust-check` verifies that `cargo deny --version` exactly matches
+the authority before running `cargo deny check`. On a mismatch it stops and
+prints the same setup command. The verification script compares the installed
+command's stdout byte-for-byte, so missing or extra newlines and wrapper output
+cannot be hidden by command substitution.
 
 ### rustupとHomebrewのcargoが両方ある場合
 
@@ -38,7 +55,7 @@ The explicit `cargo fetch --locked` setup step populates a clean Cargo cache wit
 
 | 段階 | 内容 |
 |---|---|
-| `rust-check` | `cargo fmt --all --check`、`cargo clippy --workspace --all-targets --all-features -- -D warnings`、`cargo test --workspace`、`cargo doc --workspace --no-deps`（warning deny）、`cargo deny check` |
+| `rust-check` | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `cargo test --workspace`, `cargo doc --workspace --no-deps` (warnings denied), and `cargo deny check` |
 | `npm-check` | `npm ci` + `npm run check`（Biome、build、typecheck、`node --test`、packable set enumeration）。packageがなければskip |
 | `conformance` | `spec/conformance/` のfixtureを検査 |
 | `public-audit` | 依存境界、`aizign-core` の禁止import、tracked pathと対象UTF-8 textの固定secret / private-path pattern検査、closed `exports`、entry document、文書link |
@@ -104,6 +121,24 @@ npm test -w @aizign/protocol
 - Node / npmは `.node-version` と `packageManager` に固定。`.npmrc` の `engine-strict=true` で不一致を拒否します
 - testは `node --test` で `.ts` を直接実行します（Nodeのtype stripping）。そのため `enum` や parameter property は使いません（`erasableSyntaxOnly`）
 - package間はworkspace symlinkで解決され、`exports` が `lib/` を指すので、依存先のpackageを先にbuildします（root `npm run build` が順序を固定）
+
+## v0.1 source checkout
+
+The supported v0.1 installation form is a reviewed or released SHA source
+checkout only. Build the workspace in this order: `cargo fetch --locked`,
+`npm ci --no-audit --no-fund`, `cargo build -p aizign-cli`, and `npm run build`.
+`@aizign/protocol` and `@aizign/adapter-dsh` are imported through workspace
+links inside the checkout. There is no procedure for installing `@aizign/*`
+from a registry or installing an adapter `.tgz` standalone. `npm pack --dry-run`
+only enumerates the packable file set.
+
+The automated DSH profile-registration fixture temporarily bootstraps
+`pnpm@11.7.0` as required by the DSH host and runs `dsh plugin ... add -w` with
+a dedicated temporary `DSH_HOME`. It allows only the DSH web app's native
+`koffi` build via `--allow-build=koffi`; no other lifecycle scripts run. This
+does not change Aizign's normal package manager. DSH/Firefox live smoke that
+uses a browser, login, model, or credential is operator evidence kept separate
+from ordinary checkouts and CI.
 
 ## 通常の検査で起動しないもの
 

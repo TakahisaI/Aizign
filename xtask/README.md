@@ -8,7 +8,7 @@ Repository tooling, invoked as `cargo xtask <command>` (alias in `.cargo/config.
 | `quick` | Network-free inner loop; the default profile checks the Rust and TypeScript workspaces |
 | `quick protocol` | Default profile plus protocol, journal, shared-fixture, and schema checks |
 | `quick adapter-dsh` | Default profile plus DSH adapter checks with a freshly built real binary |
-| `rust-check` | `cargo fmt --all --check`、`cargo clippy --workspace --all-targets --all-features -- -D warnings`、`cargo test --workspace`、`cargo doc --workspace --no-deps`（warning deny）、`cargo deny check` |
+| `rust-check` | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `cargo test --workspace`, `cargo doc --workspace --no-deps` (warnings denied), exact `.cargo-deny-version` and `cargo deny --version` verification, and `cargo deny check` |
 | `conformance` | `spec/conformance/` のfixtureの構造検査。decoderを通すのは各protocol実装の責務 |
 | `public-audit` | 依存境界（`src/audit/dependencies.rs`）、secretとprivate path（`src/audit/secrets.rs`）、package manifest（`src/audit/packages.rs`）、entry document（`src/audit/entry_docs.rs`）、文書link（`src/audit/links.rs`） |
 | `performance-baseline` | release binaryとTypeScript clientをbuildし、目的別のmanual / scheduled performance sweepを実行。PR gateではない |
@@ -35,6 +35,12 @@ Each profile compares the tracked diff before and after the run and fails if a t
 
 `quick` does not run cargo doc, cargo deny, package-content inspection, the public audit, full workspace integration tests, or clean-install reproducibility checks.
 Success does not imply pull-request or release readiness; run `cargo xtask check` before a push or pull request.
+
+The cargo-deny version authority is [`../.cargo-deny-version`](../.cargo-deny-version).
+`rust-check` fails before `cargo deny check` when the authority is missing,
+malformed, or different from the exact `cargo deny --version` output. Local setup
+uses the authority-derived command documented in
+[`getting-started.md`](../docs/development/getting-started.md#cargo-deny).
 
 The initial profile design used these warm-cache measurements.
 They are observations, not duration guarantees or a performance budget.
