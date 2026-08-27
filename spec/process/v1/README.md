@@ -182,59 +182,84 @@ Rust/TypeScript/fake-core/benchmark tests. Each case records stage, response
 version/code/correlation, dispatch and state-effect eligibility, and parent
 treatment.
 
+In the tables below, `B1` means bootstrap envelope v1, `O1` means accepted
+operation Protocol v1, and `null/null` means null request ID and kind. “No
+dispatch/effect” also forbids state-path inspection or artifact creation.
+
 ### Request framing
 
-| ID | Stimulus | Required result |
-|---|---|---|
-| `req-empty-eof` | Empty stream then EOF | Framing `INVALID_ENVELOPE`; no effect |
-| `req-empty-held` | Zero bytes; stdin held open | Pre-dispatch `HANDLER_TIMEOUT`; no effect |
-| `req-partial-held` | Partial body; stdin held open | Pre-dispatch `HANDLER_TIMEOUT`; no effect |
-| `req-max-held` | 65,536 bytes; no LF; held open | Pre-dispatch `HANDLER_TIMEOUT`; no effect |
-| `req-no-lf-eof` | Bounded non-empty body then EOF | Framing `INVALID_ENVELOPE`; no effect |
-| `req-valid` | Valid body + LF + EOF | Eligible for Protocol dispatch |
-| `req-exact-bound` | 65,536-byte body + LF + EOF | Eligible for Protocol dispatch |
-| `req-over-bound` | 65,537 bytes before LF | `REQUEST_TOO_LARGE`; no effect |
-| `req-crlf` | In-bound body + CRLF | Framing `INVALID_ENVELOPE`; no effect |
-| `req-max-crlf` | 65,536 JSON bytes + CRLF | `REQUEST_TOO_LARGE` wins |
-| `req-json-space` | Valid JSON + space before LF | Body accepted for Protocol decode |
-| `req-post-lf-byte` | Space, tab, LF, arbitrary byte, or second frame after LF | Framing `INVALID_ENVELOPE`; no effect |
-| `req-eof-held` | Body + LF; no extra byte; stdin held open | Pre-dispatch `HANDLER_TIMEOUT`; no effect |
+| ID | Stage | Stimulus | Response version / code | Correlation | Dispatch / state effect | Parent treatment |
+|---|---|---|---|---|---|---|
+| `req-empty-eof` | Child framing | Empty stream then EOF | B1 / `INVALID_ENVELOPE` | `null/null` | No dispatch/effect | `unknown`; no retry |
+| `req-empty-held` | Child pre-dispatch read watchdog | Zero bytes; stdin held open | B1 / `HANDLER_TIMEOUT` | `null/null` | No dispatch/effect | `unknown`; no retry |
+| `req-partial-held` | Child pre-dispatch read watchdog | Partial body; stdin held open | B1 / `HANDLER_TIMEOUT` | `null/null` | No dispatch/effect | `unknown`; no retry |
+| `req-max-held` | Child pre-dispatch read watchdog | 65,536 bytes; no LF; held open | B1 / `HANDLER_TIMEOUT` | `null/null` | No dispatch/effect | `unknown`; no retry |
+| `req-no-lf-eof` | Child framing | Bounded non-empty body then EOF | B1 / `INVALID_ENVELOPE` | `null/null` | No dispatch/effect | `unknown`; no retry |
+| `req-valid` | Child framing then Protocol decode | Valid body + LF + EOF | Selected version / Protocol result | Protocol rules | Eligible for dispatch/effect | Continue to Protocol correlation and classification |
+| `req-exact-bound` | Child framing then Protocol decode | 65,536-byte valid body + LF + EOF | Selected version / Protocol result | Protocol rules | Eligible for dispatch/effect | Continue to Protocol correlation and classification |
+| `req-over-bound` | Child framing | 65,537 bytes before LF | B1 / `REQUEST_TOO_LARGE` | `null/null` | No dispatch/effect | `unknown`; no retry |
+| `req-crlf` | Child framing | In-bound body + CRLF | B1 / `INVALID_ENVELOPE` | `null/null` | No dispatch/effect | `unknown`; no retry |
+| `req-max-crlf` | Child framing | 65,536 JSON bytes + CRLF | B1 / `REQUEST_TOO_LARGE` | `null/null` | No dispatch/effect | `unknown`; no retry |
+| `req-json-space` | Child framing then Protocol decode | Valid JSON + space before LF + EOF | Selected version / Protocol result | Protocol rules | Eligible for dispatch/effect | Continue to Protocol correlation and classification |
+| `req-post-lf-space` | Child framing | Body + LF + space + EOF | B1 / `INVALID_ENVELOPE` | `null/null` | No dispatch/effect | `unknown`; no retry |
+| `req-post-lf-tab` | Child framing | Body + LF + tab + EOF | B1 / `INVALID_ENVELOPE` | `null/null` | No dispatch/effect | `unknown`; no retry |
+| `req-post-lf-cr` | Child framing | Body + LF + CR + EOF | B1 / `INVALID_ENVELOPE` | `null/null` | No dispatch/effect | `unknown`; no retry |
+| `req-post-lf-second-lf` | Child framing | Body + LF + second LF + EOF | B1 / `INVALID_ENVELOPE` | `null/null` | No dispatch/effect | `unknown`; no retry |
+| `req-post-lf-second-frame` | Child framing | Body + LF + second frame + EOF | B1 / `INVALID_ENVELOPE` | `null/null` | No dispatch/effect | `unknown`; no retry |
+| `req-eof-held` | Child pre-dispatch read watchdog | Body + LF; stdin held open | B1 / `HANDLER_TIMEOUT` | `null/null` | No dispatch/effect | `unknown`; no retry |
 
 ### Hello, state, and compatibility
 
-| ID | Stimulus | Required result |
-|---|---|---|
-| `hello-nonexistent-state` | Correlated hello, nonexistent state path | Success; no state artifact; exact request ID/kind |
-| `hello-invalid-profile` | LF-less, trailing, over-bound, or held-open hello | No state artifact or dispatch |
-| `hello-bad-correlation` | Wrong/null request ID or kind | Parent `unknown`; no retry |
-| `hello-future-operation` | Bootstrap-v1 hello advertises operation v2 | Decode, correlate, then protocol-version incompatibility |
-| `hello-missing-capability` | Version matches; required capability absent | Incompatible; no operation sent |
+| ID | Stage | Stimulus | Response version / code | Correlation | Dispatch / state effect | Parent treatment |
+|---|---|---|---|---|---|---|
+| `hello-nonexistent-state` | Bootstrap hello dispatch | Canonical correlated hello with nonexistent state path | B1 / success | Exact request ID and `hello` kind | Hello only; no state access/artifact | Continue to version and capability checks |
+| `hello-no-lf-eof` | Child framing | Hello body then EOF without LF | B1 / `INVALID_ENVELOPE` | `null/null` | No dispatch/effect | `unknown`; no retry |
+| `hello-post-lf-byte` | Child framing | Hello body + LF + one trailing byte + EOF | B1 / `INVALID_ENVELOPE` | `null/null` | No dispatch/effect | `unknown`; no retry |
+| `hello-over-bound` | Child framing | Hello-shaped body exceeds 65,536 bytes before LF | B1 / `REQUEST_TOO_LARGE` | `null/null` | No dispatch/effect | `unknown`; no retry |
+| `hello-held-open` | Child pre-dispatch read watchdog | Hello body + LF while stdin remains open | B1 / `HANDLER_TIMEOUT` | `null/null` | No dispatch/effect | `unknown`; no retry |
+| `hello-request-id-mismatch` | Parent correlation | Bounded hello success with wrong or null request ID | B1 / success | Request ID mismatch | Hello only; no state access/artifact | `unknown`; no retry |
+| `hello-kind-mismatch` | Parent correlation | Bounded hello success with wrong or null kind | B1 / success | Kind mismatch | Hello only; no state access/artifact | `unknown`; no retry |
+| `hello-future-operation` | Parent compatibility after correlation | B1 hello advertises operation Protocol v2 | B1 / success | Exact | Hello only; no operation/state effect | Incompatible; send no operation |
+| `hello-missing-capability` | Parent compatibility after correlation | Version matches; required operation capability absent | B1 / success | Exact | Hello only; no operation/state effect | Incompatible; send no operation |
 
 ### Version and kind
 
-| ID | Stimulus | Required result |
-|---|---|---|
-| `version-bootstrap-unsupported` | Hello with unsupported bootstrap version | Bootstrap-v1 `PROTOCOL_VERSION_UNSUPPORTED` |
-| `version-operation-unsupported` | Registered operation with unsupported version | Bootstrap-v1 `PROTOCOL_VERSION_UNSUPPORTED` |
-| `version-future-kind-unsupported` | Future kind with unsupported operation version | Version error wins |
-| `kind-future-accepted-version` | Future kind with accepted operation version | Operation-version `UNKNOWN_KIND` |
-| `kind-response-unsafe` | Request-bound unknown kind cannot fit echoed response | `kind: null`, fixed message, bounded frame, parent `unknown` |
+| ID | Stage | Stimulus | Response version / code | Correlation | Dispatch / state effect | Parent treatment |
+|---|---|---|---|---|---|---|
+| `version-bootstrap-unsupported` | Minimal probe / bootstrap selection | `hello` with unsupported bootstrap version | B1 / `PROTOCOL_VERSION_UNSUPPORTED` | Safely recovered exact request ID and `hello` | No dispatch/effect | Hello `error`; no retry |
+| `version-submit-unsupported` | Minimal probe / operation selection | Submit with unsupported operation version | B1 / `PROTOCOL_VERSION_UNSUPPORTED` | Safely recovered exact request ID and kind | No dispatch/effect | Submit `rejected`; no retry |
+| `version-reconcile-unsupported` | Minimal probe / operation selection | Reconcile with unsupported operation version | B1 / `PROTOCOL_VERSION_UNSUPPORTED` | Safely recovered exact request ID and kind | No dispatch/effect | Reconcile `unknown`; no retry |
+| `version-future-kind-unsupported` | Minimal probe / operation selection | Unregistered future kind with unsupported operation version | B1 / `PROTOCOL_VERSION_UNSUPPORTED` | Safely recovered exact request ID and kind | No dispatch/effect | `unknown`; no retry; version error wins over membership |
+| `kind-future-accepted-version` | O1 kind membership | Unregistered future kind with accepted operation version | O1 / `UNKNOWN_KIND` | Safely recovered exact request ID and kind | No dispatch/effect | `unknown`; no retry |
+| `kind-response-unsafe` | O1 kind membership / bounded encoding | Request-bound unknown kind cannot fit an echoed response | O1 / `UNKNOWN_KIND` with fixed safe message | Exact request ID; `kind: null` | No dispatch/effect | `unknown`; no retry |
 
 ### Response and process
 
-| ID | Stimulus | Required parent result |
-|---|---|---|
-| `res-no-lf` | Body without LF | Transport `unknown`; no retry |
-| `res-crlf` | Body + CRLF | Transport `unknown`; no retry |
-| `res-post-lf-byte` | Space, tab, LF, arbitrary byte, or second frame after LF | Transport `unknown`; no retry |
-| `res-exact-bound` | 65,536-byte body + LF | Framing accepted; Protocol/correlation still required |
-| `res-over-bound` | 65,537-byte body | Transport `unknown`; no retry |
-| `res-invalid-bytes` | BOM or invalid UTF-8 | Transport `unknown`; no retry |
-| `res-valid-zero` | Valid correlated frame + exit zero | Semantic classification may proceed |
-| `res-valid-nonzero` | Valid-looking frame + nonzero exit | Transport `unknown`; no retry |
-| `res-empty-zero` | Empty stdout + exit zero | Transport `unknown`; no retry |
-| `res-valid-no-close` | Valid-looking frame; process does not close | Transport `unknown`; no retry |
-| `proc-fault` | Spawn failure, signal, no exit code, timeout, or abort | Transport `unknown`; no retry |
+| ID | Stage | Stimulus | Response version / code | Correlation | Dispatch / state effect | Parent treatment |
+|---|---|---|---|---|---|---|
+| `res-no-lf` | Parent response framing | Bounded body then stdout close without LF | No accepted response | Unusable | May already have occurred | Transport `unknown`; no retry |
+| `res-crlf` | Parent response framing | Body + CRLF + stdout/process close | No accepted response | Unusable | May already have occurred | Transport `unknown`; no retry |
+| `res-post-lf-space` | Parent response framing | Body + LF + space + stdout/process close | No accepted response | Unusable | May already have occurred | Transport `unknown`; no retry |
+| `res-post-lf-tab` | Parent response framing | Body + LF + tab + stdout/process close | No accepted response | Unusable | May already have occurred | Transport `unknown`; no retry |
+| `res-post-lf-cr` | Parent response framing | Body + LF + CR + stdout/process close | No accepted response | Unusable | May already have occurred | Transport `unknown`; no retry |
+| `res-post-lf-second-lf` | Parent response framing | Body + LF + second LF + stdout/process close | No accepted response | Unusable | May already have occurred | Transport `unknown`; no retry |
+| `res-post-lf-second-frame` | Parent response framing | Body + LF + second frame + stdout/process close | No accepted response | Unusable | May already have occurred | Transport `unknown`; no retry |
+| `res-exact-bound` | Parent framing then Protocol decode | 65,536-byte body + LF + stdout close + exit zero | Decoded response version/code | Protocol rules | May already have occurred | Continue only if decode and correlation succeed |
+| `res-over-bound` | Parent response framing | 65,537 bytes before LF | No accepted response | Unusable | May already have occurred | Transport `unknown`; no retry |
+| `res-bom` | Parent response decode | BOM-prefixed body + LF + stdout/process close | No accepted response | Unusable | May already have occurred | Transport `unknown`; no retry |
+| `res-invalid-utf8` | Parent response decode | Invalid UTF-8 body + LF + stdout/process close | No accepted response | Unusable | May already have occurred | Transport `unknown`; no retry |
+| `res-valid-zero` | Parent response, correlation, and exit | Valid correlated frame + stdout close + exit zero | Decoded response version/code | Exact | May already have occurred | Semantic classification may proceed |
+| `res-valid-nonzero` | Parent process exit | Valid-looking correlated frame + stdout close + nonzero exit | Response is not accepted | Not authoritative | May already have occurred | Transport `unknown`; no retry |
+| `res-empty-zero` | Parent response framing | Empty stdout + exit zero | No accepted response | Unusable | May already have occurred | Transport `unknown`; no retry |
+| `res-valid-stdout-open` | Parent stdout-close watchdog | Valid-looking frame; stdout never closes | Response is not accepted | Not authoritative | May already have occurred | Transport `unknown`; no retry |
+| `res-valid-process-open` | Parent process-close watchdog | Valid-looking frame + stdout close; process never closes | Response is not accepted | Not authoritative | May already have occurred | Transport `unknown`; no retry |
+| `handler-post-dispatch-timeout` | Child post-dispatch watchdog | Handler watchdog expires after dispatch may have begun | B1 / `HANDLER_TIMEOUT` | `null/null` | Dispatch may have begun; effect may exist | `unknown`; no retry |
+| `proc-spawn-failed` | Parent spawn | Configured process cannot be spawned | No response | None | No dispatch/effect | Transport `unknown`; no retry |
+| `proc-signal-terminated` | Parent process exit | Child terminates by signal | No accepted response | Unusable | May already have occurred | Transport `unknown`; no retry |
+| `proc-abnormal-termination` | Parent process exit | Child terminates abnormally without a valid frame | No accepted response | Unusable | May already have occurred | Transport `unknown`; no retry |
+| `proc-missing-exit-code` | Parent process exit | Process close is observed without an exit code | No accepted response | Unusable | May already have occurred | Transport `unknown`; no retry |
+| `proc-parent-timeout` | Parent lifecycle watchdog | Parent bound expires before required response/process close | No accepted response | Unusable | May already have occurred | Transport `unknown`; no retry |
+| `proc-caller-abort` | Parent caller lifecycle | Caller aborts before completion | No accepted response | Unusable | May already have occurred | Transport `unknown`; no retry |
 
 ## Current migration debt
 
