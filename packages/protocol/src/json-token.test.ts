@@ -22,10 +22,24 @@ test('the lexical scan reports the first duplicate or noncanonical number in sou
   assert.equal(scanJsonTokens('{"version":1e0,"payload":{}}').failure?.inPayload, false);
 });
 
+test('malformed JSON tokens are syntax errors rather than semantic number or Unicode findings', () => {
+  for (const token of ['1e', '1.', '01', '-']) {
+    const scan = scanJsonTokens(`{"value":${token}}`);
+    assert.notEqual(scan.syntaxError, null, token);
+    assert.equal(scan.failure, null, token);
+  }
+  for (const frame of [String.raw`{"value":"\q"}`, String.raw`{"value":"\u12"}`]) {
+    const scan = scanJsonTokens(frame);
+    assert.notEqual(scan.syntaxError, null, frame);
+    assert.equal(scan.failure, null, frame);
+  }
+});
+
 test('the probe text replaces numbers without coercing them', () => {
   const scan = scanJsonTokens(
     '{"version":2,"requestId":"req-1","kind":"workflow.future","payload":{"n":999999999999999999999999}}',
   );
+  assert.equal(scan.syntaxError, null);
   assert.equal(scan.topLevelNumbers.get('version'), '2');
   assert.deepEqual(JSON.parse(scan.probeText), {
     version: 0,

@@ -5,7 +5,13 @@
  */
 
 import { codes, isShortErrorCode, ProtocolError } from './error.ts';
-import { ARTIFACT_REF_PATTERN, assertOnlyKeys, isIdentifier, isPlainObject } from './shape.ts';
+import {
+  ARTIFACT_REF_PATTERN,
+  assertOnlyKeys,
+  isIdentifier,
+  isPlainObject,
+  ownDataValue,
+} from './shape.ts';
 
 export type Role = 'implementation' | 'review';
 export const ROLES: readonly Role[] = ['implementation', 'review'];
@@ -90,13 +96,13 @@ function invalidPayload(message: string): ProtocolError {
 }
 
 function requireString(object: Record<string, unknown>, key: string, path: string): string {
-  const value = object[key];
+  const value = ownDataValue(object, key, invalidPayload, path);
   if (typeof value !== 'string') throw invalidPayload(`${path}.${key} must be a string`);
   return value;
 }
 
 function requireRole(object: Record<string, unknown>, path: string): Role {
-  const value = object.role;
+  const value = ownDataValue(object, 'role', invalidPayload, path);
   if (typeof value !== 'string' || !(ROLES as readonly string[]).includes(value)) {
     throw invalidPayload(`${path}.role must be one of ${ROLES.join(', ')}`);
   }
@@ -105,13 +111,15 @@ function requireRole(object: Record<string, unknown>, path: string): Role {
 
 function optionalField(object: Record<string, unknown>, key: string, path: string): unknown {
   if (!Object.hasOwn(object, key)) return undefined;
-  const value = object[key];
-  if (value === null) throw invalidPayload(`${path}.${key} must be omitted rather than null`);
+  const value = ownDataValue(object, key, invalidPayload, path);
+  if (value === null || value === undefined) {
+    throw invalidPayload(`${path}.${key} must be omitted rather than null or undefined`);
+  }
   return value;
 }
 
 function requireDigest(object: Record<string, unknown>, key: string, path: string): ContentDigest {
-  const value = object[key];
+  const value = ownDataValue(object, key, invalidPayload, path);
   if (!isPlainObject(value)) throw invalidPayload(`${path}.${key} must be an object`);
   assertOnlyKeys(value, ['algorithm', 'hex'], invalidPayload);
   const algorithm = requireString(value, 'algorithm', `${path}.${key}`);
@@ -159,7 +167,7 @@ function decodeWorkflowSignalShape(value: unknown): WorkflowSignalShape {
     ],
     invalidPayload,
   );
-  const kind = value.kind;
+  const kind = ownDataValue(value, 'kind', invalidPayload, 'signal');
   if (typeof kind !== 'string' || !(SIGNAL_KINDS as readonly string[]).includes(kind)) {
     throw invalidPayload(`signal.kind must be one of ${SIGNAL_KINDS.join(', ')}`);
   }
@@ -168,6 +176,7 @@ function decodeWorkflowSignalShape(value: unknown): WorkflowSignalShape {
     findingCount !== undefined &&
     (typeof findingCount !== 'number' ||
       !Number.isInteger(findingCount) ||
+      Object.is(findingCount, -0) ||
       findingCount < 0 ||
       findingCount > U32_MAX)
   ) {
@@ -240,7 +249,8 @@ function validateWorkflowSignal(signal: WorkflowSignalShape): WorkflowSignal {
 export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubmitPayload {
   if (!isPlainObject(payload)) throw invalidPayload('payload must be an object');
   assertOnlyKeys(payload, ['expected', 'signal'], invalidPayload);
-  const { expected, signal } = payload;
+  const expected = ownDataValue(payload, 'expected', invalidPayload, 'payload');
+  const signal = ownDataValue(payload, 'signal', invalidPayload, 'payload');
   if (!isPlainObject(expected)) throw invalidPayload('expected must be an object');
 
   assertOnlyKeys(
@@ -270,7 +280,9 @@ export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubm
   if (!validDigest(expectedShape.candidateDigest)) {
     throw invalidExpectation('candidateDigest', 'not a supported content digest');
   }
-  const expectedResult: { -readonly [K in keyof ExpectedAssignment]: ExpectedAssignment[K] } = {
+  const expectedResult: {
+    -readonly [K in keyof ExpectedAssignment]: ExpectedAssignment[K];
+  } = {
     workflowId: expectedShape.workflowId,
     assignmentId: expectedShape.assignmentId,
     attemptId: expectedShape.attemptId,
@@ -278,7 +290,10 @@ export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubm
     artifactRevision: expectedShape.artifactRevision,
     candidateDigest: expectedShape.candidateDigest,
   };
-  return { expected: expectedResult, signal: validateWorkflowSignal(signalShape) };
+  return {
+    expected: expectedResult,
+    signal: validateWorkflowSignal(signalShape),
+  };
 }
 
 /** The kind-specific rules shared with `aizign-core`. */
@@ -325,61 +340,23 @@ function validateSignalRules(
     throw fail(`${kind} does not carry shortErrorCode`);
 }
 
-/** Encodes a payload as a JSON-ready object, omitting absent optionals. */
-export function encodeWorkflowSignalSubmit(
-  payload: WorkflowSignalSubmitPayload,
-): Record<string, unknown> {
-  const { expected, signal } = payload;
-  return {
-    expected: {
-      workflowId: expected.workflowId,
-      assignmentId: expected.assignmentId,
-      attemptId: expected.attemptId,
-      role: expected.role,
-      artifactRevision: expected.artifactRevision,
-      candidateDigest: expected.candidateDigest,
-    },
-    signal: encodeWorkflowSignal(signal),
-  };
-}
-
-/** Encodes the shared closed workflow-signal DTO. */
-export function encodeWorkflowSignal(signal: WorkflowSignal): Record<string, unknown> {
-  const encoded: Record<string, unknown> = {
-    eventId: signal.eventId,
-    workflowId: signal.workflowId,
-    assignmentId: signal.assignmentId,
-    attemptId: signal.attemptId,
-    role: signal.role,
-    artifactRevision: signal.artifactRevision,
-    candidateDigest: signal.candidateDigest,
-    kind: signal.kind,
-  };
-  if (signal.findingCount !== undefined) encoded.findingCount = signal.findingCount;
-  if (signal.artifactRef !== undefined) encoded.artifactRef = signal.artifactRef;
-  if (signal.shortErrorCode !== undefined) encoded.shortErrorCode = signal.shortErrorCode;
-  return encoded;
-}
-
 /** Decodes the reconcile payload through the same signal rules as submit. */
 export function decodeWorkflowSignalReconcile(payload: unknown): WorkflowSignalReconcilePayload {
   if (!isPlainObject(payload)) throw invalidPayload('payload must be an object');
   assertOnlyKeys(payload, ['signal'], invalidPayload);
-  return { signal: validateWorkflowSignal(decodeWorkflowSignalShape(payload.signal)) };
-}
-
-/** Encodes a reconciliation request payload. */
-export function encodeWorkflowSignalReconcile(
-  payload: WorkflowSignalReconcilePayload,
-): Record<string, unknown> {
-  return { signal: encodeWorkflowSignal(payload.signal) };
+  return {
+    signal: validateWorkflowSignal(
+      decodeWorkflowSignalShape(ownDataValue(payload, 'signal', invalidPayload, 'payload')),
+    ),
+  };
 }
 
 /** Decodes the success payload of `workflow.signal.submit`. */
 export function decodeSignalResult(payload: unknown): SignalResult {
   if (!isPlainObject(payload)) throw invalidPayload('payload must be an object');
   assertOnlyKeys(payload, ['disposition', 'eventId'], invalidPayload);
-  const { disposition, eventId } = payload;
+  const disposition = ownDataValue(payload, 'disposition', invalidPayload, 'payload');
+  const eventId = ownDataValue(payload, 'eventId', invalidPayload, 'payload');
   if (disposition !== 'accepted' && disposition !== 'duplicate') {
     throw invalidPayload('disposition must be accepted or duplicate');
   }
@@ -391,7 +368,8 @@ export function decodeSignalResult(payload: unknown): SignalResult {
 export function decodeReconciliationResult(payload: unknown): ReconciliationResult {
   if (!isPlainObject(payload)) throw invalidPayload('payload must be an object');
   assertOnlyKeys(payload, ['disposition', 'eventId'], invalidPayload);
-  const { disposition, eventId } = payload;
+  const disposition = ownDataValue(payload, 'disposition', invalidPayload, 'payload');
+  const eventId = ownDataValue(payload, 'eventId', invalidPayload, 'payload');
   if (disposition !== 'accepted' && disposition !== 'conflict' && disposition !== 'absent') {
     throw invalidPayload('disposition must be accepted, conflict, or absent');
   }

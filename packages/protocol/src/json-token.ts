@@ -10,6 +10,11 @@ export interface JsonTokenFailure {
 }
 
 export interface JsonTokenScan {
+  /** Fatal JSON grammar defect; callers must reject it before correlation recovery. */
+  readonly syntaxError: {
+    readonly index: number;
+    readonly message: string;
+  } | null;
   readonly failure: JsonTokenFailure | null;
   /** JSON text with every number token replaced by `0` for lossless probing. */
   readonly probeText: string;
@@ -18,6 +23,7 @@ export interface JsonTokenScan {
 }
 
 const MAX_SCAN_DEPTH = 128;
+const JSON_NUMBER = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/;
 const CANONICAL_INTEGER = /^(?:0|-?[1-9][0-9]*)$/;
 
 interface ObjectLevel {
@@ -110,7 +116,12 @@ function numberEnd(text: string, start: number): number {
 export function scanJsonTokens(text: string): JsonTokenScan {
   const levels: Level[] = [];
   const topLevelNumbers = new Map<string, string>();
-  const replacements: Array<{ start: number; end: number }> = [];
+  const replacements: Array<{
+    start: number;
+    end: number;
+    replacement: '0' | 'null' | '\"\"';
+  }> = [];
+  let syntaxError: { index: number; message: string } | null = null;
   let failure: JsonTokenFailure | null = null;
   let index = 0;
 
@@ -123,8 +134,23 @@ export function scanJsonTokens(text: string): JsonTokenScan {
     if (char === undefined) break;
     if (char === '"') {
       const end = endOfString(text, index);
-      if (end === null) break;
+      if (end === null) {
+        syntaxError ??= {
+          index,
+          message: 'frame contains an unterminated JSON string',
+        };
+        break;
+      }
       const decoded = decodedString(text, index, end);
+      if (decoded === null) {
+        syntaxError ??= {
+          index,
+          message: 'frame contains an invalid JSON string token',
+        };
+      }
+      const after = nextNonWhitespace(text, end);
+      const parent = levels.at(-1);
+      const isMemberName = text[after] === ':' && parent?.kind === 'object';
       if (decoded !== null && !isWellFormedUnicode(decoded)) {
         fail({
           kind: 'invalid-unicode',
@@ -132,10 +158,13 @@ export function scanJsonTokens(text: string): JsonTokenScan {
           inPayload: valueIsPayload(levels) || levels.at(-1)?.inPayload === true,
           message: 'JSON member names and string values must be well-formed Unicode',
         });
+        replacements.push({
+          start: index,
+          end,
+          replacement: isMemberName ? '""' : 'null',
+        });
       }
-      const after = nextNonWhitespace(text, end);
-      const parent = levels.at(-1);
-      if (text[after] === ':' && parent?.kind === 'object' && decoded !== null) {
+      if (isMemberName && decoded !== null) {
         if (parent.keys.has(decoded)) {
           fail({
             kind: 'duplicate-member',
@@ -159,7 +188,12 @@ export function scanJsonTokens(text: string): JsonTokenScan {
       if (levels.length < MAX_SCAN_DEPTH) {
         levels.push(
           char === '{'
-            ? { kind: 'object', keys: new Set(), inPayload, pendingKey: undefined }
+            ? {
+                kind: 'object',
+                keys: new Set(),
+                inPayload,
+                pendingKey: undefined,
+              }
             : { kind: 'array', inPayload },
         );
       }
@@ -175,6 +209,14 @@ export function scanJsonTokens(text: string): JsonTokenScan {
     if (char === '-' || (char >= '0' && char <= '9')) {
       const end = numberEnd(text, index);
       const token = text.slice(index, end);
+      if (!JSON_NUMBER.test(token)) {
+        syntaxError ??= {
+          index,
+          message: 'frame contains an invalid JSON number token',
+        };
+        index = end;
+        continue;
+      }
       const parent = levels.at(-1);
       const topLevelKey =
         levels.length === 1 && parent?.kind === 'object' ? parent.pendingKey : undefined;
@@ -188,7 +230,7 @@ export function scanJsonTokens(text: string): JsonTokenScan {
           message: 'Protocol numbers must use canonical integer spelling',
         });
       }
-      replacements.push({ start: index, end });
+      replacements.push({ start: index, end, replacement: '0' });
       consumePendingKey(levels);
       index = end;
       continue;
@@ -203,9 +245,9 @@ export function scanJsonTokens(text: string): JsonTokenScan {
   let probeText = '';
   let copied = 0;
   for (const replacement of replacements) {
-    probeText += `${text.slice(copied, replacement.start)}0`;
+    probeText += `${text.slice(copied, replacement.start)}${replacement.replacement}`;
     copied = replacement.end;
   }
   probeText += text.slice(copied);
-  return { failure, probeText, topLevelNumbers };
+  return { syntaxError, failure, probeText, topLevelNumbers };
 }

@@ -19,8 +19,6 @@ import {
   decodeSignalResult,
   decodeWorkflowSignalReconcile,
   decodeWorkflowSignalSubmit,
-  encodeWorkflowSignalReconcile,
-  encodeWorkflowSignalSubmit,
   type ReconciliationResult,
   type SignalResult,
   type WorkflowSignalReconcilePayload,
@@ -55,7 +53,10 @@ export type Request =
 export type ResponseBody =
   | { readonly type: 'hello'; readonly info: HelloInfo }
   | { readonly type: 'workflow.signal'; readonly result: SignalResult }
-  | { readonly type: 'workflow.signal.reconciliation'; readonly result: ReconciliationResult }
+  | {
+      readonly type: 'workflow.signal.reconciliation';
+      readonly result: ReconciliationResult;
+    }
   | { readonly type: 'error'; readonly error: ProtocolError };
 
 /** Source-qualified version axis retained even while both wire values are 1. */
@@ -185,6 +186,9 @@ export function decodeRequest(frame: Uint8Array | string): Request {
     throw unaddressed(codes.INVALID_ENVELOPE, `frame is not JSON: ${(error as Error).message}`);
   }
   const scan = scanJsonTokens(text);
+  if (scan.syntaxError !== null) {
+    throw unaddressed(codes.INVALID_ENVELOPE, scan.syntaxError.message);
+  }
   const probe = foldedProbe(scan.probeText);
   if (probe === null) {
     throw unaddressed(codes.INVALID_ENVELOPE, 'frame must be a JSON object');
@@ -264,7 +268,11 @@ export function decodeRequest(frame: Uint8Array | string): Request {
     case KIND_WORKFLOW_SIGNAL_SUBMIT: {
       try {
         const payload = decodeWorkflowSignalSubmit(value.payload);
-        return { requestId: value.requestId, kind: 'workflow.signal.submit', payload };
+        return {
+          requestId: value.requestId,
+          kind: 'workflow.signal.submit',
+          payload,
+        };
       } catch (error) {
         if (error instanceof ProtocolError) {
           throw new DecodeFailure(requestId, kind, responseVersion, error);
@@ -275,7 +283,11 @@ export function decodeRequest(frame: Uint8Array | string): Request {
     case KIND_WORKFLOW_SIGNAL_RECONCILE: {
       try {
         const payload = decodeWorkflowSignalReconcile(value.payload);
-        return { requestId: value.requestId, kind: 'workflow.signal.reconcile', payload };
+        return {
+          requestId: value.requestId,
+          kind: 'workflow.signal.reconcile',
+          payload,
+        };
       } catch (error) {
         if (error instanceof ProtocolError) {
           throw new DecodeFailure(requestId, kind, responseVersion, error);
@@ -305,10 +317,10 @@ export function encodeRequest(request: Request): string {
     payload = {};
   } else if (kind === KIND_WORKFLOW_SIGNAL_SUBMIT) {
     const source = ownDataValue(request, 'payload', invalidEnvelope, 'request');
-    payload = encodeWorkflowSignalSubmit(decodeWorkflowSignalSubmit(source));
+    payload = { ...decodeWorkflowSignalSubmit(source) };
   } else if (kind === KIND_WORKFLOW_SIGNAL_RECONCILE) {
     const source = ownDataValue(request, 'payload', invalidEnvelope, 'request');
-    payload = encodeWorkflowSignalReconcile(decodeWorkflowSignalReconcile(source));
+    payload = { ...decodeWorkflowSignalReconcile(source) };
   } else {
     throw new ProtocolError(codes.UNKNOWN_KIND, `kind "${kind}" is not registered`);
   }
@@ -484,12 +496,16 @@ export function decodeResponse(
     throw unaddressed(codes.INVALID_ENVELOPE, `frame is not JSON: ${(error as Error).message}`);
   }
   const scan = scanJsonTokens(text);
+  if (scan.syntaxError !== null) {
+    throw unaddressed(codes.INVALID_ENVELOPE, scan.syntaxError.message);
+  }
   const probe = foldedProbe(scan.probeText);
   if (probe === null) throw unaddressed(codes.INVALID_ENVELOPE, 'frame must be a JSON object');
   const recovered = correlationFromFolded(probe);
   const probedCode =
     isPlainObject(probe.error) && isShortErrorCode(probe.error.code) ? probe.error.code : undefined;
   const bootstrapCode =
+    probe.ok === false &&
     probedCode !== undefined &&
     new Set<string>([
       codes.REQUEST_TOO_LARGE,
@@ -590,7 +606,10 @@ export function decodeResponse(
             version: { axis, version: wireVersion },
             requestId,
             kind,
-            body: { type: 'workflow.signal', result: decodeSignalResult(value.payload) },
+            body: {
+              type: 'workflow.signal',
+              result: decodeSignalResult(value.payload),
+            },
           };
         } catch (error) {
           if (error instanceof ProtocolError) throw fail(error.code, error.message);
@@ -634,7 +653,10 @@ export function decodeResponse(
       version: { axis, version: wireVersion },
       requestId,
       kind,
-      body: { type: 'error', error: new ProtocolError(error.code, error.message) },
+      body: {
+        type: 'error',
+        error: new ProtocolError(error.code, error.message),
+      },
     };
   }
   throw invalidEnvelope('ok responses carry exactly payload; error responses carry exactly error');
@@ -668,7 +690,10 @@ export function extractFrame(output: Uint8Array | string): FrameExtraction {
   const rest = bytes.subarray(newline + 1);
   if (frame.length === 0) return { kind: 'empty' };
   if (frame.at(-1) === 0x0d) {
-    return { kind: 'extra', detail: 'CRLF is not a valid process-profile terminator' };
+    return {
+      kind: 'extra',
+      detail: 'CRLF is not a valid process-profile terminator',
+    };
   }
   if (rest.length > 0) {
     return { kind: 'extra', detail: 'a byte followed the terminating LF' };

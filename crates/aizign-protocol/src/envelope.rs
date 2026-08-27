@@ -219,6 +219,8 @@ struct Recovered {
     request_id: Option<String>,
     kind: Option<String>,
     response_version: ResponseVersion,
+    typed_text: String,
+    payload_integer_out_of_range: bool,
 }
 
 impl Recovered {
@@ -264,6 +266,12 @@ fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
         )));
     }
     let scan = scan_json_tokens(text);
+    if let Some(message) = scan.syntax_error {
+        return Err(unaddressed(ProtocolError::from_valid_code(
+            codes::INVALID_ENVELOPE,
+            message,
+        )));
+    }
     let probe: serde_json::Value = serde_json::from_str(&scan.probe_text).map_err(|error| {
         unaddressed(ProtocolError::from_valid_code(
             codes::INVALID_ENVELOPE,
@@ -281,6 +289,8 @@ fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned),
         response_version: ResponseVersion::bootstrap(),
+        typed_text: scan.typed_text.clone(),
+        payload_integer_out_of_range: scan.payload_integer_out_of_range,
     };
 
     if let Some(failure) = scan.failure {
@@ -334,12 +344,13 @@ pub fn decode_request(frame: &[u8]) -> Result<Request, DecodeFailure> {
     let recovered = probe(frame)?;
     let fail = |error: ProtocolError| recovered.fail(error);
 
-    let envelope: RequestEnvelope = serde_json::from_slice(frame).map_err(|error| {
-        fail(ProtocolError::from_valid_code(
-            codes::INVALID_ENVELOPE,
-            error.to_string(),
-        ))
-    })?;
+    let envelope: RequestEnvelope =
+        serde_json::from_str(&recovered.typed_text).map_err(|error| {
+            fail(ProtocolError::from_valid_code(
+                codes::INVALID_ENVELOPE,
+                error.to_string(),
+            ))
+        })?;
     if !valid_request_id(&envelope.request_id) {
         return Err(fail(ProtocolError::from_valid_code(
             codes::INVALID_ENVELOPE,
@@ -368,14 +379,30 @@ pub fn decode_request(frame: &[u8]) -> Result<Request, DecodeFailure> {
             }
             RequestKind::Hello
         }
-        KIND_WORKFLOW_SIGNAL_SUBMIT => RequestKind::SubmitWorkflowSignal(Box::new(
-            workflow_signal::decode_submit(serde_json::Value::Object(envelope.payload))
-                .map_err(fail)?,
-        )),
-        KIND_WORKFLOW_SIGNAL_RECONCILE => RequestKind::ReconcileWorkflowSignal(Box::new(
-            workflow_signal::decode_reconcile(serde_json::Value::Object(envelope.payload))
-                .map_err(fail)?,
-        )),
+        KIND_WORKFLOW_SIGNAL_SUBMIT => {
+            if recovered.payload_integer_out_of_range {
+                return Err(fail(ProtocolError::from_valid_code(
+                    codes::INVALID_PAYLOAD,
+                    "payload integer is outside the unsigned 32-bit range",
+                )));
+            }
+            RequestKind::SubmitWorkflowSignal(Box::new(
+                workflow_signal::decode_submit(serde_json::Value::Object(envelope.payload))
+                    .map_err(fail)?,
+            ))
+        }
+        KIND_WORKFLOW_SIGNAL_RECONCILE => {
+            if recovered.payload_integer_out_of_range {
+                return Err(fail(ProtocolError::from_valid_code(
+                    codes::INVALID_PAYLOAD,
+                    "payload integer is outside the unsigned 32-bit range",
+                )));
+            }
+            RequestKind::ReconcileWorkflowSignal(Box::new(
+                workflow_signal::decode_reconcile(serde_json::Value::Object(envelope.payload))
+                    .map_err(fail)?,
+            ))
+        }
         other => {
             return Err(fail(ProtocolError::from_valid_code(
                 codes::UNKNOWN_KIND,
@@ -594,6 +621,12 @@ pub fn decode_response_for(
         )));
     }
     let scan = scan_json_tokens(text);
+    if let Some(message) = scan.syntax_error {
+        return Err(unaddressed(ProtocolError::from_valid_code(
+            codes::INVALID_ENVELOPE,
+            message,
+        )));
+    }
     let folded: serde_json::Value = serde_json::from_str(&scan.probe_text).map_err(|error| {
         unaddressed(ProtocolError::from_valid_code(
             codes::INVALID_ENVELOPE,
@@ -611,6 +644,8 @@ pub fn decode_response_for(
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned),
         response_version: initial_version,
+        typed_text: scan.typed_text.clone(),
+        payload_integer_out_of_range: scan.payload_integer_out_of_range,
     };
     let ok = folded
         .get("ok")
@@ -662,12 +697,13 @@ pub fn decode_response_for(
         )));
     }
 
-    let envelope: ResponseEnvelope = serde_json::from_slice(frame).map_err(|error| {
-        fail(ProtocolError::from_valid_code(
-            codes::INVALID_ENVELOPE,
-            error.to_string(),
-        ))
-    })?;
+    let envelope: ResponseEnvelope =
+        serde_json::from_str(&recovered.typed_text).map_err(|error| {
+            fail(ProtocolError::from_valid_code(
+                codes::INVALID_ENVELOPE,
+                error.to_string(),
+            ))
+        })?;
     if envelope.protocol != PROTOCOL_NAME {
         return Err(fail(ProtocolError::from_valid_code(
             codes::INVALID_ENVELOPE,
@@ -687,6 +723,12 @@ pub fn decode_response_for(
     let body = match (envelope.ok, envelope.payload, envelope.error) {
         (true, Some(payload), None) => match envelope.kind.as_deref() {
             Some(KIND_HELLO) => {
+                if recovered.payload_integer_out_of_range {
+                    return Err(fail(ProtocolError::from_valid_code(
+                        codes::INVALID_PAYLOAD,
+                        "payload integer is outside the unsigned 32-bit range",
+                    )));
+                }
                 let info: crate::HelloInfo = serde_json::from_value(payload).map_err(|error| {
                     fail(ProtocolError::from_valid_code(
                         codes::INVALID_PAYLOAD,
@@ -702,11 +744,25 @@ pub fn decode_response_for(
                 ResponseBody::Hello(info)
             }
             Some(KIND_WORKFLOW_SIGNAL_SUBMIT) => {
+                if recovered.payload_integer_out_of_range {
+                    return Err(fail(ProtocolError::from_valid_code(
+                        codes::INVALID_PAYLOAD,
+                        "payload integer is outside the unsigned 32-bit range",
+                    )));
+                }
                 ResponseBody::WorkflowSignal(workflow_signal::decode_result(payload).map_err(fail)?)
             }
-            Some(KIND_WORKFLOW_SIGNAL_RECONCILE) => ResponseBody::WorkflowSignalReconciliation(
-                workflow_signal::decode_reconciliation_result(payload).map_err(fail)?,
-            ),
+            Some(KIND_WORKFLOW_SIGNAL_RECONCILE) => {
+                if recovered.payload_integer_out_of_range {
+                    return Err(fail(ProtocolError::from_valid_code(
+                        codes::INVALID_PAYLOAD,
+                        "payload integer is outside the unsigned 32-bit range",
+                    )));
+                }
+                ResponseBody::WorkflowSignalReconciliation(
+                    workflow_signal::decode_reconciliation_result(payload).map_err(fail)?,
+                )
+            }
             Some(other) => {
                 return Err(fail(ProtocolError::from_valid_code(
                     codes::UNKNOWN_KIND,

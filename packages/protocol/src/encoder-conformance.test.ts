@@ -67,7 +67,9 @@ function assertFrame(name: string, frame: string, bound: number): void {
   assert.equal(frame.includes('\n'), false, `${name}: frame contains a raw newline`);
   assert.equal(frame.includes('\r'), false, `${name}: frame contains a raw carriage return`);
   assert.equal(frame.trim(), frame, `${name}: frame contains surrounding whitespace`);
-  assert.equal(scanJsonTokens(frame).failure, null, `${name}: frame has a lexical defect`);
+  const scan = scanJsonTokens(frame);
+  assert.equal(scan.syntaxError, null, `${name}: frame has invalid JSON grammar`);
+  assert.equal(scan.failure, null, `${name}: frame has a lexical defect`);
 
   const encoded: unknown = JSON.parse(frame);
   assert.ok(typeof encoded === 'object' && encoded !== null && !Array.isArray(encoded), name);
@@ -381,7 +383,10 @@ test('response encoder preserves event id provenance', () => {
     [
       response('req-reconcile-provenance', 'workflow.signal.reconcile', {
         type: 'workflow.signal.reconciliation',
-        result: { disposition: 'conflict', eventId: 'evt-reconcile-provenance' },
+        result: {
+          disposition: 'conflict',
+          eventId: 'evt-reconcile-provenance',
+        },
       }),
       'evt-reconcile-provenance',
     ],
@@ -418,7 +423,10 @@ test('outbound source validation rejects hostile descriptors and prototypes with
   });
   assert.throws(() => encodeRequest(nonEnumerable as Request), invalidEnvelope);
 
-  const symbolRequest = { requestId: 'req-symbol', kind: 'hello' } as Request & {
+  const symbolRequest = {
+    requestId: 'req-symbol',
+    kind: 'hello',
+  } as Request & {
     [key: symbol]: unknown;
   };
   symbolRequest[Symbol('hidden')] = true;
@@ -451,10 +459,9 @@ test('outbound source validation rejects hostile descriptors and prototypes with
     body: { type: 'error', error },
   });
   class ProtocolErrorSubclass extends ProtocolError {}
-  assert.throws(
-    () => encodeResponse(responseFor(new ProtocolErrorSubclass(codes.INTERNAL, 'x'))),
-    invalidEnvelope,
-  );
+  const disguisedSubclass = new ProtocolErrorSubclass(codes.INTERNAL, 'x');
+  Object.setPrototypeOf(disguisedSubclass, ProtocolError.prototype);
+  assert.throws(() => encodeResponse(responseFor(disguisedSubclass)), invalidEnvelope);
   assert.throws(
     () =>
       encodeResponse(
@@ -480,8 +487,15 @@ test('outbound source validation rejects hostile descriptors and prototypes with
   assert.equal(getterCalls, 0);
 
   const mutatedError = new ProtocolError(codes.INTERNAL, 'x');
-  Object.defineProperty(mutatedError, 'code', { value: 'not a code', enumerable: true });
+  Object.defineProperty(mutatedError, 'code', {
+    value: codes.HANDLER_TIMEOUT,
+    enumerable: true,
+  });
   assert.throws(() => encodeResponse(responseFor(mutatedError)), invalidEnvelope);
+
+  const mutatedMessage = new ProtocolError(codes.INTERNAL, 'x');
+  Object.defineProperty(mutatedMessage, 'message', { value: 'changed' });
+  assert.throws(() => encodeResponse(responseFor(mutatedMessage)), invalidEnvelope);
 
   const authenticWithToJson = new ProtocolError(codes.INTERNAL, 'x') as ProtocolError & {
     toJSON?: () => unknown;

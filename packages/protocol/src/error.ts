@@ -47,7 +47,13 @@ export function isShortErrorCode(value: unknown): value is string {
  * model-facing boundary. Construction rejects malformed raw codes; operation
  * clients decide whether they recognize a well-formed code's semantics.
  */
-const authenticProtocolErrors = new WeakSet<object>();
+interface ProtocolErrorSnapshot {
+  readonly code: string;
+  readonly message: string;
+  readonly name: 'ProtocolError';
+}
+
+const authenticProtocolErrors = new WeakMap<object, ProtocolErrorSnapshot>();
 
 export class ProtocolError extends Error {
   readonly code: string;
@@ -58,16 +64,39 @@ export class ProtocolError extends Error {
     super(message);
     this.name = 'ProtocolError';
     this.code = code;
-    authenticProtocolErrors.add(this);
+    if (new.target === ProtocolError) {
+      authenticProtocolErrors.set(this, {
+        code,
+        message,
+        name: 'ProtocolError',
+      });
+    }
   }
 }
 
 /** Internal check for the sole sanctioned non-plain response source value. */
 export function isAuthenticProtocolError(value: unknown): value is ProtocolError {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    Object.getPrototypeOf(value) !== ProtocolError.prototype
+  ) {
+    return false;
+  }
+  const snapshot = authenticProtocolErrors.get(value);
+  if (snapshot === undefined) return false;
+  const code = Object.getOwnPropertyDescriptor(value, 'code');
+  const message = Object.getOwnPropertyDescriptor(value, 'message');
+  const name = Object.getOwnPropertyDescriptor(value, 'name');
   return (
-    typeof value === 'object' &&
-    value !== null &&
-    authenticProtocolErrors.has(value) &&
-    Object.getPrototypeOf(value) === ProtocolError.prototype
+    code !== undefined &&
+    'value' in code &&
+    code.value === snapshot.code &&
+    message !== undefined &&
+    'value' in message &&
+    message.value === snapshot.message &&
+    name !== undefined &&
+    'value' in name &&
+    name.value === snapshot.name
   );
 }

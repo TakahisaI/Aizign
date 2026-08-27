@@ -78,13 +78,19 @@ test('protocol executes every assigned process-profile version case', async () =
   await registry.run('kind-future-accepted-version', () => {
     const error = failure('future.operation', 1);
     assert.equal(error.error.code, codes.UNKNOWN_KIND);
-    assert.deepEqual(error.responseVersion, { axis: 'accepted-operation', version: 1 });
+    assert.deepEqual(error.responseVersion, {
+      axis: 'accepted-operation',
+      version: 1,
+    });
   });
   registry.complete();
 });
 
 test('response encoding keeps the explicit axis when operation and bootstrap versions diverge', () => {
-  const body = { type: 'error' as const, error: new ProtocolError(codes.INTERNAL, 'failed') };
+  const body = {
+    type: 'error' as const,
+    error: new ProtocolError(codes.INTERNAL, 'failed'),
+  };
   assert.match(
     encodeResponse({
       version: { axis: 'accepted-operation', version: 2 },
@@ -132,7 +138,11 @@ test('response encoding keeps the explicit axis when operation and bootstrap ver
           error: new ProtocolError(codes.PROTOCOL_VERSION_UNSUPPORTED, 'unsupported'),
         },
       }),
-      { requestAxis: 'accepted-operation', bootstrapVersion: 1, operationVersion: 2 },
+      {
+        requestAxis: 'accepted-operation',
+        bootstrapVersion: 1,
+        operationVersion: 2,
+      },
     ).version,
     { axis: 'bootstrap', version: 1 },
   );
@@ -169,7 +179,10 @@ test('encoded frames are single lines with escaped newlines', () => {
     version: { axis: 'bootstrap', version: 1 },
     requestId: null,
     kind: null,
-    body: { type: 'error', error: new ProtocolError(codes.INTERNAL, 'line one\nline two') },
+    body: {
+      type: 'error',
+      error: new ProtocolError(codes.INTERNAL, 'line one\nline two'),
+    },
   });
   assert.ok(!frame.includes('\n'));
   const decoded = decodeResponse(frame);
@@ -186,6 +199,82 @@ test('encoded frames are single lines with escaped newlines', () => {
 test('malformed codes are rejected rather than normalized', () => {
   assert.throws(() => new ProtocolError('not a code', 'm'), TypeError);
   assert.equal(new ProtocolError('FUTURE_OUTCOME_UNKNOWN', 'm').code, 'FUTURE_OUTCOME_UNKNOWN');
+});
+
+test('malformed JSON grammar is rejected before correlation recovery', () => {
+  const prefix =
+    '{"protocol":"aizign","version":1,"requestId":"req-syntax","kind":"hello","payload":{"value":';
+  for (const value of ['1e', '1.', '01', '-', String.raw`"\q"`, String.raw`"\u12"`]) {
+    assert.throws(
+      () => decodeRequest(`${prefix}${value}}}`),
+      (error: unknown) =>
+        error instanceof DecodeFailure &&
+        error.error.code === codes.INVALID_ENVELOPE &&
+        error.requestId === null &&
+        error.kind === null &&
+        error.responseVersion.axis === 'bootstrap',
+      value,
+    );
+  }
+});
+
+test('an ill-formed top-level kind is not retained as correlation metadata', () => {
+  assert.throws(
+    () =>
+      decodeRequest(
+        String.raw`{"protocol":"aizign","version":1,"requestId":"req-unicode","kind":"\uD800","payload":{}}`,
+      ),
+    (error: unknown) =>
+      error instanceof DecodeFailure &&
+      error.error.code === codes.INVALID_ENVELOPE &&
+      error.requestId === 'req-unicode' &&
+      error.kind === null,
+  );
+});
+
+test('canonical integers beyond the host numeric range remain payload failures', () => {
+  const huge = `1${'0'.repeat(400)}`;
+  const digest = 'a'.repeat(64);
+  const request = `{"protocol":"aizign","version":1,"requestId":"req-huge","kind":"workflow.signal.submit","payload":{"expected":{"workflowId":"wf-1","assignmentId":"as-1","attemptId":"attempt-1","role":"review","artifactRevision":"rev-1","candidateDigest":{"algorithm":"sha256","hex":"${digest}"}},"signal":{"eventId":"evt-1","workflowId":"wf-1","assignmentId":"as-1","attemptId":"attempt-1","role":"review","artifactRevision":"rev-1","candidateDigest":{"algorithm":"sha256","hex":"${digest}"},"kind":"review_findings","findingCount":${huge}}}}`;
+  assert.throws(
+    () => decodeRequest(request),
+    (error: unknown) =>
+      error instanceof DecodeFailure && error.error.code === codes.INVALID_PAYLOAD,
+  );
+
+  const response = `{"protocol":"aizign","version":1,"requestId":"req-huge","kind":"hello","ok":true,"payload":{"protocolVersion":${huge},"journalSchemaVersion":1,"capabilities":[],"package":{"name":"aizign","version":"0.1.0"}}}`;
+  assert.throws(
+    () => decodeResponse(response),
+    (error: unknown) =>
+      error instanceof DecodeFailure && error.error.code === codes.INVALID_PAYLOAD,
+  );
+});
+
+test('a successful operation-shaped response cannot select bootstrap from an error code', () => {
+  const frame = JSON.stringify({
+    protocol: 'aizign',
+    version: 2,
+    requestId: 'req-axis-cross-product',
+    kind: 'workflow.signal.submit',
+    ok: true,
+    error: {
+      code: codes.PROTOCOL_VERSION_UNSUPPORTED,
+      message: 'not an error response',
+    },
+  });
+  assert.throws(
+    () =>
+      decodeResponse(frame, {
+        requestAxis: 'accepted-operation',
+        bootstrapVersion: 1,
+        operationVersion: 2,
+      }),
+    (error: unknown) =>
+      error instanceof DecodeFailure &&
+      error.error.code === codes.INVALID_ENVELOPE &&
+      error.responseVersion.axis === 'accepted-operation' &&
+      error.responseVersion.version === 2,
+  );
 });
 
 test('request validation precedes the package-internal final bound guard', async () => {
@@ -211,7 +300,10 @@ test('the response encoder accepts exactly the bound and rejects the next byte',
       version: { axis: 'accepted-operation', version: 1 },
       requestId: 'req-1',
       kind: 'workflow.signal.submit',
-      body: { type: 'error', error: new ProtocolError(codes.INTERNAL, message) },
+      body: {
+        type: 'error',
+        error: new ProtocolError(codes.INTERNAL, message),
+      },
     });
   const overhead = new TextEncoder().encode(make('')).byteLength;
   const exact = make('x'.repeat(MAX_FRAME_BYTES - overhead));
