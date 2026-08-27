@@ -32,6 +32,7 @@
 | [0020](0020-narrow-typescript-exports-and-own-dsh-transport.md) | Narrow TypeScript exports and own DSH transport | Accepted |
 | [0021](0021-pin-cargo-deny-and-source-checkout-installation.md) | Pin cargo-deny and define source-checkout installation | Accepted |
 | [0022](0022-define-the-canonical-one-shot-process-profile.md) | Define the canonical one-shot process profile | Accepted |
+| [0023](0023-define-protocol-lexical-and-outbound-validation-boundaries.md) | Define Protocol lexical and outbound validation boundaries | Accepted |
 
 ADR-0016 partially supersedes ADR-0005's earlier `AGENTS.md` editing-constraint
 statement only; ADR-0005's other accepted decisions remain in force.
@@ -50,3 +51,7 @@ decision and incomplete adapter argv, framing, version-selection, and process-
 lifecycle portions. ADR-0003's subprocess boundary, independent language
 implementations, closed Protocol, stdout/stderr separation, and no-daemon
 decisions remain Accepted.
+
+ADR-0023 extends the closed-Protocol and independent-version consequences of
+ADR-0003, ADR-0004, ADR-0009, and ADR-0022. It does not supersede their process,
+schema-ownership, dependency, or version-axis decisions.
