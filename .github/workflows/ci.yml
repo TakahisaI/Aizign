@@ -65,7 +65,10 @@ jobs:
   typescript:
     name: TypeScript
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A clean npx bootstrap resolves the full pinned DSH release graph before
+    # the isolated profile registration starts; allow that one-time fixture
+    # setup to finish without changing the normal workspace toolchain.
+    timeout-minutes: 30
     steps:
       # Node is set up before the checkout on purpose: setup-node invokes the
       # runner's bundled npm, and with package.json present that npm would be
