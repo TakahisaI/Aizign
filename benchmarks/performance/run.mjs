@@ -295,10 +295,11 @@ function decodeExtractedResponse(extraction, request, protocol) {
   }
   let response;
   try {
-    response = protocol.decodeResponse(
-      extraction.frame,
-      request.kind === 'hello' ? 'bootstrap' : 'accepted-operation',
-    );
+    response = protocol.decodeResponse(extraction.frame, {
+      requestAxis: request.kind === 'hello' ? 'bootstrap' : 'accepted-operation',
+      bootstrapVersion: protocol.BOOTSTRAP_ENVELOPE_VERSION,
+      operationVersion: protocol.PROTOCOL_VERSION,
+    });
   } catch {
     return { transport_kind: 'unknown', unknown_reason: 'undecodable_response' };
   }
@@ -1591,7 +1592,11 @@ export function verifyReleaseBinary(binary, stateDir, protocol, timeoutMs = OPER
   let response;
   if (extraction.kind === 'frame') {
     try {
-      response = protocol.decodeResponse(extraction.frame, 'bootstrap');
+      response = protocol.decodeResponse(extraction.frame, {
+        requestAxis: 'bootstrap',
+        bootstrapVersion: protocol.BOOTSTRAP_ENVELOPE_VERSION,
+        operationVersion: protocol.PROTOCOL_VERSION,
+      });
     } catch {
       response = undefined;
     }

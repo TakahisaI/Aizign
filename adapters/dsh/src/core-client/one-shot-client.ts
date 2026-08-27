@@ -5,6 +5,7 @@
 
 import { spawn } from 'node:child_process';
 import {
+  BOOTSTRAP_ENVELOPE_VERSION,
   type CallOptions,
   type CoreClient,
   checkCorrelation,
@@ -14,6 +15,7 @@ import {
   type HelloOutcome,
   MAX_FRAME_BYTES,
   OneShotFrameCollector,
+  PROTOCOL_VERSION,
   type ReconcileOutcome,
   type ReconcileUnknown,
   type Response,
@@ -69,15 +71,27 @@ function reportedUnknown(code: string, message: string): UnknownOutcome {
   };
 }
 
-function versionAxisMismatch(
+function responseVersionMismatch(
   response: Response,
-  expected: Response['version']['axis'],
+  expected: Response['version'],
+  allowBootstrapCompatibility = false,
 ): UnknownOutcome | undefined {
-  if (response.version.axis === expected) return undefined;
+  if (response.version.axis === expected.axis && response.version.version === expected.version) {
+    return undefined;
+  }
+  if (
+    allowBootstrapCompatibility &&
+    response.body.type === 'error' &&
+    response.body.error.code === codes.PROTOCOL_VERSION_UNSUPPORTED &&
+    response.version.axis === 'bootstrap' &&
+    response.version.version === BOOTSTRAP_ENVELOPE_VERSION
+  ) {
+    return undefined;
+  }
   return {
     kind: 'unknown',
     reason: 'undecodable_response',
-    detail: `response used ${response.version.axis} version axis; expected ${expected}`,
+    detail: `response used ${response.version.axis}@${response.version.version}; expected ${expected.axis}@${expected.version}`,
   };
 }
 
@@ -136,8 +150,11 @@ export class OneShotCoreClient implements CoreClient {
         detail: `${mismatch.field}: expected ${mismatch.expected}, got ${String(mismatch.actual)}`,
       });
     }
-    const wrongAxis = versionAxisMismatch(exchange.response, 'bootstrap');
-    if (wrongAxis !== undefined) return finish(wrongAxis);
+    const wrongVersion = responseVersionMismatch(exchange.response, {
+      axis: 'bootstrap',
+      version: BOOTSTRAP_ENVELOPE_VERSION,
+    });
+    if (wrongVersion !== undefined) return finish(wrongVersion);
     const { body } = exchange.response;
     switch (body.type) {
       case 'hello':
@@ -190,8 +207,12 @@ export class OneShotCoreClient implements CoreClient {
         ...(reportedCode === undefined ? {} : { reportedCode }),
       });
     }
-    const wrongAxis = versionAxisMismatch(exchange.response, 'accepted-operation');
-    if (wrongAxis !== undefined) return finish(wrongAxis, reportedCode);
+    const wrongVersion = responseVersionMismatch(
+      exchange.response,
+      { axis: 'accepted-operation', version: PROTOCOL_VERSION },
+      true,
+    );
+    if (wrongVersion !== undefined) return finish(wrongVersion, reportedCode);
     const { body } = exchange.response;
     switch (body.type) {
       case 'workflow.signal':
@@ -251,8 +272,12 @@ export class OneShotCoreClient implements CoreClient {
       return finish(outcome);
     }
 
-    const wrongAxis = versionAxisMismatch(exchange.response, 'accepted-operation');
-    if (wrongAxis !== undefined) return finish(wrongAxis);
+    const wrongVersion = responseVersionMismatch(
+      exchange.response,
+      { axis: 'accepted-operation', version: PROTOCOL_VERSION },
+      true,
+    );
+    if (wrongVersion !== undefined) return finish(wrongVersion);
 
     const { body } = exchange.response;
     switch (body.type) {
@@ -433,7 +458,11 @@ export class OneShotCoreClient implements CoreClient {
         try {
           settle({
             kind: 'response',
-            response: decodeResponse(extraction.frame, requestAxis),
+            response: decodeResponse(extraction.frame, {
+              requestAxis,
+              bootstrapVersion: BOOTSTRAP_ENVELOPE_VERSION,
+              operationVersion: PROTOCOL_VERSION,
+            }),
             timing: timing(),
           });
         } catch (error) {

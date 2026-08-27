@@ -36,6 +36,8 @@
  * - `no-close-after-frame` write a valid frame and keep the process open
  * - `process-open-after-stdout-close` close stdout after a frame and keep the process open
  * - `signal-terminated` terminate by signal without a frame
+ * - `operation-version-unsupported` return a correlated bootstrap compatibility error
+ * - `wrong-operation-version` return a response on the wrong numeric operation version
  *
  * `AIZIGN_FAKE_HELLO_PROTOCOL_VERSION` overrides the advertised protocol
  * version, for compatibility-check tests.
@@ -50,6 +52,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  BOOTSTRAP_ENVELOPE_VERSION,
   CAPABILITY_WORKFLOW_SIGNAL_RECONCILE,
   CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
   codes,
@@ -97,6 +100,7 @@ function safeResponse(response: Response): string {
         null,
         response.body.error.code,
         'request rejected; recovered correlation was not safe to echo',
+        response.version,
       ),
     );
   }
@@ -120,7 +124,7 @@ function errorResponse(
     codes.HANDLER_TIMEOUT,
   ]).has(code)
     ? { axis: 'accepted-operation', version: PROTOCOL_VERSION }
-    : { axis: 'bootstrap', version: 1 },
+    : { axis: 'bootstrap', version: BOOTSTRAP_ENVELOPE_VERSION },
 ): Response {
   return {
     version,
@@ -306,6 +310,18 @@ async function main(argv: readonly string[]): Promise<number> {
     write(errorResponse(null, null, codes.INTERNAL, 'fake core failed to decode'));
     return 0;
   }
+  if (fault === 'operation-version-unsupported' && request.kind !== 'hello') {
+    write(
+      errorResponse(
+        request.requestId,
+        request.kind,
+        codes.PROTOCOL_VERSION_UNSUPPORTED,
+        'operation version is not supported',
+        { axis: 'bootstrap', version: BOOTSTRAP_ENVELOPE_VERSION },
+      ),
+    );
+    return 0;
+  }
   if (request.kind !== 'hello') {
     mkdirSync(stateDir, { recursive: true, mode: 0o700 });
     writeFileSync(join(stateDir, REQUEST_LOG), `${new TextDecoder().decode(frame)}\n`, {
@@ -327,6 +343,13 @@ async function main(argv: readonly string[]): Promise<number> {
   switch (fault) {
     case 'handler-timeout':
       write(errorResponse(null, null, codes.HANDLER_TIMEOUT, 'processing exceeded its bound'));
+      return 0;
+    case 'wrong-operation-version':
+      if (request.kind === 'hello') throw new Error('wrong operation version requires operation');
+      write({
+        ...response,
+        version: { axis: 'accepted-operation', version: PROTOCOL_VERSION + 1 },
+      });
       return 0;
     case 'event-conflict-error':
       write(errorResponse(request.requestId, request.kind, 'EVENT_CONFLICT', 'reported conflict'));

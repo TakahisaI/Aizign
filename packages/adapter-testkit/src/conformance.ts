@@ -371,6 +371,51 @@ export async function runFaultScenarios(
       options.caseExecuted?.(caseId);
     }
 
+    const unsupportedSubmit = await make('operation-version-unsupported-submit', {
+      AIZIGN_FAKE_FAULT: 'operation-version-unsupported',
+    }).submitWorkflowSignal('req-version-submit', samplePayload('evt-version-submit'));
+    assert.equal(unsupportedSubmit.kind, 'rejected', 'version-submit-unsupported');
+    if (unsupportedSubmit.kind === 'rejected') {
+      assert.equal(
+        unsupportedSubmit.code,
+        'PROTOCOL_VERSION_UNSUPPORTED',
+        'version-submit-unsupported',
+      );
+    }
+    options.caseExecuted?.('version-submit-unsupported');
+
+    const unsupportedReconcile = await make('operation-version-unsupported-reconcile', {
+      AIZIGN_FAKE_FAULT: 'operation-version-unsupported',
+    }).reconcileWorkflowSignal('req-version-reconcile', {
+      signal: samplePayload('evt-version-reconcile').signal,
+    });
+    assert.equal(unsupportedReconcile.kind, 'unknown', 'version-reconcile-unsupported');
+    if (unsupportedReconcile.kind === 'unknown') {
+      assert.equal(
+        unsupportedReconcile.reason,
+        'reported_unknown',
+        'version-reconcile-unsupported',
+      );
+      assert.equal(
+        unsupportedReconcile.reportedCode,
+        'PROTOCOL_VERSION_UNSUPPORTED',
+        'version-reconcile-unsupported',
+      );
+    }
+    options.caseExecuted?.('version-reconcile-unsupported');
+
+    const wrongOperationVersion = await make('wrong-operation-version', {
+      AIZIGN_FAKE_FAULT: 'wrong-operation-version',
+    }).submitWorkflowSignal('req-wrong-operation-version', samplePayload('evt-wrong-version'));
+    assert.equal(wrongOperationVersion.kind, 'unknown', 'wrong numeric operation version');
+    if (wrongOperationVersion.kind === 'unknown') {
+      assert.equal(
+        wrongOperationVersion.reason,
+        'undecodable_response',
+        'wrong numeric operation version',
+      );
+    }
+
     const uncorrelatedCodeState = join(root, 'fault-unknown-code-wrong-request-id');
     const uncorrelatedCodeClient = factory({
       ...fake,

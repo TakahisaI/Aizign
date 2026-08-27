@@ -11,7 +11,14 @@ const fixturePath = 'spec/process/v1/fixtures/cases.json';
 const authority = readFileSync(join(root, authorityPath), 'utf8');
 const fixture = JSON.parse(readFileSync(join(root, fixturePath), 'utf8'));
 
-const evidenceOwners = new Set(['benchmark', 'dsh', 'dsh-plugin', 'protocol', 'rust-cli']);
+const evidenceOwners = new Set([
+  'adapter-testkit',
+  'benchmark',
+  'dsh',
+  'dsh-plugin',
+  'protocol',
+  'rust-cli',
+]);
 
 const allowed = {
   group: new Set(['request', 'hello', 'version-kind', 'response-process']),

@@ -73,6 +73,12 @@ export interface Response {
   readonly body: ResponseBody;
 }
 
+interface ResponseDecodeContext {
+  readonly requestAxis?: ResponseVersion['axis'];
+  readonly bootstrapVersion?: number;
+  readonly operationVersion?: number;
+}
+
 /** A request that could not be decoded, with recovered correlation data. */
 export class DecodeFailure extends Error {
   readonly requestId: string | null;
@@ -431,13 +437,14 @@ export function encodeResponse(response: Response): string {
 /**
  * Decodes one response frame. Throws {@link ProtocolError}.
  *
- * `requestAxis` retains the source stage for an operation error whose unsafe
+ * `context.requestAxis` retains the source stage for an operation error whose unsafe
  * correlation kind was deliberately replaced with `null`. Bootstrap error
- * codes remain on the bootstrap axis regardless of the caller hint.
+ * stages remain separately decodable. The expected numeric values make the
+ * distinction executable even after the operation version advances.
  */
 export function decodeResponse(
   frame: Uint8Array | string,
-  requestAxis?: ResponseVersion['axis'],
+  context: ResponseDecodeContext = {},
 ): Response {
   const invalidEnvelope = (message: string) => new ProtocolError(codes.INVALID_ENVELOPE, message);
   const size = byteLength(frame);
@@ -461,12 +468,6 @@ export function decodeResponse(
     throw invalidEnvelope(`protocol must be "${PROTOCOL_NAME}"`);
   if (!isVersionInRange(value.version))
     throw invalidEnvelope(`version must be an integer between 0 and ${MAX_VERSION}`);
-  if (value.version !== BOOTSTRAP_ENVELOPE_VERSION && value.version !== PROTOCOL_VERSION) {
-    throw new ProtocolError(
-      codes.PROTOCOL_VERSION_UNSUPPORTED,
-      `protocol version ${value.version} is not supported`,
-    );
-  }
   for (const key of ['requestId', 'kind', 'ok']) {
     if (!Object.hasOwn(value, key)) throw invalidEnvelope(`missing field \`${key}\``);
   }
@@ -484,21 +485,21 @@ export function decodeResponse(
     switch (kind) {
       case KIND_HELLO:
         return {
-          version: { axis: 'bootstrap', version: value.version },
+          version: checkedResponseVersion('bootstrap', value.version, context),
           requestId,
           kind,
           body: { type: 'hello', info: decodeHelloInfo(value.payload) },
         };
       case KIND_WORKFLOW_SIGNAL_SUBMIT:
         return {
-          version: { axis: 'accepted-operation', version: value.version },
+          version: checkedResponseVersion('accepted-operation', value.version, context),
           requestId,
           kind,
           body: { type: 'workflow.signal', result: decodeSignalResult(value.payload) },
         };
       case KIND_WORKFLOW_SIGNAL_RECONCILE:
         return {
-          version: { axis: 'accepted-operation', version: value.version },
+          version: checkedResponseVersion('accepted-operation', value.version, context),
           requestId,
           kind,
           body: {
@@ -520,7 +521,7 @@ export function decodeResponse(
       throw invalidEnvelope('error.code must match ^[A-Z][A-Z0-9_]{0,63}$');
     if (typeof error.message !== 'string') throw invalidEnvelope('error.message must be a string');
     return {
-      version: decodedErrorVersion(value.version, kind, error.code, requestAxis),
+      version: decodedErrorVersion(value.version, kind, error.code, context),
       requestId,
       kind,
       body: { type: 'error', error: new ProtocolError(error.code, error.message) },
@@ -533,19 +534,39 @@ function decodedErrorVersion(
   wireVersion: number,
   kind: string | null,
   code: string,
-  requestAxis: ResponseVersion['axis'] | undefined,
+  context: ResponseDecodeContext,
 ): ResponseVersion {
-  const bootstrapCode = new Set<string>([
+  const unconditionallyBootstrap = new Set<string>([
     codes.REQUEST_TOO_LARGE,
-    codes.INVALID_ENVELOPE,
     codes.PROTOCOL_VERSION_UNSUPPORTED,
     codes.HANDLER_TIMEOUT,
   ]).has(code);
-  if (bootstrapCode) return { axis: 'bootstrap', version: wireVersion };
-  if (requestAxis !== undefined) return { axis: requestAxis, version: wireVersion };
-  return kind !== null && kind !== KIND_HELLO
-    ? { axis: 'accepted-operation', version: wireVersion }
-    : { axis: 'bootstrap', version: wireVersion };
+  if (unconditionallyBootstrap) {
+    return checkedResponseVersion('bootstrap', wireVersion, context);
+  }
+
+  const axis =
+    context.requestAxis ??
+    (kind !== null && kind !== KIND_HELLO ? 'accepted-operation' : 'bootstrap');
+  return checkedResponseVersion(axis, wireVersion, context);
+}
+
+function checkedResponseVersion(
+  axis: ResponseVersion['axis'],
+  wireVersion: number,
+  context: ResponseDecodeContext,
+): ResponseVersion {
+  const expected =
+    axis === 'bootstrap'
+      ? (context.bootstrapVersion ?? BOOTSTRAP_ENVELOPE_VERSION)
+      : (context.operationVersion ?? PROTOCOL_VERSION);
+  if (wireVersion !== expected) {
+    throw new ProtocolError(
+      codes.PROTOCOL_VERSION_UNSUPPORTED,
+      `${axis} response version must be ${expected}; got ${wireVersion}`,
+    );
+  }
+  return { axis, version: wireVersion };
 }
 
 /** What a process wrote to stdout, classified as exactly one byte frame or not. */

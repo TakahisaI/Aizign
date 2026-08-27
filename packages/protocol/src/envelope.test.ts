@@ -110,10 +110,17 @@ test('response encoding keeps the explicit axis when operation and bootstrap ver
     kind: null,
     body,
   });
-  assert.deepEqual(decodeResponse(nullKindError, 'accepted-operation').version, {
-    axis: 'accepted-operation',
-    version: 1,
-  });
+  assert.deepEqual(
+    decodeResponse(nullKindError, {
+      requestAxis: 'accepted-operation',
+      bootstrapVersion: 1,
+      operationVersion: 1,
+    }).version,
+    {
+      axis: 'accepted-operation',
+      version: 1,
+    },
+  );
   assert.deepEqual(
     decodeResponse(
       encodeResponse({
@@ -125,9 +132,34 @@ test('response encoding keeps the explicit axis when operation and bootstrap ver
           error: new ProtocolError(codes.PROTOCOL_VERSION_UNSUPPORTED, 'unsupported'),
         },
       }),
-      'accepted-operation',
+      { requestAxis: 'accepted-operation', bootstrapVersion: 1, operationVersion: 2 },
     ).version,
     { axis: 'bootstrap', version: 1 },
+  );
+
+  const operationV2 = encodeResponse({
+    version: { axis: 'accepted-operation', version: 2 },
+    requestId: 'req-operation-v2',
+    kind: 'workflow.signal.submit',
+    body,
+  });
+  assert.deepEqual(
+    decodeResponse(operationV2, {
+      requestAxis: 'accepted-operation',
+      bootstrapVersion: 1,
+      operationVersion: 2,
+    }).version,
+    { axis: 'accepted-operation', version: 2 },
+  );
+  assert.throws(
+    () =>
+      decodeResponse(operationV2, {
+        requestAxis: 'accepted-operation',
+        bootstrapVersion: 1,
+        operationVersion: 3,
+      }),
+    (error: unknown) =>
+      error instanceof ProtocolError && error.code === codes.PROTOCOL_VERSION_UNSUPPORTED,
   );
 });
 
