@@ -39,6 +39,7 @@ export {
   type Request,
   type Response,
   type ResponseBody,
+  type ResponseVersion,
 } from './envelope.ts';
 export { codes, isShortErrorCode, ProtocolError } from './error.ts';
 export {

@@ -3,7 +3,8 @@
 
 use aizign_protocol::{
     BOOTSTRAP_ENVELOPE_VERSION, MAX_FRAME_BYTES, MAX_REQUEST_BYTES, Request, RequestKind, Response,
-    ResponseBody, codes, decode_request, decode_response, encode_request, encode_response,
+    ResponseBody, ResponseVersion, codes, decode_request, decode_response, decode_response_for,
+    encode_request, encode_response,
 };
 
 fn hello(extra: &str) -> String {
@@ -212,6 +213,7 @@ fn responses_are_closed_too() {
 #[test]
 fn encoded_frames_carry_the_protocol_version_and_escape_newlines() {
     let response = Response {
+        version: ResponseVersion::bootstrap(),
         request_id: None,
         kind: None,
         body: ResponseBody::Error(aizign_protocol::ProtocolError::new(
@@ -247,6 +249,7 @@ fn request_encoder_refuses_a_frame_above_the_bound() {
 #[test]
 fn response_encoder_refuses_a_frame_above_the_bound() {
     let response = Response {
+        version: ResponseVersion::operation(),
         request_id: Some("req-oversized".to_owned()),
         kind: Some("workflow.signal.submit".to_owned()),
         body: ResponseBody::Error(aizign_protocol::ProtocolError::new(
@@ -256,4 +259,48 @@ fn response_encoder_refuses_a_frame_above_the_bound() {
     };
     let error = encode_response(&response).unwrap_err();
     assert_eq!(error.code().as_str(), codes::INVALID_ENVELOPE);
+}
+
+#[test]
+fn response_encoder_uses_the_explicit_source_qualified_axis() {
+    let operation = Response {
+        version: ResponseVersion::AcceptedOperation(2),
+        request_id: Some("req-future-operation".to_owned()),
+        kind: Some("workflow.signal.submit".to_owned()),
+        body: ResponseBody::Error(aizign_protocol::ProtocolError::new(
+            codes::INTERNAL,
+            "operation failed",
+        )),
+    };
+    let bootstrap = Response {
+        version: ResponseVersion::Bootstrap(7),
+        request_id: operation.request_id.clone(),
+        kind: operation.kind.clone(),
+        body: operation.body.clone(),
+    };
+
+    assert!(
+        encode_response(&operation)
+            .unwrap()
+            .contains("\"version\":2")
+    );
+    assert!(
+        encode_response(&bootstrap)
+            .unwrap()
+            .contains("\"version\":7")
+    );
+
+    let null_kind = Response {
+        version: ResponseVersion::operation(),
+        request_id: Some("req-unsafe-kind".to_owned()),
+        kind: None,
+        body: operation.body,
+    };
+    let encoded = encode_response(&null_kind).unwrap();
+    assert_eq!(
+        decode_response_for(encoded.as_bytes(), Some(ResponseVersion::operation()),)
+            .unwrap()
+            .version,
+        ResponseVersion::operation()
+    );
 }

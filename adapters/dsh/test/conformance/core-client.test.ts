@@ -14,47 +14,16 @@ import {
   runCoreScenarios,
   samplePayload,
 } from '@aizign/adapter-testkit';
+import { createProcessProfileRegistry } from '../../../../spec/process/v1/fixtures/registry.mjs';
 import { OneShotCoreClient } from '../../src/core-client/one-shot-client.ts';
 import type { ParentTimingMeasurement } from '../../src/timing.ts';
 
-const PROCESS_PROFILE_CASE_IDS = [
-  'req-valid',
-  'hello-nonexistent-state',
-  'hello-request-id-mismatch',
-  'hello-kind-mismatch',
-  'hello-future-operation',
-  'hello-missing-capability',
-  'res-no-lf',
-  'res-crlf',
-  'res-post-lf-space',
-  'res-post-lf-tab',
-  'res-post-lf-cr',
-  'res-post-lf-second-lf',
-  'res-post-lf-second-frame',
-  'res-exact-bound',
-  'res-over-bound',
-  'res-bom',
-  'res-invalid-utf8',
-  'res-valid-zero',
-  'res-valid-nonzero',
-  'res-empty-zero',
-  'res-valid-stdout-open',
-  'res-valid-process-open',
-  'handler-post-dispatch-timeout',
-  'proc-spawn-failed',
-  'proc-signal-terminated',
-  'proc-abnormal-termination',
-  'proc-missing-exit-code',
-  'proc-parent-timeout',
-  'proc-caller-abort',
-] as const;
-
-test('process profile case IDs are unique', () => {
-  assert.equal(new Set(PROCESS_PROFILE_CASE_IDS).size, PROCESS_PROFILE_CASE_IDS.length);
-});
-
-test('OneShotCoreClient satisfies the core-client conformance', async () => {
-  await runCoreClientConformance((config) => new OneShotCoreClient(config));
+test('OneShotCoreClient executes every assigned process-profile case', async () => {
+  const registry = createProcessProfileRegistry('dsh');
+  await runCoreClientConformance((config) => new OneShotCoreClient(config), {
+    caseExecuted: registry.record,
+  });
+  registry.complete();
 });
 
 test('OneShotCoreClient does not inherit synthetic parent credentials', async () => {

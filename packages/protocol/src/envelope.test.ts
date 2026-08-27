@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { createProcessProfileRegistry } from '../../../spec/process/v1/fixtures/registry.mjs';
 import {
   BOOTSTRAP_ENVELOPE_VERSION,
   DecodeFailure,
@@ -14,20 +15,8 @@ import {
 } from './envelope.ts';
 import { codes, ProtocolError } from './error.ts';
 
-const PROCESS_PROFILE_CASE_IDS = [
-  'hello-future-operation',
-  'version-bootstrap-unsupported',
-  'version-submit-unsupported',
-  'version-reconcile-unsupported',
-  'version-future-kind-unsupported',
-  'kind-future-accepted-version',
-] as const;
-
-test('process profile case IDs are unique', () => {
-  assert.equal(new Set(PROCESS_PROFILE_CASE_IDS).size, PROCESS_PROFILE_CASE_IDS.length);
-});
-
-test('version axis selection precedes kind membership', () => {
+test('protocol executes every assigned process-profile version case', async () => {
+  const registry = createProcessProfileRegistry('protocol');
   const failure = (kind: unknown, version: number) => {
     try {
       decodeRequest(
@@ -46,20 +35,106 @@ test('version axis selection precedes kind membership', () => {
     }
   };
 
-  assert.equal(failure('hello', 2).error.code, codes.PROTOCOL_VERSION_UNSUPPORTED);
-  assert.equal(failure('workflow.signal.submit', 2).error.code, codes.PROTOCOL_VERSION_UNSUPPORTED);
-  assert.equal(
-    failure('workflow.signal.reconcile', 2).error.code,
-    codes.PROTOCOL_VERSION_UNSUPPORTED,
+  await registry.run('hello-future-operation', () => {
+    const response = decodeResponse(
+      encodeResponse({
+        version: { axis: 'bootstrap', version: 1 },
+        requestId: 'req-future-operation',
+        kind: 'hello',
+        body: {
+          type: 'hello',
+          info: {
+            protocolVersion: 2,
+            journalSchemaVersion: 1,
+            capabilities: [],
+            package: { name: 'future-core', version: '2.0.0' },
+          },
+        },
+      }),
+    );
+    assert.deepEqual(response.version, { axis: 'bootstrap', version: 1 });
+    assert.equal(response.body.type === 'hello' && response.body.info.protocolVersion, 2);
+  });
+  await registry.run('version-bootstrap-unsupported', () => {
+    const error = failure('hello', 2);
+    assert.equal(error.error.code, codes.PROTOCOL_VERSION_UNSUPPORTED);
+    assert.deepEqual(error.responseVersion, { axis: 'bootstrap', version: 1 });
+  });
+  await registry.run('version-submit-unsupported', () => {
+    const error = failure('workflow.signal.submit', 2);
+    assert.equal(error.error.code, codes.PROTOCOL_VERSION_UNSUPPORTED);
+    assert.deepEqual(error.responseVersion, { axis: 'bootstrap', version: 1 });
+  });
+  await registry.run('version-reconcile-unsupported', () => {
+    const error = failure('workflow.signal.reconcile', 2);
+    assert.equal(error.error.code, codes.PROTOCOL_VERSION_UNSUPPORTED);
+    assert.deepEqual(error.responseVersion, { axis: 'bootstrap', version: 1 });
+  });
+  await registry.run('version-future-kind-unsupported', () => {
+    const error = failure('future.operation', 2);
+    assert.equal(error.error.code, codes.PROTOCOL_VERSION_UNSUPPORTED);
+    assert.deepEqual(error.responseVersion, { axis: 'bootstrap', version: 1 });
+  });
+  await registry.run('kind-future-accepted-version', () => {
+    const error = failure('future.operation', 1);
+    assert.equal(error.error.code, codes.UNKNOWN_KIND);
+    assert.deepEqual(error.responseVersion, { axis: 'accepted-operation', version: 1 });
+  });
+  registry.complete();
+});
+
+test('response encoding keeps the explicit axis when operation and bootstrap versions diverge', () => {
+  const body = { type: 'error' as const, error: new ProtocolError(codes.INTERNAL, 'failed') };
+  assert.match(
+    encodeResponse({
+      version: { axis: 'accepted-operation', version: 2 },
+      requestId: 'req-operation-v2',
+      kind: 'workflow.signal.submit',
+      body,
+    }),
+    /"version":2/,
   );
-  assert.equal(failure('future.operation', 2).error.code, codes.PROTOCOL_VERSION_UNSUPPORTED);
-  assert.equal(failure('future.operation', 1).error.code, codes.UNKNOWN_KIND);
-  assert.equal(failure(17, 2).error.code, codes.INVALID_ENVELOPE);
+  assert.match(
+    encodeResponse({
+      version: { axis: 'bootstrap', version: 7 },
+      requestId: 'req-bootstrap-v7',
+      kind: 'workflow.signal.submit',
+      body,
+    }),
+    /"version":7/,
+  );
+
+  const nullKindError = encodeResponse({
+    version: { axis: 'accepted-operation', version: 1 },
+    requestId: 'req-unsafe-kind',
+    kind: null,
+    body,
+  });
+  assert.deepEqual(decodeResponse(nullKindError, 'accepted-operation').version, {
+    axis: 'accepted-operation',
+    version: 1,
+  });
+  assert.deepEqual(
+    decodeResponse(
+      encodeResponse({
+        version: { axis: 'bootstrap', version: 1 },
+        requestId: null,
+        kind: null,
+        body: {
+          type: 'error',
+          error: new ProtocolError(codes.PROTOCOL_VERSION_UNSUPPORTED, 'unsupported'),
+        },
+      }),
+      'accepted-operation',
+    ).version,
+    { axis: 'bootstrap', version: 1 },
+  );
 });
 
 test('encoded frames are single lines with escaped newlines', () => {
   assert.equal(BOOTSTRAP_ENVELOPE_VERSION, 1);
   const frame = encodeResponse({
+    version: { axis: 'bootstrap', version: 1 },
     requestId: null,
     kind: null,
     body: { type: 'error', error: new ProtocolError(codes.INTERNAL, 'line one\nline two') },
@@ -95,6 +170,7 @@ test('the response encoder never emits an oversized frame', () => {
   assert.throws(
     () =>
       encodeResponse({
+        version: { axis: 'accepted-operation', version: 1 },
         requestId: 'req-1',
         kind: 'workflow.signal.submit',
         body: {
@@ -120,6 +196,7 @@ test('encoders reject ill-formed Unicode before returning a frame', () => {
   assert.throws(
     () =>
       encodeResponse({
+        version: { axis: 'bootstrap', version: 1 },
         requestId: null,
         kind: null,
         body: {

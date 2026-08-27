@@ -33,6 +33,8 @@ export type CoreClientFactory = (config: CoreClientFixtureConfig) => CoreClient;
 export interface ConformanceOptions {
   /** Timeout used for the hang scenario; keep it short. Default 500ms. */
   readonly hangTimeoutMs?: number;
+  /** Runtime evidence hook, called only after the named assertion succeeds. */
+  readonly caseExecuted?: (...caseIds: string[]) => void;
 }
 
 /** A valid payload bound to a fixed expectation. */
@@ -117,6 +119,7 @@ export interface CoreCommand {
 export async function runCoreScenarios(
   factory: CoreClientFactory,
   core: CoreCommand,
+  options: ConformanceOptions = {},
 ): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'aizign-core-scenarios-'));
   try {
@@ -139,10 +142,12 @@ export async function runCoreScenarios(
       false,
       'hello-nonexistent-state: framed hello does not touch stateDir',
     );
+    options.caseExecuted?.('req-valid', 'hello-nonexistent-state');
 
     const client = make('signals');
     const first = await client.submitWorkflowSignal('req-1', samplePayload('evt-1'));
     assert.deepEqual(first, { kind: 'accepted', eventId: 'evt-1' }, 'res-valid-zero');
+    options.caseExecuted?.('res-valid-zero');
     const again = await client.submitWorkflowSignal('req-2', samplePayload('evt-1'));
     assert.deepEqual(again, { kind: 'duplicate', eventId: 'evt-1' });
     const conflicting = samplePayload('evt-1');
@@ -255,18 +260,8 @@ export async function runFaultScenarios(
       [[], 'garbage', 'undecodable_response', 'stdout is not a frame'],
       [[], 'journal-unknown', 'reported_unknown', 'the core reports JOURNAL_OUTCOME_UNKNOWN'],
       [['proc-abnormal-termination'], 'exit-2', 'no_response', 'process fails before answering'],
-      [
-        ['hello-request-id-mismatch'],
-        'wrong-request-id',
-        'correlation_mismatch',
-        'the response answers another request',
-      ],
-      [
-        ['hello-kind-mismatch'],
-        'wrong-kind',
-        'correlation_mismatch',
-        'the response has another kind',
-      ],
+      [[], 'wrong-request-id', 'correlation_mismatch', 'the response answers another request'],
+      [[], 'wrong-kind', 'correlation_mismatch', 'the response has another kind'],
       [[], 'null-correlation', 'correlation_mismatch', 'the response has null correlation'],
       [[], 'wrong-event-id', 'correlation_mismatch', 'the response names another event'],
       [
@@ -359,6 +354,21 @@ export async function runFaultScenarios(
           );
         }
       }
+      options.caseExecuted?.(...caseIds);
+    }
+
+    for (const [caseId, fault] of [
+      ['hello-request-id-mismatch', 'wrong-request-id'],
+      ['hello-kind-mismatch', 'wrong-kind'],
+    ] as const) {
+      const outcome = await make(`hello-${fault}`, {
+        AIZIGN_FAKE_FAULT: fault,
+      }).hello(`req-hello-${fault}`);
+      assert.equal(outcome.kind, 'unknown', caseId);
+      if (outcome.kind === 'unknown') {
+        assert.equal(outcome.reason, 'correlation_mismatch', caseId);
+      }
+      options.caseExecuted?.(caseId);
     }
 
     const uncorrelatedCodeState = join(root, 'fault-unknown-code-wrong-request-id');
@@ -390,6 +400,7 @@ export async function runFaultScenarios(
     ).submitWorkflowSignal('req-hang', samplePayload('evt-hang'));
     assert.equal(hang.kind, 'unknown', 'proc-parent-timeout');
     if (hang.kind === 'unknown') assert.equal(hang.reason, 'timeout', 'proc-parent-timeout');
+    options.caseExecuted?.('proc-parent-timeout');
 
     const noClose = await make(
       'fault-no-close-after-frame',
@@ -399,6 +410,7 @@ export async function runFaultScenarios(
     assert.equal(noClose.kind, 'unknown', 'res-valid-stdout-open');
     if (noClose.kind === 'unknown')
       assert.equal(noClose.reason, 'timeout', 'res-valid-stdout-open');
+    options.caseExecuted?.('res-valid-stdout-open');
 
     const processOpen = await make(
       'fault-process-open-after-stdout-close',
@@ -409,6 +421,7 @@ export async function runFaultScenarios(
     if (processOpen.kind === 'unknown') {
       assert.equal(processOpen.reason, 'timeout', 'res-valid-process-open');
     }
+    options.caseExecuted?.('res-valid-process-open');
 
     // cancellation: the caller's abort kills the process; the outcome is unknown.
     const controller = new AbortController();
@@ -420,6 +433,7 @@ export async function runFaultScenarios(
     );
     assert.equal(aborted.kind, 'unknown', 'proc-caller-abort');
     if (aborted.kind === 'unknown') assert.equal(aborted.reason, 'aborted', 'proc-caller-abort');
+    options.caseExecuted?.('proc-caller-abort');
 
     const missing = factory({
       command: join(root, 'no-such-binary'),
@@ -434,6 +448,7 @@ export async function runFaultScenarios(
     if (spawnFailed.kind === 'unknown') {
       assert.equal(spawnFailed.reason, 'spawn_failed', 'proc-spawn-failed');
     }
+    options.caseExecuted?.('proc-spawn-failed');
 
     const timeoutState = join(root, 'reconcile-handler-timeout');
     const timeoutClient = factory({
@@ -450,6 +465,7 @@ export async function runFaultScenarios(
       assert.equal(timeout.reason, 'correlation_mismatch');
       assert.equal(timeout.reportedCode, 'HANDLER_TIMEOUT');
     }
+    options.caseExecuted?.('handler-post-dispatch-timeout');
     assertMetadataOnly(readFakeRequests(timeoutState));
     assert.equal(
       readFakeRequests(timeoutState).length,
@@ -575,7 +591,7 @@ export async function runCoreClientConformance(
 ): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'aizign-fake-core-command-'));
   try {
-    await runCoreScenarios(factory, { command: fakeCoreExecutable(root) });
+    await runCoreScenarios(factory, { command: fakeCoreExecutable(root) }, options);
     await runFaultScenarios(factory, options);
   } finally {
     rmSync(root, { recursive: true, force: true });

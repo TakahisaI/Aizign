@@ -5,6 +5,7 @@ import type { Response } from './envelope.ts';
 import { codes, ProtocolError } from './error.ts';
 
 const accepted: Response = {
+  version: { axis: 'accepted-operation', version: 1 },
   requestId: 'req-1',
   kind: 'workflow.signal.submit',
   body: { type: 'workflow.signal', result: { disposition: 'accepted', eventId: 'evt-1' } },
@@ -28,6 +29,7 @@ test('a response correlates only when request id, kind, and event id all match',
 test('error responses correlate on request id and kind; the event id cannot be checked', () => {
   const sent = { requestId: 'req-1', kind: 'workflow.signal.submit', eventId: 'evt-1' };
   const rejected: Response = {
+    version: { axis: 'accepted-operation', version: 1 },
     requestId: 'req-1',
     kind: 'workflow.signal.submit',
     body: { type: 'error', error: new ProtocolError(codes.INVALID_SIGNAL, 'm') },
@@ -39,6 +41,7 @@ test('error responses correlate on request id and kind; the event id cannot be c
 test('reconciliation success also correlates the queried event id', () => {
   const sent = { requestId: 'req-r', kind: 'workflow.signal.reconcile', eventId: 'evt-1' };
   const response: Response = {
+    version: { axis: 'accepted-operation', version: 1 },
     requestId: 'req-r',
     kind: 'workflow.signal.reconcile',
     body: {

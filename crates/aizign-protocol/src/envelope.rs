@@ -69,13 +69,52 @@ pub struct DecodeFailure {
     pub request_id: Option<String>,
     /// The request kind, if the frame was JSON with a string `kind`.
     pub kind: Option<String>,
+    /// Version axis selected at the stage where decoding failed.
+    pub response_version: ResponseVersion,
     /// Why decoding failed.
     pub error: ProtocolError,
+}
+
+/// Source-qualified version axis for one response envelope.
+///
+/// The numeric values are both `1` today, but the variants must remain
+/// distinct so an operation error cannot silently fall back to the bootstrap
+/// version when the operation Protocol advances.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResponseVersion {
+    /// Stable envelope used before an operation version has been accepted.
+    Bootstrap(u32),
+    /// The accepted version of a registered or future operation axis.
+    AcceptedOperation(u32),
+}
+
+impl ResponseVersion {
+    /// Current bootstrap response axis.
+    #[must_use]
+    pub const fn bootstrap() -> Self {
+        Self::Bootstrap(BOOTSTRAP_ENVELOPE_VERSION)
+    }
+
+    /// Current operation response axis.
+    #[must_use]
+    pub const fn operation() -> Self {
+        Self::AcceptedOperation(PROTOCOL_VERSION)
+    }
+
+    /// Numeric value written to the wire.
+    #[must_use]
+    pub const fn wire(self) -> u32 {
+        match self {
+            Self::Bootstrap(version) | Self::AcceptedOperation(version) => version,
+        }
+    }
 }
 
 /// A response to be written as one line.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Response {
+    /// Bootstrap or accepted-operation source of the wire version.
+    pub version: ResponseVersion,
     /// The request id being answered; `None` only when it was unrecoverable.
     pub request_id: Option<String>,
     /// The request kind being answered; `None` only when it was unrecoverable.
@@ -171,6 +210,7 @@ fn valid_request_id(value: &str) -> bool {
 struct Recovered {
     request_id: Option<String>,
     kind: Option<String>,
+    response_version: ResponseVersion,
 }
 
 impl Recovered {
@@ -178,6 +218,7 @@ impl Recovered {
         DecodeFailure {
             request_id: self.request_id.clone(),
             kind: self.kind.clone(),
+            response_version: self.response_version,
             error,
         }
     }
@@ -190,6 +231,7 @@ fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
     let unaddressed = |error: ProtocolError| DecodeFailure {
         request_id: None,
         kind: None,
+        response_version: ResponseVersion::bootstrap(),
         error,
     };
     if frame.len() > MAX_REQUEST_BYTES {
@@ -224,6 +266,7 @@ fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
                 .get("kind")
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_owned),
+            response_version: ResponseVersion::bootstrap(),
         };
         return Err(recovered.fail(ProtocolError::new(
             codes::INVALID_ENVELOPE,
@@ -236,7 +279,7 @@ fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
             error.to_string(),
         ))
     })?;
-    let recovered = Recovered {
+    let mut recovered = Recovered {
         request_id: probe
             .request_id
             .as_ref()
@@ -248,6 +291,7 @@ fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
             .as_ref()
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned),
+        response_version: ResponseVersion::bootstrap(),
     };
 
     if probe.protocol.as_ref().and_then(serde_json::Value::as_str) != Some(PROTOCOL_NAME) {
@@ -289,6 +333,9 @@ fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
         PROTOCOL_VERSION
     };
     if version == u64::from(accepted) {
+        if kind != KIND_HELLO {
+            recovered.response_version = ResponseVersion::AcceptedOperation(accepted);
+        }
         Ok(recovered)
     } else {
         Err(recovered.fail(ProtocolError::new(
@@ -437,12 +484,7 @@ pub fn encode_response(response: &Response) -> Result<String, ProtocolError> {
     };
     let envelope = ResponseEnvelope {
         protocol: PROTOCOL_NAME.to_owned(),
-        version: match &response.body {
-            ResponseBody::Hello(_) | ResponseBody::Error(_) => BOOTSTRAP_ENVELOPE_VERSION,
-            ResponseBody::WorkflowSignal(_) | ResponseBody::WorkflowSignalReconciliation(_) => {
-                PROTOCOL_VERSION
-            }
-        },
+        version: response.version.wire(),
         request_id: response.request_id.clone(),
         kind: response.kind.clone(),
         ok,
@@ -464,6 +506,19 @@ pub fn encode_response(response: &Response) -> Result<String, ProtocolError> {
 
 /// Decodes one response frame. Used by adapters, testkits, and fixtures.
 pub fn decode_response(frame: &[u8]) -> Result<Response, ProtocolError> {
+    decode_response_for(frame, None)
+}
+
+/// Decodes one response while retaining the caller's request-stage axis.
+///
+/// The hint matters for bounded operation errors whose correlation kind was
+/// intentionally replaced with `null`: their wire version is still the
+/// accepted operation version even though the kind can no longer prove that
+/// from response bytes alone. Bootstrap error codes always remain bootstrap.
+pub fn decode_response_for(
+    frame: &[u8],
+    request_axis: Option<ResponseVersion>,
+) -> Result<Response, ProtocolError> {
     if frame.len() > MAX_FRAME_BYTES {
         return Err(ProtocolError::new(
             codes::INVALID_ENVELOPE,
@@ -554,8 +609,51 @@ pub fn decode_response(frame: &[u8]) -> Result<Response, ProtocolError> {
         }
     };
     Ok(Response {
+        version: decoded_response_version(
+            envelope.version,
+            envelope.kind.as_deref(),
+            &body,
+            request_axis,
+        ),
         request_id: envelope.request_id,
         kind: envelope.kind,
         body,
     })
+}
+
+fn decoded_response_version(
+    wire_version: u32,
+    kind: Option<&str>,
+    body: &ResponseBody,
+    request_axis: Option<ResponseVersion>,
+) -> ResponseVersion {
+    match body {
+        ResponseBody::WorkflowSignal(_) | ResponseBody::WorkflowSignalReconciliation(_) => {
+            ResponseVersion::AcceptedOperation(wire_version)
+        }
+        ResponseBody::Error(error) if !is_bootstrap_error_code(error.code().as_str()) => {
+            match request_axis {
+                Some(ResponseVersion::AcceptedOperation(_)) => {
+                    ResponseVersion::AcceptedOperation(wire_version)
+                }
+                None if kind.is_some_and(|kind| kind != KIND_HELLO) => {
+                    ResponseVersion::AcceptedOperation(wire_version)
+                }
+                Some(ResponseVersion::Bootstrap(_)) | None => {
+                    ResponseVersion::Bootstrap(wire_version)
+                }
+            }
+        }
+        ResponseBody::Hello(_) | ResponseBody::Error(_) => ResponseVersion::Bootstrap(wire_version),
+    }
+}
+
+fn is_bootstrap_error_code(code: &str) -> bool {
+    matches!(
+        code,
+        codes::REQUEST_TOO_LARGE
+            | codes::INVALID_ENVELOPE
+            | codes::PROTOCOL_VERSION_UNSUPPORTED
+            | codes::HANDLER_TIMEOUT
+    )
 }

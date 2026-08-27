@@ -168,7 +168,11 @@ function submitRequest(
 }
 
 function response(requestId: string | null, kind: string | null, body: Response['body']): Response {
-  return { requestId, kind, body };
+  const version =
+    body.type === 'hello' || kind === null || kind === 'hello'
+      ? { axis: 'bootstrap' as const, version: 1 }
+      : { axis: 'accepted-operation' as const, version: 1 };
+  return { version, requestId, kind, body };
 }
 
 test('request encoders match every Protocol v1 example without decoding', () => {

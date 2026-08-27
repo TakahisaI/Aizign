@@ -25,6 +25,7 @@ import {
   MAX_FRAME_BYTES,
   OneShotFrameCollector,
 } from '@aizign/protocol';
+import { createProcessProfileRegistry } from '../../spec/process/v1/fixtures/registry.mjs';
 import { BoundedBuffer } from './bounded-buffer.mjs';
 import {
   evaluatePrSmokeBudgets,
@@ -72,18 +73,6 @@ import {
   TYPESCRIPT_TRANSPORT,
   writeSmokeFailure,
 } from './run.mjs';
-
-const PROCESS_PROFILE_CASE_IDS = [
-  'res-post-lf-space',
-  'res-exact-bound',
-  'res-over-bound',
-  'res-valid-zero',
-  'res-valid-nonzero',
-];
-
-test('process profile case IDs are unique', () => {
-  assert.equal(new Set(PROCESS_PROFILE_CASE_IDS).size, PROCESS_PROFILE_CASE_IDS.length);
-});
 
 const PROTOCOL = {
   checkCorrelation,
@@ -538,6 +527,7 @@ test('bounded buffers preserve UTF-8 chunk boundaries and stop retaining after t
 });
 
 test('direct runner bounds the frame, requires immediate close, and fails closed', async () => {
+  const processCases = createProcessProfileRegistry('benchmark');
   const root = mkdtempSync(join(tmpdir(), 'aizign-direct-output-bound-'));
   try {
     const fakeBinary = join(root, 'overflow-core.cjs');
@@ -566,6 +556,7 @@ process.stdin.on('end', () => {
       return;
     }
     process.stdout.write(JSON.stringify(response) + (process.argv[4] === 'post-lf' ? '\\n ' : '\\n'));
+    if (process.argv[4] === 'nonzero') process.exitCode = 7;
     return;
   }
   const stream = process.argv[2] === 'stderr' ? process.stderr : process.stdout;
@@ -576,49 +567,57 @@ process.stdin.on('end', () => {
     );
     chmodSync(fakeBinary, 0o700);
     const request = buildRequest(OUTCOME_CASES[0]);
-    const stdoutResult = await runProcess(
-      fakeBinary,
-      ['stdout', String(MAX_FRAME_BYTES + 2)],
-      request,
-      request.kind,
-      PROTOCOL,
+    const stdoutResult = await processCases.run('res-over-bound', () =>
+      runProcess(
+        fakeBinary,
+        ['stdout', String(MAX_FRAME_BYTES + 2)],
+        request,
+        request.kind,
+        PROTOCOL,
+      ),
     );
     assert.equal(stdoutResult.transport_kind, 'unknown');
     assert.equal(stdoutResult.unknown_reason, 'oversized_response');
 
-    const exactMax = await runProcess(
-      fakeBinary,
-      ['response', 'INTERNAL', 'exact-max', String(MAX_FRAME_BYTES)],
-      request,
-      request.kind,
-      PROTOCOL,
+    const exactMax = await processCases.run('res-exact-bound', () =>
+      runProcess(
+        fakeBinary,
+        ['response', 'INTERNAL', 'exact-max', String(MAX_FRAME_BYTES)],
+        request,
+        request.kind,
+        PROTOCOL,
+      ),
     );
     assert.equal(exactMax.transport_kind, 'correlated_response');
     assert.equal(exactMax.outcome, 'unknown');
     assert.equal(exactMax.unknown_reason, 'reported_unknown');
     assert.equal(exactMax.error_code, 'INTERNAL');
 
-    const postLf = await runProcess(
-      fakeBinary,
-      ['response', 'INTERNAL', 'post-lf'],
-      request,
-      request.kind,
-      PROTOCOL,
+    const postLf = await processCases.run('res-post-lf-space', () =>
+      runProcess(fakeBinary, ['response', 'INTERNAL', 'post-lf'], request, request.kind, PROTOCOL),
     );
     assert.equal(postLf.transport_kind, 'unknown');
     assert.equal(postLf.unknown_reason, 'undecodable_response');
 
-    const unrecognized = await runProcess(
-      fakeBinary,
-      ['response', 'FUTURE_OUTCOME_UNKNOWN'],
-      request,
-      request.kind,
-      PROTOCOL,
+    const unrecognized = await processCases.run('res-valid-zero', () =>
+      runProcess(
+        fakeBinary,
+        ['response', 'FUTURE_OUTCOME_UNKNOWN'],
+        request,
+        request.kind,
+        PROTOCOL,
+      ),
     );
     assert.equal(unrecognized.transport_kind, 'correlated_response');
     assert.equal(unrecognized.outcome, 'unknown');
     assert.equal(unrecognized.unknown_reason, 'reported_unknown');
     assert.equal('error_code' in unrecognized, false);
+
+    const nonzero = await processCases.run('res-valid-nonzero', () =>
+      runProcess(fakeBinary, ['response', 'INTERNAL', 'nonzero'], request, request.kind, PROTOCOL),
+    );
+    assert.equal(nonzero.transport_kind, 'unknown');
+    assert.equal(nonzero.unknown_reason, 'undecodable_response');
 
     await assert.rejects(
       runProcess(
@@ -630,6 +629,7 @@ process.stdin.on('end', () => {
       ),
       /benchmark child stderr exceeded 262144 bytes/,
     );
+    processCases.complete();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -78,6 +78,7 @@ const surfaces = [
       'Request',
       'Response',
       'ResponseBody',
+      'ResponseVersion',
       'Role',
       'SentRequest',
       'SignalKind',

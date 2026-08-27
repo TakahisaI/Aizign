@@ -64,6 +64,7 @@ import {
   ProtocolError,
   type Request,
   type Response,
+  type ResponseVersion,
   type WorkflowSignal,
 } from '@aizign/protocol';
 
@@ -110,8 +111,23 @@ function errorResponse(
   kind: string | null,
   code: string,
   message: string,
+  version: ResponseVersion = kind !== null &&
+  kind !== 'hello' &&
+  !new Set<string>([
+    codes.REQUEST_TOO_LARGE,
+    codes.INVALID_ENVELOPE,
+    codes.PROTOCOL_VERSION_UNSUPPORTED,
+    codes.HANDLER_TIMEOUT,
+  ]).has(code)
+    ? { axis: 'accepted-operation', version: PROTOCOL_VERSION }
+    : { axis: 'bootstrap', version: 1 },
 ): Response {
-  return { requestId, kind, body: { type: 'error', error: new ProtocolError(code, message) } };
+  return {
+    version,
+    requestId,
+    kind,
+    body: { type: 'error', error: new ProtocolError(code, message) },
+  };
 }
 
 type ProfileRead =
@@ -179,6 +195,7 @@ function handleSubmit(
   if (existing !== undefined) {
     if (sameSignal(existing, signal)) {
       return {
+        version: { axis: 'accepted-operation', version: PROTOCOL_VERSION },
         requestId: request.requestId,
         kind: request.kind,
         body: {
@@ -198,6 +215,7 @@ function handleSubmit(
     return reject('JOURNAL_OUTCOME_UNKNOWN', 'append outcome unknown: acknowledgement lost');
   }
   return {
+    version: { axis: 'accepted-operation', version: PROTOCOL_VERSION },
     requestId: request.requestId,
     kind: request.kind,
     body: { type: 'workflow.signal', result: { disposition: 'accepted', eventId: signal.eventId } },
@@ -213,6 +231,7 @@ function handleReconcile(
   const disposition =
     existing === undefined ? 'absent' : sameSignal(existing, signal) ? 'accepted' : 'conflict';
   return {
+    version: { axis: 'accepted-operation', version: PROTOCOL_VERSION },
     requestId: request.requestId,
     kind: request.kind,
     body: {
@@ -273,7 +292,15 @@ async function main(argv: readonly string[]): Promise<number> {
     request = decodeRequest(frame);
   } catch (error) {
     if (error instanceof DecodeFailure) {
-      write(errorResponse(error.requestId, error.kind, error.error.code, error.error.message));
+      write(
+        errorResponse(
+          error.requestId,
+          error.kind,
+          error.error.code,
+          error.error.message,
+          error.responseVersion,
+        ),
+      );
       return 0;
     }
     write(errorResponse(null, null, codes.INTERNAL, 'fake core failed to decode'));
@@ -289,6 +316,7 @@ async function main(argv: readonly string[]): Promise<number> {
   const response: Response =
     request.kind === 'hello'
       ? {
+          version: { axis: 'bootstrap', version: 1 },
           requestId: request.requestId,
           kind: request.kind,
           body: { type: 'hello', info: helloInfo },
@@ -415,6 +443,7 @@ async function main(argv: readonly string[]): Promise<number> {
       return 0;
     case 'wrong-event-id':
       write({
+        version: { axis: 'accepted-operation', version: PROTOCOL_VERSION },
         requestId: request.requestId,
         kind: request.kind,
         body:

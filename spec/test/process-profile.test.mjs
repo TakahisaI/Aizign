@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { expectedProcessProfileCaseIds } from '../process/v1/fixtures/registry.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const authorityPath = 'spec/process/v1/README.md';
@@ -10,12 +11,7 @@ const fixturePath = 'spec/process/v1/fixtures/cases.json';
 const authority = readFileSync(join(root, authorityPath), 'utf8');
 const fixture = JSON.parse(readFileSync(join(root, fixturePath), 'utf8'));
 
-const evidenceSources = {
-  benchmark: 'benchmarks/performance/run.test.mjs',
-  dsh: 'adapters/dsh/test/conformance/core-client.test.ts',
-  protocol: join('packages', 'protocol', 'src', 'envelope.test.ts'),
-  'rust-cli': 'crates/aizign-cli/tests/handle.rs',
-};
+const evidenceOwners = new Set(['benchmark', 'dsh', 'dsh-plugin', 'protocol', 'rust-cli']);
 
 const allowed = {
   group: new Set(['request', 'hello', 'version-kind', 'response-process']),
@@ -110,7 +106,7 @@ test('every process fixture has a closed, metadata-only evidence record', () => 
     assert.ok(entry.evidence.length > 0, entry.id);
     assert.deepEqual([...new Set(entry.evidence)], entry.evidence, entry.id);
     for (const source of entry.evidence)
-      assert.ok(source in evidenceSources, `${entry.id}: ${source}`);
+      assert.ok(evidenceOwners.has(source), `${entry.id}: ${source}`);
   }
 
   assert.ok(Buffer.byteLength(JSON.stringify(fixture)) <= 65_536);
@@ -120,17 +116,8 @@ test('every process fixture has a closed, metadata-only evidence record', () => 
   );
 });
 
-test('each projected case is declared by every applicable executable test owner', () => {
-  const sourceText = Object.fromEntries(
-    Object.entries(evidenceSources).map(([owner, path]) => [
-      owner,
-      readFileSync(join(root, path), 'utf8'),
-    ]),
-  );
-
-  for (const entry of fixture.cases) {
-    for (const owner of entry.evidence) {
-      assert.ok(sourceText[owner].includes(entry.id), `${entry.id} missing from ${owner}`);
-    }
+test('every evidence owner has a non-empty case projection for its runtime registry', () => {
+  for (const owner of evidenceOwners) {
+    assert.ok(expectedProcessProfileCaseIds(owner).length > 0, owner);
   }
 });

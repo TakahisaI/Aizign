@@ -266,8 +266,11 @@ dispatch/effect” also forbids state-path inspection or artifact creation.
 ## Implementation evidence
 
 The shared fixture projection contains every stable ID above exactly once.
-Repository checks reject an unlisted or duplicated projection, require each
-applicable Rust/TypeScript/benchmark owner to declare the same ID, and validate
-the bootstrap-v1 future-operation hello fixture through both Protocol codecs.
+Repository checks reject an unlisted or duplicated projection. Each applicable
+Rust, TypeScript, plugin, and benchmark test uses the shared runtime registry;
+the registry records an ID only after its executable assertion succeeds and
+fails completion unless the executed set exactly matches that owner's fixture
+projection. The bootstrap-v1 future-operation hello fixture executes through
+both Protocol codecs.
 Ignored `lib/` directories are rebuilt only as ephemeral declaration/package
 evidence and are never candidate source paths.

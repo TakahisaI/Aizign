@@ -295,7 +295,10 @@ function decodeExtractedResponse(extraction, request, protocol) {
   }
   let response;
   try {
-    response = protocol.decodeResponse(extraction.frame);
+    response = protocol.decodeResponse(
+      extraction.frame,
+      request.kind === 'hello' ? 'bootstrap' : 'accepted-operation',
+    );
   } catch {
     return { transport_kind: 'unknown', unknown_reason: 'undecodable_response' };
   }
@@ -1588,7 +1591,7 @@ export function verifyReleaseBinary(binary, stateDir, protocol, timeoutMs = OPER
   let response;
   if (extraction.kind === 'frame') {
     try {
-      response = protocol.decodeResponse(extraction.frame);
+      response = protocol.decodeResponse(extraction.frame, 'bootstrap');
     } catch {
       response = undefined;
     }

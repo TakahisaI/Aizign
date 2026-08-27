@@ -69,6 +69,18 @@ function reportedUnknown(code: string, message: string): UnknownOutcome {
   };
 }
 
+function versionAxisMismatch(
+  response: Response,
+  expected: Response['version']['axis'],
+): UnknownOutcome | undefined {
+  if (response.version.axis === expected) return undefined;
+  return {
+    kind: 'unknown',
+    reason: 'undecodable_response',
+    detail: `response used ${response.version.axis} version axis; expected ${expected}`,
+  };
+}
+
 const CURRENT_FIXED_ERROR_CODES = new Set<string>(Object.values(codes));
 const CURRENT_UNKNOWN_OUTCOME_CODES = new Set<string>([
   codes.INTERNAL,
@@ -112,7 +124,7 @@ export class OneShotCoreClient implements CoreClient {
 
   async hello(requestId: string, options: CallOptions = {}): Promise<HelloOutcome> {
     const frame = encodeRequest({ requestId, kind: 'hello' });
-    const exchange = await this.#exchange(frame, options.signal);
+    const exchange = await this.#exchange(frame, 'bootstrap', options.signal);
     const finish = (outcome: HelloOutcome, reportedErrorCode?: string) =>
       this.#finish('hello', exchange.timing, outcome, reportedErrorCode);
     if (exchange.kind === 'unknown') return finish(exchange.outcome);
@@ -124,6 +136,8 @@ export class OneShotCoreClient implements CoreClient {
         detail: `${mismatch.field}: expected ${mismatch.expected}, got ${String(mismatch.actual)}`,
       });
     }
+    const wrongAxis = versionAxisMismatch(exchange.response, 'bootstrap');
+    if (wrongAxis !== undefined) return finish(wrongAxis);
     const { body } = exchange.response;
     switch (body.type) {
       case 'hello':
@@ -156,7 +170,7 @@ export class OneShotCoreClient implements CoreClient {
     options: CallOptions = {},
   ): Promise<SubmitOutcome> {
     const frame = encodeRequest({ requestId, kind: 'workflow.signal.submit', payload });
-    const exchange = await this.#exchange(frame, options.signal);
+    const exchange = await this.#exchange(frame, 'accepted-operation', options.signal);
     const finish = (outcome: SubmitOutcome, reportedErrorCode?: string) =>
       this.#finish('workflow.signal.submit', exchange.timing, outcome, reportedErrorCode);
     if (exchange.kind === 'unknown') return finish(exchange.outcome);
@@ -176,6 +190,8 @@ export class OneShotCoreClient implements CoreClient {
         ...(reportedCode === undefined ? {} : { reportedCode }),
       });
     }
+    const wrongAxis = versionAxisMismatch(exchange.response, 'accepted-operation');
+    if (wrongAxis !== undefined) return finish(wrongAxis, reportedCode);
     const { body } = exchange.response;
     switch (body.type) {
       case 'workflow.signal':
@@ -212,7 +228,7 @@ export class OneShotCoreClient implements CoreClient {
     options: CallOptions = {},
   ): Promise<ReconcileOutcome> {
     const frame = encodeRequest({ requestId, kind: 'workflow.signal.reconcile', payload });
-    const exchange = await this.#exchange(frame, options.signal);
+    const exchange = await this.#exchange(frame, 'accepted-operation', options.signal);
     const finish = (outcome: ReconcileOutcome) =>
       this.#finish('workflow.signal.reconcile', exchange.timing, outcome);
     if (exchange.kind === 'unknown') return finish(exchange.outcome);
@@ -234,6 +250,9 @@ export class OneShotCoreClient implements CoreClient {
       };
       return finish(outcome);
     }
+
+    const wrongAxis = versionAxisMismatch(exchange.response, 'accepted-operation');
+    if (wrongAxis !== undefined) return finish(wrongAxis);
 
     const { body } = exchange.response;
     switch (body.type) {
@@ -293,7 +312,11 @@ export class OneShotCoreClient implements CoreClient {
     return outcome;
   }
 
-  #exchange(frame: string, signal: AbortSignal | undefined): Promise<Exchange> {
+  #exchange(
+    frame: string,
+    requestAxis: Response['version']['axis'],
+    signal: AbortSignal | undefined,
+  ): Promise<Exchange> {
     const { command, env = {}, stateDir, timeoutMs } = this.#config;
     return new Promise((resolve) => {
       const started = performance.now();
@@ -410,7 +433,7 @@ export class OneShotCoreClient implements CoreClient {
         try {
           settle({
             kind: 'response',
-            response: decodeResponse(extraction.frame),
+            response: decodeResponse(extraction.frame, requestAxis),
             timing: timing(),
           });
         } catch (error) {

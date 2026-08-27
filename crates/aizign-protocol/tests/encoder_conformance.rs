@@ -226,7 +226,14 @@ fn submit_request(
 }
 
 fn response(request_id: Option<&str>, kind: Option<&str>, body: ResponseBody) -> Response {
+    let version = match (&body, kind) {
+        (ResponseBody::Hello(_), _) | (ResponseBody::Error(_), None | Some("hello")) => {
+            aizign_protocol::ResponseVersion::bootstrap()
+        }
+        _ => aizign_protocol::ResponseVersion::operation(),
+    };
     Response {
+        version,
         request_id: request_id.map(str::to_owned),
         kind: kind.map(str::to_owned),
         body,

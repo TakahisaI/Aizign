@@ -12,6 +12,7 @@ import {
 import type { Context } from '@deepseek-ai/cordis';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools';
+import { createProcessProfileRegistry } from '../../../../spec/process/v1/fixtures/registry.mjs';
 import type { Config } from '../../src/config.ts';
 import { OneShotCoreClient } from '../../src/core-client/one-shot-client.ts';
 import { apply, Config as ConfigSchema, inject, name } from '../../src/index.ts';
@@ -77,6 +78,7 @@ test('plugin shape: name, inject, and a schemastery Config', () => {
 });
 
 test('preflight accepts a compatible core and rejects an incompatible or unreachable one', async () => {
+  const processCases = createProcessProfileRegistry('dsh-plugin');
   const root = mkdtempSync(join(tmpdir(), 'aizign-dsh-preflight-'));
   const command = fakeCoreExecutable(join(root, 'bin'));
   const ok = new OneShotCoreClient({ command, stateDir: '/unused', timeoutMs: 5_000 });
@@ -136,6 +138,7 @@ test('preflight accepts a compatible core and rejects an incompatible or unreach
     'CAPABILITY_UNSUPPORTED',
     'hello-missing-capability',
   );
+  processCases.record('hello-missing-capability');
 
   const future = new OneShotCoreClient({
     command,
@@ -159,6 +162,8 @@ test('preflight accepts a compatible core and rejects an incompatible or unreach
     'PROTOCOL_VERSION_UNSUPPORTED',
     'hello-future-operation',
   );
+  processCases.record('hello-future-operation');
+  processCases.complete();
 
   const unrecognizedPeerCode = {
     async hello() {
