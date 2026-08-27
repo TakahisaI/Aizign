@@ -40,6 +40,10 @@ const DISPATCH_READING: u8 = 0;
 const DISPATCHING: u8 = 1;
 const DISPATCH_TIMED_OUT: u8 = 2;
 
+fn protocol_error(code: &str, message: impl Into<String>) -> ProtocolError {
+    ProtocolError::try_new(code, message).expect("CLI supplied a well-formed Protocol code")
+}
+
 /// The one transition that separates a pre-dispatch timeout from an
 /// operation that may already have effects. The watchdog and worker must win
 /// the same atomic state; observing a separate boolean is not sufficient.
@@ -215,7 +219,7 @@ fn framing_error(
         version: ResponseVersion::bootstrap(),
         request_id: None,
         kind: None,
-        body: ResponseBody::Error(ProtocolError::new(code, message)),
+        body: ResponseBody::Error(protocol_error(code, message)),
     }
 }
 
@@ -247,7 +251,7 @@ fn timeout_response(
             version: ResponseVersion::bootstrap(),
             request_id: None,
             kind: None,
-            body: ResponseBody::Error(ProtocolError::new(codes::HANDLER_TIMEOUT, message)),
+            body: ResponseBody::Error(protocol_error(codes::HANDLER_TIMEOUT, message)),
         },
         timing: timing_enabled.then(|| HandlerTiming {
             operation_kind: Some("unknown"),
@@ -351,7 +355,7 @@ fn respond(
                     _ => unreachable!("decode failures are errors"),
                 };
                 response.kind = None;
-                response.body = ResponseBody::Error(ProtocolError::new(
+                response.body = ResponseBody::Error(protocol_error(
                     &code,
                     "request rejected; recovered correlation was not safe to echo",
                 ));
@@ -379,7 +383,7 @@ fn respond(
             version: ResponseVersion::bootstrap(),
             request_id: None,
             kind: None,
-            body: ResponseBody::Error(ProtocolError::new(
+            body: ResponseBody::Error(protocol_error(
                 codes::HANDLER_TIMEOUT,
                 "request timed out before dispatch",
             )),
@@ -440,7 +444,7 @@ fn submit_response(
         let mut journal = match JsonlJournal::open_observed(state, &mut store_observer) {
             Ok(journal) => journal,
             Err(error) => {
-                return ResponseBody::Error(ProtocolError::new(error.code(), error.to_string()));
+                return ResponseBody::Error(protocol_error(error.code(), error.to_string()));
             }
         };
         let mut engine_observer = EngineTimingObserver::new(engine_timing);
@@ -449,7 +453,7 @@ fn submit_response(
         let mut journal = match JsonlJournal::open(state) {
             Ok(journal) => journal,
             Err(error) => {
-                return ResponseBody::Error(ProtocolError::new(error.code(), error.to_string()));
+                return ResponseBody::Error(protocol_error(error.code(), error.to_string()));
             }
         };
         handle_workflow_signal(&mut journal, &SystemClock, command)
@@ -481,7 +485,7 @@ fn reconcile_response(
         let mut journal = match JsonlJournalReader::open_observed(state, &mut store_observer) {
             Ok(journal) => journal,
             Err(error) => {
-                return ResponseBody::Error(ProtocolError::new(error.code(), error.to_string()));
+                return ResponseBody::Error(protocol_error(error.code(), error.to_string()));
             }
         };
         let mut engine_observer = EngineTimingObserver::new(engine_timing);
@@ -490,7 +494,7 @@ fn reconcile_response(
         let mut journal = match JsonlJournalReader::open(state) {
             Ok(journal) => journal,
             Err(error) => {
-                return ResponseBody::Error(ProtocolError::new(error.code(), error.to_string()));
+                return ResponseBody::Error(protocol_error(error.code(), error.to_string()));
             }
         };
         reconcile_workflow_signal(&mut journal, signal)
@@ -566,7 +570,7 @@ fn observed_operation_kind(kind: Option<&str>) -> &'static str {
 }
 
 fn store_capability_unsupported(kind: &str) -> ProtocolError {
-    ProtocolError::new(
+    protocol_error(
         codes::CAPABILITY_UNSUPPORTED,
         format!("{kind} is unavailable on this unverified storage platform"),
     )
@@ -575,12 +579,12 @@ fn store_capability_unsupported(kind: &str) -> ProtocolError {
 fn handle_error(error: &HandleError) -> ProtocolError {
     match error {
         HandleError::Rejected(rejection) => ProtocolError::from(rejection.clone()),
-        other => ProtocolError::new(other.code(), other.to_string()),
+        other => protocol_error(other.code(), other.to_string()),
     }
 }
 
 fn reconcile_error(error: &ReconcileError) -> ProtocolError {
-    ProtocolError::new(error.code(), error.to_string())
+    protocol_error(error.code(), error.to_string())
 }
 
 /// One structured line on stderr: identity and codes only, never contents.
@@ -691,12 +695,11 @@ mod dispatch_gate_tests {
 mod classification_tests {
     use aizign_core::EventId;
     use aizign_protocol::{
-        Disposition, ProtocolError, ReconciliationDisposition, ReconciliationResult, ResponseBody,
-        SignalResult,
+        Disposition, ReconciliationDisposition, ReconciliationResult, ResponseBody, SignalResult,
     };
     use serde_json::Value;
 
-    use super::{hello_info, record_semantic_outcome};
+    use super::{hello_info, protocol_error, record_semantic_outcome};
     use crate::timing::HandlerTiming;
 
     fn event_id() -> EventId {
@@ -709,7 +712,7 @@ mod classification_tests {
             let code = row["reportedCode"]["value"]
                 .as_str()
                 .unwrap_or("FUTURE_OUTCOME_UNKNOWN");
-            return ResponseBody::Error(ProtocolError::new(code, "classification fixture"));
+            return ResponseBody::Error(protocol_error(code, "classification fixture"));
         }
 
         match row["operation"].as_str().expect("operation") {

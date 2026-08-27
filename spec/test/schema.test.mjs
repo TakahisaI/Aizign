@@ -137,6 +137,13 @@ test('every invalid fixture matches the schema classification it declares', () =
     const dir = join(root, 'spec/conformance/invalid', direction);
     for (const name of fixtures('invalid', direction)) {
       const expected = JSON.parse(readFileSync(join(dir, `${name}.expect.json`), 'utf8'));
+      if (direction === 'request' || direction === 'response') {
+        assert.deepEqual(
+          Object.keys(expected).sort(),
+          ['code', 'kind', 'requestId', 'responseStage', 'responseVersion', 'schema'].sort(),
+          `invalid/${direction}/${name}: expectation keys`,
+        );
+      }
       assert.equal(
         typeof expected.schema,
         'boolean',

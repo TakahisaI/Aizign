@@ -14,7 +14,6 @@ import {
   encodeRequest,
   encodeResponse,
 } from './envelope.ts';
-import { ProtocolError } from './error.ts';
 
 const root = join(import.meta.dirname, '../../../spec/conformance');
 
@@ -33,7 +32,13 @@ function frames(dir: string): Array<{ name: string; frame: Uint8Array }> {
 function expectation(
   dir: string,
   name: string,
-): { code: string; requestId?: string | null; kind?: string | null } {
+): {
+  code: string;
+  requestId: string | null;
+  kind: string | null;
+  responseStage: 'bootstrap' | 'accepted-operation';
+  responseVersion: number;
+} {
   return JSON.parse(readFileSync(join(dir, `${name}.expect.json`), 'utf8'));
 }
 
@@ -70,21 +75,41 @@ test('invalid requests fail with the expected code and recovered ids', () => {
     assert.equal(failure.error.code, expected.code, `${name}: code`);
     assert.equal(failure.requestId, expected.requestId ?? null, `${name}: requestId`);
     assert.equal(failure.kind, expected.kind ?? null, `${name}: kind`);
+    assert.deepEqual(
+      failure.responseVersion,
+      { axis: expected.responseStage, version: expected.responseVersion },
+      `${name}: responseVersion`,
+    );
   }
 });
 
-test('invalid responses fail with the expected code', () => {
+test('invalid responses fail with the expected code and recovered context', () => {
   const dir = join(root, 'invalid/response');
   for (const { name, frame } of frames(dir)) {
     const expected = expectation(dir, name);
-    let error: ProtocolError | undefined;
+    let failure: DecodeFailure | undefined;
     try {
-      decodeResponse(frame);
+      decodeResponse(
+        frame,
+        expected.responseStage === 'bootstrap'
+          ? { requestAxis: 'bootstrap', bootstrapVersion: expected.responseVersion }
+          : {
+              requestAxis: 'accepted-operation',
+              operationVersion: expected.responseVersion,
+            },
+      );
     } catch (thrown) {
-      assert.ok(thrown instanceof ProtocolError, `${name}: threw ${String(thrown)}`);
-      error = thrown;
+      assert.ok(thrown instanceof DecodeFailure, `${name}: threw ${String(thrown)}`);
+      failure = thrown;
     }
-    assert.ok(error, `${name}: must be rejected`);
-    assert.equal(error.code, expected.code, `${name}: code`);
+    assert.ok(failure, `${name}: must be rejected`);
+    assert.equal(failure.error.code, expected.code, `${name}: code`);
+    assert.equal(failure.requestId, expected.requestId, `${name}: requestId`);
+    assert.equal(failure.kind, expected.kind, `${name}: kind`);
+    assert.deepEqual(
+      failure.responseVersion,
+      { axis: expected.responseStage, version: expected.responseVersion },
+      `${name}: responseVersion`,
+    );
   }
 });

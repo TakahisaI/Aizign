@@ -38,6 +38,7 @@
  * - `signal-terminated` terminate by signal without a frame
  * - `operation-version-unsupported` return a correlated bootstrap compatibility error
  * - `wrong-operation-version` return a response on the wrong numeric operation version
+ * - `invalid-response-source` prove encoder rejection writes zero stdout bytes
  *
  * `AIZIGN_FAKE_HELLO_PROTOCOL_VERSION` overrides the advertised protocol
  * version, for compatibility-check tests.
@@ -89,11 +90,19 @@ const helloInfo: HelloInfo = {
   package: { name: 'aizign-fake', version: '0.0.0' },
 };
 
-function safeResponse(response: Response): string {
+function write(response: Response): void {
+  writeFrame(encodeResponse(response));
+}
+
+function writeFrame(frame: string): void {
+  process.stdout.write(`${frame}\n`);
+}
+
+function boundedErrorFrame(response: Response): string {
+  if (response.body.type !== 'error') return encodeResponse(response);
   try {
     return encodeResponse(response);
   } catch {
-    if (response.body.type !== 'error') throw new Error('fake success response exceeded the bound');
     return encodeResponse(
       errorResponse(
         response.requestId,
@@ -104,10 +113,6 @@ function safeResponse(response: Response): string {
       ),
     );
   }
-}
-
-function write(response: Response): void {
-  process.stdout.write(`${safeResponse(response)}\n`);
 }
 
 function errorResponse(
@@ -296,13 +301,15 @@ async function main(argv: readonly string[]): Promise<number> {
     request = decodeRequest(frame);
   } catch (error) {
     if (error instanceof DecodeFailure) {
-      write(
-        errorResponse(
-          error.requestId,
-          error.kind,
-          error.error.code,
-          error.error.message,
-          error.responseVersion,
+      writeFrame(
+        boundedErrorFrame(
+          errorResponse(
+            error.requestId,
+            error.kind,
+            error.error.code,
+            error.error.message,
+            error.responseVersion,
+          ),
         ),
       );
       return 0;
@@ -340,6 +347,16 @@ async function main(argv: readonly string[]): Promise<number> {
       : request.kind === 'workflow.signal.submit'
         ? handleSubmit(stateDir, request)
         : handleReconcile(stateDir, request);
+  if (fault === 'invalid-response-source') {
+    write({
+      ...response,
+      body: {
+        type: 'error',
+        error: { code: codes.INTERNAL, message: 'structural lookalike' } as ProtocolError,
+      },
+    });
+    return 0;
+  }
   switch (fault) {
     case 'handler-timeout':
       write(errorResponse(null, null, codes.HANDLER_TIMEOUT, 'processing exceeded its bound'));
@@ -399,10 +416,10 @@ async function main(argv: readonly string[]): Promise<number> {
       return 0;
     }
     case 'no-lf-response':
-      process.stdout.write(safeResponse(response));
+      process.stdout.write(encodeResponse(response));
       return 0;
     case 'bom-response':
-      process.stdout.write(`\uFEFF${safeResponse(response)}\n`);
+      process.stdout.write(`\uFEFF${encodeResponse(response)}\n`);
       return 0;
     case 'exact-max': {
       const envelope = {
@@ -421,19 +438,19 @@ async function main(argv: readonly string[]): Promise<number> {
       return 0;
     }
     case 'post-lf-space':
-      process.stdout.write(`${safeResponse(response)}\n `);
+      process.stdout.write(`${encodeResponse(response)}\n `);
       return 0;
     case 'post-lf-tab':
-      process.stdout.write(`${safeResponse(response)}\n\t`);
+      process.stdout.write(`${encodeResponse(response)}\n\t`);
       return 0;
     case 'post-lf-cr':
-      process.stdout.write(`${safeResponse(response)}\n\r`);
+      process.stdout.write(`${encodeResponse(response)}\n\r`);
       return 0;
     case 'post-lf-lf':
-      process.stdout.write(`${safeResponse(response)}\n\n`);
+      process.stdout.write(`${encodeResponse(response)}\n\n`);
       return 0;
     case 'crlf-response':
-      process.stdout.write(`${safeResponse(response)}\r\n`);
+      process.stdout.write(`${encodeResponse(response)}\r\n`);
       return 0;
     case 'nonzero-with-frame':
       write(response);
@@ -444,7 +461,7 @@ async function main(argv: readonly string[]): Promise<number> {
       await new Promise(() => undefined);
       return 0;
     case 'process-open-after-stdout-close':
-      process.stdout.end(`${safeResponse(response)}\n`);
+      process.stdout.end(`${encodeResponse(response)}\n`);
       setInterval(() => undefined, 60_000);
       await new Promise(() => undefined);
       return 0;

@@ -1,1 +1,1 @@
-{"code":"INVALID_ENVELOPE","requestId":"req-b","kind":"workflow.signal.submit","schema":true}
+{"code":"INVALID_ENVELOPE","requestId":"req-b","kind":"workflow.signal.submit","responseStage":"bootstrap","responseVersion":1,"schema":true}

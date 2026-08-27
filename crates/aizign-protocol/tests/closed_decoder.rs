@@ -7,6 +7,10 @@ use aizign_protocol::{
     encode_request, encode_response,
 };
 
+fn protocol_error(code: &str, message: impl Into<String>) -> aizign_protocol::ProtocolError {
+    aizign_protocol::ProtocolError::try_new(code, message).expect("test code is well formed")
+}
+
 fn hello(extra: &str) -> String {
     format!(
         r#"{{"protocol":"aizign","version":1,"requestId":"req-1","kind":"hello","payload":{{}}{extra}}}"#
@@ -216,10 +220,7 @@ fn encoded_frames_carry_the_protocol_version_and_escape_newlines() {
         version: ResponseVersion::bootstrap(),
         request_id: None,
         kind: None,
-        body: ResponseBody::Error(aizign_protocol::ProtocolError::new(
-            codes::INTERNAL,
-            "line one\nline two",
-        )),
+        body: ResponseBody::Error(protocol_error(codes::INTERNAL, "line one\nline two")),
     };
     let frame = encode_response(&response).unwrap();
     assert!(!frame.contains('\n'));
@@ -237,13 +238,13 @@ fn encoded_frames_carry_the_protocol_version_and_escape_newlines() {
 }
 
 #[test]
-fn request_encoder_refuses_a_frame_above_the_bound() {
+fn request_encoder_rejects_overlong_fields_before_the_final_bound() {
     let request = Request {
         request_id: "r".repeat(MAX_REQUEST_BYTES),
         kind: RequestKind::Hello,
     };
     let error = encode_request(&request).unwrap_err();
-    assert_eq!(error.code().as_str(), codes::REQUEST_TOO_LARGE);
+    assert_eq!(error.code().as_str(), codes::INVALID_ENVELOPE);
 }
 
 #[test]
@@ -252,10 +253,7 @@ fn response_encoder_refuses_a_frame_above_the_bound() {
         version: ResponseVersion::operation(),
         request_id: Some("req-oversized".to_owned()),
         kind: Some("workflow.signal.submit".to_owned()),
-        body: ResponseBody::Error(aizign_protocol::ProtocolError::new(
-            codes::INTERNAL,
-            "x".repeat(MAX_FRAME_BYTES),
-        )),
+        body: ResponseBody::Error(protocol_error(codes::INTERNAL, "x".repeat(MAX_FRAME_BYTES))),
     };
     let error = encode_response(&response).unwrap_err();
     assert_eq!(error.code().as_str(), codes::INVALID_ENVELOPE);
@@ -267,13 +265,10 @@ fn response_encoder_uses_the_explicit_source_qualified_axis() {
         version: ResponseVersion::AcceptedOperation(2),
         request_id: Some("req-future-operation".to_owned()),
         kind: Some("workflow.signal.submit".to_owned()),
-        body: ResponseBody::Error(aizign_protocol::ProtocolError::new(
-            codes::INTERNAL,
-            "operation failed",
-        )),
+        body: ResponseBody::Error(protocol_error(codes::INTERNAL, "operation failed")),
     };
     let bootstrap = Response {
-        version: ResponseVersion::Bootstrap(7),
+        version: ResponseVersion::Bootstrap(1),
         request_id: operation.request_id.clone(),
         kind: operation.kind.clone(),
         body: operation.body.clone(),
@@ -287,7 +282,17 @@ fn response_encoder_uses_the_explicit_source_qualified_axis() {
     assert!(
         encode_response(&bootstrap)
             .unwrap()
-            .contains("\"version\":7")
+            .contains("\"version\":1")
+    );
+    assert_eq!(
+        encode_response(&Response {
+            version: ResponseVersion::Bootstrap(7),
+            ..bootstrap
+        })
+        .unwrap_err()
+        .code()
+        .as_str(),
+        codes::INVALID_ENVELOPE
     );
 
     let null_kind = Response {

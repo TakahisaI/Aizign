@@ -81,20 +81,24 @@ pub struct ProtocolError {
 }
 
 impl ProtocolError {
-    /// Builds an error from a well-formed short code.
+    /// Tries to build an error from a raw short code.
     ///
     /// The constants in [`codes`] and `WorkflowError::code` are registered,
     /// but a decoded peer may supply another syntactically valid code whose
-    /// operation semantics the consuming client does not recognize. Anything
-    /// malformed degrades to [`codes::INTERNAL`] so it cannot reach the wire.
-    #[must_use]
-    pub fn new(code: &str, message: impl Into<String>) -> Self {
-        let code = ShortErrorCode::new(code)
-            .unwrap_or_else(|_| ShortErrorCode::new(codes::INTERNAL).expect("constant code"));
-        Self {
-            code,
+    /// operation semantics the consuming client does not recognize. Malformed
+    /// input is returned to the caller and is never normalized.
+    pub fn try_new(
+        code: &str,
+        message: impl Into<String>,
+    ) -> Result<Self, aizign_core::IdentityError> {
+        Ok(Self {
+            code: ShortErrorCode::new(code)?,
             message: message.into(),
-        }
+        })
+    }
+
+    pub(crate) fn from_valid_code(code: &str, message: impl Into<String>) -> Self {
+        Self::try_new(code, message).expect("Protocol owner supplied a well-formed code")
     }
 
     /// The stable code.
@@ -112,7 +116,7 @@ impl ProtocolError {
 
 impl From<WorkflowError> for ProtocolError {
     fn from(error: WorkflowError) -> Self {
-        Self::new(error.code(), error.to_string())
+        Self::from_valid_code(error.code(), error.to_string())
     }
 }
 
@@ -131,7 +135,10 @@ mod tests {
     #[test]
     fn registered_codes_are_valid_short_codes() {
         for &code in CURRENT_FIXED_ERROR_CODES {
-            assert_eq!(ProtocolError::new(code, "m").code().as_str(), code);
+            assert_eq!(
+                ProtocolError::try_new(code, "m").unwrap().code().as_str(),
+                code
+            );
         }
     }
 
@@ -162,10 +169,14 @@ mod tests {
     }
 
     #[test]
-    fn malformed_codes_degrade_to_internal() {
+    fn malformed_codes_are_rejected_without_normalization() {
+        assert!(ProtocolError::try_new("not a code", "m").is_err());
         assert_eq!(
-            ProtocolError::new("not a code", "m").code().as_str(),
-            codes::INTERNAL
+            ProtocolError::try_new("FUTURE_OUTCOME_UNKNOWN", "m")
+                .unwrap()
+                .code()
+                .as_str(),
+            "FUTURE_OUTCOME_UNKNOWN"
         );
     }
 }

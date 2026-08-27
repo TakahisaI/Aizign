@@ -44,16 +44,30 @@ export function isShortErrorCode(value: unknown): value is string {
  * may represent a decoded wire error, a local encode/validation failure, or a
  * workflow rejection. The message is not a model-safe field and may contain
  * state-path or operating-system detail; adapters must normalize it before a
- * model-facing boundary. Construct with a well-formed short code; operation
- * clients decide whether they recognize its semantics. A malformed code
- * degrades to `INTERNAL` so it cannot reach the wire.
+ * model-facing boundary. Construction rejects malformed raw codes; operation
+ * clients decide whether they recognize a well-formed code's semantics.
  */
+const authenticProtocolErrors = new WeakSet<object>();
+
 export class ProtocolError extends Error {
   readonly code: string;
 
   constructor(code: string, message: string) {
+    if (!isShortErrorCode(code)) throw new TypeError('Protocol error code is malformed');
+    if (typeof message !== 'string') throw new TypeError('Protocol error message must be a string');
     super(message);
     this.name = 'ProtocolError';
-    this.code = isShortErrorCode(code) ? code : codes.INTERNAL;
+    this.code = code;
+    authenticProtocolErrors.add(this);
   }
+}
+
+/** Internal check for the sole sanctioned non-plain response source value. */
+export function isAuthenticProtocolError(value: unknown): value is ProtocolError {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    authenticProtocolErrors.has(value) &&
+    Object.getPrototypeOf(value) === ProtocolError.prototype
+  );
 }

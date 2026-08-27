@@ -16,7 +16,7 @@
 mod envelope;
 mod error;
 mod hello;
-mod json_member;
+mod json_token;
 mod workflow_signal;
 
 pub use envelope::{

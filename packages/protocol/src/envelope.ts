@@ -4,16 +4,16 @@
  * implementation so both reject the same frames with the same codes.
  */
 
-import {
-  DuplicateMemberError,
-  findDuplicateMember,
-  findInvalidUnicode,
-  InvalidUnicodeError,
-  isWellFormedUnicode,
-} from './duplicate-member.ts';
-import { codes, isShortErrorCode, ProtocolError } from './error.ts';
+import { codes, isAuthenticProtocolError, isShortErrorCode, ProtocolError } from './error.ts';
 import { decodeHelloInfo, type HelloInfo } from './hello.ts';
-import { assertOnlyKeys, IDENTIFIER_PATTERN, isPlainObject } from './shape.ts';
+import { isWellFormedUnicode, scanJsonTokens } from './json-token.ts';
+import {
+  assertClosedObject,
+  assertOnlyKeys,
+  IDENTIFIER_PATTERN,
+  isPlainObject,
+  ownDataValue,
+} from './shape.ts';
 import {
   decodeReconciliationResult,
   decodeSignalResult,
@@ -108,39 +108,12 @@ function byteLength(frame: Uint8Array | string): number {
   return typeof frame === 'string' ? encoder.encode(frame).byteLength : frame.byteLength;
 }
 
-function assertEncodedUnicode(frame: string): void {
-  const invalidUnicode = findInvalidUnicode(frame);
-  if (invalidUnicode !== null) {
-    throw new ProtocolError(codes.INVALID_ENVELOPE, invalidUnicode.message);
-  }
-}
-
 function decodeFrame(frame: Uint8Array | string): string {
   if (typeof frame === 'string') return frame;
   if (frame[0] === 0xef && frame[1] === 0xbb && frame[2] === 0xbf) {
     throw new SyntaxError('UTF-8 BOM is not allowed before a JSON frame');
   }
   return decoder.decode(frame);
-}
-
-/**
- * Wire numbers must be canonical integer tokens (`0` or `-?[1-9][0-9]*`) —
- * the lexical space serde_json accepts for the integer fields of this
- * protocol. Any other spelling (`1.0`, `1e0`, `-0`) is replaced by a sentinel
- * no field check accepts, so it fails exactly where the field is validated,
- * with the same stable code and recovered correlation data as the Rust
- * decoder. JSON Schema operates on the data model and cannot see lexemes;
- * this is one of the four documented decoder-only rules.
- */
-const NON_CANONICAL_NUMBER = Symbol('non-canonical number');
-const CANONICAL_INTEGER = /^(?:0|-?[1-9][0-9]*)$/;
-
-type RevivedContext = { readonly source?: string };
-function reviveCanonicalNumbers(_key: string, value: unknown, context?: RevivedContext): unknown {
-  if (typeof value === 'number' && !CANONICAL_INTEGER.test(context?.source ?? '')) {
-    return NON_CANONICAL_NUMBER;
-  }
-  return value;
 }
 
 /**
@@ -152,92 +125,37 @@ type Recovered = { requestId: string | null; kind: string | null };
 
 function correlationFromFolded(folded: Record<string, unknown>): Recovered {
   const requestId =
-    typeof folded.requestId === 'string' && IDENTIFIER_PATTERN.test(folded.requestId)
+    typeof folded.requestId === 'string' &&
+    isWellFormedUnicode(folded.requestId) &&
+    IDENTIFIER_PATTERN.test(folded.requestId)
       ? folded.requestId
       : null;
-  const kind = typeof folded.kind === 'string' ? folded.kind : null;
+  const kind =
+    typeof folded.kind === 'string' && isWellFormedUnicode(folded.kind) ? folded.kind : null;
   return { requestId, kind };
 }
 
-function recoveredFromFolded(text: string): Recovered {
+function foldedProbe(probeText: string): Record<string, unknown> | null {
   try {
-    if (findInvalidUnicode(text) !== null) return { requestId: null, kind: null };
-    const folded = JSON.parse(
-      text,
-      reviveCanonicalNumbers as (key: string, value: unknown) => unknown,
-    ) as Record<string, unknown>;
-    return correlationFromFolded(folded);
+    const folded: unknown = JSON.parse(probeText);
+    return isPlainObject(folded) ? folded : null;
   } catch {
-    return { requestId: null, kind: null };
+    return null;
   }
-}
-
-function isWellFormedJsonValue(value: unknown): boolean {
-  if (typeof value === 'string') return isWellFormedUnicode(value);
-  if (Array.isArray(value)) return value.every(isWellFormedJsonValue);
-  if (!isPlainObject(value)) return true;
-  return Object.entries(value).every(
-    ([key, nested]) => isWellFormedUnicode(key) && isWellFormedJsonValue(nested),
-  );
-}
-
-/** Mirrors the Rust lenient probe: malformed strings in fields it reads make
- * the frame unaddressed, while malformed strings in ignored payload data do
- * not prevent recovery of an earlier valid requestId and kind. */
-function recoveredFromInvalidUnicode(text: string): Recovered {
-  try {
-    const folded = JSON.parse(
-      text,
-      reviveCanonicalNumbers as (key: string, value: unknown) => unknown,
-    );
-    if (!isPlainObject(folded)) return { requestId: null, kind: null };
-    if (Object.keys(folded).some((key) => !isWellFormedUnicode(key))) {
-      return { requestId: null, kind: null };
-    }
-    for (const key of ['protocol', 'version', 'requestId', 'kind']) {
-      if (Object.hasOwn(folded, key) && !isWellFormedJsonValue(folded[key])) {
-        return { requestId: null, kind: null };
-      }
-    }
-    return correlationFromFolded(folded);
-  } catch {
-    return { requestId: null, kind: null };
-  }
-}
-
-function parseJson(frame: Uint8Array | string): unknown {
-  const text = decodeFrame(frame);
-  const invalidUnicode = findInvalidUnicode(text);
-  if (invalidUnicode !== null) {
-    throw invalidUnicode;
-  }
-  const duplicate = findDuplicateMember(text);
-  if (duplicate !== null) {
-    throw duplicate;
-  }
-  return JSON.parse(text, reviveCanonicalNumbers as (key: string, value: unknown) => unknown);
 }
 
 function isRequestId(value: unknown): value is string {
   return typeof value === 'string' && IDENTIFIER_PATTERN.test(value);
 }
 
-function isNonNegativeInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
-}
-
-/**
- * The envelope version's accepted integer range: `PROTOCOL_VERSION` is a
- * `u32`, so versions beyond `u32::MAX` are outside the contract entirely —
- * `INVALID_ENVELOPE`, not `PROTOCOL_VERSION_UNSUPPORTED`. The Rust decoder
- * applies the same bound (`serde_json` switches to floating point above
- * `u64::MAX` and its typed `u32` field rejects it); JSON numbers are exact
- * up to `2^53`, so this comparison sees the same value.
- */
 const MAX_VERSION = 4_294_967_295;
+const MAX_VERSION_TEXT = String(MAX_VERSION);
 
-function isVersionInRange(value: unknown): value is number {
-  return isNonNegativeInteger(value) && value <= MAX_VERSION;
+function parseVersionToken(token: string | undefined): number | null {
+  if (token === undefined || token.startsWith('-')) return null;
+  if (token.length > MAX_VERSION_TEXT.length) return null;
+  if (token.length === MAX_VERSION_TEXT.length && token > MAX_VERSION_TEXT) return null;
+  return Number(token);
 }
 
 /**
@@ -260,44 +178,36 @@ export function decodeRequest(frame: Uint8Array | string): Request {
     );
   }
 
-  // Lenient probe: recover correlation data and check the version first.
-  let probe: unknown;
+  let text: string;
   try {
-    probe = parseJson(frame);
+    text = decodeFrame(frame);
   } catch (error) {
-    if (error instanceof DuplicateMemberError) {
-      // Correlation data comes from the folded frame, so the recovery rule
-      // matches every other rejection: last spelling wins when unambiguous.
-      const folded = recoveredFromFolded(decodeFrame(frame));
-      throw new DecodeFailure(
-        folded.requestId,
-        folded.kind,
-        bootstrapVersion,
-        new ProtocolError(codes.INVALID_ENVELOPE, error.message),
-      );
-    }
-    if (error instanceof InvalidUnicodeError) {
-      const folded = recoveredFromInvalidUnicode(decodeFrame(frame));
-      throw new DecodeFailure(
-        folded.requestId,
-        folded.kind,
-        bootstrapVersion,
-        new ProtocolError(codes.INVALID_ENVELOPE, error.message),
-      );
-    }
     throw unaddressed(codes.INVALID_ENVELOPE, `frame is not JSON: ${(error as Error).message}`);
   }
-  if (!isPlainObject(probe))
+  const scan = scanJsonTokens(text);
+  const probe = foldedProbe(scan.probeText);
+  if (probe === null) {
     throw unaddressed(codes.INVALID_ENVELOPE, 'frame must be a JSON object');
+  }
   const requestId = isRequestId(probe.requestId) ? probe.requestId : null;
   const kind = typeof probe.kind === 'string' ? probe.kind : null;
   const bootstrapFail = (code: string, message: string) =>
     new DecodeFailure(requestId, kind, bootstrapVersion, new ProtocolError(code, message));
 
+  if (scan.failure !== null) {
+    throw bootstrapFail(
+      scan.failure.kind === 'noncanonical-number' && scan.failure.inPayload
+        ? codes.INVALID_PAYLOAD
+        : codes.INVALID_ENVELOPE,
+      scan.failure.message,
+    );
+  }
+
   if (probe.protocol !== PROTOCOL_NAME) {
     throw bootstrapFail(codes.INVALID_ENVELOPE, `protocol must be "${PROTOCOL_NAME}"`);
   }
-  if (!isVersionInRange(probe.version)) {
+  const version = parseVersionToken(scan.topLevelNumbers.get('version'));
+  if (version === null) {
     throw bootstrapFail(
       codes.INVALID_ENVELOPE,
       `version must be an integer between 0 and ${MAX_VERSION}`,
@@ -310,10 +220,10 @@ export function decodeRequest(frame: Uint8Array | string): Request {
       : recoveredKind === KIND_HELLO
         ? BOOTSTRAP_ENVELOPE_VERSION
         : PROTOCOL_VERSION;
-  if (acceptedVersion !== undefined && probe.version !== acceptedVersion) {
+  if (acceptedVersion !== undefined && version !== acceptedVersion) {
     throw bootstrapFail(
       codes.PROTOCOL_VERSION_UNSUPPORTED,
-      `protocol version ${probe.version} is not supported; this axis speaks ${acceptedVersion}`,
+      `protocol version ${version} is not supported; this axis speaks ${acceptedVersion}`,
     );
   }
   const responseVersion: ResponseVersion =
@@ -323,30 +233,38 @@ export function decodeRequest(frame: Uint8Array | string): Request {
   const fail = (code: string, message: string) =>
     new DecodeFailure(requestId, kind, responseVersion, new ProtocolError(code, message));
 
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch (error) {
+    throw fail(codes.INVALID_ENVELOPE, `frame is not JSON: ${(error as Error).message}`);
+  }
+  if (!isPlainObject(value)) throw fail(codes.INVALID_ENVELOPE, 'frame must be a JSON object');
+
   // Strict envelope.
   const invalidEnvelope = (message: string) => fail(codes.INVALID_ENVELOPE, message);
-  assertOnlyKeys(probe, ['protocol', 'version', 'requestId', 'kind', 'payload'], invalidEnvelope);
+  assertOnlyKeys(value, ['protocol', 'version', 'requestId', 'kind', 'payload'], invalidEnvelope);
   for (const key of ['requestId', 'kind', 'payload']) {
-    if (!Object.hasOwn(probe, key)) throw invalidEnvelope(`missing field \`${key}\``);
+    if (!Object.hasOwn(value, key)) throw invalidEnvelope(`missing field \`${key}\``);
   }
-  if (typeof probe.requestId !== 'string') throw invalidEnvelope('requestId must be a string');
-  if (!isRequestId(probe.requestId)) {
+  if (typeof value.requestId !== 'string') throw invalidEnvelope('requestId must be a string');
+  if (!isRequestId(value.requestId)) {
     throw invalidEnvelope('requestId must match ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$');
   }
-  if (typeof probe.kind !== 'string') throw invalidEnvelope('kind must be a string');
-  if (!isPlainObject(probe.payload)) throw invalidEnvelope('payload must be an object');
+  if (typeof value.kind !== 'string') throw invalidEnvelope('kind must be a string');
+  if (!isPlainObject(value.payload)) throw invalidEnvelope('payload must be an object');
 
-  switch (probe.kind) {
+  switch (value.kind) {
     case KIND_HELLO: {
-      if (Object.keys(probe.payload).length !== 0) {
+      if (Object.keys(value.payload).length !== 0) {
         throw fail(codes.INVALID_PAYLOAD, 'hello takes an empty object payload');
       }
-      return { requestId: probe.requestId, kind: 'hello' };
+      return { requestId: value.requestId, kind: 'hello' };
     }
     case KIND_WORKFLOW_SIGNAL_SUBMIT: {
       try {
-        const payload = decodeWorkflowSignalSubmit(probe.payload);
-        return { requestId: probe.requestId, kind: 'workflow.signal.submit', payload };
+        const payload = decodeWorkflowSignalSubmit(value.payload);
+        return { requestId: value.requestId, kind: 'workflow.signal.submit', payload };
       } catch (error) {
         if (error instanceof ProtocolError) {
           throw new DecodeFailure(requestId, kind, responseVersion, error);
@@ -356,8 +274,8 @@ export function decodeRequest(frame: Uint8Array | string): Request {
     }
     case KIND_WORKFLOW_SIGNAL_RECONCILE: {
       try {
-        const payload = decodeWorkflowSignalReconcile(probe.payload);
-        return { requestId: probe.requestId, kind: 'workflow.signal.reconcile', payload };
+        const payload = decodeWorkflowSignalReconcile(value.payload);
+        return { requestId: value.requestId, kind: 'workflow.signal.reconcile', payload };
       } catch (error) {
         if (error instanceof ProtocolError) {
           throw new DecodeFailure(requestId, kind, responseVersion, error);
@@ -366,25 +284,46 @@ export function decodeRequest(frame: Uint8Array | string): Request {
       }
     }
     default:
-      throw fail(codes.UNKNOWN_KIND, `kind "${probe.kind}" is not registered`);
+      throw fail(codes.UNKNOWN_KIND, `kind "${value.kind}" is not registered`);
   }
 }
 
 /** Encodes a request as one line (no trailing newline). */
 export function encodeRequest(request: Request): string {
-  const payload =
-    request.kind === 'hello'
-      ? {}
-      : request.kind === 'workflow.signal.submit'
-        ? encodeWorkflowSignalSubmit(request.payload)
-        : encodeWorkflowSignalReconcile(request.payload);
+  const invalidEnvelope = (message: string) => new ProtocolError(codes.INVALID_ENVELOPE, message);
+  assertClosedObject(request, ['requestId', 'kind', 'payload'], invalidEnvelope, 'request');
+  const requestId = ownDataValue(request, 'requestId', invalidEnvelope, 'request');
+  const kind = ownDataValue(request, 'kind', invalidEnvelope, 'request');
+  if (!isRequestId(requestId)) {
+    throw invalidEnvelope('requestId must match ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$');
+  }
+  if (typeof kind !== 'string') throw invalidEnvelope('kind must be a string');
+
+  let payload: Record<string, unknown>;
+  if (kind === KIND_HELLO) {
+    assertClosedObject(request, ['requestId', 'kind'], invalidEnvelope, 'request');
+    payload = {};
+  } else if (kind === KIND_WORKFLOW_SIGNAL_SUBMIT) {
+    const source = ownDataValue(request, 'payload', invalidEnvelope, 'request');
+    payload = encodeWorkflowSignalSubmit(decodeWorkflowSignalSubmit(source));
+  } else if (kind === KIND_WORKFLOW_SIGNAL_RECONCILE) {
+    const source = ownDataValue(request, 'payload', invalidEnvelope, 'request');
+    payload = encodeWorkflowSignalReconcile(decodeWorkflowSignalReconcile(source));
+  } else {
+    throw new ProtocolError(codes.UNKNOWN_KIND, `kind "${kind}" is not registered`);
+  }
   const frame = JSON.stringify({
     protocol: PROTOCOL_NAME,
-    version: request.kind === KIND_HELLO ? BOOTSTRAP_ENVELOPE_VERSION : PROTOCOL_VERSION,
-    requestId: request.requestId,
-    kind: request.kind,
+    version: kind === KIND_HELLO ? BOOTSTRAP_ENVELOPE_VERSION : PROTOCOL_VERSION,
+    requestId,
+    kind,
     payload,
   });
+  return finishRequestFrame(frame);
+}
+
+/** Package-internal final request guard used by the production encoder and focused tests. */
+export function finishRequestFrame(frame: string): string {
   const size = byteLength(frame);
   if (size > MAX_REQUEST_BYTES) {
     throw new ProtocolError(
@@ -392,37 +331,120 @@ export function encodeRequest(request: Request): string {
       `request is ${size} bytes; at most ${MAX_REQUEST_BYTES} allowed`,
     );
   }
-  assertEncodedUnicode(frame);
   return frame;
 }
 
 /** Encodes a response as one line (no trailing newline). */
 export function encodeResponse(response: Response): string {
+  const invalidEnvelope = (message: string) => new ProtocolError(codes.INVALID_ENVELOPE, message);
+  assertClosedObject(
+    response,
+    ['version', 'requestId', 'kind', 'body'],
+    invalidEnvelope,
+    'response',
+  );
+  const versionSource = ownDataValue(response, 'version', invalidEnvelope, 'response');
+  assertClosedObject(versionSource, ['axis', 'version'], invalidEnvelope, 'response.version');
+  const axis = ownDataValue(versionSource, 'axis', invalidEnvelope, 'response.version');
+  const wireVersion = ownDataValue(versionSource, 'version', invalidEnvelope, 'response.version');
+  if (
+    (axis !== 'bootstrap' && axis !== 'accepted-operation') ||
+    typeof wireVersion !== 'number' ||
+    !Number.isInteger(wireVersion) ||
+    wireVersion < 1 ||
+    wireVersion > MAX_VERSION ||
+    (axis === 'bootstrap' && wireVersion !== BOOTSTRAP_ENVELOPE_VERSION)
+  ) {
+    throw invalidEnvelope('response.version must name the exact selected current version axis');
+  }
+  const requestId = ownDataValue(response, 'requestId', invalidEnvelope, 'response');
+  const kind = ownDataValue(response, 'kind', invalidEnvelope, 'response');
+  if (requestId !== null && !isRequestId(requestId)) {
+    throw invalidEnvelope('requestId must be null or match ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$');
+  }
+  if (kind !== null && (typeof kind !== 'string' || !isWellFormedUnicode(kind))) {
+    throw invalidEnvelope('kind must be null or a well-formed Unicode string');
+  }
+  const body = ownDataValue(response, 'body', invalidEnvelope, 'response');
+  assertClosedObject(body, ['type', 'info', 'result', 'error'], invalidEnvelope, 'response.body');
+  const type = ownDataValue(body, 'type', invalidEnvelope, 'response.body');
   const base = {
     protocol: PROTOCOL_NAME,
-    version: response.version.version,
-    requestId: response.requestId,
-    kind: response.kind,
+    version: wireVersion,
+    requestId,
+    kind,
   };
   let frame: string;
-  switch (response.body.type) {
-    case 'hello':
-      frame = JSON.stringify({ ...base, ok: true, payload: response.body.info });
+  switch (type) {
+    case 'hello': {
+      assertClosedObject(body, ['type', 'info'], invalidEnvelope, 'response.body');
+      if (axis !== 'bootstrap' || kind !== KIND_HELLO) {
+        throw invalidEnvelope('hello success requires hello kind and bootstrap version');
+      }
+      const info = decodeHelloInfo(ownDataValue(body, 'info', invalidEnvelope, 'response.body'));
+      frame = JSON.stringify({ ...base, ok: true, payload: info });
       break;
-    case 'workflow.signal':
-      frame = JSON.stringify({ ...base, ok: true, payload: response.body.result });
+    }
+    case 'workflow.signal': {
+      assertClosedObject(body, ['type', 'result'], invalidEnvelope, 'response.body');
+      if (axis !== 'accepted-operation' || kind !== KIND_WORKFLOW_SIGNAL_SUBMIT) {
+        throw invalidEnvelope('submit success requires submit kind and accepted-operation version');
+      }
+      const result = decodeSignalResult(
+        ownDataValue(body, 'result', invalidEnvelope, 'response.body'),
+      );
+      frame = JSON.stringify({ ...base, ok: true, payload: result });
       break;
-    case 'workflow.signal.reconciliation':
-      frame = JSON.stringify({ ...base, ok: true, payload: response.body.result });
+    }
+    case 'workflow.signal.reconciliation': {
+      assertClosedObject(body, ['type', 'result'], invalidEnvelope, 'response.body');
+      if (axis !== 'accepted-operation' || kind !== KIND_WORKFLOW_SIGNAL_RECONCILE) {
+        throw invalidEnvelope(
+          'reconcile success requires reconcile kind and accepted-operation version',
+        );
+      }
+      const result = decodeReconciliationResult(
+        ownDataValue(body, 'result', invalidEnvelope, 'response.body'),
+      );
+      frame = JSON.stringify({ ...base, ok: true, payload: result });
       break;
-    case 'error':
+    }
+    case 'error': {
+      assertClosedObject(body, ['type', 'error'], invalidEnvelope, 'response.body');
+      const source = ownDataValue(body, 'error', invalidEnvelope, 'response.body');
+      if (!isAuthenticProtocolError(source)) {
+        throw invalidEnvelope('error must be an authentic direct ProtocolError instance');
+      }
+      const codeDescriptor = Object.getOwnPropertyDescriptor(source, 'code');
+      if (codeDescriptor === undefined || !('value' in codeDescriptor)) {
+        throw invalidEnvelope('error.code must be an own data property');
+      }
+      if (!isShortErrorCode(codeDescriptor.value)) {
+        throw invalidEnvelope('error.code must match ^[A-Z][A-Z0-9_]{0,63}$');
+      }
+      const messageDescriptor = Object.getOwnPropertyDescriptor(source, 'message');
+      if (
+        messageDescriptor === undefined ||
+        !('value' in messageDescriptor) ||
+        typeof messageDescriptor.value !== 'string' ||
+        !isWellFormedUnicode(messageDescriptor.value)
+      ) {
+        throw invalidEnvelope('error.message must be an own well-formed string data property');
+      }
       frame = JSON.stringify({
         ...base,
         ok: false,
-        error: { code: response.body.error.code, message: response.body.error.message },
+        error: { code: codeDescriptor.value, message: messageDescriptor.value },
       });
       break;
+    }
+    default:
+      throw invalidEnvelope('response.body.type is not registered');
   }
+  return finishResponseFrame(frame);
+}
+
+function finishResponseFrame(frame: string): string {
   const size = byteLength(frame);
   if (size > MAX_FRAME_BYTES) {
     throw new ProtocolError(
@@ -430,34 +452,97 @@ export function encodeResponse(response: Response): string {
       `response is ${size} bytes; at most ${MAX_FRAME_BYTES} allowed`,
     );
   }
-  assertEncodedUnicode(frame);
   return frame;
 }
 
-/**
- * Decodes one response frame. Throws {@link ProtocolError}.
- *
- * `context.requestAxis` retains the source stage for an operation error whose unsafe
- * correlation kind was deliberately replaced with `null`. Bootstrap error
- * stages remain separately decodable. The expected numeric values make the
- * distinction executable even after the operation version advances.
- */
+/** Decodes one response frame, retaining correlation and expected version stage on failure. */
 export function decodeResponse(
   frame: Uint8Array | string,
   context: ResponseDecodeContext = {},
 ): Response {
-  const invalidEnvelope = (message: string) => new ProtocolError(codes.INVALID_ENVELOPE, message);
+  const initialAxis = context.requestAxis ?? 'bootstrap';
+  const initialVersion: ResponseVersion = {
+    axis: initialAxis,
+    version:
+      initialAxis === 'bootstrap'
+        ? (context.bootstrapVersion ?? BOOTSTRAP_ENVELOPE_VERSION)
+        : (context.operationVersion ?? PROTOCOL_VERSION),
+  };
+  const unaddressed = (code: string, message: string) =>
+    new DecodeFailure(null, null, initialVersion, new ProtocolError(code, message));
   const size = byteLength(frame);
   if (size > MAX_FRAME_BYTES) {
-    throw invalidEnvelope(`response is ${size} bytes; at most ${MAX_FRAME_BYTES} allowed`);
+    throw unaddressed(
+      codes.INVALID_ENVELOPE,
+      `response is ${size} bytes; at most ${MAX_FRAME_BYTES} allowed`,
+    );
   }
+  let text: string;
+  try {
+    text = decodeFrame(frame);
+  } catch (error) {
+    throw unaddressed(codes.INVALID_ENVELOPE, `frame is not JSON: ${(error as Error).message}`);
+  }
+  const scan = scanJsonTokens(text);
+  const probe = foldedProbe(scan.probeText);
+  if (probe === null) throw unaddressed(codes.INVALID_ENVELOPE, 'frame must be a JSON object');
+  const recovered = correlationFromFolded(probe);
+  const probedCode =
+    isPlainObject(probe.error) && isShortErrorCode(probe.error.code) ? probe.error.code : undefined;
+  const bootstrapCode =
+    probedCode !== undefined &&
+    new Set<string>([
+      codes.REQUEST_TOO_LARGE,
+      codes.PROTOCOL_VERSION_UNSUPPORTED,
+      codes.HANDLER_TIMEOUT,
+    ]).has(probedCode);
+  const axis: ResponseVersion['axis'] = bootstrapCode
+    ? 'bootstrap'
+    : (context.requestAxis ??
+      (recovered.kind !== null && recovered.kind !== KIND_HELLO
+        ? 'accepted-operation'
+        : 'bootstrap'));
+  const expectedVersion =
+    axis === 'bootstrap'
+      ? (context.bootstrapVersion ?? BOOTSTRAP_ENVELOPE_VERSION)
+      : (context.operationVersion ?? PROTOCOL_VERSION);
+  const responseVersion: ResponseVersion = { axis, version: expectedVersion };
+  const fail = (code: string, message: string) =>
+    new DecodeFailure(
+      recovered.requestId,
+      recovered.kind,
+      responseVersion,
+      new ProtocolError(code, message),
+    );
+  if (scan.failure !== null) {
+    throw fail(
+      scan.failure.kind === 'noncanonical-number' && scan.failure.inPayload
+        ? codes.INVALID_PAYLOAD
+        : codes.INVALID_ENVELOPE,
+      scan.failure.message,
+    );
+  }
+  if (probe.protocol !== PROTOCOL_NAME) {
+    throw fail(codes.INVALID_ENVELOPE, `protocol must be "${PROTOCOL_NAME}"`);
+  }
+  const wireVersion = parseVersionToken(scan.topLevelNumbers.get('version'));
+  if (wireVersion === null) {
+    throw fail(codes.INVALID_ENVELOPE, `version must be an integer between 0 and ${MAX_VERSION}`);
+  }
+  if (wireVersion !== expectedVersion) {
+    throw fail(
+      codes.PROTOCOL_VERSION_UNSUPPORTED,
+      `${axis} response version must be ${expectedVersion}; got ${wireVersion}`,
+    );
+  }
+
   let value: unknown;
   try {
-    value = parseJson(frame);
+    value = JSON.parse(text);
   } catch (error) {
-    if (error instanceof DuplicateMemberError) throw invalidEnvelope(error.message);
-    throw invalidEnvelope(`frame is not JSON: ${(error as Error).message}`);
+    throw fail(codes.INVALID_ENVELOPE, `frame is not JSON: ${(error as Error).message}`);
   }
+  const invalidEnvelope = (message: string) => fail(codes.INVALID_ENVELOPE, message);
   if (!isPlainObject(value)) throw invalidEnvelope('frame must be a JSON object');
   assertOnlyKeys(
     value,
@@ -466,8 +551,6 @@ export function decodeResponse(
   );
   if (value.protocol !== PROTOCOL_NAME)
     throw invalidEnvelope(`protocol must be "${PROTOCOL_NAME}"`);
-  if (!isVersionInRange(value.version))
-    throw invalidEnvelope(`version must be an integer between 0 and ${MAX_VERSION}`);
   for (const key of ['requestId', 'kind', 'ok']) {
     if (!Object.hasOwn(value, key)) throw invalidEnvelope(`missing field \`${key}\``);
   }
@@ -484,33 +567,60 @@ export function decodeResponse(
   if (ok && hasPayload && !hasError) {
     switch (kind) {
       case KIND_HELLO:
-        return {
-          version: checkedResponseVersion('bootstrap', value.version, context),
-          requestId,
-          kind,
-          body: { type: 'hello', info: decodeHelloInfo(value.payload) },
-        };
+        if (axis !== 'bootstrap') {
+          throw fail(codes.PROTOCOL_VERSION_UNSUPPORTED, 'hello response requires bootstrap axis');
+        }
+        try {
+          return {
+            version: { axis, version: wireVersion },
+            requestId,
+            kind,
+            body: { type: 'hello', info: decodeHelloInfo(value.payload) },
+          };
+        } catch (error) {
+          if (error instanceof ProtocolError) throw fail(error.code, error.message);
+          throw error;
+        }
       case KIND_WORKFLOW_SIGNAL_SUBMIT:
-        return {
-          version: checkedResponseVersion('accepted-operation', value.version, context),
-          requestId,
-          kind,
-          body: { type: 'workflow.signal', result: decodeSignalResult(value.payload) },
-        };
+        if (axis !== 'accepted-operation') {
+          throw fail(codes.PROTOCOL_VERSION_UNSUPPORTED, 'submit response requires operation axis');
+        }
+        try {
+          return {
+            version: { axis, version: wireVersion },
+            requestId,
+            kind,
+            body: { type: 'workflow.signal', result: decodeSignalResult(value.payload) },
+          };
+        } catch (error) {
+          if (error instanceof ProtocolError) throw fail(error.code, error.message);
+          throw error;
+        }
       case KIND_WORKFLOW_SIGNAL_RECONCILE:
-        return {
-          version: checkedResponseVersion('accepted-operation', value.version, context),
-          requestId,
-          kind,
-          body: {
-            type: 'workflow.signal.reconciliation',
-            result: decodeReconciliationResult(value.payload),
-          },
-        };
+        if (axis !== 'accepted-operation') {
+          throw fail(
+            codes.PROTOCOL_VERSION_UNSUPPORTED,
+            'reconcile response requires operation axis',
+          );
+        }
+        try {
+          return {
+            version: { axis, version: wireVersion },
+            requestId,
+            kind,
+            body: {
+              type: 'workflow.signal.reconciliation',
+              result: decodeReconciliationResult(value.payload),
+            },
+          };
+        } catch (error) {
+          if (error instanceof ProtocolError) throw fail(error.code, error.message);
+          throw error;
+        }
       case null:
         throw invalidEnvelope('successful responses must name their kind');
       default:
-        throw new ProtocolError(codes.UNKNOWN_KIND, `kind "${kind}" is not registered`);
+        throw fail(codes.UNKNOWN_KIND, `kind "${kind}" is not registered`);
     }
   }
   if (!ok && hasError && !hasPayload) {
@@ -521,52 +631,13 @@ export function decodeResponse(
       throw invalidEnvelope('error.code must match ^[A-Z][A-Z0-9_]{0,63}$');
     if (typeof error.message !== 'string') throw invalidEnvelope('error.message must be a string');
     return {
-      version: decodedErrorVersion(value.version, kind, error.code, context),
+      version: { axis, version: wireVersion },
       requestId,
       kind,
       body: { type: 'error', error: new ProtocolError(error.code, error.message) },
     };
   }
   throw invalidEnvelope('ok responses carry exactly payload; error responses carry exactly error');
-}
-
-function decodedErrorVersion(
-  wireVersion: number,
-  kind: string | null,
-  code: string,
-  context: ResponseDecodeContext,
-): ResponseVersion {
-  const unconditionallyBootstrap = new Set<string>([
-    codes.REQUEST_TOO_LARGE,
-    codes.PROTOCOL_VERSION_UNSUPPORTED,
-    codes.HANDLER_TIMEOUT,
-  ]).has(code);
-  if (unconditionallyBootstrap) {
-    return checkedResponseVersion('bootstrap', wireVersion, context);
-  }
-
-  const axis =
-    context.requestAxis ??
-    (kind !== null && kind !== KIND_HELLO ? 'accepted-operation' : 'bootstrap');
-  return checkedResponseVersion(axis, wireVersion, context);
-}
-
-function checkedResponseVersion(
-  axis: ResponseVersion['axis'],
-  wireVersion: number,
-  context: ResponseDecodeContext,
-): ResponseVersion {
-  const expected =
-    axis === 'bootstrap'
-      ? (context.bootstrapVersion ?? BOOTSTRAP_ENVELOPE_VERSION)
-      : (context.operationVersion ?? PROTOCOL_VERSION);
-  if (wireVersion !== expected) {
-    throw new ProtocolError(
-      codes.PROTOCOL_VERSION_UNSUPPORTED,
-      `${axis} response version must be ${expected}; got ${wireVersion}`,
-    );
-  }
-  return { axis, version: wireVersion };
 }
 
 /** What a process wrote to stdout, classified as exactly one byte frame or not. */

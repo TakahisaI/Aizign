@@ -1,7 +1,8 @@
 /** The `hello` handshake: what the binary speaks and can do. */
 
 import { codes, ProtocolError } from './error.ts';
-import { isPlainObject } from './shape.ts';
+import { isWellFormedUnicode } from './json-token.ts';
+import { arrayValues, assertClosedObject, ownDataValue } from './shape.ts';
 
 /** Capability advertised when `workflow.signal.submit` is available. */
 export const CAPABILITY_WORKFLOW_SIGNAL_SUBMIT = 'workflow.signal.submit';
@@ -39,19 +40,20 @@ function isCapability(value: unknown): value is string {
 /** Decodes a `hello` payload, rejecting anything outside the closed schema. */
 export function decodeHelloInfo(payload: unknown): HelloInfo {
   const fail = (message: string) => new ProtocolError(codes.INVALID_PAYLOAD, message);
-  if (!isPlainObject(payload)) throw fail('hello payload must be an object');
   const allowed = ['protocolVersion', 'journalSchemaVersion', 'capabilities', 'package'];
-  for (const key of Object.keys(payload)) {
-    if (!allowed.includes(key)) throw fail(`unknown field \`${key}\``);
-  }
-  const { protocolVersion, journalSchemaVersion, capabilities, package: pkg } = payload;
+  assertClosedObject(payload, allowed, fail, 'hello payload');
+  const protocolVersion = ownDataValue(payload, 'protocolVersion', fail, 'hello payload');
+  const journalSchemaVersion = ownDataValue(payload, 'journalSchemaVersion', fail, 'hello payload');
+  const capabilitiesValue = ownDataValue(payload, 'capabilities', fail, 'hello payload');
+  const pkg = ownDataValue(payload, 'package', fail, 'hello payload');
   if (!isVersion(protocolVersion)) {
     throw fail('protocolVersion must be an integer between 1 and 4294967295');
   }
   if (!isVersion(journalSchemaVersion)) {
     throw fail('journalSchemaVersion must be an integer between 1 and 4294967295');
   }
-  if (!Array.isArray(capabilities) || !capabilities.every(isCapability)) {
+  const capabilities = arrayValues(capabilitiesValue, fail, 'capabilities');
+  if (!capabilities.every(isCapability)) {
     throw fail(
       'capabilities must be lowercase dot-separated names (^[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)*$, at most 128 bytes)',
     );
@@ -59,18 +61,22 @@ export function decodeHelloInfo(payload: unknown): HelloInfo {
   if (new Set(capabilities).size !== capabilities.length) {
     throw fail('capabilities must not repeat');
   }
-  if (!isPlainObject(pkg)) throw fail('package must be an object');
-  for (const key of Object.keys(pkg)) {
-    if (key !== 'name' && key !== 'version') throw fail(`unknown field \`package.${key}\``);
-  }
-  if (typeof pkg.name !== 'string' || typeof pkg.version !== 'string') {
+  assertClosedObject(pkg, ['name', 'version'], fail, 'package');
+  const name = ownDataValue(pkg, 'name', fail, 'package');
+  const version = ownDataValue(pkg, 'version', fail, 'package');
+  if (
+    typeof name !== 'string' ||
+    typeof version !== 'string' ||
+    !isWellFormedUnicode(name) ||
+    !isWellFormedUnicode(version)
+  ) {
     throw fail('package.name and package.version must be strings');
   }
   return {
     protocolVersion,
     journalSchemaVersion,
-    capabilities: [...capabilities],
-    package: { name: pkg.name, version: pkg.version },
+    capabilities: capabilities as string[],
+    package: { name, version },
   };
 }
 

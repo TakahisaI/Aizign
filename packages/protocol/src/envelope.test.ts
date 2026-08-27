@@ -96,12 +96,12 @@ test('response encoding keeps the explicit axis when operation and bootstrap ver
   );
   assert.match(
     encodeResponse({
-      version: { axis: 'bootstrap', version: 7 },
+      version: { axis: 'bootstrap', version: 1 },
       requestId: 'req-bootstrap-v7',
       kind: 'workflow.signal.submit',
       body,
     }),
-    /"version":7/,
+    /"version":1/,
   );
 
   const nullKindError = encodeResponse({
@@ -159,7 +159,7 @@ test('response encoding keeps the explicit axis when operation and bootstrap ver
         operationVersion: 3,
       }),
     (error: unknown) =>
-      error instanceof ProtocolError && error.code === codes.PROTOCOL_VERSION_UNSUPPORTED,
+      error instanceof DecodeFailure && error.error.code === codes.PROTOCOL_VERSION_UNSUPPORTED,
   );
 });
 
@@ -183,42 +183,48 @@ test('encoded frames are single lines with escaped newlines', () => {
   );
 });
 
-test('malformed codes degrade to INTERNAL rather than reaching the wire', () => {
-  assert.equal(new ProtocolError('not a code', 'm').code, codes.INTERNAL);
+test('malformed codes are rejected rather than normalized', () => {
+  assert.throws(() => new ProtocolError('not a code', 'm'), TypeError);
+  assert.equal(new ProtocolError('FUTURE_OUTCOME_UNKNOWN', 'm').code, 'FUTURE_OUTCOME_UNKNOWN');
 });
 
-test('oversized requests are rejected by the encoder before transport', () => {
+test('request validation precedes the package-internal final bound guard', async () => {
   assert.throws(
     () =>
       encodeRequest({
         requestId: `r${'x'.repeat(MAX_REQUEST_BYTES)}`,
         kind: 'hello',
       }),
+    (error: unknown) => error instanceof ProtocolError && error.code === codes.INVALID_ENVELOPE,
+  );
+  const { finishRequestFrame } = await import('./envelope.ts');
+  assert.equal(finishRequestFrame('x'.repeat(MAX_REQUEST_BYTES)).length, MAX_REQUEST_BYTES);
+  assert.throws(
+    () => finishRequestFrame('x'.repeat(MAX_REQUEST_BYTES + 1)),
     (error: unknown) => error instanceof ProtocolError && error.code === codes.REQUEST_TOO_LARGE,
   );
 });
 
-test('the response encoder never emits an oversized frame', () => {
+test('the response encoder accepts exactly the bound and rejects the next byte', () => {
+  const make = (message: string) =>
+    encodeResponse({
+      version: { axis: 'accepted-operation', version: 1 },
+      requestId: 'req-1',
+      kind: 'workflow.signal.submit',
+      body: { type: 'error', error: new ProtocolError(codes.INTERNAL, message) },
+    });
+  const overhead = new TextEncoder().encode(make('')).byteLength;
+  const exact = make('x'.repeat(MAX_FRAME_BYTES - overhead));
+  assert.equal(new TextEncoder().encode(exact).byteLength, MAX_FRAME_BYTES);
   assert.throws(
-    () =>
-      encodeResponse({
-        version: { axis: 'accepted-operation', version: 1 },
-        requestId: 'req-1',
-        kind: 'workflow.signal.submit',
-        body: {
-          type: 'error',
-          error: new ProtocolError(codes.INTERNAL, 'x'.repeat(MAX_FRAME_BYTES)),
-        },
-      }),
+    () => make('x'.repeat(MAX_FRAME_BYTES - overhead + 1)),
     (error: unknown) => error instanceof ProtocolError && error.code === codes.INVALID_ENVELOPE,
   );
 });
 
 test('encoders reject ill-formed Unicode before returning a frame', () => {
   const isInvalidEnvelope = (error: unknown) =>
-    error instanceof ProtocolError &&
-    error.code === codes.INVALID_ENVELOPE &&
-    error.message.includes('well-formed Unicode');
+    error instanceof ProtocolError && error.code === codes.INVALID_ENVELOPE;
 
   assert.throws(
     () => encodeRequest({ requestId: '\ud800', kind: 'hello' }),
@@ -265,7 +271,8 @@ test('extractFrame accepts exactly one LF-terminated frame and immediate close',
     assert.deepEqual([...invalidFrame.frame], [0x7b, 0xff, 0x7d]);
     assert.throws(
       () => decodeResponse(invalidFrame.frame),
-      (error: unknown) => error instanceof ProtocolError && error.code === codes.INVALID_ENVELOPE,
+      (error: unknown) =>
+        error instanceof DecodeFailure && error.error.code === codes.INVALID_ENVELOPE,
     );
   }
 });
@@ -298,12 +305,14 @@ test('oversized or badly addressed responses are invalid envelopes', async () =>
   const big = `{"protocol":"aizign","version":1,"requestId":"r","kind":"hello","ok":false,"error":{"code":"INTERNAL","message":"${'x'.repeat(MAX_FRAME_BYTES)}"}}`;
   assert.throws(
     () => decodeResponse(big),
-    (error: unknown) => error instanceof ProtocolError && error.code === codes.INVALID_ENVELOPE,
+    (error: unknown) =>
+      error instanceof DecodeFailure && error.error.code === codes.INVALID_ENVELOPE,
   );
   const bad =
     '{"protocol":"aizign","version":1,"requestId":"bad id","kind":"hello","ok":false,"error":{"code":"INTERNAL","message":"m"}}';
   assert.throws(
     () => decodeResponse(bad),
-    (error: unknown) => error instanceof ProtocolError && error.code === codes.INVALID_ENVELOPE,
+    (error: unknown) =>
+      error instanceof DecodeFailure && error.error.code === codes.INVALID_ENVELOPE,
   );
 });

@@ -10,8 +10,6 @@
 import { randomUUID } from 'node:crypto';
 import {
   type CoreClient,
-  decodeWorkflowSignalSubmit,
-  encodeWorkflowSignalSubmit,
   ProtocolError,
   type Role,
   type SignalKind,
@@ -117,22 +115,12 @@ export function decodeArgs(args: unknown, role: Role): SignalArgs {
 }
 
 /**
- * Binds the agent's arguments to the configured identity and validates the
- * result with the same rules the core applies, before any process is spawned.
+ * Binds the agent's arguments to the configured identity. Harness-local input
+ * validation stays here; Protocol source validation belongs exclusively to
+ * the client's `encodeRequest` boundary.
  */
 export function toPayload(binding: SignalBinding, args: SignalArgs): WorkflowSignalSubmitPayload {
-  const payload = bindingPayload(binding, args);
-  try {
-    return decodeWorkflowSignalSubmit(encodeWorkflowSignalSubmit(payload));
-  } catch (error) {
-    if (error instanceof ProtocolError) {
-      // Local protocol diagnostics follow the same model-facing rule as peer
-      // diagnostics. Do not retain a cause: DSH's diagnostic renderer follows
-      // cause chains and would otherwise recover the original message.
-      throw new HarnessError(INVALID_TOOL_INPUT_MESSAGE, error.code);
-    }
-    throw error;
-  }
+  return bindingPayload(binding, args);
 }
 
 /**
@@ -224,9 +212,19 @@ export function createSubmitWorkflowSignalTool(
     },
     async execute(args: unknown, exec: ToolRunContext) {
       const payload = toPayload(binding, decodeArgs(args, role));
-      const outcome = await client.submitWorkflowSignal(newRequestId(), payload, {
-        signal: exec.signal,
-      });
+      let outcome: SubmitOutcome;
+      try {
+        outcome = await client.submitWorkflowSignal(newRequestId(), payload, {
+          signal: exec.signal,
+        });
+      } catch (error) {
+        if (error instanceof ProtocolError) {
+          // Protocol source failures are local diagnostics. Preserve only the
+          // stable code at the model boundary and never retain the cause.
+          throw new HarnessError(INVALID_TOOL_INPUT_MESSAGE, error.code);
+        }
+        throw error;
+      }
       return toToolResult(outcome);
     },
   };

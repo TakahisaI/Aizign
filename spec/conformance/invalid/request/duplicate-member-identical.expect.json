@@ -1,1 +1,1 @@
-{"code":"INVALID_ENVELOPE","requestId":"req-dup","kind":"workflow.signal.submit","schema":true}
+{"code":"INVALID_ENVELOPE","requestId":"req-dup","kind":"workflow.signal.submit","responseStage":"bootstrap","responseVersion":1,"schema":true}

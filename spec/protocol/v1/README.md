@@ -314,17 +314,14 @@ so it creates no peer outcome or `reportedCode`. A response failure occurs
 before the first stdout/transport byte. The encoder does not classify either
 local failure as `rejected` or `unknown`.
 
-## Issue #77 implementation transition
+## Issue #77 implementation status
 
-The lexical and outbound sections above are the target authority established
-by Issue #77 S1. The current Rust/TypeScript codecs, constructors, package
-exports, clients, producers, fault paths, and fixtures still contain known
-divergence, including typed current-version decoding before complete selection,
-incomplete source-graph validation, malformed-code normalization, payload-
-encoder bypass exports, caller-local prevalidation, and response failures that
-do not retain all recovered correlation. Issue #77 S2 owns their atomic
-migration. Until S2 lands, no consumer may be described as fully conforming to
-these new sections.
+The Rust and TypeScript codecs implement the lexical and outbound sections
+above. Their constructors, package exports, production callers/producers, and
+shared fixtures use the same selected boundaries without a second parser,
+serializer, payload-encoder bypass, or caller-local Protocol prevalidator.
+Repository conformance tests pin recovered correlation and response version
+context for every accepted and rejected fixture.
 
 ## Kinds
 

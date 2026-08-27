@@ -134,14 +134,13 @@ evidence. Rust and TypeScript remain independent consumers; no shared runtime
 parser, generated universal DTO, or cross-language executable authority is
 introduced.
 
-## Implementation transition
+## Implementation note (2026-08-28)
 
-This ADR and its S1 specification establish the target contract only. At this
-decision point the current codecs, public exports, constructors, clients,
-producers, fault paths, and fixtures still contain the behavior named in the
-Context. Issue #77 S2 owns their atomic migration and evidence. Until S2 lands,
-documentation must not claim that those runtime surfaces fully implement this
-ADR.
+Issue #77 S2 implemented this decision atomically across both codecs, the
+Protocol constructors and exports, production callers and response producers,
+and the shared fixture/evidence sets. The implementation keeps the normative
+decision above unchanged; exact runtime behavior remains verified by the
+repository conformance and package-surface gates.
 
 ## Consequences
 
@@ -163,16 +162,16 @@ ADR.
   relying on static types or ordinary key enumeration.
 - The public `ProtocolError` constructor becomes stricter before the first
   release, and response decode failures must retain recovered correlation.
-- The runtime, caller, export, fixture, and fault-path migration must land
-  atomically in S2 to avoid parallel authorities.
+- Runtime, caller, export, fixture, and fault-path changes must remain atomic
+  so no parallel validation authority is reintroduced.
 
-### Follow-up
+### Implemented evidence
 
-- Issue #77 S2 implements the contract across both codecs and every production
-  request caller/response producer.
-- S2 removes payload-encoder bypass exports, typed pre-selection decoding,
-  duplicate client prevalidation, correlation-dropping response failures, and
-  production-encoder use by intentional invalid-frame producers.
+- Both codecs and every production request caller/response producer use the
+  selected boundaries.
+- Payload-encoder bypass exports, typed pre-selection decoding, duplicate
+  client prevalidation, malformed-code normalization, and correlation-dropping
+  response failures are removed.
 - Shared decoder fixtures and decoder-independent encoder scenarios prove the
   full precedence, correlation, source-graph, zero-write, and size boundaries.
 

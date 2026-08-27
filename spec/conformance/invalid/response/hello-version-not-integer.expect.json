@@ -1,1 +1,1 @@
-{"code":"INVALID_PAYLOAD","schema":true}
+{"code":"INVALID_PAYLOAD","requestId":"r","kind":"hello","responseStage":"bootstrap","responseVersion":1,"schema":true}

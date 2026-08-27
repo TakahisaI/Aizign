@@ -1,1 +1,1 @@
-{"code":"INVALID_PAYLOAD","requestId":"req-reconcile","kind":"workflow.signal.reconcile","schema":false}
+{"code":"INVALID_PAYLOAD","requestId":"req-reconcile","kind":"workflow.signal.reconcile","responseStage":"accepted-operation","responseVersion":1,"schema":false}

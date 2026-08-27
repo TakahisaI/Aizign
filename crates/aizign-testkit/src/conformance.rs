@@ -49,13 +49,14 @@ pub struct InvalidFixture {
     pub frame: Vec<u8>,
     /// The stable error code the decoder must return.
     pub code: String,
-    /// For requests: the `requestId` the decoder must recover (`None` means
-    /// it must not recover one). Always `None` for responses and durable
-    /// formats, which carry no correlation data.
+    /// The `requestId` the Protocol decoder must recover (`None` means null).
     pub request_id: Option<String>,
-    /// For requests: the `kind` the decoder must recover. Always `None` for
-    /// responses, journal records, and store metadata.
+    /// The `kind` the Protocol decoder must recover (`None` means null).
     pub kind: Option<String>,
+    /// Expected bootstrap or accepted-operation response stage for Protocol.
+    pub response_stage: Option<String>,
+    /// Exact numeric version selected/expected at that stage for Protocol.
+    pub response_version: Option<u32>,
 }
 
 /// The `spec/conformance` directory of this repository.
@@ -109,6 +110,11 @@ pub fn invalid(direction: Direction) -> Vec<InvalidFixture> {
                 code: string("code").expect("expectation has a code"),
                 request_id: string("requestId"),
                 kind: string("kind"),
+                response_stage: string("responseStage"),
+                response_version: expect
+                    .get("responseVersion")
+                    .and_then(serde_json::Value::as_u64)
+                    .and_then(|value| u32::try_from(value).ok()),
             }
         })
         .collect()

@@ -1,1 +1,1 @@
-{"code":"INVALID_ENVELOPE","requestId":"req-x2","kind":"hello","schema":false}
+{"code":"INVALID_ENVELOPE","requestId":"req-x2","kind":"hello","responseStage":"bootstrap","responseVersion":1,"schema":false}

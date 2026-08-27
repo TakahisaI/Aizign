@@ -18,6 +18,7 @@ import {
   PROTOCOL_VERSION,
   type ReconcileOutcome,
   type ReconcileUnknown,
+  type Request,
   type Response,
   type SentRequest,
   type SubmitOutcome,
@@ -137,8 +138,7 @@ export class OneShotCoreClient implements CoreClient {
   }
 
   async hello(requestId: string, options: CallOptions = {}): Promise<HelloOutcome> {
-    const frame = encodeRequest({ requestId, kind: 'hello' });
-    const exchange = await this.#exchange(frame, 'bootstrap', options.signal);
+    const exchange = await this.#exchangeRequest({ requestId, kind: 'hello' }, options.signal);
     const finish = (outcome: HelloOutcome, reportedErrorCode?: string) =>
       this.#finish('hello', exchange.timing, outcome, reportedErrorCode);
     if (exchange.kind === 'unknown') return finish(exchange.outcome);
@@ -186,8 +186,10 @@ export class OneShotCoreClient implements CoreClient {
     payload: WorkflowSignalSubmitPayload,
     options: CallOptions = {},
   ): Promise<SubmitOutcome> {
-    const frame = encodeRequest({ requestId, kind: 'workflow.signal.submit', payload });
-    const exchange = await this.#exchange(frame, 'accepted-operation', options.signal);
+    const exchange = await this.#exchangeRequest(
+      { requestId, kind: 'workflow.signal.submit', payload },
+      options.signal,
+    );
     const finish = (outcome: SubmitOutcome, reportedErrorCode?: string) =>
       this.#finish('workflow.signal.submit', exchange.timing, outcome, reportedErrorCode);
     if (exchange.kind === 'unknown') return finish(exchange.outcome);
@@ -248,8 +250,10 @@ export class OneShotCoreClient implements CoreClient {
     payload: WorkflowSignalReconcilePayload,
     options: CallOptions = {},
   ): Promise<ReconcileOutcome> {
-    const frame = encodeRequest({ requestId, kind: 'workflow.signal.reconcile', payload });
-    const exchange = await this.#exchange(frame, 'accepted-operation', options.signal);
+    const exchange = await this.#exchangeRequest(
+      { requestId, kind: 'workflow.signal.reconcile', payload },
+      options.signal,
+    );
     const finish = (outcome: ReconcileOutcome) =>
       this.#finish('workflow.signal.reconcile', exchange.timing, outcome);
     if (exchange.kind === 'unknown') return finish(exchange.outcome);
@@ -335,6 +339,17 @@ export class OneShotCoreClient implements CoreClient {
     };
     emitBestEffort(this.#config.timingSink, measurement);
     return outcome;
+  }
+
+  #exchangeRequest(request: Request, signal: AbortSignal | undefined): Promise<Exchange> {
+    // This is the sole local Protocol source gate. Encoding completes before
+    // #exchange can start timing, spawn, acquire stdin, or write any bytes.
+    const frame = encodeRequest(request);
+    return this.#exchange(
+      frame,
+      request.kind === 'hello' ? 'bootstrap' : 'accepted-operation',
+      signal,
+    );
   }
 
   #exchange(

@@ -26,6 +26,10 @@ use serde_json::json;
 const SHA256_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const SHA256_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
+fn protocol_error(code: &str, message: impl Into<String>) -> ProtocolError {
+    ProtocolError::try_new(code, message).expect("test code is well formed")
+}
+
 fn examples_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spec/protocol/v1/examples")
 }
@@ -440,7 +444,7 @@ fn envelope_response_cases() -> [(&'static str, Response); 3] {
             response(
                 None,
                 None,
-                ResponseBody::Error(ProtocolError::new(
+                ResponseBody::Error(protocol_error(
                     codes::INVALID_ENVELOPE,
                     "expected value at line 1 column 1",
                 )),
@@ -451,7 +455,7 @@ fn envelope_response_cases() -> [(&'static str, Response); 3] {
             response(
                 Some("req-future-01"),
                 Some("hello"),
-                ResponseBody::Error(ProtocolError::new(
+                ResponseBody::Error(protocol_error(
                     codes::PROTOCOL_VERSION_UNSUPPORTED,
                     "protocol version 2 is not supported; this binary speaks 1",
                 )),
@@ -527,7 +531,7 @@ fn submit_response_cases() -> [(&'static str, Response); 3] {
             response(
                 Some("req-signal-01"),
                 Some("workflow.signal.submit"),
-                ResponseBody::Error(ProtocolError::new(
+                ResponseBody::Error(protocol_error(
                     "REVISION_MISMATCH",
                     "revision mismatch: expected rev-c0ffee, got rev-deadbeef",
                 )),
@@ -583,4 +587,28 @@ fn response_encoder_preserves_event_id_provenance() {
         let encoded: serde_json::Value = serde_json::from_str(&frame).expect("encoded JSON");
         assert_eq!(encoded["payload"]["eventId"], json!(expected_event_id));
     }
+}
+
+#[test]
+fn response_encoder_accepts_exactly_the_bound_and_rejects_the_next_byte() {
+    let make = |message: String| {
+        response(
+            Some("req-bound"),
+            Some("workflow.signal.submit"),
+            ResponseBody::Error(protocol_error(codes::INTERNAL, message)),
+        )
+    };
+    let overhead = encode_response(&make(String::new()))
+        .expect("empty response encodes")
+        .len();
+    let exact = encode_response(&make("x".repeat(MAX_FRAME_BYTES - overhead)))
+        .expect("exact-bound response encodes");
+    assert_eq!(exact.len(), MAX_FRAME_BYTES);
+    assert_eq!(
+        encode_response(&make("x".repeat(MAX_FRAME_BYTES - overhead + 1)))
+            .expect_err("over-bound response fails")
+            .code()
+            .as_str(),
+        codes::INVALID_ENVELOPE
+    );
 }

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { encodeRequest } from './envelope.ts';
 import { codes, ProtocolError } from './error.ts';
 import {
   decodeReconciliationResult,
   decodeWorkflowSignalReconcile,
   decodeWorkflowSignalSubmit,
-  encodeWorkflowSignalReconcile,
 } from './workflow-signal.ts';
 
 const validDigest = {
@@ -55,7 +55,14 @@ test('reconciliation reuses the exact signal contract without expected', () => {
     kind: 'implementation_ready',
   } as const;
   const decoded = decodeWorkflowSignalReconcile({ signal });
-  assert.deepEqual(encodeWorkflowSignalReconcile(decoded), { signal });
+  const encoded = JSON.parse(
+    encodeRequest({
+      requestId: 'req-reconcile-helper-boundary',
+      kind: 'workflow.signal.reconcile',
+      payload: decoded,
+    }),
+  ) as { payload: unknown };
+  assert.deepEqual(encoded.payload, { signal }, 'payload encoding stays behind encodeRequest');
 
   assert.throws(
     () =>

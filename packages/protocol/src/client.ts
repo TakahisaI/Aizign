@@ -114,9 +114,9 @@ export type ReconcileOutcome =
 export interface CoreClient {
   hello(requestId: string, options?: CallOptions): Promise<HelloOutcome>;
   /**
-   * An outbound frame above `MAX_REQUEST_BYTES` rejects with
-   * `ProtocolError(REQUEST_TOO_LARGE)` before transport; it returns no
-   * `SubmitOutcome`.
+   * Invalid outbound source values reject with a local `ProtocolError` before
+   * timing or transport; they return no `SubmitOutcome`. The sole request
+   * encoder owns both field validation and its final frame bound.
    */
   submitWorkflowSignal(
     requestId: string,

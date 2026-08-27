@@ -11,7 +11,6 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { findInvalidUnicode } from './duplicate-member.ts';
 import {
   encodeRequest,
   encodeResponse,
@@ -26,6 +25,7 @@ import {
   CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
   type HelloInfo,
 } from './hello.ts';
+import { scanJsonTokens } from './json-token.ts';
 import type { ExpectedAssignment, WorkflowSignal } from './workflow-signal.ts';
 
 const root = join(import.meta.dirname, '../../../spec/protocol/v1/examples');
@@ -67,7 +67,7 @@ function assertFrame(name: string, frame: string, bound: number): void {
   assert.equal(frame.includes('\n'), false, `${name}: frame contains a raw newline`);
   assert.equal(frame.includes('\r'), false, `${name}: frame contains a raw carriage return`);
   assert.equal(frame.trim(), frame, `${name}: frame contains surrounding whitespace`);
-  assert.equal(findInvalidUnicode(frame), null, `${name}: frame contains ill-formed Unicode`);
+  assert.equal(scanJsonTokens(frame).failure, null, `${name}: frame has a lexical defect`);
 
   const encoded: unknown = JSON.parse(frame);
   assert.ok(typeof encoded === 'object' && encoded !== null && !Array.isArray(encoded), name);
@@ -393,4 +393,110 @@ test('response encoder preserves event id provenance', () => {
     };
     assert.equal(encoded.payload.eventId, expectedEventId);
   }
+});
+
+test('outbound source validation rejects hostile descriptors and prototypes without executing them', () => {
+  const invalidEnvelope = (error: unknown) =>
+    error instanceof ProtocolError && error.code === codes.INVALID_ENVELOPE;
+  let getterCalls = 0;
+  let toJsonCalls = 0;
+
+  const accessorRequest = Object.defineProperty({ kind: 'hello' }, 'requestId', {
+    enumerable: true,
+    get: () => {
+      getterCalls += 1;
+      return 'req-accessor';
+    },
+  }) as Request;
+  assert.throws(() => encodeRequest(accessorRequest), invalidEnvelope);
+  assert.equal(getterCalls, 0);
+
+  const nonEnumerable = { requestId: 'req-hidden', kind: 'hello' };
+  Object.defineProperty(nonEnumerable, 'requestId', {
+    value: 'req-hidden',
+    enumerable: false,
+  });
+  assert.throws(() => encodeRequest(nonEnumerable as Request), invalidEnvelope);
+
+  const symbolRequest = { requestId: 'req-symbol', kind: 'hello' } as Request & {
+    [key: symbol]: unknown;
+  };
+  symbolRequest[Symbol('hidden')] = true;
+  assert.throws(() => encodeRequest(symbolRequest), invalidEnvelope);
+
+  class RequestSubclass {
+    requestId = 'req-class';
+    kind = 'hello' as const;
+  }
+  assert.throws(() => encodeRequest(new RequestSubclass()), invalidEnvelope);
+
+  const toJsonRequest = {
+    requestId: 'req-to-json',
+    kind: 'hello',
+    toJSON: () => {
+      toJsonCalls += 1;
+      return { requestId: 'forged', kind: 'hello' };
+    },
+  } as unknown as Request;
+  assert.throws(() => encodeRequest(toJsonRequest), invalidEnvelope);
+  assert.equal(toJsonCalls, 0);
+
+  const base = {
+    version: { axis: 'accepted-operation' as const, version: 1 },
+    requestId: 'req-error-source',
+    kind: 'workflow.signal.submit',
+  };
+  const responseFor = (error: ProtocolError): Response => ({
+    ...base,
+    body: { type: 'error', error },
+  });
+  class ProtocolErrorSubclass extends ProtocolError {}
+  assert.throws(
+    () => encodeResponse(responseFor(new ProtocolErrorSubclass(codes.INTERNAL, 'x'))),
+    invalidEnvelope,
+  );
+  assert.throws(
+    () =>
+      encodeResponse(
+        responseFor(
+          Object.assign(Object.create(ProtocolError.prototype), {
+            code: codes.INTERNAL,
+            message: 'forged',
+          }),
+        ),
+      ),
+    invalidEnvelope,
+  );
+
+  const accessorError = new ProtocolError(codes.INTERNAL, 'x');
+  Object.defineProperty(accessorError, 'code', {
+    enumerable: true,
+    get: () => {
+      getterCalls += 1;
+      return codes.INTERNAL;
+    },
+  });
+  assert.throws(() => encodeResponse(responseFor(accessorError)), invalidEnvelope);
+  assert.equal(getterCalls, 0);
+
+  const mutatedError = new ProtocolError(codes.INTERNAL, 'x');
+  Object.defineProperty(mutatedError, 'code', { value: 'not a code', enumerable: true });
+  assert.throws(() => encodeResponse(responseFor(mutatedError)), invalidEnvelope);
+
+  const authenticWithToJson = new ProtocolError(codes.INTERNAL, 'x') as ProtocolError & {
+    toJSON?: () => unknown;
+  };
+  Object.defineProperty(authenticWithToJson, 'toJSON', {
+    enumerable: true,
+    get: () => {
+      getterCalls += 1;
+      return () => {
+        toJsonCalls += 1;
+        return {};
+      };
+    },
+  });
+  assert.doesNotThrow(() => encodeResponse(responseFor(authenticWithToJson)));
+  assert.equal(getterCalls, 0);
+  assert.equal(toJsonCalls, 0);
 });

@@ -37,7 +37,7 @@ pub(crate) fn run(root: &Path) -> Result<(), String> {
         valid_count += check_valid(&fixture_root.join("valid").join(direction), &mut findings)?;
         invalid_count += check_invalid(
             &fixture_root.join("invalid").join(direction),
-            direction == "request",
+            matches!(direction, "request" | "response"),
             &mut findings,
         )?;
     }
@@ -163,7 +163,7 @@ fn check_valid(dir: &Path, findings: &mut Findings) -> Result<usize, String> {
     Ok(files.len())
 }
 
-fn check_invalid(dir: &Path, is_request: bool, findings: &mut Findings) -> Result<usize, String> {
+fn check_invalid(dir: &Path, is_protocol: bool, findings: &mut Findings) -> Result<usize, String> {
     let files = list(dir, findings)?;
     let mut frames: BTreeMap<String, PathBuf> = BTreeMap::new();
     let mut expects: BTreeMap<String, PathBuf> = BTreeMap::new();
@@ -196,12 +196,16 @@ fn check_invalid(dir: &Path, is_request: bool, findings: &mut Findings) -> Resul
         if !frames.contains_key(stem) {
             findings.push(format!("{}: missing {stem}.frame", display(path)));
         }
-        check_expectation(path, is_request, findings)?;
+        check_expectation(path, is_protocol, findings)?;
     }
     Ok(frames.len())
 }
 
-fn check_expectation(path: &Path, is_request: bool, findings: &mut Findings) -> Result<(), String> {
+fn check_expectation(
+    path: &Path,
+    is_protocol: bool,
+    findings: &mut Findings,
+) -> Result<(), String> {
     let name = display(path);
     let bytes = fs::read(path).map_err(|error| format!("{name}: {error}"))?;
     let value: serde_json::Value = match serde_json::from_slice(&bytes) {
@@ -216,15 +220,22 @@ fn check_expectation(path: &Path, is_request: bool, findings: &mut Findings) -> 
         return Ok(());
     };
 
-    let allowed: &[&str] = if is_request {
-        &["code", "requestId", "kind", "schema"]
+    let allowed: &[&str] = if is_protocol {
+        &[
+            "code",
+            "requestId",
+            "kind",
+            "responseStage",
+            "responseVersion",
+            "schema",
+        ]
     } else {
         &["code", "schema"]
     };
-    for key in object.keys() {
-        if !allowed.contains(&key.as_str()) {
-            findings.push(format!("{name}: unexpected key `{key}`"));
-        }
+    let actual: BTreeSet<&str> = object.keys().map(String::as_str).collect();
+    let expected: BTreeSet<&str> = allowed.iter().copied().collect();
+    if actual != expected {
+        findings.push(format!("{name}: keys must be exactly {expected:?}"));
     }
     match object.get("code").and_then(serde_json::Value::as_str) {
         Some(code) if is_short_code(code) => {}
@@ -241,12 +252,28 @@ fn check_expectation(path: &Path, is_request: bool, findings: &mut Findings) -> 
              (true only where the schema cannot express the rule, e.g. the size bound)"
         ));
     }
-    if is_request {
+    if is_protocol {
         for key in ["requestId", "kind"] {
             match object.get(key) {
                 Some(serde_json::Value::String(_) | serde_json::Value::Null) => {}
                 _ => findings.push(format!("{name}: `{key}` must be a string or null")),
             }
+        }
+        match object
+            .get("responseStage")
+            .and_then(serde_json::Value::as_str)
+        {
+            Some("bootstrap" | "accepted-operation") => {}
+            _ => findings.push(format!(
+                "{name}: `responseStage` must be bootstrap or accepted-operation"
+            )),
+        }
+        if object
+            .get("responseVersion")
+            .and_then(serde_json::Value::as_u64)
+            .is_none_or(|version| u32::try_from(version).is_err())
+        {
+            findings.push(format!("{name}: `responseVersion` must be a u32"));
         }
     }
     Ok(())

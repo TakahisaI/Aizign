@@ -1,1 +1,1 @@
-{"code":"INVALID_SIGNAL","requestId":"req-signal-digest","kind":"workflow.signal.submit","schema":false}
+{"code":"INVALID_SIGNAL","requestId":"req-signal-digest","kind":"workflow.signal.submit","responseStage":"accepted-operation","responseVersion":1,"schema":false}

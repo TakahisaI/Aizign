@@ -57,8 +57,6 @@ export {
   decodeWorkflowSignalReconcile,
   decodeWorkflowSignalSubmit,
   type ExpectedAssignment,
-  encodeWorkflowSignalReconcile,
-  encodeWorkflowSignalSubmit,
   type ReconciliationDisposition,
   type ReconciliationResult,
   type Role,

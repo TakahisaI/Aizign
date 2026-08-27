@@ -448,6 +448,10 @@ test('direct transport uses the production decoder and correlation contract', ()
     transport_kind: 'unknown',
     unknown_reason: 'undecodable_response',
   });
+  assert.deepEqual(decodeCorrelatedResponse(frame({ version: 2 }), request, PROTOCOL), {
+    transport_kind: 'unknown',
+    unknown_reason: 'undecodable_response',
+  });
   const invalidUtf8 = Buffer.concat([
     Buffer.from(
       `{"protocol":"aizign","version":1,"requestId":"${request.requestId}","kind":"${request.kind}","ok":false,"error":{"code":"INVALID_SIGNAL","message":"`,

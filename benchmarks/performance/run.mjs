@@ -301,6 +301,9 @@ function decodeExtractedResponse(extraction, request, protocol) {
       operationVersion: protocol.PROTOCOL_VERSION,
     });
   } catch {
+    // DecodeFailure retains correlation and expected stage for diagnostics,
+    // but a benchmark transport consumer cannot turn a locally undecodable
+    // peer frame into a semantic or retryable outcome.
     return { transport_kind: 'unknown', unknown_reason: 'undecodable_response' };
   }
   const mismatch = protocol.checkCorrelation(

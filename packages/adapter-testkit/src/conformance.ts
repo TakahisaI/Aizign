@@ -572,18 +572,18 @@ export async function runFaultScenarios(
         `req-${'x'.repeat(MAX_REQUEST_BYTES)}`,
         samplePayload('evt-oversized-request'),
       ),
-      (error: unknown) => error instanceof ProtocolError && error.code === codes.REQUEST_TOO_LARGE,
-      'an oversized outbound request fails locally before transport',
+      (error: unknown) => error instanceof ProtocolError && error.code === codes.INVALID_ENVELOPE,
+      'an overlong public field fails before the internal request-bound guard',
     );
     assert.equal(
       existsSync(oversizedInvocationLog),
       false,
-      'an oversized outbound request never spawns the fake core',
+      'an invalid overlong source never spawns the fake core',
     );
     assert.equal(
       readFakeRequests(oversizedState).length,
       0,
-      'an oversized outbound request never reaches the core',
+      'an invalid overlong source never reaches the core',
     );
 
     const absentState = join(root, 'absent-no-resubmit');
