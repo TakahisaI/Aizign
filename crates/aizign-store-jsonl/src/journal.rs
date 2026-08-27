@@ -58,7 +58,7 @@ pub struct JsonlJournal {
     path: PathBuf,
     commit_path: PathBuf,
     file: File,
-    _lock: File,
+    _lock: JournalLock,
     snapshot: Option<Snapshot>,
 }
 
@@ -67,7 +67,11 @@ pub struct JsonlJournalReader {
     path: PathBuf,
     file: File,
     commit_file: File,
-    _lock: File,
+    _lock: JournalLock,
+}
+
+struct JournalLock {
+    file: File,
 }
 
 /// Append-capable JSONL journal with store-owned physical observations.
@@ -115,6 +119,53 @@ enum DurabilityStep {
     CommitTempSync,
     CommitRename,
     CommitDirectorySync,
+}
+
+impl JournalLock {
+    fn acquire_exclusive(file: File) -> Result<Self, JournalError> {
+        match file.try_lock() {
+            Ok(()) => Ok(Self { file }),
+            Err(std::fs::TryLockError::WouldBlock) => Err(JournalError::Locked),
+            Err(std::fs::TryLockError::Error(error)) => {
+                Err(unavailable(format!("cannot lock journal: {error}")))
+            }
+        }
+    }
+
+    fn acquire_shared(file: File) -> Result<Self, JournalError> {
+        match file.try_lock_shared() {
+            Ok(()) => Ok(Self { file }),
+            Err(std::fs::TryLockError::WouldBlock) => Err(JournalError::Locked),
+            Err(std::fs::TryLockError::Error(error)) => Err(unavailable(format!(
+                "cannot lock journal snapshot: {error}"
+            ))),
+        }
+    }
+
+    fn sync_all(&self) -> std::io::Result<()> {
+        self.file.sync_all()
+    }
+
+    #[cfg(all(
+        test,
+        target_os = "linux",
+        target_arch = "x86_64",
+        target_env = "gnu",
+        target_pointer_width = "64"
+    ))]
+    fn try_clone(&self) -> std::io::Result<File> {
+        self.file.try_clone()
+    }
+}
+
+impl Drop for JournalLock {
+    fn drop(&mut self) {
+        // `O_CLOEXEC` closes inherited descriptors only after exec, while a
+        // fork or `File::try_clone` can temporarily retain the same open file
+        // description. Unlock at the guard boundary so owner construction
+        // failures and normal owner drop do not wait for every duplicate.
+        let _ = self.file.unlock();
+    }
 }
 
 impl std::fmt::Debug for JsonlJournal {
@@ -221,14 +272,8 @@ impl JsonlJournal {
         if !lock_existed {
             hook(DurabilityStep::LockFileCreate)?;
         }
-        let lock = open_private_update_file(&lock_path, !lock_existed)?;
-        match lock.try_lock() {
-            Ok(()) => {}
-            Err(std::fs::TryLockError::WouldBlock) => return Err(JournalError::Locked),
-            Err(std::fs::TryLockError::Error(error)) => {
-                return Err(unavailable(format!("cannot lock journal: {error}")));
-            }
-        }
+        let lock =
+            JournalLock::acquire_exclusive(open_private_update_file(&lock_path, !lock_existed)?)?;
 
         if !journal_existed {
             hook(DurabilityStep::JournalFileCreate)?;
@@ -372,16 +417,7 @@ impl JsonlJournalReader {
         // even if another process holds the lock. The secure opens below
         // repeat every check after the lock to close the preflight race.
         require_snapshot_artifacts(&lock_path, &path, &commit_path)?;
-        let lock = open_private_read_file(&lock_path)?;
-        match lock.try_lock_shared() {
-            Ok(()) => {}
-            Err(std::fs::TryLockError::WouldBlock) => return Err(JournalError::Locked),
-            Err(std::fs::TryLockError::Error(error)) => {
-                return Err(unavailable(format!(
-                    "cannot lock journal snapshot: {error}"
-                )));
-            }
-        }
+        let lock = JournalLock::acquire_shared(open_private_read_file(&lock_path)?)?;
         let file = open_private_read_file(&path)?;
         let commit_file = open_private_read_file(&commit_path)?;
         Ok(Self {
@@ -1245,7 +1281,10 @@ mod tests {
     use aizign_engine::{JournalError, JournalReader};
     use aizign_testkit::{TempDir, signals};
 
-    use super::{DurabilityStep, JsonlJournal, JsonlJournalReader, publish_commit_with_hook};
+    use super::{
+        DurabilityStep, JournalLock, JsonlJournal, JsonlJournalReader, LOCK_FILE_NAME,
+        open_private_read_file, open_private_update_file, publish_commit_with_hook,
+    };
     use crate::commit::CommitPoint;
 
     fn artifact_bytes(state: &Path) -> Vec<(String, Vec<u8>)> {
@@ -1267,6 +1306,80 @@ mod tests {
             .collect();
         artifacts.sort_by(|left, right| left.0.cmp(&right.0));
         artifacts
+    }
+
+    #[test]
+    fn pre_owner_errors_unlock_before_duplicated_descriptors_close() {
+        let dir = TempDir::new();
+        let state = dir.state();
+        drop(JsonlJournal::open(&state).expect("initialize journal"));
+        let lock_path = state.join(LOCK_FILE_NAME);
+
+        let writer_lock = JournalLock::acquire_exclusive(
+            open_private_update_file(&lock_path, false).expect("open writer lock"),
+        )
+        .expect("acquire writer lock");
+        let inherited_writer_lock = writer_lock.try_clone().expect("duplicate writer lock");
+        // Model a `?` or early return after acquisition but before the owner is
+        // constructed. The duplicate descriptor remains open across the guard drop.
+        let writer_error: Result<(), JournalError> = {
+            let _lock = writer_lock;
+            Err(JournalError::Unavailable {
+                detail: "injected post-lock writer open failure".to_owned(),
+            })
+        };
+        assert!(matches!(
+            writer_error,
+            Err(JournalError::Unavailable { .. })
+        ));
+
+        let reader_lock = JournalLock::acquire_shared(
+            open_private_read_file(&lock_path).expect("open reader lock"),
+        )
+        .expect("writer guard failure must unlock while its duplicate remains open");
+        let inherited_reader_lock = reader_lock.try_clone().expect("duplicate reader lock");
+        let reader_error: Result<(), JournalError> = {
+            let _lock = reader_lock;
+            Err(JournalError::Unavailable {
+                detail: "injected post-lock reader open failure".to_owned(),
+            })
+        };
+        assert!(matches!(
+            reader_error,
+            Err(JournalError::Unavailable { .. })
+        ));
+
+        drop(
+            JsonlJournal::open(&state)
+                .expect("reader guard failure must unlock while its duplicate remains open"),
+        );
+        drop(inherited_reader_lock);
+        drop(inherited_writer_lock);
+    }
+
+    #[test]
+    #[allow(clippy::used_underscore_binding)]
+    fn dropping_owners_unlocks_before_duplicated_descriptors_close() {
+        let dir = TempDir::new();
+        let state = dir.state();
+
+        let writer = JsonlJournal::open(&state).expect("open writer");
+        // This models the descriptor inherited by a forked child until exec
+        // closes the `O_CLOEXEC` descriptor.
+        let inherited_writer_lock = writer._lock.try_clone().expect("duplicate writer lock");
+        drop(writer);
+
+        let reader = JsonlJournalReader::open(&state)
+            .expect("writer drop must unlock while its duplicate remains open");
+        let inherited_reader_lock = reader._lock.try_clone().expect("duplicate reader lock");
+        drop(reader);
+
+        drop(
+            JsonlJournal::open(&state)
+                .expect("reader drop must unlock while its duplicate remains open"),
+        );
+        drop(inherited_reader_lock);
+        drop(inherited_writer_lock);
     }
 
     #[test]
