@@ -90,6 +90,35 @@ operatorのpatchはその entry を **id で上書き**して有効化します�
 `dsh --profile <name> --patch <file> --dump-config` で、合成後の tree に `aizign-workflow-signal` が `disabled: false` と上記 `config` で現れることを確認できます。
 [`experiments/dsh-live-smoke/make-patch.mjs`](../../experiments/dsh-live-smoke/make-patch.mjs) はこの形を生成します。
 
+## v0.1 source-checkout installation
+
+v0.1でこのadapterを使うsupported formは、review済み/release済みSHAのAizign
+source checkoutで`npm ci`と`npm run build`を実行し、`adapters/dsh`をDSH profileへ
+workspaceの`link:`として登録する形だけです。`@aizign/protocol`もcheckout内の
+npm workspace linkから解決します。adapterのstandalone `.tgz`、`@aizign/*`の
+registry install、publication、bundlingはsupported distributionではありません。
+
+新規profileはDSH側のpnpm workspace rootになるため、登録時はprofile rootを明示します。
+DSH hostの登録fixtureでは次のように、DSH releaseの`pnpm@11.7.0`を一時bootstrapし、
+新規`DSH_HOME`だけを使います。
+
+```sh
+DSH_HOME="${RUNNER_TEMP}/aizign-dsh-home" \
+npx --yes \
+  --package=pnpm@11.7.0 \
+  --package=@deepseek-ai/dsh@0.1.1-rc.2 \
+  -- \
+  dsh plugin --profile aizign-ci add -w \
+  @deepseek-ai/dsh-web-app@0.1.1-rc.2 \
+  "link:${GITHUB_WORKSPACE}/adapters/dsh"
+```
+
+ここでのpnpmはDSH host登録fixture限定であり、Aizignの通常package manager
+(`npm@12.0.2`)やsupported toolingを変更しません。profileのbundle、absolute
+workspace link、package import、合成後のpatch entryを確認し、browser/login/model/
+credentialを必要とするlive smokeは[Issue #11](https://github.com/TakahisaI/Aizign/issues/11)
+のoperator evidenceとして分離します。検証後はtemporary `DSH_HOME`を破棄します。
+
 ## Capability classification
 
 This adapter satisfies the current minimum signal-submission behavior through

@@ -44,10 +44,17 @@ jobs:
       - name: Fetch locked Rust dependencies
         run: cargo fetch --locked
 
+      - name: Read the repository cargo-deny pin
+        id: cargo_deny_version
+        shell: bash
+        run: |
+          version="$(bash .github/scripts/read-cargo-deny-version.sh)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
       - name: Install cargo-deny
         uses: taiki-e/install-action@6cd13508893c0e7eab5f273c2575d3859bd7229a # v2.86.6
         with:
-          tool: cargo-deny@0.20.2
+          tool: cargo-deny@${{ steps.cargo_deny_version.outputs.version }}
 
       - name: Format, lint, test, doc, deny
         run: cargo xtask rust-check
@@ -145,6 +152,33 @@ jobs:
         run: npm run check
         env:
           AIZIGN_BINARY: ${{ github.workspace }}/target/debug/aizign
+
+      - name: Register and inspect the source workspace with DSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          dsh_home="${RUNNER_TEMP}/aizign-dsh-home"
+          [[ ! -e "${dsh_home}" ]] || { echo "::error::temporary DSH_HOME already exists: ${dsh_home}"; exit 1; }
+          mkdir "${dsh_home}"
+          cleanup_dsh() { rm -rf -- "${dsh_home}"; }
+          trap cleanup_dsh EXIT
+          npm ls --all --offline
+          DSH_HOME="${dsh_home}" npx --yes \
+            --package=pnpm@11.7.0 \
+            --package=@deepseek-ai/dsh@0.1.1-rc.2 \
+            -- \
+            dsh plugin --profile aizign-ci add -w \
+            @deepseek-ai/dsh-web-app@0.1.1-rc.2 \
+            "link:${GITHUB_WORKSPACE}/adapters/dsh"
+          DSH_PROFILE_DIR="${dsh_home}/profiles/aizign-ci" \
+            GITHUB_WORKSPACE="${GITHUB_WORKSPACE}" \
+            node .github/scripts/check-source-workspace.mjs
+          DSH_HOME="${dsh_home}" npx --yes \
+            --package=pnpm@11.7.0 \
+            --package=@deepseek-ai/dsh@0.1.1-rc.2 \
+            -- \
+            dsh --profile aizign-ci --dump-config > "${RUNNER_TEMP}/aizign-dsh-config.txt"
+          grep -F -- "aizign-workflow-signal" "${RUNNER_TEMP}/aizign-dsh-config.txt"
 
   repository:
     name: Repository

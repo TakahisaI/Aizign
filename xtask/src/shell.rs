@@ -42,7 +42,17 @@ pub(crate) fn run_with_env(
 
 /// Runs a command and returns its stdout as UTF-8, failing on non-zero exit.
 pub(crate) fn capture(root: &Path, program: &str, args: &[&str]) -> Result<String, String> {
-    capture_output(root, program, args, false)
+    capture_with_env(root, program, args, &[])
+}
+
+/// Like [`capture`], with extra environment variables for the child.
+pub(crate) fn capture_with_env(
+    root: &Path,
+    program: &str,
+    args: &[&str],
+    env: &[(&str, &str)],
+) -> Result<String, String> {
+    capture_output(root, program, args, false, env)
 }
 
 fn capture_output(
@@ -50,10 +60,12 @@ fn capture_output(
     program: &str,
     args: &[&str],
     include_stdout_on_error: bool,
+    env: &[(&str, &str)],
 ) -> Result<String, String> {
     let rendered = render(program, args);
     let output = Command::new(program)
         .args(args)
+        .envs(env.iter().copied())
         .current_dir(root)
         .output()
         .map_err(|error| format!("failed to start `{rendered}`: {error}"))?;
@@ -74,7 +86,7 @@ fn capture_output(
 /// so callers that parse command output need both streams when a build fails.
 pub(crate) fn capture_logged(root: &Path, program: &str, args: &[&str]) -> Result<String, String> {
     println!("$ {}", render(program, args));
-    capture_output(root, program, args, true)
+    capture_output(root, program, args, true, &[])
 }
 
 /// Returns whether a program can be started at all (used for install hints).

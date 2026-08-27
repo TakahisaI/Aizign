@@ -5,11 +5,25 @@
 | Tool | Version | 固定場所 |
 |---|---|---|
 | Rust toolchain | `rust-toolchain.toml` に記載（rustup経由） | `rust-toolchain.toml`、`Cargo.toml` の `rust-version` |
-| cargo-deny | 最新安定版 | CIはaction、localは `cargo install cargo-deny --locked` |
+| cargo-deny | `.cargo-deny-version` に記載 | 同じpinをCI・release・security・localで使用 |
 | Node.js | `.node-version` に記載 | `.node-version`、`package.json` の `engines` / `devEngines` |
 | npm | `package.json` の `packageManager` に記載 | 同左 |
 
 toolchainは `latest` に追従させません。更新は専用PRで行います（[ADR-0008](../adr/0008-use-lockstep-artifact-versions-before-1-0.md)）。
+
+### cargo-deny
+
+`.cargo-deny-version` が cargo-deny の唯一のversion authorityです。source
+checkoutでは、次のようにauthorityから読み取ったversionをinstallします。
+
+```sh
+cargo_deny_version="$(bash .github/scripts/read-cargo-deny-version.sh)"
+cargo install cargo-deny --version "${cargo_deny_version}" --locked
+```
+
+`cargo xtask rust-check` は `cargo deny --version` がauthorityと完全一致する
+ことを `cargo deny check` の前に検査し、不一致なら同じsetup commandを表示して
+停止します。
 
 ### rustupとHomebrewのcargoが両方ある場合
 
@@ -104,6 +118,22 @@ npm test -w @aizign/protocol
 - Node / npmは `.node-version` と `packageManager` に固定。`.npmrc` の `engine-strict=true` で不一致を拒否します
 - testは `node --test` で `.ts` を直接実行します（Nodeのtype stripping）。そのため `enum` や parameter property は使いません（`erasableSyntaxOnly`）
 - package間はworkspace symlinkで解決され、`exports` が `lib/` を指すので、依存先のpackageを先にbuildします（root `npm run build` が順序を固定）
+
+## v0.1 source checkout
+
+v0.1でサポートするinstall formは、review済み/release済みSHAのsource
+checkoutだけです。`cargo fetch --locked`、`npm ci --no-audit --no-fund`、
+`cargo build -p aizign-cli`、`npm run build`の順でworkspaceを構築し、
+`@aizign/protocol` と `@aizign/adapter-dsh` はcheckout内のworkspace linkから
+importします。`@aizign/*` をregistryからinstallしたり、adapterの`.tgz`を
+standaloneでinstallしたりする手順はありません。`npm pack --dry-run` は
+packable file-setの列挙だけです。
+
+DSHのprofile登録を自動化するfixtureでは、DSH hostの要求に合わせて一時的に
+`pnpm@11.7.0`をbootstrapし、専用のtemporary `DSH_HOME`で`dsh plugin ... add -w`
+を実行します。これはAizignの通常package managerを変更しません。browser、
+login、model、credentialを使うDSH/Firefox live smokeは通常のcheckouts/CIから
+分離されたoperator evidenceです。
 
 ## 通常の検査で起動しないもの
 

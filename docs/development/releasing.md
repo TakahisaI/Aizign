@@ -14,6 +14,11 @@
 - GitHub Releaseだけを使う
 - registry publishは `v0.1` acceptance後に別ADRで有効化する
 
+v0.1でサポートするinstall formは、review済み/release済みSHAのsource
+checkoutに固定したRust/Node/npm/toolingを適用し、Rustとnpmのworkspaceを
+build/linkする形だけです。standaloneのadapter `.tgz`、`@aizign/*`のregistry
+install、またはpackされたpackageをdistribution formとはみなしません。
+
 ## Release gate
 
 少なくとも次がそろうまでregistryへ公開しません。
@@ -26,7 +31,7 @@
 - [ ] DSH adapterのopt-in smoke（`experiments/dsh-live-smoke/`。手順はoperator側）
 - [ ] package file-set enumeration succeeds（`cargo package --list`、`npm pack --dry-run`。列挙結果へのrepository safety policy適用やartifact content scanではない）
 - [ ] SECURITY、LICENSE、CONTRIBUTING
-- [ ] clean cloneからの再現性
+- [ ] clean cloneからの再現性（source workspace build/linkとDSH profile登録を含む）
 - [ ] version compatibility文書
 - [ ] `@aizign` npm scopeの確保
 - [ ] 実装者以外（別maintainer、または別harness・別model）による静的review。最低限: protocol schemaとRust / TypeScript decoderの差分、adapterからprotocolへ越境するfield、response correlation、unbounded input / output / cold read、`unknown` からの暗黙retry、journalとharness evidenceのauthority重複、README / ADR / Issue / 実装の不一致
@@ -42,7 +47,7 @@
    git tag -a v0.1.0 -m "Aizign v0.1.0" && git push origin v0.1.0
    ```
 
-3. `.github/workflows/release.yml` が、tagged SHA = main tip とtag = workspace versionを検証 → `cargo xtask check`（Rust + TypeScript + conformance + public-audit）→ GitHub Releaseを作成する（generated notes。artifactなし、registry publishなし）
+3. `.github/workflows/release.yml` が、tagged SHA = main tip とtag = workspace versionを検証 → authorityから導出したcargo-denyで `cargo xtask check`（Rust + TypeScript + conformance + public-audit）→ GitHub Releaseを作成する（generated notes。artifactなし、registry publishなし）
 4. Releaseの本文にprotocol version、journal schema version、互換性の変更を追記する
 
 `release.yml` は `contents: write` を持つ唯一のworkflowで、release jobだけがその権限を使います。
@@ -50,7 +55,7 @@
 ## Package contents
 
 - Rust: `cargo package --list --workspace` を `cargo xtask rust-check` が実行し、列挙が成功することを確認する。列挙結果へrepository safety policyは適用しない。crateのtestはrepositoryの `spec/` を読むので、packageされたcrate単体ではtestできない（libraryのbuildには影響しない）
-- TypeScript: `npm pack --dry-run` を各packageの `pack:check` が実行し、packable setを列挙できることを確認する（`files` は `lib` とREADMEだけだが、列挙結果へのpolicy検査やcontent scanは行わない）
+- TypeScript: `npm pack --dry-run` を各packageの `pack:check` が実行し、packable setを列挙できることを確認する（`files` は `lib` とREADMEだけだが、列挙結果へのpolicy検査やcontent scanは行わない）。これはstandalone installabilityやdistribution qualificationを示さない
 
 ## Toolchainの更新
 

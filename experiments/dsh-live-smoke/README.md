@@ -22,7 +22,7 @@
 
 ## 前提
 
-- DSH `0.1.1-rc.2`（`docs/reference/compatibility.md` のpinと一致させる）
+- DSH `0.1.1-rc.2`（`docs/reference/compatibility.md` のpinと一致させる）。`dsh plugin` はprofile内でpnpmへ委譲するため、DSH hostの指定versionを使う
 - Firefox（Chromium系は対象外）
 - `cargo build -p aizign-cli` 済みの `aizign` binary
 - `npm ci && npm run build` 済みのworkspace（adapterは `lib/` から読み込まれる）
@@ -37,8 +37,8 @@ adapterを入れたprofileでWeb UIを使うには、**専用のprofile**を作�
 どちらも `dsh.bundle` を宣言しているので、`dsh plugin … add` で入れると `dsh.profile.bundles` に自動で加わります。
 
 ```sh
-# profile名と path はoperatorが決める。adapterは workspace の adapters/dsh を link する（npm pack した tarball でもよい）
-dsh plugin --profile <name> add @deepseek-ai/dsh-web-app@0.1.1-rc.2 'link:/abs/path/to/adapters/dsh'
+# profile名と path はoperatorが決める。新規profileのworkspace rootへ -w で追加し、adapterは workspace の adapters/dsh を link する
+dsh plugin --profile <name> add -w @deepseek-ai/dsh-web-app@0.1.1-rc.2 'link:/abs/path/to/adapters/dsh'
 
 # 合成後の tree を確認: aizign-workflow-signal が disabled: false と config 付きで現れる
 dsh --profile <name> --patch /abs/path/outside/repo/aizign-live.patch.yml --dump-config
