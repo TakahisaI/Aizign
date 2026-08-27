@@ -509,15 +509,17 @@ pub fn decode_response(frame: &[u8]) -> Result<Response, ProtocolError> {
     decode_response_for(frame, None)
 }
 
-/// Decodes one response while retaining the caller's request-stage axis.
+/// Decodes one response while retaining the caller's request-stage version.
 ///
-/// The hint matters for bounded operation errors whose correlation kind was
+/// The context matters for bounded operation errors whose correlation kind was
 /// intentionally replaced with `null`: their wire version is still the
 /// accepted operation version even though the kind can no longer prove that
-/// from response bytes alone. Bootstrap error codes always remain bootstrap.
+/// from response bytes alone. The numeric value inside the supplied version is
+/// the exact value expected for that request stage. Pre-operation error codes
+/// remain on the current bootstrap version.
 pub fn decode_response_for(
     frame: &[u8],
-    request_axis: Option<ResponseVersion>,
+    request_stage: Option<ResponseVersion>,
 ) -> Result<Response, ProtocolError> {
     if frame.len() > MAX_FRAME_BYTES {
         return Err(ProtocolError::new(
@@ -544,15 +546,6 @@ pub fn decode_response_for(
             format!("protocol must be \"{PROTOCOL_NAME}\""),
         ));
     }
-    if envelope.version != BOOTSTRAP_ENVELOPE_VERSION && envelope.version != PROTOCOL_VERSION {
-        return Err(ProtocolError::new(
-            codes::PROTOCOL_VERSION_UNSUPPORTED,
-            format!(
-                "protocol version {} is not supported; this binary speaks {PROTOCOL_VERSION}",
-                envelope.version
-            ),
-        ));
-    }
     if envelope
         .request_id
         .as_deref()
@@ -563,6 +556,13 @@ pub fn decode_response_for(
             "requestId must be null or match ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
         ));
     }
+    let version = decoded_response_version(
+        envelope.version,
+        envelope.kind.as_deref(),
+        envelope.ok,
+        envelope.error.as_ref().map(|error| error.code.as_str()),
+        request_stage,
+    )?;
     let body = match (envelope.ok, envelope.payload, envelope.error) {
         (true, Some(payload), None) => match envelope.kind.as_deref() {
             Some(KIND_HELLO) => {
@@ -609,12 +609,7 @@ pub fn decode_response_for(
         }
     };
     Ok(Response {
-        version: decoded_response_version(
-            envelope.version,
-            envelope.kind.as_deref(),
-            &body,
-            request_axis,
-        ),
+        version,
         request_id: envelope.request_id,
         kind: envelope.kind,
         body,
@@ -624,36 +619,63 @@ pub fn decode_response_for(
 fn decoded_response_version(
     wire_version: u32,
     kind: Option<&str>,
-    body: &ResponseBody,
-    request_axis: Option<ResponseVersion>,
-) -> ResponseVersion {
-    match body {
-        ResponseBody::WorkflowSignal(_) | ResponseBody::WorkflowSignalReconciliation(_) => {
-            ResponseVersion::AcceptedOperation(wire_version)
-        }
-        ResponseBody::Error(error) if !is_bootstrap_error_code(error.code().as_str()) => {
-            match request_axis {
-                Some(ResponseVersion::AcceptedOperation(_)) => {
-                    ResponseVersion::AcceptedOperation(wire_version)
-                }
-                None if kind.is_some_and(|kind| kind != KIND_HELLO) => {
-                    ResponseVersion::AcceptedOperation(wire_version)
-                }
-                Some(ResponseVersion::Bootstrap(_)) | None => {
-                    ResponseVersion::Bootstrap(wire_version)
-                }
+    ok: bool,
+    error_code: Option<&str>,
+    request_stage: Option<ResponseVersion>,
+) -> Result<ResponseVersion, ProtocolError> {
+    let inferred_request_stage = || match request_stage {
+        Some(stage) => stage,
+        None if kind.is_some_and(|kind| kind != KIND_HELLO) => ResponseVersion::operation(),
+        None => ResponseVersion::bootstrap(),
+    };
+    let expected = if ok {
+        match kind {
+            Some(KIND_HELLO) => {
+                ResponseVersion::Bootstrap(expected_bootstrap_version(request_stage))
             }
+            Some(_) => {
+                ResponseVersion::AcceptedOperation(expected_operation_version(request_stage))
+            }
+            None => inferred_request_stage(),
         }
-        ResponseBody::Hello(_) | ResponseBody::Error(_) => ResponseVersion::Bootstrap(wire_version),
+    } else if error_code.is_some_and(is_unconditionally_bootstrap_error_code) {
+        ResponseVersion::Bootstrap(expected_bootstrap_version(request_stage))
+    } else {
+        inferred_request_stage()
+    };
+    if wire_version != expected.wire() {
+        let axis = match expected {
+            ResponseVersion::Bootstrap(_) => "bootstrap",
+            ResponseVersion::AcceptedOperation(_) => "accepted-operation",
+        };
+        return Err(ProtocolError::new(
+            codes::PROTOCOL_VERSION_UNSUPPORTED,
+            format!(
+                "{axis} response version must be {}; got {wire_version}",
+                expected.wire()
+            ),
+        ));
+    }
+    Ok(expected)
+}
+
+fn expected_bootstrap_version(request_stage: Option<ResponseVersion>) -> u32 {
+    match request_stage {
+        Some(ResponseVersion::Bootstrap(version)) => version,
+        Some(ResponseVersion::AcceptedOperation(_)) | None => BOOTSTRAP_ENVELOPE_VERSION,
     }
 }
 
-fn is_bootstrap_error_code(code: &str) -> bool {
+fn expected_operation_version(request_stage: Option<ResponseVersion>) -> u32 {
+    match request_stage {
+        Some(ResponseVersion::AcceptedOperation(version)) => version,
+        Some(ResponseVersion::Bootstrap(_)) | None => PROTOCOL_VERSION,
+    }
+}
+
+fn is_unconditionally_bootstrap_error_code(code: &str) -> bool {
     matches!(
         code,
-        codes::REQUEST_TOO_LARGE
-            | codes::INVALID_ENVELOPE
-            | codes::PROTOCOL_VERSION_UNSUPPORTED
-            | codes::HANDLER_TIMEOUT
+        codes::REQUEST_TOO_LARGE | codes::PROTOCOL_VERSION_UNSUPPORTED | codes::HANDLER_TIMEOUT
     )
 }

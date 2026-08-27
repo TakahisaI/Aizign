@@ -304,3 +304,73 @@ fn response_encoder_uses_the_explicit_source_qualified_axis() {
         ResponseVersion::operation()
     );
 }
+
+#[test]
+fn response_decoder_validates_the_source_stage_and_exact_numeric_version() {
+    let operation_v2 = r#"{"protocol":"aizign","version":2,"requestId":"req-operation-v2","kind":"workflow.signal.submit","ok":false,"error":{"code":"INTERNAL","message":"failed"}}"#;
+    assert_eq!(
+        decode_response_for(
+            operation_v2.as_bytes(),
+            Some(ResponseVersion::AcceptedOperation(2)),
+        )
+        .unwrap()
+        .version,
+        ResponseVersion::AcceptedOperation(2)
+    );
+    assert_eq!(
+        decode_response_for(
+            operation_v2.as_bytes(),
+            Some(ResponseVersion::AcceptedOperation(3)),
+        )
+        .unwrap_err()
+        .code()
+        .as_str(),
+        codes::PROTOCOL_VERSION_UNSUPPORTED
+    );
+
+    let bootstrap_compatibility = r#"{"protocol":"aizign","version":1,"requestId":"req-operation-v2","kind":"workflow.signal.submit","ok":false,"error":{"code":"PROTOCOL_VERSION_UNSUPPORTED","message":"unsupported"}}"#;
+    assert_eq!(
+        decode_response_for(
+            bootstrap_compatibility.as_bytes(),
+            Some(ResponseVersion::AcceptedOperation(2)),
+        )
+        .unwrap()
+        .version,
+        ResponseVersion::Bootstrap(1)
+    );
+
+    let operation_invalid_envelope = r#"{"protocol":"aizign","version":1,"requestId":"req-operation-v1","kind":"workflow.signal.submit","ok":false,"error":{"code":"INVALID_ENVELOPE","message":"closed decode failed"}}"#;
+    assert_eq!(
+        decode_response_for(
+            operation_invalid_envelope.as_bytes(),
+            Some(ResponseVersion::AcceptedOperation(1)),
+        )
+        .unwrap()
+        .version,
+        ResponseVersion::AcceptedOperation(1)
+    );
+
+    let hello_on_operation_version = r#"{"protocol":"aizign","version":2,"requestId":"req-hello","kind":"hello","ok":true,"payload":{"protocolVersion":2,"journalSchemaVersion":1,"capabilities":[],"package":{"name":"future-core","version":"2.0.0"}}}"#;
+    assert_eq!(
+        decode_response_for(
+            hello_on_operation_version.as_bytes(),
+            Some(ResponseVersion::AcceptedOperation(2)),
+        )
+        .unwrap_err()
+        .code()
+        .as_str(),
+        codes::PROTOCOL_VERSION_UNSUPPORTED
+    );
+
+    let operation_on_bootstrap_version = r#"{"protocol":"aizign","version":7,"requestId":"req-submit","kind":"workflow.signal.submit","ok":true,"payload":{"disposition":"accepted","eventId":"evt-0001"}}"#;
+    assert_eq!(
+        decode_response_for(
+            operation_on_bootstrap_version.as_bytes(),
+            Some(ResponseVersion::Bootstrap(7)),
+        )
+        .unwrap_err()
+        .code()
+        .as_str(),
+        codes::PROTOCOL_VERSION_UNSUPPORTED
+    );
+}
