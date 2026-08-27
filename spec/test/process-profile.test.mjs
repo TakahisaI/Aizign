@@ -13,7 +13,7 @@ const fixture = JSON.parse(readFileSync(join(root, fixturePath), 'utf8'));
 const evidenceSources = {
   benchmark: 'benchmarks/performance/run.test.mjs',
   dsh: 'adapters/dsh/test/conformance/core-client.test.ts',
-  protocol: 'packages/protocol/src/envelope.test.ts',
+  protocol: join('packages', 'protocol', 'src', 'envelope.test.ts'),
   'rust-cli': 'crates/aizign-cli/tests/handle.rs',
 };
 
