@@ -36,6 +36,27 @@ function fixedCodes(rows = corpus.rows) {
   );
 }
 
+function markdownTableHeaders(text) {
+  const lines = text.split('\n');
+  return lines.flatMap((line, index) => {
+    if (!/^\|(?:\s*:?-+:?\s*\|)+$/.test(lines[index + 1] ?? '')) return [];
+    return [
+      line
+        .slice(1, -1)
+        .split('|')
+        .map((cell) => cell.trim().replaceAll('`', '').toLowerCase()),
+    ];
+  });
+}
+
+function isClassificationColumn(cell) {
+  const sourceQualified =
+    /(server|client|reconciliation|child|parent)/.test(cell) &&
+    /(disposition|outcome|observation)/.test(cell);
+  const oldOperationQualified = /^(submit|reconcile) (server|client|child|parent)/.test(cell);
+  return sourceQualified || oldOperationQualified;
+}
+
 test('the current-operation corpus validates and closes all 78 legal keys', () => {
   assert.equal(validate(corpus), true, JSON.stringify(validate.errors));
   assert.equal(corpus.rows.length, 78);
@@ -83,6 +104,21 @@ test('the corpus preserves the accepted fail-closed source-qualified semantics',
       assert.equal(row.timingCodeDisclosure, false);
     }
 
+    if (row.responseCase.kind === 'success') {
+      const { disposition } = row.responseCase;
+      assert.equal(
+        row.serverDisposition,
+        row.operation === 'workflow.signal.submit' ? disposition : null,
+      );
+      assert.equal(
+        row.reconciliationDisposition,
+        row.operation === 'workflow.signal.reconcile' ? disposition : null,
+      );
+    } else {
+      assert.equal(row.serverDisposition, null);
+      assert.equal(row.reconciliationDisposition, null);
+    }
+
     if (row.reportedCode.kind === 'wellFormedUnrecognized') {
       assert.equal(row.clientOutcome, 'unknown');
       assert.equal(row.childObservation.value, 'unknown');
@@ -113,6 +149,25 @@ test('the corpus preserves the accepted fail-closed source-qualified semantics',
         code === 'EVENT_CONFLICT' ? 'conflict' : 'rejected',
       );
     }
+  }
+});
+
+test('classification Markdown cannot regain a second normative row table', () => {
+  const readme = readFileSync(join(root, 'spec/classification/README.md'), 'utf8');
+  for (const oldSignature of [
+    '### Successful responses',
+    '### Error responses and fixed codes',
+    'Server disposition | Client outcome | Reconciliation disposition',
+    'Submit server | Submit client | Submit child | Submit parent',
+  ]) {
+    assert.equal(readme.includes(oldSignature), false, oldSignature);
+  }
+
+  for (const header of markdownTableHeaders(readme)) {
+    assert.ok(
+      header.filter(isClassificationColumn).length < 3,
+      `second classification row table detected: ${header.join(' | ')}`,
+    );
   }
 });
 
