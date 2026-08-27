@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-23
-- Related: ADR-0002, ADR-0004, ADR-0008
+- Related: ADR-0002, ADR-0004, ADR-0008, ADR-0022
 
 ## Context
 
@@ -31,6 +31,15 @@ LLM処理に比べればprocess起動costは無視できる。
   - 互換性はpackage semverの一致ではなく、protocol versionとcapabilityで判定する
 - protocol versionはpackage versionとは独立した整数とする（ADR-0008）。
 - 将来 `aizu serve`（persistent process）、N-API、WASM、local socketを追加してもよいが、すべて同じprotocol semanticsとconformance testを満たすこと。N-APIやWASMをdomain contractの正本にしない。
+
+## Partial supersession
+
+[ADR-0022](0022-define-the-canonical-one-shot-process-profile.md)
+supersedes only this ADR's direct `hello` preflight decision and the
+incomplete adapter argv, framing, version-selection, and process-lifecycle
+portions. The subprocess boundary, independent language implementations,
+closed Protocol, stdout/stderr separation, and no-daemon decisions remain
+Accepted.
 
 ## Consequences
 

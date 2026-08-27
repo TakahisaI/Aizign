@@ -15,8 +15,9 @@ assumptions, threat classification, and known limitations are defined in
   references, identity, and digests.
 - Keep harness/provider identity inside the adapter. It does not become Aizign
   identity, candidate identity, or process correlation.
-- Reserve binary stdout for one Protocol v1 response. Diagnostics use stderr
-  and remain content-free.
+- Reserve binary stdout for the one response allowed by the
+  [canonical process profile](../../spec/process/v1/README.md). Diagnostics use
+  stderr and remain payload-free, metadata-only operational data.
 - A closed schema controls shape, not provenance or string semantics. The
   current DSH adapter exposes `artifactRef` and `shortErrorCode` to the model,
   so v0.1 does not mechanically guarantee that every allowed opaque value is
@@ -113,8 +114,8 @@ outcome service.
 
 | Boundary | Allowed output |
 |---|---|
-| `aizign` stdout | Exactly one Protocol v1 response frame |
-| `aizign` stderr | Normal content-free operational diagnostics. Opt-in child-runtime timing is provisional operational evidence. Engine use-case stages and JSONL physical stages retain separate owners and are composed by CLI without exposing a path or content. Child classification/code disclosure is exhaustively checked against the exact rows owned by `spec/classification/`. Neither stage creates a stable public compatibility promise. |
+| `aizign` stdout | Exactly one bounded response body + LF + close under [CLI process profile v1](../../spec/process/v1/README.md) |
+| `aizign` stderr | Payload-free, metadata-only operational diagnostics. Registered operation kind, fixed outcome/code, stage, and numeric timing metadata may remain; correlation identifiers, request/payload bodies, state or journal contents, prompts, model output, reasoning, credentials, environment contents, and raw peer messages do not. Opt-in child-runtime timing is provisional operational evidence. Engine use-case stages and JSONL physical stages retain separate owners and are composed by CLI without exposing a path or content. Child classification/code disclosure is exhaustively checked against the exact rows owned by `spec/classification/`. Neither stage creates a stable public compatibility promise. |
 | Human-readable Protocol error message | Operational control-plane diagnostic. Store and OS failures can include the configured state path or platform detail. It is not a model-safe field. |
 | DSH model-facing `HarnessError` | Stable code plus a fixed safe message for argument decoding, local Protocol validation, submit rejection, or unknown outcome. Raw argument keys, Protocol messages, and unknown detail are not forwarded; local Protocol errors are not retained as causes. |
 | Adapter log | Adapter-owned metadata under its documented policy; native IDs do not cross into the core |
@@ -123,6 +124,11 @@ outcome service.
 
 Operational identity can itself be sensitive metadata. Log retention and sink
 access remain operator responsibilities.
+
+The process-profile wording above is the accepted target contract. Issue #76
+S2 owns migration of the current CLI, DSH client, fake core, and benchmark
+consumers; their older direct-hello and permissive post-LF behavior is not a
+second authority.
 
 ## Authority boundaries
 

@@ -5,12 +5,43 @@
 | Version | 現在 | 管理 |
 |---|---|---|
 | Aizign package version | `0.1.0`（未release） | 全artifact lockstep。`Cargo.toml`、各 `package.json` |
-| Protocol version | `1`（`aizign-protocol` が実装。`hello`、`workflow.signal.submit`、`workflow.signal.reconcile`） | `spec/protocol/v1/`。envelopeの `version` |
+| CLI process profile | `1`（Issue #76 S1 target。runtime migrationはS2 pending） | `spec/process/v1/`。argv、frame、EOF、watchdog、process lifecycle。wire fieldではない |
+| Bootstrap envelope version | `1`（framed `hello` とpre-operation errorのstable subset） | `spec/protocol/v1/`。bootstrap axisとしてenvelopeの `version` を読む |
+| Operation Protocol version | `1`（`aizign-protocol` が実装。`workflow.signal.submit`、`workflow.signal.reconcile`） | `spec/protocol/v1/`。operation axisとしてenvelopeの `version` を読む |
 | Journal schema version | `1`（`aizign-store-jsonl` が実装） | `spec/journal/v1/`。recordの `schemaVersion` |
 | Store metadata version | `1`（`aizign-store-jsonl` が実装） | `spec/store/v1/`。commit documentの `storeVersion` |
 
-adapterはpackage versionの完全一致ではなく、`hello` で得たprotocol versionとcapabilityで互換性を判定します
-（[ADR-0003](../adr/0003-use-a-versioned-ndjson-process-boundary.md)、[ADR-0008](../adr/0008-use-lockstep-artifact-versions-before-1-0.md)）。
+adapterはpackage versionの完全一致ではなく、canonical process profileでframed
+`hello`を実行し、得られたoperation Protocol versionとcapabilityで互換性を判定します
+（[ADR-0003](../adr/0003-use-a-versioned-ndjson-process-boundary.md)、
+[ADR-0022](../adr/0022-define-the-canonical-one-shot-process-profile.md)、
+[ADR-0008](../adr/0008-use-lockstep-artifact-versions-before-1-0.md)）。
+process profile、bootstrap envelope、operation Protocolは独立したversion axisです。
+現在値がすべて`1`であることは、同時に改版されることを意味しません。
+
+## Bootstrap and operation selection
+
+Canonical preflight is the state-independent framed request
+`aizign handle --state <stateDir>` with `kind: "hello"`. Direct
+`aizign hello` is a provisional operator command and is not interchangeable
+with adapter preflight. The exact argv, frame, EOF, timeout, process-close,
+and correlation rules are owned by the
+[CLI process profile v1](../../spec/process/v1/README.md).
+
+After a valid process frame, exact `kind: "hello"` selects the bootstrap
+version axis. Every other syntactically valid kind selects the operation
+version axis before operation membership is checked. Unsupported versions use
+the bootstrap-v1 `PROTOCOL_VERSION_UNSUPPORTED` representation; an accepted
+operation version with an unknown kind uses that operation version's
+`UNKNOWN_KIND`. The bootstrap-v1 envelope, framed hello, and pre-operation
+error schemas are an independently stable subset, so a future operation client
+retains a bootstrap-v1 decoder for discovery and incompatibility responses.
+
+Issue #76 S1 records this compatibility target only. The current CLI and
+TypeScript consumers retain older direct-hello, EOF, and post-LF behavior until
+the atomic S2 runtime migration; those behaviors are migration debt, not a
+second accepted profile.
+
 初期のcommitted-prefix JSONL storeは `x86_64-unknown-linux-gnu` だけが検証済みで、x32を含む別ABIや別architecture / libcのLinuxなど、その他のbuildはsubmit / reconcile capabilityをadvertiseしません。
 x32は、64-bit targetと誤認しないことをCIでcross-compileするnegative boundaryに限定し、runtime support、release artifact、support claimは提供しません。
 同じstate directoryを旧binaryで開くdowngradeはunsupportedであり、技術的には防止していません。旧binaryがcommit metadataを無視できるため、operatorは別のstate directoryを使用する必要があります。

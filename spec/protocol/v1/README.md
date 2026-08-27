@@ -1,16 +1,55 @@
 # Aizign Protocol v1
 
-NDJSON over stdin / stdout。**1 request frame in、1 response frame out**。frameは改行で終わる1行のJSON objectで、
-request / response のJSON frame本体はともに `65536` bytes（`MAX_FRAME_BYTES`）以下。終端LFと、その後に許可されるASCII whitespaceはframe sizeに含めない。process clientはLFまでのframeだけをboundedに保持し、LF後は保存せず検査する。
+Protocol v1 owns the JSON request/response bodies, shapes, kinds, and codes.
+The surrounding argv, LF, stdin/stdout/EOF/exit/watchdog lifecycle, bootstrap
+selection, and process faults are owned by the
+[CLI process profile v1](../../process/v1/README.md).
 
-- stdinは **frame 1つ + 末尾 whitespace** だけを許す。2つ目のframeや末尾の非whitespaceは `INVALID_ENVELOPE`（何もappendしない）
-- stdoutも **frame 1つ + 末尾 whitespace** だけ。clientは2つ目のframe・末尾の非whitespace・boundの超過を `unknown` として扱う（signalがすでにdurableにappendされた可能性があるため、拒否ではなく不明）
-- clientはresponseの `requestId` / `kind` / （signalでは）`eventId` を送信したものと照合し、不一致は `unknown`（correlation mismatch）にする
+Each request/response JSON body is at most `65536` bytes
+(`MAX_FRAME_BYTES`). The constant excludes the required terminating LF. The
+canonical process stream is one body + one LF + immediate EOF/close; CRLF and
+every byte after LF are outside process profile v1.
+
+- the child validates the complete request stream through EOF before Protocol
+  dispatch; framing failure creates no state artifact or append
+- the parent accepts process framing only after one bounded response body, LF,
+  stdout close, and process close; any framing or lifecycle fault is `unknown`
+- the client correlates response `requestId` / `kind` / (for signal success)
+  `eventId`; mismatch is `unknown`
+
+The current CLI and TypeScript consumers still contain older EOF-terminated,
+post-LF-whitespace, and direct-hello behavior. Issue #76 S2 owns their atomic
+migration; that debt is not an alternate accepted profile.
 
 ```text
 adapter ──(request frame)──▶ aizign handle --state <dir> ──(response frame)──▶ adapter
-                                     │ stderr: 構造化log（本文なし）
+                                     │ stderr: payload-free, metadata-only diagnostics
 ```
+
+## Bootstrap subset and version selection
+
+These version axes are independent even though their current values are all
+`1`:
+
+- CLI process profile v1 owns the process lifecycle and is not a wire field;
+- bootstrap envelope v1 owns framed hello and pre-operation error
+  representation; and
+- operation Protocol v1 is advertised by hello and used by accepted submit and
+  reconcile operations.
+
+The bootstrap-v1 envelope, hello, and pre-operation error schemas in this
+directory form an independently stable subset. A future operation Protocol
+version references rather than redefines that subset, so a bootstrap-v1 client
+can decode discovery or an incompatibility response before it attempts a
+future operation payload.
+
+After process framing succeeds, exact syntactically valid `kind: "hello"`
+selects the bootstrap version axis. Every other syntactically valid kind
+selects the operation version axis before registry membership is checked. An
+unsupported version returns a bootstrap-v1 `PROTOCOL_VERSION_UNSUPPORTED`;
+an accepted operation version plus an unknown kind returns that operation
+version's `UNKNOWN_KIND`. The complete response-version and correlation table
+is normative in the [process profile](../../process/v1/README.md).
 
 ## Envelope
 
@@ -31,7 +70,7 @@ adapter ──(request frame)──▶ aizign handle --state <dir> ──(respon
   - **整数の字句表現**（下記）
   - **duplicate member**（下記）
   - **well-formed Unicode**（下記）
-- frame bytesは **BOMなしUTF-8** とする。不正UTF-8と先頭のUTF-8 BOM（`EF BB BF`）はJSONとして解釈せず `INVALID_ENVELOPE`。string入力も先頭のU+FEFFを許さない。process clientはstdoutをframe抽出・decode完了までbyte列として保持し、LF後に許すのはASCII whitespaceだけとする
+- frame bytesは **BOMなしUTF-8** とする。不正UTF-8と先頭のUTF-8 BOM（`EF BB BF`）はJSONとして解釈せず `INVALID_ENVELOPE`。string入力も先頭のU+FEFFを許さない。process clientはstdoutをframe抽出・decode完了までbyte列として保持し、canonical process profileでは終端LF後のbyteを一切許さず、stdout closeとprocess closeまで確認する
 - 整数fieldのwire表現は **canonicalな整数token** だけを許す: `0` または `-?[1-9][0-9]*`。`1.0`、`1e0`、`-0` のような表記はJSON data model上は整数1（や0）だが、frameとしては拒否する（`version` は `INVALID_ENVELOPE`、payload内は `INVALID_PAYLOAD`）。JSON Schemaはdata modelしか見ないためこの規則を書けず、両decoderが実装する（Rustは `serde_json` の整数型、TSはparse時のtoken検査）
 - envelope `version` の整数rangeは `0..=4294967295`（`PROTOCOL_VERSION` の型 `u32` に由来）。range外は `PROTOCOL_VERSION_UNSUPPORTED` ではなく **`INVALID_ENVELOPE`**。両decoderとも同じ判定（Rustはtyped field、TSは数値比較。JSON numberは2^53まで厳密なので差は出ない）
 - **同一object内でmember名の重複は拒否**（`INVALID_ENVELOPE`、journalは `JOURNAL_CORRUPT`）。`"a"` と `"\u0061"` のようにescape表記が違っても、decode後の名前が同じなら重複とする。streaming parserとfolding parserで意味が分れるため、どの階層でも契約の外。schema外のlexical ruleとして両decoderが走査し、相関データ（`requestId` / `kind`）は最後の表記から復元する
@@ -118,7 +157,7 @@ operational evidence rather than a stable Protocol compatibility surface.
 | `INVALID_SIGNAL` ほかworkflow code | `signal` の値や制約、expectationとの不一致、conflict |
 | `JOURNAL_*` | journalまたはstore commit metadataを開けない・検証できない・書けない。`JOURNAL_OUTCOME_UNKNOWN` は再送せず、reconciliationでもpublished boundaryを越えるtailを確定しない |
 | `CAPABILITY_UNSUPPORTED` | kindは既知だが、このbuildではoperationを提供できない。verified storeを持たないtargetへsubmit / reconcileを直接送った場合など |
-| `HANDLER_TIMEOUT` | 処理が時間bound（10秒）を超えた。進行中のappendまたはreconciliationの結果は不明。`requestId` / `kind` は `null` |
+| `HANDLER_TIMEOUT` | process profileのwatchdogが成立。required EOF前を含むpre-dispatch timeoutはstate effectなし。dispatch開始後はappendまたはreconciliationの結果が不明になり得る。bootstrap-v1 errorで`requestId` / `kind` は `null` |
 | `INTERNAL` | 分類不能。詳細はstderr |
 
 登録簿は [docs/reference/error-codes.md](../../../docs/reference/error-codes.md)。
