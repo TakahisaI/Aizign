@@ -92,15 +92,17 @@ operatorのpatchはその entry を **id で上書き**して有効化します�
 
 ## v0.1 source-checkout installation
 
-v0.1でこのadapterを使うsupported formは、review済み/release済みSHAのAizign
-source checkoutで`npm ci`と`npm run build`を実行し、`adapters/dsh`をDSH profileへ
-workspaceの`link:`として登録する形だけです。`@aizign/protocol`もcheckout内の
-npm workspace linkから解決します。adapterのstandalone `.tgz`、`@aizign/*`の
-registry install、publication、bundlingはsupported distributionではありません。
+The supported v0.1 form for using this adapter is a reviewed or released SHA
+Aizign source checkout. Run `npm ci` and `npm run build`, then register
+`adapters/dsh` in the DSH profile as a workspace `link:`. `@aizign/protocol` is
+also resolved through the npm workspace link inside the checkout. An adapter
+standalone `.tgz`, an `@aizign/*` registry install, publication, or bundling is
+not a supported distribution form.
 
-新規profileはDSH側のpnpm workspace rootになるため、登録時はprofile rootを明示します。
-DSH hostの登録fixtureでは次のように、DSH releaseの`pnpm@11.7.0`を一時bootstrapし、
-新規`DSH_HOME`だけを使います。
+A new profile is a pnpm workspace root on the DSH side, so registration must
+target that profile root explicitly. The DSH-host registration fixture below
+temporarily bootstraps the DSH release's `pnpm@11.7.0` and uses only a new
+`DSH_HOME`.
 
 ```sh
 DSH_HOME="${RUNNER_TEMP}/aizign-dsh-home" \
@@ -113,15 +115,17 @@ npx --yes \
   "link:${GITHUB_WORKSPACE}/adapters/dsh"
 ```
 
-`pnpm@11.7.0`のstrict build policyに合わせ、DSH web appが必要とする
-native `koffi`だけを明示的に許可します。ほかの依存packageのlifecycle
-scriptは実行しません。
+Because of `pnpm@11.7.0`'s strict build policy, explicitly allow only the
+native `koffi` build required by the DSH web app. No lifecycle script from any
+other dependency is run.
 
-ここでのpnpmはDSH host登録fixture限定であり、Aizignの通常package manager
-(`npm@12.0.2`)やsupported toolingを変更しません。profileのbundle、absolute
-workspace link、package import、合成後のpatch entryを確認し、browser/login/model/
-credentialを必要とするlive smokeは[Issue #11](https://github.com/TakahisaI/Aizign/issues/11)
-のoperator evidenceとして分離します。検証後はtemporary `DSH_HOME`を破棄します。
+This pnpm use is limited to the DSH-host registration fixture and does not
+change Aizign's normal package manager (`npm@12.0.2`) or supported tooling.
+Inspect the profile bundle, absolute workspace link, package import, and
+composed patch entry. Live smoke requiring a browser, login, model, or
+credential remains operator evidence under
+[Issue #11](https://github.com/TakahisaI/Aizign/issues/11). Discard the
+temporary `DSH_HOME` after verification.
 
 ## Capability classification
 

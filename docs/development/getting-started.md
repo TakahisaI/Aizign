@@ -5,7 +5,7 @@
 | Tool | Version | 固定場所 |
 |---|---|---|
 | Rust toolchain | `rust-toolchain.toml` に記載（rustup経由） | `rust-toolchain.toml`、`Cargo.toml` の `rust-version` |
-| cargo-deny | `.cargo-deny-version` に記載 | 同じpinをCI・release・security・localで使用 |
+| cargo-deny | Listed in `.cargo-deny-version` | The same pin is used by CI, release, security, and local checks |
 | Node.js | `.node-version` に記載 | `.node-version`、`package.json` の `engines` / `devEngines` |
 | npm | `package.json` の `packageManager` に記載 | 同左 |
 
@@ -13,8 +13,8 @@ toolchainは `latest` に追従させません。更新は専用PRで行いま�
 
 ### cargo-deny
 
-`.cargo-deny-version` が cargo-deny の唯一のversion authorityです。source
-checkoutでは、次のようにauthorityから読み取ったversionをinstallします。
+`.cargo-deny-version` is the sole cargo-deny version authority. From a source
+checkout, install the version read from that authority:
 
 ```sh
 cargo_deny_version="$(bash .github/scripts/read-cargo-deny-version.sh)"
@@ -22,10 +22,11 @@ cargo install cargo-deny --version "${cargo_deny_version}" --locked
 bash .github/scripts/check-cargo-deny-version.sh
 ```
 
-`cargo xtask rust-check` は `cargo deny --version` がauthorityと完全一致する
-ことを `cargo deny check` の前に検査し、不一致なら同じsetup commandを表示して
-停止します。上記のverification scriptは、command substitutionで失われる
-newlineや余計な出力も含めて、installed commandのstdoutをbyte単位で比較します。
+`cargo xtask rust-check` verifies that `cargo deny --version` exactly matches
+the authority before running `cargo deny check`. On a mismatch it stops and
+prints the same setup command. The verification script compares the installed
+command's stdout byte-for-byte, so missing or extra newlines and wrapper output
+cannot be hidden by command substitution.
 
 ### rustupとHomebrewのcargoが両方ある場合
 
@@ -123,20 +124,21 @@ npm test -w @aizign/protocol
 
 ## v0.1 source checkout
 
-v0.1でサポートするinstall formは、review済み/release済みSHAのsource
-checkoutだけです。`cargo fetch --locked`、`npm ci --no-audit --no-fund`、
-`cargo build -p aizign-cli`、`npm run build`の順でworkspaceを構築し、
-`@aizign/protocol` と `@aizign/adapter-dsh` はcheckout内のworkspace linkから
-importします。`@aizign/*` をregistryからinstallしたり、adapterの`.tgz`を
-standaloneでinstallしたりする手順はありません。`npm pack --dry-run` は
-packable file-setの列挙だけです。
+The supported v0.1 installation form is a reviewed or released SHA source
+checkout only. Build the workspace in this order: `cargo fetch --locked`,
+`npm ci --no-audit --no-fund`, `cargo build -p aizign-cli`, and `npm run build`.
+`@aizign/protocol` and `@aizign/adapter-dsh` are imported through workspace
+links inside the checkout. There is no procedure for installing `@aizign/*`
+from a registry or installing an adapter `.tgz` standalone. `npm pack --dry-run`
+only enumerates the packable file set.
 
-DSHのprofile登録を自動化するfixtureでは、DSH hostの要求に合わせて一時的に
-`pnpm@11.7.0`をbootstrapし、専用のtemporary `DSH_HOME`で`dsh plugin ... add -w`
-を実行します。DSH web appのnative `koffi`だけを`--allow-build=koffi`で
-許可し、ほかのlifecycle scriptは実行しません。これはAizignの通常package managerを変更しません。browser、
-login、model、credentialを使うDSH/Firefox live smokeは通常のcheckouts/CIから
-分離されたoperator evidenceです。
+The automated DSH profile-registration fixture temporarily bootstraps
+`pnpm@11.7.0` as required by the DSH host and runs `dsh plugin ... add -w` with
+a dedicated temporary `DSH_HOME`. It allows only the DSH web app's native
+`koffi` build via `--allow-build=koffi`; no other lifecycle scripts run. This
+does not change Aizign's normal package manager. DSH/Firefox live smoke that
+uses a browser, login, model, or credential is operator evidence kept separate
+from ordinary checkouts and CI.
 
 ## 通常の検査で起動しないもの
 

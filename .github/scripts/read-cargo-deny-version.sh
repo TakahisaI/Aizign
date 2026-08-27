@@ -31,4 +31,9 @@ if [[ ! "${version}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; 
   exit 1
 fi
 
+if ! cmp -s "${version_file}" <(printf '%s\n' "${version}"); then
+  echo "cargo-deny version authority must contain exactly one canonical LF-terminated value: ${version_file}" >&2
+  exit 1
+fi
+
 printf '%s\n' "${version}"

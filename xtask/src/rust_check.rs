@@ -389,6 +389,23 @@ fi
         }
 
         #[test]
+        fn shell_authority_reader_rejects_nul_bytes() {
+            let fixture = Fixture::new(Some(b"0.20.2\0\n"));
+            let helper = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join(".github/scripts/read-cargo-deny-version.sh");
+            let output = Command::new("bash")
+                .arg(helper)
+                .arg(fixture.root.join(".cargo-deny-version"))
+                .output()
+                .expect("run cargo-deny authority reader");
+
+            assert!(!output.status.success());
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(stderr.contains("canonical LF-terminated value"), "{stderr}");
+        }
+
+        #[test]
         fn shell_authority_reader_returns_exact_valid_value() {
             let fixture = Fixture::new(Some(b"0.20.2\n"));
             let helper = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
