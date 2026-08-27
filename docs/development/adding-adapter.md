@@ -75,19 +75,20 @@ Keep the following tests separate even if one test command runs all of them:
 The scenarios are language-neutral; the executable runner is not. Do not add a
 universal adapter driver or a second process protocol for tests.
 
-## TypeScript/Node reference path
+## TypeScript/Node convenience path
 
 For a TypeScript adapter in this repository, use:
 
 - [`@aizign/protocol`](../../packages/protocol/README.md) for the Protocol v1
-  codec, compatibility helpers, types, and reference `CoreClient` interface;
+  codec, compatibility helpers, types, and Node-free abstract `CoreClient` interface;
 - [`@aizign/adapter-testkit`](../../packages/adapter-testkit/README.md) for the
-  fake core, reference client, convenience assertions, and conformance runner;
+  fake core, scripted faults, convenience assertions, and conformance runner
+  applied to the adapter-owned production client;
   and
 - the root Node/TypeScript support policy and exact harness SDK pinning from
   ADR-0010.
 
-The reference layout is:
+The convenience layout is:
 
 ```text
 adapters/<harness>/
@@ -103,11 +104,15 @@ adapters/<harness>/
 │   └── lifecycle/      only operations approved for this adapter
 └── test/
     ├── unit/
-    └── conformance/    TypeScript reference runner plus harness-native tests
+    └── conformance/    shared TypeScript runner applied to this adapter plus harness-native tests
 ```
 
 Do not add empty `evidence/` or `lifecycle/` layers merely to match this tree.
 The DSH event shape and lifecycle are not generic interfaces.
+
+Do not copy DSH's process client into the shared testkit. Each adapter owns its
+production transport; the current repository has only the DSH production
+TypeScript transport and does not define a universal adapter runtime.
 
 The TypeScript `CoreClient` interface and `runCoreClientConformance` runner
 include submission and reconciliation operations. They exercise the

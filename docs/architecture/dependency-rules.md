@@ -68,9 +68,21 @@ contractの正本は[`harness-adapter-contract.md`](harness-adapter-contract.md)
 - package間はworkspace依存だけを使い、相対pathで別packageのsourceをimportしない
 - 開発toolchain（`typescript`、`@biomejs/biome`、`@types/node`、`ajv`）はroot `package.json` にexact versionで置き、各packageには置かない。`ajv` は `spec/` のJSON Schema gate（`spec/test/`）専用で、publishされるpackageからは参照しない（`@aizign/protocol` の外部依存は引き続き **なし**）
 - `exports` mapはclosed。`./*` のようなwildcardを許さない
+- package rootと明示subpathはexact allowlist。`src/` / generated `lib/` deep
+  importでexport mapを迂回しない。Protocol/testkitは`.`と`./package.json`のみ、
+  DSHはそれらに加えて`./experimental/transport`と
+  `./experimental/evidence`のみ
+- `@aizign/protocol`はNode/process/preflight/parent-timing policyを持たない。
+  DSHが唯一のproduction TypeScript one-shot transport ownerで、
+  `@aizign/adapter-testkit`はsupplied clientへ適用するfixture/runnerだけを持つ
 - TypeScript adapterから `aizign-core` / `aizign-engine` の型を参照しない。wire型は
   `@aizign/protocol` を使う。全adapterのbehavioral contractは
   `docs/architecture/harness-adapter-contract.md`、wire contractは `spec/protocol/` が所有する
+
+`cargo xtask public-audit`はworkspace dependency、exact manifest subpath、
+cross-package source/build bypass、Protocol process/timing vocabulary、およびduplicate
+reference transportの不在を検査します。`spec/test/package-exports.test.mjs`はbuild後の
+runtime valueとtype declaration allowlist、negative deep importを検査します。
 
 ## Port ownership
 

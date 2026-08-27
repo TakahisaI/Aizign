@@ -11,9 +11,9 @@
  * input and never leave this module toward the core.
  */
 
-import { emitBestEffort, type TimingOutcome, type TimingSink } from '@aizign/protocol';
 import type { SignalBinding } from '../config.ts';
 import { TOOL_NAME } from '../mapping/tool.ts';
+import { emitBestEffort, type TimingOutcome, type TimingSink } from '../timing.ts';
 import { bindingDigest } from './digest.ts';
 
 /** The subset of a session event this module reads. */

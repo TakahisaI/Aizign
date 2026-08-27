@@ -42,7 +42,7 @@ fn run_profile(root: &Path, args: &[String], defaults: &[&str], stage: &str) -> 
         return Err("performance runner builds and supplies its own release binary".to_owned());
     }
 
-    report::stage("build TypeScript reference clients");
+    report::stage("build TypeScript packages and DSH client");
     shell::run(root, "npm", &["run", "build"])?;
 
     report::stage("build release aizign binary");

@@ -29,6 +29,7 @@
 | [0017](0017-bound-v0-1-classification-to-current-operations.md) | Bind v0.1 classification to current operations | Accepted |
 | [0018](0018-require-implementation-readiness-before-higher-risk-implementation.md) | Require implementation readiness before higher-risk implementation | Accepted |
 | [0019](0019-separate-engine-and-store-observation-ownership.md) | Separate engine and store observation ownership | Accepted |
+| [0020](0020-narrow-typescript-exports-and-own-dsh-transport.md) | Narrow TypeScript exports and own DSH transport | Accepted |
 
 ADR-0016 partially supersedes ADR-0005's earlier `AGENTS.md` editing-constraint
 statement only; ADR-0005's other accepted decisions remain in force.

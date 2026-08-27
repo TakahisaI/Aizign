@@ -1,12 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import {
-  checkCorrelation,
-  emitBestEffort,
-  isSubmitRejectionCode,
-  isTimingErrorCode,
-  parentTimingOutcome,
-} from './client.ts';
+import { checkCorrelation, isSubmitRejectionCode } from './client.ts';
 import type { Response } from './envelope.ts';
 import { codes, ProtocolError } from './error.ts';
 
@@ -65,42 +59,10 @@ test('reconciliation success also correlates the queried event id', () => {
   );
 });
 
-test('parent timing preserves unknown before submit conflict normalization', () => {
-  assert.equal(
-    parentTimingOutcome('workflow.signal.submit', 'rejected', 'EVENT_CONFLICT'),
-    'conflict',
-  );
-  assert.equal(
-    parentTimingOutcome('workflow.signal.reconcile', 'unknown', 'EVENT_CONFLICT'),
-    'unknown',
-  );
-  assert.equal(
-    parentTimingOutcome('workflow.signal.submit', 'unknown', 'EVENT_CONFLICT'),
-    'unknown',
-  );
-});
-
 test('submit rejection classification is closed and fails unknown codes safely', () => {
   assert.equal(isSubmitRejectionCode('EVENT_CONFLICT'), true);
   assert.equal(isSubmitRejectionCode('JOURNAL_UNAVAILABLE'), true);
   assert.equal(isSubmitRejectionCode('JOURNAL_OUTCOME_UNKNOWN'), false);
   assert.equal(isSubmitRejectionCode('INTERNAL'), false);
   assert.equal(isSubmitRejectionCode('FUTURE_OUTCOME_UNKNOWN'), false);
-});
-
-test('metadata-only timing admits only fixed recognized error codes', () => {
-  assert.equal(isTimingErrorCode('EVENT_CONFLICT'), true);
-  assert.equal(isTimingErrorCode('JOURNAL_OUTCOME_UNKNOWN'), true);
-  assert.equal(isTimingErrorCode('INTERNAL'), true);
-  assert.equal(isTimingErrorCode('FUTURE_OUTCOME_UNKNOWN'), false);
-});
-
-test('best-effort timing isolates synchronous throws and asynchronous rejection', async () => {
-  emitBestEffort(() => {
-    throw new Error('synchronous sink failure');
-  }, 1);
-  emitBestEffort(async () => {
-    throw new Error('asynchronous sink failure');
-  }, 2);
-  await new Promise<void>((resolve) => setImmediate(resolve));
 });

@@ -11,15 +11,17 @@ The DSH harness adapter: a cordis plugin that registers one **scope-bound** `sub
 | **Hard invariants** | control-plane identity（eventId、workflowId、assignmentId、attemptId、role、artifactRevision、candidateDigest）をinput parameter schema・引数・promptに出さずmodelに選択させない（5、8。成功resultは固定済み`eventId`を開示）、reconciliationをmodel-visible toolにしない、DSHのcall id / session idを **envelope全体**（`requestId` 含む）に入れない（8。`requestId` はadapter所有のnonce）、responseは `requestId` / `kind` / `eventId` を送信と照合し不一致は `unknown`、reconciliation error codeは相関検査前に診断用`reportedCode`へ保持、stdoutはbyte列のままfatal UTF-8 decodeし、LFまでのframe本体だけを`MAX_FRAME_BYTES`でboundしてLF後はASCII whitespaceだけを保存せず検査する、`unknown` は成功 / 失敗に縮約せず再送しない（3、4）、session readはcallerのtimeoutと取得後の`maxEvents` guardを持ちpartial evidenceを採用しない、preflight失敗時はtoolを登録しない、環境変数を子processへ丸ごと渡さない（PATHのみ） |
 | **Allowed dependencies** | `@aizign/protocol`。peer: `@deepseek-ai/cordis` 4.0.1、`dsh-llm` / `dsh-tools` 0.1.1-rc.2、`schemastery` 3.18.1（exact、ADR-0010）。dev: `@aizign/adapter-testkit` |
 | **Test command** | `npm test -w @aizign/adapter-dsh`（`AIZIGN_BINARY` を与えると実binaryにも） |
-| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0010](../../docs/adr/0010-harness-sdk-dependencies-and-node-policy.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md) |
+| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0010](../../docs/adr/0010-harness-sdk-dependencies-and-node-policy.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0020](../../docs/adr/0020-narrow-typescript-exports-and-own-dsh-transport.md) |
 
 ## Security boundary
 
 Production plugin configuration is a trusted control-plane input after local
-shape validation. `createClient()` does not inherit the harness environment:
-the child receives `PATH` only. The exported reference client can accept
-explicit child variables for tests/integration, and those values are the direct
-caller's responsibility. Closed tool arguments prevent the model from choosing
+shape validation. The internal client factory does not inherit the harness
+environment: the child receives `PATH` only. The production
+`OneShotCoreClient`, available to repository control-plane consumers only from
+the provisional `./experimental/transport` subpath, can accept explicit child
+variables for tests/integration; those values are the direct caller's
+responsibility. Closed tool arguments prevent the model from choosing
 stable identity, but neither the core nor schema can prove honest provenance
 from a malicious adapter. The ordinary model can also supply `artifactRef` and
 `shortErrorCode`; their closed shape and bounds are validated, but their text
@@ -38,9 +40,13 @@ evidence with the limits below. See the
 
 ```text
 src/
-├── index.ts                       plugin entry: name / inject / Config / apply、createClient
+├── index.ts                       stable plugin entry: name / inject / Config / PluginConfig / apply
 ├── config.ts                      Config（schemastery）、validateConfig、SignalBinding、bindingPayload
 ├── core-client/one-shot-client.ts OneShotCoreClient（submit / reconcile、spawn → 1 frame → 1 frame、相関照合、frame bound、abort、unknownの分類）
+├── timing.ts                      DSH-owned parent timing、fixed-code disclosure、sink isolation
+├── experimental/
+│   ├── transport.ts              closed provisional production-client / preflight / timing exports
+│   └── evidence.ts               closed provisional cold-read / presentation exports（Issue #80で削除）
 ├── mapping/tool.ts                createSubmitWorkflowSignalTool、decodeArgs、toPayload、toToolResult、presentationMetaFor、adapterCodes
 ├── lifecycle/preflight.ts         hello → checkCompatibility
 └── evidence/
@@ -128,6 +134,13 @@ Interrupt, effect dispatch, resource release, ownership, general lifecycle, and
 remote reconnect are provisional inventory, not implemented DSH capabilities or
 stable tokens.
 
+The package root is only the Cordis plugin entry. Repository control-plane and
+benchmark code may import the exact provisional `./experimental/transport` and
+`./experimental/evidence` subpaths. Mapping, digest, config-validation, tool
+constants/codes, and capability arrays remain internal. Runtime and declaration
+allowlists are verified by `spec/test/package-exports.test.mjs`; deep `src/` or
+generated `lib/` imports are unsupported.
+
 ## Evidence
 
 completionの正本はjournal（core側）です。adapterはそれに加えて、toolの `presentationMeta` でharness-persisted `tool/result` eventの `meta` に
@@ -146,11 +159,11 @@ completionの正本はjournal（core側）です。adapterはそれに加えて�
 
 `EvidenceSource` は構造的port（`readFrom(sessionId, fromSeq)`）で、DSHの `SessionPersistence` がそのまま満たします。現在のportにlimit / pagination / maximum bytesはなく、event-count guardは配列取得後に適用されます。session idはadapterの入力であり、coreへは渡りません。
 
-`apply()` が登録するのはsubmit toolだけなので、そのpreflightが要求するcapabilityも `workflow.signal.submit` だけです。exportされた `OneShotCoreClient.reconcileWorkflowSignal()` をcontrol planeから直接使う場合は、`hello()` と `RECONCILIATION_REQUIRED` / `checkCompatibility()` で `workflow.signal.reconcile` を独立に確認します。reconciliation capabilityがないことを理由にsubmit toolまで非公開にはしません。
+`apply()` が登録するのはsubmit toolだけなので、そのpreflightが要求するcapabilityも `workflow.signal.submit` だけです。experimental transportの `OneShotCoreClient.reconcileWorkflowSignal()` をcontrol planeから直接使う場合は、`hello()` とProtocol `checkCompatibility()`で `workflow.signal.reconcile` を独立に確認します。内部のcapability requirement配列はexportしません。reconciliation capabilityがないことを理由にsubmit toolまで非公開にはしません。
 
 ## Opt-in timing
 
-`OneShotCoreClient`は`CoreClientConfig.timingSink`、`preflight`は`PreflightOptions.timingSink`、`readSignalEvidence`は`ColdReadOptions.timingSink`がある場合だけmetadata-only timingを通知します。
+`OneShotCoreClient`はDSH-owned `OneShotCoreClientConfig.timingSink`、`preflight`は`PreflightOptions.timingSink`、`readSignalEvidence`は`ColdReadOptions.timingSink`がある場合だけmetadata-only timingを通知します。
 preflightは全体の`preflight_ms`、evidence cold readは`harness_cold_read_ms`と返されたevent数を記録します。
 どのmeasurementにもsession ID、signal identity、path、本文を含めません。
 `error_code`は固定された認識済みcodeのallowlistに限り、正形式でも未認識のpeer

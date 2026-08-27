@@ -206,10 +206,10 @@ mechanism. Their repository locations are:
 | Store barriers, commit publication, corruption, tail, bounds, locks, permissions, path shape, and read-only behavior | `crates/aizign-store-jsonl/tests/jsonl_journal.rs` plus store unit fault injection |
 | CLI framing, timeout, stderr, capability, and unsupported-target behavior | `crates/aizign-cli/tests/handle.rs` |
 | Provisional metadata-only timing shape, owner separation, and observer/sink-failure isolation | `crates/aizign-engine/tests/observation.rs`, JSONL store observation tests, CLI/TypeScript/DSH timing tests, and `benchmarks/performance/run.test.mjs` |
-| TypeScript one-shot faults, correlation, no-retry, no-submit-after-absent, and no-spawn-on-oversize | `packages/adapter-testkit/src/conformance.ts` and `reference-client.test.ts` |
+| TypeScript one-shot faults, correlation, no-retry, no-submit-after-absent, and no-spawn-on-oversize | `packages/adapter-testkit/src/conformance.ts` applied directly by `adapters/dsh/test/conformance/core-client.test.ts` to production `OneShotCoreClient` |
 | DSH config/tool schema, native identity exclusion, environment isolation, diagnostic normalization, preflight, round trip, and cold read | `adapters/dsh/test/unit/` and `adapters/dsh/test/conformance/` |
 | Tracked-path policy and eligible UTF-8-text fixed-pattern scan | `xtask/src/audit/secrets.rs` through `cargo xtask public-audit` |
-| Package manifest policy and packable-file-set enumeration | `xtask/src/audit/packages.rs`, `cargo package --list`, and `npm pack --dry-run` |
+| Package dependency/subpath/bypass policy, exact runtime/declaration exports, and packable-file-set enumeration | `xtask/src/audit/packages.rs`, `spec/test/package-exports.test.mjs`, `cargo package --list`, and `npm pack --dry-run` |
 
 The opt-in DSH live smoke is not part of normal CI and is not evidence for
 general provider, network, or persistence guarantees.

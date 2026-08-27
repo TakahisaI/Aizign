@@ -1,7 +1,7 @@
 /**
  * Workflow signal submit/reconciliation payload types and closed decoders,
  * mirroring the rules `aizign-core` enforces so that an adapter can reject
- * a malformed signal before spawning a process.
+ * a malformed signal before transport begins.
  */
 
 import { codes, isShortErrorCode, ProtocolError } from './error.ts';

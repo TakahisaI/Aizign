@@ -8,51 +8,24 @@
 
 import type { Context } from '@deepseek-ai/cordis';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
-import { type AdapterConfig, Config, ConfigError, validateConfig } from './config.ts';
+import {
+  type AdapterConfig,
+  ConfigError,
+  type Config as PluginConfig,
+  Config as PluginConfigSchema,
+  validateConfig,
+} from './config.ts';
 import { OneShotCoreClient } from './core-client/one-shot-client.ts';
 import { preflight } from './lifecycle/preflight.ts';
-import { adapterCodes, createSubmitWorkflowSignalTool, TOOL_NAME } from './mapping/tool.ts';
+import { createSubmitWorkflowSignalTool } from './mapping/tool.ts';
 
 export const name = 'aizign-workflow-signal';
 export const inject = ['tools'];
-export type { AdapterConfig, Config as PluginConfig, SignalBinding } from './config.ts';
-export { OneShotCoreClient } from './core-client/one-shot-client.ts';
-export {
-  type ColdReadOptions,
-  type ColdReadTimingMeasurement,
-  type ColdReadTimingSink,
-  DEFAULT_COLD_READ_TIMEOUT_MS,
-  DEFAULT_MAX_EVENTS,
-  type EvidenceSource,
-  readSignalEvidence,
-  type SessionEventLike,
-  type SignalEvidence,
-  type SignalResultMeta,
-} from './evidence/cold-read.ts';
-export { bindingDigest, canonicalJson, payloadDigest } from './evidence/digest.ts';
-export {
-  type PreflightOptions,
-  preflight,
-  RECONCILIATION_REQUIRED,
-  REQUIRED,
-} from './lifecycle/preflight.ts';
-export {
-  adapterCodes,
-  createSubmitWorkflowSignalTool,
-  decodeArgs,
-  kindsForRole,
-  newRequestId,
-  presentationMetaFor,
-  type SignalArgs,
-  TOOL_NAME,
-  toolParameters,
-  toPayload,
-  toToolResult,
-} from './mapping/tool.ts';
-export { Config };
+export type { Config as PluginConfig } from './config.ts';
+export const Config = PluginConfigSchema;
 
 /** Builds the client for a validated configuration. */
-export function createClient(config: AdapterConfig): OneShotCoreClient {
+function createClient(config: AdapterConfig): OneShotCoreClient {
   return new OneShotCoreClient({
     command: config.binary,
     stateDir: config.stateDir,
@@ -61,7 +34,7 @@ export function createClient(config: AdapterConfig): OneShotCoreClient {
 }
 
 /** cordis plugin entry point. */
-export async function apply(ctx: Context, raw: Config): Promise<void> {
+export async function apply(ctx: Context, raw: PluginConfig): Promise<void> {
   let config: AdapterConfig;
   try {
     config = validateConfig(raw);
@@ -74,6 +47,3 @@ export async function apply(ctx: Context, raw: Config): Promise<void> {
   await preflight(client);
   ctx.tools.register(createSubmitWorkflowSignalTool(client, config.binding));
 }
-
-export const registeredTools: readonly string[] = [TOOL_NAME];
-export { adapterCodes as codes };

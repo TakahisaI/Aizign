@@ -1,20 +1,17 @@
 /**
- * `@aizign/adapter-testkit` — exercise the TypeScript reference `CoreClient`
- * boundary against a fake core, including every way an outcome can be
- * unknown. This does not prove harness-adapter conformance.
+ * `@aizign/adapter-testkit` — fixtures, assertions, and scenario runners for
+ * exercising a supplied production `CoreClient` against a fake core.
  */
 
 export {
   assertMetadataOnly,
   type ConformanceOptions,
   type CoreClientFactory,
+  type CoreClientFixtureConfig,
   type CoreCommand,
-  FORBIDDEN_KEYS,
   readFakeRequests,
   runCoreClientConformance,
   runCoreScenarios,
-  runFaultScenarios,
   samplePayload,
 } from './conformance.ts';
 export { fakeCoreCommand } from './fake-core-path.ts';
-export { ReferenceOneShotClient } from './reference-client.ts';

@@ -2,7 +2,7 @@
   "name": "@aizign/protocol",
   "version": "0.1.0",
   "private": true,
-  "description": "Aizign Protocol v1 for TypeScript: closed NDJSON envelope codec, hello compatibility, and the core-client contract",
+  "description": "Aizign Protocol v1 for TypeScript: pure wire codec, compatibility, correlation, and core-client contract",
   "license": "Apache-2.0 OR MIT",
   "repository": {
     "type": "git",

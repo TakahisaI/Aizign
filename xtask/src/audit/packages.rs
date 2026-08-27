@@ -1,6 +1,7 @@
 //! npm workspace manifests: the root stays private and every workspace
 //! package keeps a closed `exports` map (ADR-0005, ADR-0008).
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use crate::audit::{display, read_text};
@@ -43,6 +44,8 @@ pub(crate) fn run(root: &Path, tracked: &[PathBuf]) -> Result<(), String> {
             ));
         }
     }
+
+    check_typescript_sources(root, tracked, &mut findings)?;
 
     println!("{checked} package manifest(s) checked");
     findings.finish("package manifests")
@@ -98,12 +101,346 @@ fn check_workspace_package(rendered: &str, manifest: &serde_json::Value, finding
                     ));
                 }
             }
+            if let Some(expected) = expected_subpaths(name) {
+                let actual: BTreeSet<&str> = exports.keys().map(String::as_str).collect();
+                let expected: BTreeSet<&str> = expected.iter().copied().collect();
+                if actual != expected {
+                    findings.push(format!(
+                        "{rendered}: exact export subpaths are {actual:?}; expected {expected:?}"
+                    ));
+                }
+            }
         }
     }
+
+    check_workspace_dependencies(rendered, name, manifest, findings);
 
     if manifest["files"].as_array().is_none() {
         findings.push(format!(
             "{rendered}: `files` must list the published contents"
         ));
+    }
+}
+
+fn expected_subpaths(name: &str) -> Option<&'static [&'static str]> {
+    match name {
+        "@aizign/protocol" | "@aizign/adapter-testkit" => Some(&[".", "./package.json"]),
+        "@aizign/adapter-dsh" => Some(&[
+            ".",
+            "./experimental/evidence",
+            "./experimental/transport",
+            "./package.json",
+        ]),
+        _ => None,
+    }
+}
+
+fn check_workspace_dependencies(
+    rendered: &str,
+    name: &str,
+    manifest: &serde_json::Value,
+    findings: &mut Findings,
+) {
+    if !matches!(
+        name,
+        "@aizign/protocol" | "@aizign/adapter-testkit" | "@aizign/adapter-dsh"
+    ) {
+        return;
+    }
+
+    for kind in [
+        "dependencies",
+        "devDependencies",
+        "peerDependencies",
+        "optionalDependencies",
+        "bundleDependencies",
+        "bundledDependencies",
+    ] {
+        let actual = declared_workspace_dependencies(rendered, kind, manifest, findings);
+        let expected: BTreeSet<&str> = expected_workspace_dependencies(name, kind)
+            .iter()
+            .copied()
+            .collect();
+        if actual != expected {
+            findings.push(format!(
+                "{rendered}: exact {kind} workspace packages are {actual:?}; expected {expected:?}"
+            ));
+        }
+    }
+}
+
+fn expected_workspace_dependencies(name: &str, kind: &str) -> &'static [&'static str] {
+    match (name, kind) {
+        ("@aizign/adapter-testkit" | "@aizign/adapter-dsh", "dependencies") => {
+            &["@aizign/protocol"]
+        }
+        ("@aizign/adapter-dsh", "devDependencies") => &["@aizign/adapter-testkit"],
+        _ => &[],
+    }
+}
+
+fn declared_workspace_dependencies<'a>(
+    rendered: &str,
+    kind: &str,
+    manifest: &'a serde_json::Value,
+    findings: &mut Findings,
+) -> BTreeSet<&'a str> {
+    let value = &manifest[kind];
+    if matches!(kind, "bundleDependencies" | "bundledDependencies") {
+        return match value {
+            serde_json::Value::Null | serde_json::Value::Bool(false) => BTreeSet::new(),
+            serde_json::Value::Array(entries) => {
+                if entries.iter().any(|entry| !entry.is_string()) {
+                    findings.push(format!(
+                        "{rendered}: `{kind}` entries must all be package-name strings"
+                    ));
+                }
+                entries
+                    .iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .filter(|dependency| dependency.starts_with("@aizign/"))
+                    .collect()
+            }
+            serde_json::Value::Bool(true) => {
+                findings.push(format!(
+                    "{rendered}: `{kind}: true` can implicitly bundle workspace dependencies; use an explicit array"
+                ));
+                manifest["dependencies"]
+                    .as_object()
+                    .into_iter()
+                    .flat_map(|entries| entries.keys())
+                    .map(String::as_str)
+                    .filter(|dependency| dependency.starts_with("@aizign/"))
+                    .collect()
+            }
+            _ => {
+                findings.push(format!(
+                    "{rendered}: `{kind}` must be absent, false, or an array of package names"
+                ));
+                BTreeSet::new()
+            }
+        };
+    }
+
+    match value {
+        serde_json::Value::Null => BTreeSet::new(),
+        serde_json::Value::Object(entries) => {
+            for (dependency, requirement) in entries {
+                match requirement.as_str() {
+                    Some(requirement) if is_noncanonical_dependency_spec(requirement) => {
+                        findings.push(format!(
+                            "{rendered}: {kind}.{dependency} uses noncanonical local or alias requirement `{requirement}`; workspace packages must use their canonical `@aizign/*` name and exact version"
+                        ));
+                    }
+                    Some(_) => {}
+                    None => findings.push(format!(
+                        "{rendered}: {kind}.{dependency} requirement must be a string"
+                    )),
+                }
+            }
+            entries
+                .keys()
+                .map(String::as_str)
+                .filter(|dependency| dependency.starts_with("@aizign/"))
+                .collect()
+        }
+        _ => {
+            findings.push(format!(
+                "{rendered}: `{kind}` must be an object when present"
+            ));
+            BTreeSet::new()
+        }
+    }
+}
+
+fn is_noncanonical_dependency_spec(requirement: &str) -> bool {
+    let requirement = requirement.trim();
+    let lowercase = requirement.to_ascii_lowercase();
+    [
+        "file:",
+        "link:",
+        "npm:",
+        "portal:",
+        "workspace:",
+        "./",
+        "../",
+        "/",
+        "~/",
+    ]
+    .iter()
+    .any(|prefix| lowercase.starts_with(prefix))
+        || requirement
+            .as_bytes()
+            .get(1..3)
+            .is_some_and(|separator| matches!(separator, b":/" | b":\\"))
+}
+
+fn check_typescript_sources(
+    root: &Path,
+    tracked: &[PathBuf],
+    findings: &mut Findings,
+) -> Result<(), String> {
+    const PACKAGE_BYPASSES: &[&str] = &[
+        "@aizign/protocol/src/",
+        "@aizign/protocol/lib/",
+        "@aizign/adapter-testkit/src/",
+        "@aizign/adapter-testkit/lib/",
+        "@aizign/adapter-dsh/src/",
+        "@aizign/adapter-dsh/lib/",
+        "packages/protocol/src/",
+        "packages/protocol/lib/",
+        "packages/adapter-testkit/src/",
+        "packages/adapter-testkit/lib/",
+        "adapters/dsh/src/",
+        "adapters/dsh/lib/",
+        "../protocol/src/",
+        "../protocol/lib/",
+        "../adapter-testkit/src/",
+        "../adapter-testkit/lib/",
+        "../dsh/src/",
+        "../dsh/lib/",
+    ];
+    const PROTOCOL_FORBIDDEN: &[&str] = &[
+        "node:",
+        "child_process",
+        "process.",
+        "stateDir",
+        "timeoutMs",
+        "timingSink",
+        "ParentTiming",
+        "preflight",
+    ];
+
+    for path in tracked {
+        let extension = path.extension().and_then(|value| value.to_str());
+        if !matches!(extension, Some("ts" | "mjs" | "js")) {
+            continue;
+        }
+        let Some(text) = read_text(root, path)? else {
+            continue;
+        };
+
+        for (index, line) in text.lines().enumerate() {
+            let location = format!("{}:{}", display(path), index + 1);
+            let trimmed = line.trim_start();
+            let is_comment =
+                trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with('*');
+            if !is_comment && path != Path::new("spec/test/package-exports.test.mjs") {
+                for bypass in PACKAGE_BYPASSES {
+                    if line.contains(bypass) {
+                        findings.push(format!(
+                            "{location}: package source/build bypass `{bypass}`; use a declared package subpath"
+                        ));
+                    }
+                }
+            }
+
+            let protocol_source = path.starts_with("packages/protocol/src")
+                && !path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.ends_with(".test.ts"));
+            if protocol_source {
+                for token in PROTOCOL_FORBIDDEN {
+                    if line.contains(token) {
+                        findings.push(format!(
+                            "{location}: Protocol production source contains DSH/process token `{token}`"
+                        ));
+                    }
+                }
+            }
+
+            if path != Path::new("spec/test/package-exports.test.mjs")
+                && line.contains("ReferenceOneShotClient")
+            {
+                findings.push(format!(
+                    "{location}: duplicate reference transport must not return"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn dependency_findings(name: &str, manifest: &serde_json::Value) -> Findings {
+        let mut findings = Findings::default();
+        check_workspace_dependencies("package.json", name, manifest, &mut findings);
+        findings
+    }
+
+    #[test]
+    fn accepted_dependency_sections_are_exact() {
+        let manifest = json!({
+            "dependencies": { "@aizign/protocol": "0.1.0" },
+            "devDependencies": { "@aizign/adapter-testkit": "0.1.0" },
+            "peerDependencies": { "external-package": "1.0.0" }
+        });
+        assert!(dependency_findings("@aizign/adapter-dsh", &manifest).is_empty());
+    }
+
+    #[test]
+    fn peer_and_optional_sections_cannot_bypass_direction() {
+        let peer = json!({ "peerDependencies": { "@aizign/adapter-dsh": "0.1.0" } });
+        let optional = json!({ "optionalDependencies": { "@aizign/adapter-dsh": "0.1.0" } });
+        assert_eq!(dependency_findings("@aizign/protocol", &peer).len(), 1);
+        assert_eq!(dependency_findings("@aizign/protocol", &optional).len(), 1);
+    }
+
+    #[test]
+    fn bundled_dependency_aliases_cannot_bypass_direction() {
+        let bundle = json!({ "bundleDependencies": ["@aizign/adapter-dsh"] });
+        let bundled = json!({ "bundledDependencies": ["@aizign/adapter-dsh"] });
+        assert_eq!(dependency_findings("@aizign/protocol", &bundle).len(), 1);
+        assert_eq!(dependency_findings("@aizign/protocol", &bundled).len(), 1);
+    }
+
+    #[test]
+    fn implicit_bundle_all_is_rejected() {
+        let manifest = json!({
+            "dependencies": { "@aizign/protocol": "0.1.0" },
+            "bundleDependencies": true
+        });
+        assert_eq!(
+            dependency_findings("@aizign/adapter-testkit", &manifest).len(),
+            2
+        );
+    }
+
+    #[test]
+    fn local_paths_and_package_aliases_cannot_hide_workspace_dependencies() {
+        for requirement in [
+            "file:../../packages/adapter-testkit",
+            "link:../../packages/adapter-testkit",
+            "npm:@aizign/adapter-testkit@0.1.0",
+            "workspace:../adapter-testkit",
+            "../adapter-testkit",
+            " FILE:../../packages/adapter-testkit ",
+        ] {
+            let manifest = json!({ "dependencies": { "testkit-local": requirement } });
+            assert_eq!(
+                dependency_findings("@aizign/protocol", &manifest).len(),
+                1,
+                "requirement {requirement} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn noncanonical_aliases_are_rejected_in_optional_and_peer_sections() {
+        let manifest = json!({
+            "optionalDependencies": {
+                "testkit-local": "file:../../packages/adapter-testkit"
+            },
+            "peerDependencies": {
+                "testkit-alias": "npm:@aizign/adapter-testkit@0.1.0"
+            }
+        });
+        assert_eq!(dependency_findings("@aizign/protocol", &manifest).len(), 2);
     }
 }

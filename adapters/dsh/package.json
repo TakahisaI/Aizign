@@ -15,6 +15,14 @@
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./experimental/evidence": {
+      "types": "./lib/experimental/evidence.d.ts",
+      "default": "./lib/experimental/evidence.js"
+    },
+    "./experimental/transport": {
+      "types": "./lib/experimental/transport.d.ts",
+      "default": "./lib/experimental/transport.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

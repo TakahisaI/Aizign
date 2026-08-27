@@ -27,7 +27,8 @@ import {
   TRANSPORT_CASES,
 } from './matrix.mjs';
 
-export const RUNNER_VERSION = 5;
+export const RUNNER_VERSION = 6;
+export const TYPESCRIPT_TRANSPORT = 'typescript_dsh';
 export const CORE_WATCHDOG_MS = 10_000;
 export const DSH_ADAPTER_TIMEOUT_MS = 15_000;
 export const OPERATION_TIMEOUT_MS = 60_000;
@@ -536,9 +537,9 @@ export function assertDirectChildTiming(benchmarkCase, result) {
   }
 }
 
-async function runReferenceOperation(ReferenceOneShotClient, binary, stateDir, benchmarkCase) {
+async function runDshOperation(OneShotCoreClient, binary, stateDir, benchmarkCase) {
   const timings = [];
-  const client = new ReferenceOneShotClient({
+  const client = new OneShotCoreClient({
     command: binary,
     env: { AIZIGN_TIMING_JSON: '1' },
     stateDir,
@@ -638,8 +639,8 @@ async function executeCase(context, sweep, benchmarkCase, transport, samplePhase
           TARGET_EVENT_ID,
           context.dependencies.protocol,
         )
-      : await runReferenceOperation(
-          context.dependencies.ReferenceOneShotClient,
+      : await runDshOperation(
+          context.dependencies.OneShotCoreClient,
           context.config.binary,
           stateDir,
           benchmarkCase,
@@ -1033,13 +1034,13 @@ export async function executeScenario(context, scenario, phase, index) {
       parentTimings.push(measurement);
     },
   };
-  const directClient = new context.dependencies.ReferenceOneShotClient({
+  const directClient = new context.dependencies.OneShotCoreClient({
     ...clientConfig,
     command: context.config.binary,
     env: { AIZIGN_TIMING_JSON: '1' },
   });
   const lostAckClient = losesSubmitAcknowledgement
-    ? new context.dependencies.ReferenceOneShotClient({
+    ? new context.dependencies.OneShotCoreClient({
         ...clientConfig,
         command: process.execPath,
         args: [LOST_ACK_PROXY, context.config.binary],
@@ -1457,7 +1458,7 @@ export function renderSummary(result) {
     '- Concurrency uses `journal_entries_before_batch` because same-state submissions can change the journal before later contenders acquire the lock.',
     '- Same-state submit allows only `accepted` or `JOURNAL_LOCKED` and requires at least one acceptance. Different-state submit requires all accepted; reconciliation requires all absent. Any other semantic result aborts the run.',
     '- DSH in-memory scan and deterministic file-backed read are separate auxiliary series and are not mixed with journal reconciliation authority.',
-    '- `assignment_unknown_reconcile` uses a direct reference-client instance for preflight and reconciliation, and a second instance through the lost-ACK proxy for submit only. Counter verification runs after the scenario timer closes.',
+    '- `assignment_unknown_reconcile` uses the production DSH client directly for preflight and reconciliation, and a second DSH client instance through the lost-ACK proxy for submit only. Counter verification runs after the scenario timer closes.',
     '- Scenario-wide `aizign_end_to_end_ms`, whole-preflight `preflight_ms`, submit transport, and reconciliation transport are separate aggregate rows.',
     '- `max-payload` uses 128-byte identifiers and a 256-byte `artifactRef`; its first observation is the requested release-binary `new_process_new_open` boundary point.',
     '',
@@ -1563,15 +1564,9 @@ export function verifyReleaseBinary(binary, protocol, timeoutMs = OPERATION_TIME
 
 async function loadDependencies() {
   try {
-    const protocol = await import(
-      pathToFileURL(join(REPOSITORY_ROOT, 'packages/protocol/lib/index.js')).href
-    );
-    const testkit = await import(
-      pathToFileURL(join(REPOSITORY_ROOT, 'packages/adapter-testkit/lib/index.js')).href
-    );
-    const dsh = await import(
-      pathToFileURL(join(REPOSITORY_ROOT, 'adapters/dsh/lib/index.js')).href
-    );
+    const protocol = await import('@aizign/protocol');
+    const transport = await import('@aizign/adapter-dsh/experimental/transport');
+    const evidence = await import('@aizign/adapter-dsh/experimental/evidence');
     return {
       protocol: {
         MAX_FRAME_BYTES: protocol.MAX_FRAME_BYTES,
@@ -1579,13 +1574,13 @@ async function loadDependencies() {
         decodeResponse: protocol.decodeResponse,
         extractFrame: protocol.extractFrame,
         isSubmitRejectionCode: protocol.isSubmitRejectionCode,
-        isTimingErrorCode: protocol.isTimingErrorCode,
+        isTimingErrorCode: transport.isTimingErrorCode,
         OneShotFrameCollector: protocol.OneShotFrameCollector,
       },
-      ReferenceOneShotClient: testkit.ReferenceOneShotClient,
-      preflight: dsh.preflight,
-      readSignalEvidence: dsh.readSignalEvidence,
-      presentationMetaFor: dsh.presentationMetaFor,
+      OneShotCoreClient: transport.OneShotCoreClient,
+      preflight: transport.preflight,
+      readSignalEvidence: evidence.readSignalEvidence,
+      presentationMetaFor: evidence.presentationMetaFor,
     };
   } catch (error) {
     throw new Error(`TypeScript packages are not built; run npm ci and npm run build (${error})`);
@@ -1940,7 +1935,7 @@ export async function main(
         samples,
         'transport',
         isSmoke ? PR_SMOKE_CASES : TRANSPORT_CASES,
-        isSmoke ? ['rust_direct'] : ['rust_direct', 'typescript_reference'],
+        isSmoke ? ['rust_direct'] : ['rust_direct', TYPESCRIPT_TRANSPORT],
       );
     }
     if (config.sweeps.includes('max-payload')) {

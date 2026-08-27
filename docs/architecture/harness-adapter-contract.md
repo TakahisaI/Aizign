@@ -15,7 +15,7 @@ The authorities are deliberately separate:
 | Language-neutral directional encoder scenarios | [`spec/conformance/encoder-scenarios.md`](../../spec/conformance/encoder-scenarios.md) |
 | Cross-language classification ownership and planned timing-disclosure rows for current operations | [`spec/classification/`](../../spec/classification/README.md) |
 | Harness-native behavior | The adapter's README, source, and native tests |
-| TypeScript reference APIs and runner behavior | [`packages/protocol/`](../../packages/protocol/README.md) and [`packages/adapter-testkit/`](../../packages/adapter-testkit/README.md) |
+| TypeScript convenience APIs and runner behavior | [`packages/protocol/`](../../packages/protocol/README.md) and [`packages/adapter-testkit/`](../../packages/adapter-testkit/README.md) |
 
 The [adapter implementation guide](../development/adding-adapter.md) explains
 how to apply this contract. It is not a second behavioral authority.
@@ -329,16 +329,18 @@ Passing one test layer does not prove requirements owned by another:
 | No state mutation and no resubmission after reconciliation `absent` | Core/store tests for read-only behavior; harness-native adapter tests for orchestration behavior |
 | Claimed persistence, lifecycle, durability, retention, or evidence semantics | Harness-native tests, only when claimed |
 
-## TypeScript reference layer
+## TypeScript convenience layer
 
 `@aizign/protocol` is the TypeScript codec, types, compatibility helpers, and a
-reference `CoreClient` interface. `@aizign/adapter-testkit` provides a fake core,
-reference one-shot client, convenience assertions, and a TypeScript conformance
-runner.
+Node-free abstract `CoreClient` interface. `@aizign/adapter-testkit` provides a
+fake core, scripted faults, convenience assertions, and a TypeScript
+conformance runner applied to a supplied production client. It does not provide
+a client implementation. The current DSH adapter owns the only production
+TypeScript one-shot transport.
 
 The current TypeScript `CoreClient` and `runCoreClientConformance` expose and
 exercise both submit and reconciliation operations. They are a TypeScript
-reference core-client interface and scenario runner, not a proof of the whole
+convenience core-client interface and scenario runner, not a proof of the whole
 harness adapter contract. Implementing the interface or passing the runner does
 not establish trusted identity provenance, model-visible input isolation or
 result-disclosure policy, native registration/preflight behavior, or
