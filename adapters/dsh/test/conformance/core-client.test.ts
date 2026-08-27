@@ -4,31 +4,36 @@
  */
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import {
-  fakeCoreCommand,
+  fakeCoreExecutable,
   runCoreClientConformance,
   runCoreScenarios,
   samplePayload,
 } from '@aizign/adapter-testkit';
+import { createProcessProfileRegistry } from '../../../../spec/process/v1/fixtures/registry.mjs';
 import { OneShotCoreClient } from '../../src/core-client/one-shot-client.ts';
 import type { ParentTimingMeasurement } from '../../src/timing.ts';
 
-test('OneShotCoreClient satisfies the core-client conformance', async () => {
-  await runCoreClientConformance((config) => new OneShotCoreClient(config));
+test('OneShotCoreClient executes every assigned process-profile case', async () => {
+  const registry = createProcessProfileRegistry('dsh');
+  await runCoreClientConformance((config) => new OneShotCoreClient(config), {
+    caseExecuted: registry.record,
+  });
+  registry.complete();
 });
 
 test('OneShotCoreClient does not inherit synthetic parent credentials', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aizign-dsh-env-'));
   const credentialName = 'AIZIGN_TEST_SYNTHETIC_CREDENTIAL';
   const previous = process.env[credentialName];
   process.env[credentialName] = 'synthetic-non-secret-value';
   try {
-    const fake = fakeCoreCommand();
     const client = new OneShotCoreClient({
-      ...fake,
+      command: fakeCoreExecutable(join(root, 'bin')),
       stateDir: '.',
       timeoutMs: 2_000,
       env: { AIZIGN_FAKE_ASSERT_ENV_ABSENT: credentialName },
@@ -36,6 +41,7 @@ test('OneShotCoreClient does not inherit synthetic parent credentials', async ()
     const outcome = await client.hello('environment-boundary');
     assert.equal(outcome.kind, 'ok');
   } finally {
+    rmSync(root, { recursive: true, force: true });
     if (previous === undefined) delete process.env[credentialName];
     else process.env[credentialName] = previous;
   }
@@ -45,8 +51,9 @@ test('OneShotCoreClient reports parent timing without exposing request identity'
   const root = mkdtempSync(join(tmpdir(), 'aizign-dsh-parent-timing-'));
   try {
     const measurements: ParentTimingMeasurement[] = [];
+    const command = fakeCoreExecutable(join(root, 'bin'));
     const client = new OneShotCoreClient({
-      ...fakeCoreCommand(),
+      command,
       stateDir: join(root, 'state'),
       timeoutMs: 5_000,
       timingSink: (measurement) => {
@@ -77,7 +84,7 @@ test('OneShotCoreClient reports parent timing without exposing request identity'
 
     const unknownMeasurements: ParentTimingMeasurement[] = [];
     const unknown = new OneShotCoreClient({
-      ...fakeCoreCommand(),
+      command,
       env: { AIZIGN_FAKE_FAULT: 'journal-unknown' },
       stateDir: join(root, 'unknown'),
       timeoutMs: 5_000,
@@ -97,12 +104,79 @@ test('OneShotCoreClient reports parent timing without exposing request identity'
   }
 });
 
+test('framed hello requires request id and kind correlation', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aizign-dsh-hello-correlation-'));
+  try {
+    const command = fakeCoreExecutable(join(root, 'bin'));
+    const cases = [
+      ['hello-request-id-mismatch', 'wrong-request-id'],
+      ['hello-kind-mismatch', 'wrong-kind'],
+      ['hello-request-id-mismatch/hello-kind-mismatch', 'null-correlation'],
+    ] as const;
+    for (const [caseId, fault] of cases) {
+      const client = new OneShotCoreClient({
+        command,
+        env: { AIZIGN_FAKE_FAULT: fault },
+        stateDir: join(root, `state-${fault}`),
+        timeoutMs: 5_000,
+      });
+      const outcome = await client.hello(`req-${fault}`);
+      assert.equal(outcome.kind, 'unknown', caseId);
+      if (outcome.kind === 'unknown') {
+        assert.equal(outcome.reason, 'correlation_mismatch', caseId);
+      }
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('every operation uses the exact canonical argv and framed stdin', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aizign-dsh-canonical-argv-'));
+  try {
+    const command = fakeCoreExecutable(join(root, 'bin'));
+    const argvLog = join(root, 'argv.jsonl');
+    const stateDir = join(root, 'state');
+    const client = new OneShotCoreClient({
+      command,
+      env: { AIZIGN_FAKE_ARGV_LOG: argvLog },
+      stateDir,
+      timeoutMs: 5_000,
+    });
+    assert.equal((await client.hello('req-argv-hello')).kind, 'ok', 'req-valid');
+    assert.equal(
+      (await client.submitWorkflowSignal('req-argv-submit', samplePayload('evt-argv'))).kind,
+      'accepted',
+    );
+    assert.equal(
+      (
+        await client.reconcileWorkflowSignal('req-argv-reconcile', {
+          signal: samplePayload('evt-argv').signal,
+        })
+      ).kind,
+      'accepted',
+    );
+    const invocations = readFileSync(argvLog, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    assert.deepEqual(invocations, [
+      ['handle', '--state', stateDir],
+      ['handle', '--state', stateDir],
+      ['handle', '--state', stateDir],
+    ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('OneShotCoreClient discloses timing only after correlation and isolates sink failures', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aizign-dsh-timing-boundary-'));
   try {
+    const command = fakeCoreExecutable(join(root, 'bin'));
     const measurements: ParentTimingMeasurement[] = [];
     const uncorrelated = new OneShotCoreClient({
-      ...fakeCoreCommand(),
+      command,
       env: { AIZIGN_FAKE_FAULT: 'unknown-valid-error-code-wrong-request-id' },
       stateDir: join(root, 'uncorrelated'),
       timeoutMs: 5_000,
@@ -122,7 +196,7 @@ test('OneShotCoreClient discloses timing only after correlation and isolates sin
     assert.ok(!JSON.stringify(measurements).includes('FUTURE_OUTCOME_UNKNOWN'));
 
     const throwing = new OneShotCoreClient({
-      ...fakeCoreCommand(),
+      command,
       stateDir: join(root, 'throwing'),
       timeoutMs: 5_000,
       timingSink: () => {
@@ -135,7 +209,7 @@ test('OneShotCoreClient discloses timing only after correlation and isolates sin
     );
 
     const rejecting = new OneShotCoreClient({
-      ...fakeCoreCommand(),
+      command,
       stateDir: join(root, 'rejecting'),
       timeoutMs: 5_000,
       timingSink: async () => {

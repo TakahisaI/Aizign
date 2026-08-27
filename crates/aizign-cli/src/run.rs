@@ -1,9 +1,11 @@
 //! Wiring: frames in and out, the system clock, the JSONL journal, and a
 //! watchdog that bounds processing time.
 
-use std::io::{self, BufRead as _, Read as _, Write as _};
+use std::io::{self, Read as _, Write as _};
 use std::path::Path;
-use std::sync::mpsc;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use aizign_core::BoundedTimestamp;
@@ -16,7 +18,8 @@ use aizign_protocol::{
     CAPABILITY_WORKFLOW_SIGNAL_RECONCILE, CAPABILITY_WORKFLOW_SIGNAL_SUBMIT, Disposition,
     HelloInfo, MAX_REQUEST_BYTES, PROTOCOL_VERSION, PackageInfo, ProtocolError,
     ReconciliationDisposition, ReconciliationResult, Request, RequestKind, Response, ResponseBody,
-    SignalResult, codes, decode_request, encode_response, is_current_fixed_error_code,
+    ResponseVersion, SignalResult, codes, decode_request, encode_response,
+    is_current_fixed_error_code,
 };
 use aizign_store_jsonl::{
     JOURNAL_SCHEMA_VERSION, JsonlJournal, JsonlJournalReader, STORE_PLATFORM_SUPPORTED,
@@ -32,6 +35,59 @@ use crate::timing::{
 /// reports `HANDLER_TIMEOUT` and the process exits; any append in flight is
 /// unknown.
 const HANDLER_TIMEOUT: Duration = Duration::from_secs(10);
+
+const DISPATCH_READING: u8 = 0;
+const DISPATCHING: u8 = 1;
+const DISPATCH_TIMED_OUT: u8 = 2;
+
+/// The one transition that separates a pre-dispatch timeout from an
+/// operation that may already have effects. The watchdog and worker must win
+/// the same atomic state; observing a separate boolean is not sufficient.
+struct DispatchGate {
+    state: AtomicU8,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TimeoutPhase {
+    BeforeDispatch,
+    AfterDispatch,
+}
+
+impl DispatchGate {
+    const fn new() -> Self {
+        Self {
+            state: AtomicU8::new(DISPATCH_READING),
+        }
+    }
+
+    /// Claims the right to execute the decoded request. A watchdog that has
+    /// already claimed `Reading -> TimedOut` makes dispatch impossible.
+    fn claim_dispatch(&self) -> bool {
+        self.state
+            .compare_exchange(
+                DISPATCH_READING,
+                DISPATCHING,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_ok()
+    }
+
+    /// Claims a no-effect timeout only while the worker is still reading.
+    /// Losing to `Dispatching` forces the unknown, may-have-effect response.
+    fn claim_timeout(&self) -> TimeoutPhase {
+        match self.state.compare_exchange(
+            DISPATCH_READING,
+            DISPATCH_TIMED_OUT,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(_) | Err(DISPATCH_TIMED_OUT) => TimeoutPhase::BeforeDispatch,
+            Err(DISPATCHING) => TimeoutPhase::AfterDispatch,
+            Err(other) => unreachable!("invalid dispatch state {other}"),
+        }
+    }
+}
 
 /// The watchdog bound: `HANDLER_TIMEOUT`, or `AIZIGN_HANDLE_TIMEOUT_MS`
 /// (1..=600000) when set — a test hook. Adapters spawn `aizign` with only
@@ -79,6 +135,7 @@ fn hello_info() -> HelloInfo {
 /// `aizign hello`: the handshake without a request frame.
 pub(crate) fn hello() -> u8 {
     let response = Response {
+        version: ResponseVersion::bootstrap(),
         request_id: None,
         kind: Some(aizign_protocol::KIND_HELLO.to_owned()),
         body: ResponseBody::Hello(hello_info()),
@@ -96,6 +153,8 @@ pub(crate) fn handle(state: &Path) -> u8 {
     let handler_started = timing_enabled.then(Instant::now);
     let timeout = handler_timeout();
     let state = state.to_path_buf();
+    let dispatch_gate = Arc::new(DispatchGate::new());
+    let worker_dispatch_gate = Arc::clone(&dispatch_gate);
     let (sender, receiver) = mpsc::channel();
     std::thread::spawn(move || {
         let mut timing = timing_enabled.then(HandlerTiming::default);
@@ -105,23 +164,17 @@ pub(crate) fn handle(state: &Path) -> u8 {
             timing.request_read_ms = Some(milliseconds(started.elapsed()));
         }
         let outcome = stdin.map(|stdin| match stdin {
-            Stdin::Frame(frame) => respond(&frame, &state, timing.as_mut()),
-            Stdin::Extra => {
-                log("decode", None, None, codes::INVALID_ENVELOPE);
-                if let Some(timing) = timing.as_mut() {
-                    timing.operation_kind = Some("unknown");
-                    timing.outcome = Some("rejected");
-                    timing.error_code = Some(codes::INVALID_ENVELOPE.to_owned());
-                }
-                Response {
-                    request_id: None,
-                    kind: None,
-                    body: ResponseBody::Error(ProtocolError::new(
-                        codes::INVALID_ENVELOPE,
-                        "stdin must carry exactly one frame",
-                    )),
-                }
-            }
+            Stdin::Frame(frame) => respond(&frame, &state, timing.as_mut(), &worker_dispatch_gate),
+            Stdin::Invalid => framing_error(
+                codes::INVALID_ENVELOPE,
+                "stdin must be one non-empty body followed by LF and immediate EOF",
+                timing.as_mut(),
+            ),
+            Stdin::TooLarge => framing_error(
+                codes::REQUEST_TOO_LARGE,
+                format!("request body exceeds {MAX_REQUEST_BYTES} bytes"),
+                timing.as_mut(),
+            ),
         });
         // The receiver is gone only if the watchdog already answered.
         let _ = sender.send(outcome.map(|response| WorkerResponse { response, timing }));
@@ -133,35 +186,75 @@ pub(crate) fn handle(state: &Path) -> u8 {
             eprintln!("aizign: cannot read request frame: {error}");
             return exit::IO;
         }
-        Err(_) => {
-            eprintln!(
-                "aizign: request exceeded {}ms; any append outcome is unknown",
-                timeout.as_millis()
-            );
-            WorkerResponse {
-                response: Response {
-                    request_id: None,
-                    kind: None,
-                    body: ResponseBody::Error(ProtocolError::new(
-                        codes::HANDLER_TIMEOUT,
-                        format!(
-                            "processing exceeded {}ms; the journal outcome is unknown",
-                            timeout.as_millis()
-                        ),
-                    )),
-                },
-                timing: timing_enabled.then(|| HandlerTiming {
-                    operation_kind: Some("unknown"),
-                    outcome: Some("unknown"),
-                    error_code: Some(codes::HANDLER_TIMEOUT.to_owned()),
-                    ..HandlerTiming::default()
-                }),
-            }
+        Err(RecvTimeoutError::Timeout) => {
+            timeout_response(timeout, dispatch_gate.claim_timeout(), timing_enabled)
+        }
+        Err(RecvTimeoutError::Disconnected) => {
+            eprintln!("aizign: request worker stopped without a response");
+            return exit::IO;
         }
     };
     match (handled.timing.as_mut(), handler_started) {
         (Some(timing), Some(started)) => write_measured_frame(&handled.response, timing, started),
         _ => write_frame(&handled.response),
+    }
+}
+
+fn framing_error(
+    code: &str,
+    message: impl Into<String>,
+    timing: Option<&mut HandlerTiming>,
+) -> Response {
+    log("framing", None, None, code);
+    if let Some(timing) = timing {
+        timing.operation_kind = Some("unknown");
+        timing.outcome = Some("rejected");
+        timing.error_code = Some(code.to_owned());
+    }
+    Response {
+        version: ResponseVersion::bootstrap(),
+        request_id: None,
+        kind: None,
+        body: ResponseBody::Error(ProtocolError::new(code, message)),
+    }
+}
+
+fn timeout_response(
+    timeout: Duration,
+    phase: TimeoutPhase,
+    timing_enabled: bool,
+) -> WorkerResponse {
+    let elapsed = timeout.as_millis();
+    let (message, outcome) = if phase == TimeoutPhase::AfterDispatch {
+        eprintln!(
+            "aizign: processing exceeded {elapsed}ms after dispatch; an effect may have occurred"
+        );
+        (
+            format!("processing exceeded {elapsed}ms after dispatch; the outcome is unknown"),
+            "unknown",
+        )
+    } else {
+        eprintln!(
+            "aizign: request framing exceeded {elapsed}ms before dispatch; no state effect occurred"
+        );
+        (
+            format!("request framing exceeded {elapsed}ms before dispatch"),
+            "rejected",
+        )
+    };
+    WorkerResponse {
+        response: Response {
+            version: ResponseVersion::bootstrap(),
+            request_id: None,
+            kind: None,
+            body: ResponseBody::Error(ProtocolError::new(codes::HANDLER_TIMEOUT, message)),
+        },
+        timing: timing_enabled.then(|| HandlerTiming {
+            operation_kind: Some("unknown"),
+            outcome: Some(outcome),
+            error_code: Some(codes::HANDLER_TIMEOUT.to_owned()),
+            ..HandlerTiming::default()
+        }),
     }
 }
 
@@ -173,41 +266,55 @@ struct WorkerResponse {
 /// What stdin carried: exactly one frame, or something that is not one.
 enum Stdin {
     Frame(Vec<u8>),
-    /// A second frame or trailing content followed the first newline.
-    Extra,
+    /// Empty, unterminated, CRLF-terminated, or followed by any byte.
+    Invalid,
+    /// More than the body bound appeared before the first LF.
+    TooLarge,
 }
 
-/// Reads stdin: the first line, bounded by the protocol limit (plus one byte
-/// to detect overflow), then the rest of the stream to EOF. Exactly one frame
-/// is allowed; anything but whitespace after the first newline is not a
-/// request. The trailing scan is unbounded on purpose: bounding it would let
-/// a second frame hide beyond the bound when the first frame is exactly at
-/// the size limit. This function runs inside the watchdog thread, so a stdin
-/// that never reaches EOF ends as `HANDLER_TIMEOUT`, not as a hang.
+/// Reads the complete process-profile stream. Dispatch is impossible until
+/// body, LF, and immediate EOF have all been established. The 65,537th body
+/// byte fails immediately, while a peer holding an in-bound stream open stays
+/// in this function until the watchdog emits a pre-dispatch timeout.
 fn read_stdin() -> io::Result<Stdin> {
     let stdin = io::stdin();
     let mut reader = stdin.lock();
     let mut frame = Vec::new();
-    (&mut reader)
-        .take(MAX_REQUEST_BYTES as u64 + 2)
-        .read_until(b'\n', &mut frame)?;
-    if frame.last() == Some(&b'\n') {
-        frame.pop();
-        let mut rest = [0_u8; 4096];
-        loop {
-            let read = reader.read(&mut rest)?;
-            if read == 0 {
-                break;
+    let mut newline_seen = false;
+    let mut chunk = [0_u8; 4096];
+    loop {
+        let read = reader.read(&mut chunk)?;
+        if read == 0 {
+            return Ok(if newline_seen {
+                Stdin::Frame(frame)
+            } else {
+                Stdin::Invalid
+            });
+        }
+        for &byte in &chunk[..read] {
+            if newline_seen {
+                return Ok(Stdin::Invalid);
             }
-            if rest[..read].iter().any(|byte| !byte.is_ascii_whitespace()) {
-                return Ok(Stdin::Extra);
+            if byte == b'\n' {
+                if frame.is_empty() || frame.last() == Some(&b'\r') {
+                    return Ok(Stdin::Invalid);
+                }
+                newline_seen = true;
+            } else if frame.len() == MAX_REQUEST_BYTES {
+                return Ok(Stdin::TooLarge);
+            } else {
+                frame.push(byte);
             }
         }
     }
-    Ok(Stdin::Frame(frame))
 }
 
-fn respond(frame: &[u8], state: &Path, mut timing: Option<&mut HandlerTiming>) -> Response {
+fn respond(
+    frame: &[u8],
+    state: &Path,
+    mut timing: Option<&mut HandlerTiming>,
+    dispatch_gate: &DispatchGate,
+) -> Response {
     let decode_started = timing.is_some().then(Instant::now);
     let request = match decode_request(frame) {
         Ok(request) => {
@@ -232,18 +339,51 @@ fn respond(frame: &[u8], state: &Path, mut timing: Option<&mut HandlerTiming>) -
                 Some(safe_kind),
                 failure.error.code().as_str(),
             );
-            return Response {
+            let mut response = Response {
+                version: failure.response_version,
                 request_id: failure.request_id,
                 kind: failure.kind,
                 body: ResponseBody::Error(failure.error),
             };
+            if encode_response(&response).is_err() {
+                let code = match &response.body {
+                    ResponseBody::Error(error) => error.code().as_str().to_owned(),
+                    _ => unreachable!("decode failures are errors"),
+                };
+                response.kind = None;
+                response.body = ResponseBody::Error(ProtocolError::new(
+                    &code,
+                    "request rejected; recovered correlation was not safe to echo",
+                ));
+            }
+            return response;
         }
     };
     let Request { request_id, kind } = request;
+    let response_version = if matches!(kind, RequestKind::Hello) {
+        ResponseVersion::bootstrap()
+    } else {
+        ResponseVersion::operation()
+    };
     let operation_kind = kind.name();
     let kind_name = operation_kind.to_owned();
     if let Some(timing) = timing.as_deref_mut() {
         timing.operation_kind = Some(operation_kind);
+    }
+    if !dispatch_gate.claim_dispatch() {
+        // The watchdog atomically won the Reading -> TimedOut transition.
+        // This response is normally dropped because the parent has already
+        // answered, but returning it keeps the worker path total while
+        // preserving the no-dispatch/no-state-effect guarantee.
+        return Response {
+            version: ResponseVersion::bootstrap(),
+            request_id: None,
+            kind: None,
+            body: ResponseBody::Error(ProtocolError::new(
+                codes::HANDLER_TIMEOUT,
+                "request timed out before dispatch",
+            )),
+        };
     }
     let body = execute_request(kind, &kind_name, state, timing.as_deref_mut());
     let outcome = match &body {
@@ -264,6 +404,7 @@ fn respond(frame: &[u8], state: &Path, mut timing: Option<&mut HandlerTiming>) -
     }
     log("handle", Some(&request_id), Some(&kind_name), outcome);
     Response {
+        version: response_version,
         request_id: Some(request_id),
         kind: Some(kind_name),
         body,
@@ -507,6 +648,42 @@ fn write_frame(response: &Response) -> u8 {
             eprintln!("aizign: cannot write response frame: {error}");
             exit::IO
         }
+    }
+}
+
+#[cfg(test)]
+mod dispatch_gate_tests {
+    use std::sync::{Arc, Barrier};
+
+    use super::{DispatchGate, TimeoutPhase};
+
+    #[test]
+    fn watchdog_winning_the_barrier_permanently_prevents_dispatch() {
+        let gate = Arc::new(DispatchGate::new());
+        let worker_ready = Arc::new(Barrier::new(2));
+        let worker_released = Arc::new(Barrier::new(2));
+        let worker = {
+            let gate = Arc::clone(&gate);
+            let worker_ready = Arc::clone(&worker_ready);
+            let worker_released = Arc::clone(&worker_released);
+            std::thread::spawn(move || {
+                worker_ready.wait();
+                worker_released.wait();
+                gate.claim_dispatch()
+            })
+        };
+
+        worker_ready.wait();
+        assert_eq!(gate.claim_timeout(), TimeoutPhase::BeforeDispatch);
+        worker_released.wait();
+        assert!(!worker.join().expect("worker joined"));
+    }
+
+    #[test]
+    fn dispatch_winning_the_barrier_forces_an_unknown_timeout() {
+        let gate = DispatchGate::new();
+        assert!(gate.claim_dispatch());
+        assert_eq!(gate.claim_timeout(), TimeoutPhase::AfterDispatch);
     }
 }
 

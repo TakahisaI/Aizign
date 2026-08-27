@@ -7,7 +7,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fakeCoreCommand } from '@aizign/adapter-testkit';
+import { fakeCoreExecutable } from '@aizign/adapter-testkit';
 import type { Context } from '@deepseek-ai/cordis';
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools';
 import type { EvidenceSource, SessionEventLike } from '../../src/evidence/cold-read.ts';
@@ -97,17 +97,14 @@ export class FakeDsh implements EvidenceSource {
 
 /** An executable that runs the fake core, so a plain `binary` path reaches it. */
 export function fakeBinary(dir: string, env: Record<string, string> = {}): string {
-  const fake = fakeCoreCommand();
+  const fake = fakeCoreExecutable(join(dir, 'core'));
   const exports = Object.entries(env)
     .map(([key, value]) => `export ${key}=${JSON.stringify(value)}`)
     .join('\n');
   mkdirSync(dir, { recursive: true });
   const path = join(dir, 'aizign-fake');
-  const args = fake.args.map((arg) => JSON.stringify(arg)).join(' ');
-  writeFileSync(
-    path,
-    `#!/bin/sh\n${exports}\nexec ${JSON.stringify(fake.command)} ${args} "$@"\n`,
-    { mode: 0o755 },
-  );
+  writeFileSync(path, `#!/bin/sh\n${exports}\nexec ${JSON.stringify(fake)} "$@"\n`, {
+    mode: 0o755,
+  });
   return path;
 }

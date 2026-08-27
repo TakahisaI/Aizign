@@ -20,10 +20,12 @@ import { isTimingErrorCode } from '@aizign/adapter-dsh/experimental/transport';
 import {
   checkCorrelation,
   decodeResponse,
+  encodeRequest,
   extractFrame,
   MAX_FRAME_BYTES,
   OneShotFrameCollector,
 } from '@aizign/protocol';
+import { createProcessProfileRegistry } from '../../spec/process/v1/fixtures/registry.mjs';
 import { BoundedBuffer } from './bounded-buffer.mjs';
 import {
   evaluatePrSmokeBudgets,
@@ -75,6 +77,7 @@ import {
 const PROTOCOL = {
   checkCorrelation,
   decodeResponse,
+  encodeRequest,
   extractFrame,
   isTimingErrorCode,
   MAX_FRAME_BYTES,
@@ -91,8 +94,8 @@ const CLASSIFICATION_ROWS = JSON.parse(
   ),
 ).rows;
 
-test('runner v6 names the production TypeScript transport explicitly', () => {
-  assert.equal(RUNNER_VERSION, 6);
+test('runner v7 names the production TypeScript transport explicitly', () => {
+  assert.equal(RUNNER_VERSION, 7);
   assert.equal(TYPESCRIPT_TRANSPORT, 'typescript_dsh');
 });
 
@@ -523,7 +526,8 @@ test('bounded buffers preserve UTF-8 chunk boundaries and stop retaining after t
   assert.equal(buffer.toString(), '前後');
 });
 
-test('direct runner bounds the frame, permits trailing whitespace, and fails closed', async () => {
+test('direct runner bounds the frame, requires immediate close, and fails closed', async () => {
+  const processCases = createProcessProfileRegistry('benchmark');
   const root = mkdtempSync(join(tmpdir(), 'aizign-direct-output-bound-'));
   try {
     const fakeBinary = join(root, 'overflow-core.cjs');
@@ -548,10 +552,11 @@ process.stdin.on('end', () => {
       response.error.message = 'x'.repeat(Number(process.argv[5]) - base.length);
       const exact = Buffer.from(JSON.stringify(response));
       if (exact.length !== Number(process.argv[5])) throw new Error('bad exact-max fixture');
-      process.stdout.write(Buffer.concat([exact, Buffer.from('\\n \\t\\n')]));
+      process.stdout.write(Buffer.concat([exact, Buffer.from('\\n')]));
       return;
     }
-    process.stdout.write(JSON.stringify(response) + '\\n');
+    process.stdout.write(JSON.stringify(response) + (process.argv[4] === 'post-lf' ? '\\n ' : '\\n'));
+    if (process.argv[4] === 'nonzero') process.exitCode = 7;
     return;
   }
   const stream = process.argv[2] === 'stderr' ? process.stderr : process.stdout;
@@ -562,39 +567,57 @@ process.stdin.on('end', () => {
     );
     chmodSync(fakeBinary, 0o700);
     const request = buildRequest(OUTCOME_CASES[0]);
-    const stdoutResult = await runProcess(
-      fakeBinary,
-      ['stdout', String(MAX_FRAME_BYTES + 2)],
-      request,
-      request.kind,
-      PROTOCOL,
+    const stdoutResult = await processCases.run('res-over-bound', () =>
+      runProcess(
+        fakeBinary,
+        ['stdout', String(MAX_FRAME_BYTES + 2)],
+        request,
+        request.kind,
+        PROTOCOL,
+      ),
     );
     assert.equal(stdoutResult.transport_kind, 'unknown');
     assert.equal(stdoutResult.unknown_reason, 'oversized_response');
 
-    const exactMax = await runProcess(
-      fakeBinary,
-      ['response', 'INTERNAL', 'exact-max', String(MAX_FRAME_BYTES)],
-      request,
-      request.kind,
-      PROTOCOL,
+    const exactMax = await processCases.run('res-exact-bound', () =>
+      runProcess(
+        fakeBinary,
+        ['response', 'INTERNAL', 'exact-max', String(MAX_FRAME_BYTES)],
+        request,
+        request.kind,
+        PROTOCOL,
+      ),
     );
     assert.equal(exactMax.transport_kind, 'correlated_response');
     assert.equal(exactMax.outcome, 'unknown');
     assert.equal(exactMax.unknown_reason, 'reported_unknown');
     assert.equal(exactMax.error_code, 'INTERNAL');
 
-    const unrecognized = await runProcess(
-      fakeBinary,
-      ['response', 'FUTURE_OUTCOME_UNKNOWN'],
-      request,
-      request.kind,
-      PROTOCOL,
+    const postLf = await processCases.run('res-post-lf-space', () =>
+      runProcess(fakeBinary, ['response', 'INTERNAL', 'post-lf'], request, request.kind, PROTOCOL),
+    );
+    assert.equal(postLf.transport_kind, 'unknown');
+    assert.equal(postLf.unknown_reason, 'undecodable_response');
+
+    const unrecognized = await processCases.run('res-valid-zero', () =>
+      runProcess(
+        fakeBinary,
+        ['response', 'FUTURE_OUTCOME_UNKNOWN'],
+        request,
+        request.kind,
+        PROTOCOL,
+      ),
     );
     assert.equal(unrecognized.transport_kind, 'correlated_response');
     assert.equal(unrecognized.outcome, 'unknown');
     assert.equal(unrecognized.unknown_reason, 'reported_unknown');
     assert.equal('error_code' in unrecognized, false);
+
+    const nonzero = await processCases.run('res-valid-nonzero', () =>
+      runProcess(fakeBinary, ['response', 'INTERNAL', 'nonzero'], request, request.kind, PROTOCOL),
+    );
+    assert.equal(nonzero.transport_kind, 'unknown');
+    assert.equal(nonzero.unknown_reason, 'undecodable_response');
 
     await assert.rejects(
       runProcess(
@@ -606,6 +629,7 @@ process.stdin.on('end', () => {
       ),
       /benchmark child stderr exceeded 262144 bytes/,
     );
+    processCases.complete();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -718,10 +742,14 @@ test('release binary capability mismatch uses the same safe failure manifest pat
     writeFileSync(
       fakeBinary,
       `#!/usr/bin/env node
+let input = '';
+process.stdin.on('data', (chunk) => { input += chunk; });
+process.stdin.on('end', () => {
+const request = JSON.parse(input);
 process.stdout.write(JSON.stringify({
   protocol: 'aizign',
   version: 1,
-  requestId: 'req-hello-01',
+  requestId: request.requestId,
   kind: 'hello',
   ok: true,
   payload: {
@@ -731,6 +759,7 @@ process.stdout.write(JSON.stringify({
     package: { name: 'aizign', version: '0.1.0' },
   },
 }) + '\\n');
+});
 `,
       { mode: 0o700 },
     );
@@ -922,7 +951,7 @@ test('lost-ACK scenario proxies only submit and verifies its counter outside e2e
   class FakeOneShotCoreClient {
     constructor(config) {
       this.config = config;
-      this.route = config.command === process.execPath ? 'proxy' : 'direct';
+      this.route = config.env?.AIZIGN_LOST_ACK_COUNTER ? 'proxy' : 'direct';
       instances.push(this);
     }
 
@@ -1298,9 +1327,8 @@ test('concurrency rejects semantic failures instead of recording them as a basel
 });
 
 test('lost-ACK proxy drops only a submit response', () => {
-  assert.equal(requestKind(['hello'], ''), 'hello');
   assert.equal(
-    requestKind(['handle', '--state', '/private'], '{"kind":"workflow.signal.submit"}\n'),
+    requestKind(Buffer.from('{"kind":"workflow.signal.submit"}\n')),
     'workflow.signal.submit',
   );
   assert.equal(dropsAcknowledgement('workflow.signal.submit'), true);

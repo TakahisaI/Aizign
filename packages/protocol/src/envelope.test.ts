@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { createProcessProfileRegistry } from '../../../spec/process/v1/fixtures/registry.mjs';
 import {
+  BOOTSTRAP_ENVELOPE_VERSION,
+  DecodeFailure,
+  decodeRequest,
   decodeResponse,
   encodeRequest,
   encodeResponse,
@@ -11,8 +15,158 @@ import {
 } from './envelope.ts';
 import { codes, ProtocolError } from './error.ts';
 
+test('protocol executes every assigned process-profile version case', async () => {
+  const registry = createProcessProfileRegistry('protocol');
+  const failure = (kind: unknown, version: number) => {
+    try {
+      decodeRequest(
+        JSON.stringify({
+          protocol: 'aizign',
+          version,
+          requestId: 'req-version-axis',
+          kind,
+          payload: {},
+        }),
+      );
+      assert.fail('request unexpectedly decoded');
+    } catch (error) {
+      assert.ok(error instanceof DecodeFailure);
+      return error;
+    }
+  };
+
+  await registry.run('hello-future-operation', () => {
+    const response = decodeResponse(
+      encodeResponse({
+        version: { axis: 'bootstrap', version: 1 },
+        requestId: 'req-future-operation',
+        kind: 'hello',
+        body: {
+          type: 'hello',
+          info: {
+            protocolVersion: 2,
+            journalSchemaVersion: 1,
+            capabilities: [],
+            package: { name: 'future-core', version: '2.0.0' },
+          },
+        },
+      }),
+    );
+    assert.deepEqual(response.version, { axis: 'bootstrap', version: 1 });
+    assert.equal(response.body.type === 'hello' && response.body.info.protocolVersion, 2);
+  });
+  await registry.run('version-bootstrap-unsupported', () => {
+    const error = failure('hello', 2);
+    assert.equal(error.error.code, codes.PROTOCOL_VERSION_UNSUPPORTED);
+    assert.deepEqual(error.responseVersion, { axis: 'bootstrap', version: 1 });
+  });
+  await registry.run('version-submit-unsupported', () => {
+    const error = failure('workflow.signal.submit', 2);
+    assert.equal(error.error.code, codes.PROTOCOL_VERSION_UNSUPPORTED);
+    assert.deepEqual(error.responseVersion, { axis: 'bootstrap', version: 1 });
+  });
+  await registry.run('version-reconcile-unsupported', () => {
+    const error = failure('workflow.signal.reconcile', 2);
+    assert.equal(error.error.code, codes.PROTOCOL_VERSION_UNSUPPORTED);
+    assert.deepEqual(error.responseVersion, { axis: 'bootstrap', version: 1 });
+  });
+  await registry.run('version-future-kind-unsupported', () => {
+    const error = failure('future.operation', 2);
+    assert.equal(error.error.code, codes.PROTOCOL_VERSION_UNSUPPORTED);
+    assert.deepEqual(error.responseVersion, { axis: 'bootstrap', version: 1 });
+  });
+  await registry.run('kind-future-accepted-version', () => {
+    const error = failure('future.operation', 1);
+    assert.equal(error.error.code, codes.UNKNOWN_KIND);
+    assert.deepEqual(error.responseVersion, { axis: 'accepted-operation', version: 1 });
+  });
+  registry.complete();
+});
+
+test('response encoding keeps the explicit axis when operation and bootstrap versions diverge', () => {
+  const body = { type: 'error' as const, error: new ProtocolError(codes.INTERNAL, 'failed') };
+  assert.match(
+    encodeResponse({
+      version: { axis: 'accepted-operation', version: 2 },
+      requestId: 'req-operation-v2',
+      kind: 'workflow.signal.submit',
+      body,
+    }),
+    /"version":2/,
+  );
+  assert.match(
+    encodeResponse({
+      version: { axis: 'bootstrap', version: 7 },
+      requestId: 'req-bootstrap-v7',
+      kind: 'workflow.signal.submit',
+      body,
+    }),
+    /"version":7/,
+  );
+
+  const nullKindError = encodeResponse({
+    version: { axis: 'accepted-operation', version: 1 },
+    requestId: 'req-unsafe-kind',
+    kind: null,
+    body,
+  });
+  assert.deepEqual(
+    decodeResponse(nullKindError, {
+      requestAxis: 'accepted-operation',
+      bootstrapVersion: 1,
+      operationVersion: 1,
+    }).version,
+    {
+      axis: 'accepted-operation',
+      version: 1,
+    },
+  );
+  assert.deepEqual(
+    decodeResponse(
+      encodeResponse({
+        version: { axis: 'bootstrap', version: 1 },
+        requestId: null,
+        kind: null,
+        body: {
+          type: 'error',
+          error: new ProtocolError(codes.PROTOCOL_VERSION_UNSUPPORTED, 'unsupported'),
+        },
+      }),
+      { requestAxis: 'accepted-operation', bootstrapVersion: 1, operationVersion: 2 },
+    ).version,
+    { axis: 'bootstrap', version: 1 },
+  );
+
+  const operationV2 = encodeResponse({
+    version: { axis: 'accepted-operation', version: 2 },
+    requestId: 'req-operation-v2',
+    kind: 'workflow.signal.submit',
+    body,
+  });
+  assert.deepEqual(
+    decodeResponse(operationV2, {
+      requestAxis: 'accepted-operation',
+      bootstrapVersion: 1,
+      operationVersion: 2,
+    }).version,
+    { axis: 'accepted-operation', version: 2 },
+  );
+  assert.throws(
+    () =>
+      decodeResponse(operationV2, {
+        requestAxis: 'accepted-operation',
+        bootstrapVersion: 1,
+        operationVersion: 3,
+      }),
+    (error: unknown) =>
+      error instanceof ProtocolError && error.code === codes.PROTOCOL_VERSION_UNSUPPORTED,
+  );
+});
+
 test('encoded frames are single lines with escaped newlines', () => {
+  assert.equal(BOOTSTRAP_ENVELOPE_VERSION, 1);
   const frame = encodeResponse({
+    version: { axis: 'bootstrap', version: 1 },
     requestId: null,
     kind: null,
     body: { type: 'error', error: new ProtocolError(codes.INTERNAL, 'line one\nline two') },
@@ -48,6 +202,7 @@ test('the response encoder never emits an oversized frame', () => {
   assert.throws(
     () =>
       encodeResponse({
+        version: { axis: 'accepted-operation', version: 1 },
         requestId: 'req-1',
         kind: 'workflow.signal.submit',
         body: {
@@ -73,6 +228,7 @@ test('encoders reject ill-formed Unicode before returning a frame', () => {
   assert.throws(
     () =>
       encodeResponse({
+        version: { axis: 'bootstrap', version: 1 },
         requestId: null,
         kind: null,
         body: {
@@ -85,15 +241,16 @@ test('encoders reject ill-formed Unicode before returning a frame', () => {
   );
 });
 
-test('extractFrame accepts exactly one newline-terminated frame plus whitespace', async () => {
+test('extractFrame accepts exactly one LF-terminated frame and immediate close', async () => {
   const { extractFrame } = await import('./envelope.ts');
   const text = new TextDecoder('utf-8', { fatal: true });
   const first = extractFrame('{"a":1}\n');
   assert.equal(first.kind, 'frame');
   if (first.kind === 'frame') assert.equal(text.decode(first.frame), '{"a":1}');
-  const padded = extractFrame('{"a":1}\n  \n\t');
-  assert.equal(padded.kind, 'frame');
-  if (padded.kind === 'frame') assert.equal(text.decode(padded.frame), '{"a":1}');
+  assert.equal(extractFrame('{"a":1}\n ').kind, 'extra');
+  assert.equal(extractFrame('{"a":1}\n\t').kind, 'extra');
+  assert.equal(extractFrame('{"a":1}\n\n').kind, 'extra');
+  assert.equal(extractFrame('{"a":1}\r\n').kind, 'extra');
   assert.deepEqual(extractFrame(''), { kind: 'empty' });
   assert.deepEqual(extractFrame('\n'), { kind: 'empty' });
   assert.equal(extractFrame('{"a":1}').kind, 'extra', 'a frame that never ended');
@@ -113,11 +270,10 @@ test('extractFrame accepts exactly one newline-terminated frame plus whitespace'
   }
 });
 
-test('the process collector bounds only the frame and validates discarded trailing whitespace', () => {
+test('the process collector bounds the body and rejects every byte after LF', () => {
   const exact = new OneShotFrameCollector(4);
   assert.equal(exact.append(Uint8Array.from([0x31, 0x32])), true);
-  assert.equal(exact.append(Uint8Array.from([0x33, 0x34, 0x0a, 0x20, 0x09])), true);
-  assert.equal(exact.append(Uint8Array.from([0x0a, 0x0d])), true);
+  assert.equal(exact.append(Uint8Array.from([0x33, 0x34, 0x0a])), true);
   const extraction = exact.extract();
   assert.equal(extraction.kind, 'frame');
   if (extraction.kind === 'frame')
@@ -129,8 +285,12 @@ test('the process collector bounds only the frame and validates discarded traili
   assert.equal(oversized.extract().kind, 'oversized');
 
   const trailingContent = new OneShotFrameCollector(4);
-  assert.equal(trailingContent.append(Uint8Array.from([0x31, 0x0a, 0xc2, 0xa0])), true);
+  assert.equal(trailingContent.append(Uint8Array.from([0x31, 0x0a, 0x20])), true);
   assert.equal(trailingContent.extract().kind, 'extra');
+
+  const crlf = new OneShotFrameCollector(4);
+  assert.equal(crlf.append(Uint8Array.from([0x31, 0x0d, 0x0a])), true);
+  assert.equal(crlf.extract().kind, 'extra');
 });
 
 test('oversized or badly addressed responses are invalid envelopes', async () => {

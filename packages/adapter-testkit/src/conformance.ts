@@ -18,12 +18,11 @@ import {
   ProtocolError,
   type WorkflowSignalSubmitPayload,
 } from '@aizign/protocol';
-import { fakeCoreCommand } from './fake-core-path.ts';
+import { fakeCoreExecutable } from './fake-core-path.ts';
 
 /** Process fixture values supplied to a production client by the test runner. */
 export interface CoreClientFixtureConfig {
   readonly command: string;
-  readonly args?: readonly string[];
   readonly env?: Readonly<Record<string, string>>;
   readonly stateDir: string;
   readonly timeoutMs: number;
@@ -34,6 +33,8 @@ export type CoreClientFactory = (config: CoreClientFixtureConfig) => CoreClient;
 export interface ConformanceOptions {
   /** Timeout used for the hang scenario; keep it short. Default 500ms. */
   readonly hangTimeoutMs?: number;
+  /** Runtime evidence hook, called only after the named assertion succeeds. */
+  readonly caseExecuted?: (...caseIds: string[]) => void;
 }
 
 /** A valid payload bound to a fixed expectation. */
@@ -108,7 +109,6 @@ export function assertMetadataOnly(value: unknown, path = '$'): void {
 /** How to reach a core: the fake, or a real `aizign` binary. */
 export interface CoreCommand {
   readonly command: string;
-  readonly args?: readonly string[];
 }
 
 /**
@@ -119,28 +119,35 @@ export interface CoreCommand {
 export async function runCoreScenarios(
   factory: CoreClientFactory,
   core: CoreCommand,
+  options: ConformanceOptions = {},
 ): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'aizign-core-scenarios-'));
   try {
     const make = (name: string) =>
       factory({
         command: core.command,
-        args: core.args ?? [],
         stateDir: join(root, name),
         timeoutMs: 10_000,
       });
 
     const hello = await make('hello').hello('req-hello');
-    assert.equal(hello.kind, 'ok', `hello: ${JSON.stringify(hello)}`);
+    assert.equal(hello.kind, 'ok', `req-valid: ${JSON.stringify(hello)}`);
     if (hello.kind === 'ok') {
       assert.equal(hello.info.protocolVersion, PROTOCOL_VERSION);
       assert.ok(hello.info.capabilities.includes(CAPABILITY_WORKFLOW_SIGNAL_SUBMIT));
       assert.ok(hello.info.capabilities.includes(CAPABILITY_WORKFLOW_SIGNAL_RECONCILE));
     }
+    assert.equal(
+      existsSync(join(root, 'hello')),
+      false,
+      'hello-nonexistent-state: framed hello does not touch stateDir',
+    );
+    options.caseExecuted?.('req-valid', 'hello-nonexistent-state');
 
     const client = make('signals');
     const first = await client.submitWorkflowSignal('req-1', samplePayload('evt-1'));
-    assert.deepEqual(first, { kind: 'accepted', eventId: 'evt-1' });
+    assert.deepEqual(first, { kind: 'accepted', eventId: 'evt-1' }, 'res-valid-zero');
+    options.caseExecuted?.('res-valid-zero');
     const again = await client.submitWorkflowSignal('req-2', samplePayload('evt-1'));
     assert.deepEqual(again, { kind: 'duplicate', eventId: 'evt-1' });
     const conflicting = samplePayload('evt-1');
@@ -244,44 +251,93 @@ export async function runFaultScenarios(
 ): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'aizign-fault-scenarios-'));
   try {
-    const fake = fakeCoreCommand();
+    const fake = { command: fakeCoreExecutable(join(root, 'fake-bin')) };
     const make = (name: string, env: Record<string, string>, timeoutMs = 10_000) =>
       factory({ ...fake, env, stateDir: join(root, name), timeoutMs });
 
-    const scenarios: Array<[string, string, string]> = [
-      ['no-response', 'no_response', 'process exits without a frame'],
-      ['garbage', 'undecodable_response', 'stdout is not a frame'],
-      ['journal-unknown', 'reported_unknown', 'the core reports JOURNAL_OUTCOME_UNKNOWN'],
-      ['exit-2', 'no_response', 'process fails before answering'],
-      ['wrong-request-id', 'correlation_mismatch', 'the response answers another request'],
-      ['wrong-kind', 'correlation_mismatch', 'the response has another kind'],
-      ['wrong-event-id', 'correlation_mismatch', 'the response names another event'],
-      ['oversized', 'oversized_response', 'the response exceeds the frame bound'],
+    const scenarios: Array<[readonly string[], string, string, string]> = [
+      [['res-empty-zero'], 'no-response', 'no_response', 'process exits without a frame'],
+      [[], 'garbage', 'undecodable_response', 'stdout is not a frame'],
+      [[], 'journal-unknown', 'reported_unknown', 'the core reports JOURNAL_OUTCOME_UNKNOWN'],
+      [['proc-abnormal-termination'], 'exit-2', 'no_response', 'process fails before answering'],
+      [[], 'wrong-request-id', 'correlation_mismatch', 'the response answers another request'],
+      [[], 'wrong-kind', 'correlation_mismatch', 'the response has another kind'],
+      [[], 'null-correlation', 'correlation_mismatch', 'the response has null correlation'],
+      [[], 'wrong-event-id', 'correlation_mismatch', 'the response names another event'],
       [
-        'exact-max-padded',
-        'reported_unknown',
-        'an exact-max frame may carry permitted trailing ASCII whitespace',
+        ['res-over-bound'],
+        'oversized',
+        'oversized_response',
+        'the response exceeds the frame bound',
       ],
-      ['two-frames', 'undecodable_response', 'stdout carries two frames'],
-      ['trailing-garbage', 'undecodable_response', 'stdout carries a frame and then prose'],
       [
+        ['res-no-lf'],
+        'no-lf-response',
+        'undecodable_response',
+        'stdout closes before the required LF',
+      ],
+      [['res-bom'], 'bom-response', 'undecodable_response', 'a BOM-prefixed body is not accepted'],
+      [
+        ['res-exact-bound'],
+        'exact-max',
+        'reported_unknown',
+        'an exact-max body plus LF is accepted',
+      ],
+      [
+        ['res-post-lf-space'],
+        'post-lf-space',
+        'undecodable_response',
+        'a space follows the response LF',
+      ],
+      [['res-post-lf-tab'], 'post-lf-tab', 'undecodable_response', 'a tab follows the response LF'],
+      [['res-post-lf-cr'], 'post-lf-cr', 'undecodable_response', 'a CR follows the response LF'],
+      [
+        ['res-post-lf-second-lf'],
+        'post-lf-lf',
+        'undecodable_response',
+        'another LF follows the response LF',
+      ],
+      [['res-crlf'], 'crlf-response', 'undecodable_response', 'CRLF is not a profile terminator'],
+      [
+        ['res-valid-nonzero'],
+        'nonzero-with-frame',
+        'undecodable_response',
+        'a valid-looking frame cannot override nonzero exit',
+      ],
+      [
+        ['res-post-lf-second-frame'],
+        'two-frames',
+        'undecodable_response',
+        'stdout carries two frames',
+      ],
+      [[], 'trailing-garbage', 'undecodable_response', 'stdout carries a frame and then prose'],
+      [
+        ['proc-signal-terminated', 'proc-missing-exit-code'],
+        'signal-terminated',
+        'no_response',
+        'the process terminates by signal without a frame',
+      ],
+      [
+        ['res-invalid-utf8'],
         'invalid-utf8',
         'undecodable_response',
         'a raw invalid UTF-8 byte is never decoded as a rejection',
       ],
       [
+        [],
         'unknown-valid-error-code',
         'reported_unknown',
         'an unrecognized well-formed peer code is not a definitive rejection',
       ],
     ];
-    for (const [fault, reason, description] of scenarios) {
+    for (const [caseIds, fault, reason, description] of scenarios) {
+      const label = caseIds.length > 0 ? caseIds.join('/') : fault;
       const outcome = await make(`fault-${fault}`, {
         AIZIGN_FAKE_FAULT: fault,
       }).submitWorkflowSignal('req-fault', samplePayload('evt-fault'));
-      assert.equal(outcome.kind, 'unknown', `${description}: ${JSON.stringify(outcome)}`);
+      assert.equal(outcome.kind, 'unknown', `${label}: ${description}: ${JSON.stringify(outcome)}`);
       if (outcome.kind === 'unknown') {
-        assert.equal(outcome.reason, reason, description);
+        assert.equal(outcome.reason, reason, `${label}: ${description}`);
         if (fault === 'unknown-valid-error-code') {
           assert.equal(outcome.reportedCode, 'FUTURE_OUTCOME_UNKNOWN');
           assert.equal(
@@ -298,6 +354,66 @@ export async function runFaultScenarios(
           );
         }
       }
+      options.caseExecuted?.(...caseIds);
+    }
+
+    for (const [caseId, fault] of [
+      ['hello-request-id-mismatch', 'wrong-request-id'],
+      ['hello-kind-mismatch', 'wrong-kind'],
+    ] as const) {
+      const outcome = await make(`hello-${fault}`, {
+        AIZIGN_FAKE_FAULT: fault,
+      }).hello(`req-hello-${fault}`);
+      assert.equal(outcome.kind, 'unknown', caseId);
+      if (outcome.kind === 'unknown') {
+        assert.equal(outcome.reason, 'correlation_mismatch', caseId);
+      }
+      options.caseExecuted?.(caseId);
+    }
+
+    const unsupportedSubmit = await make('operation-version-unsupported-submit', {
+      AIZIGN_FAKE_FAULT: 'operation-version-unsupported',
+    }).submitWorkflowSignal('req-version-submit', samplePayload('evt-version-submit'));
+    assert.equal(unsupportedSubmit.kind, 'rejected', 'version-submit-unsupported');
+    if (unsupportedSubmit.kind === 'rejected') {
+      assert.equal(
+        unsupportedSubmit.code,
+        'PROTOCOL_VERSION_UNSUPPORTED',
+        'version-submit-unsupported',
+      );
+    }
+    options.caseExecuted?.('version-submit-unsupported');
+
+    const unsupportedReconcile = await make('operation-version-unsupported-reconcile', {
+      AIZIGN_FAKE_FAULT: 'operation-version-unsupported',
+    }).reconcileWorkflowSignal('req-version-reconcile', {
+      signal: samplePayload('evt-version-reconcile').signal,
+    });
+    assert.equal(unsupportedReconcile.kind, 'unknown', 'version-reconcile-unsupported');
+    if (unsupportedReconcile.kind === 'unknown') {
+      assert.equal(
+        unsupportedReconcile.reason,
+        'reported_unknown',
+        'version-reconcile-unsupported',
+      );
+      assert.equal(
+        unsupportedReconcile.reportedCode,
+        'PROTOCOL_VERSION_UNSUPPORTED',
+        'version-reconcile-unsupported',
+      );
+    }
+    options.caseExecuted?.('version-reconcile-unsupported');
+
+    const wrongOperationVersion = await make('wrong-operation-version', {
+      AIZIGN_FAKE_FAULT: 'wrong-operation-version',
+    }).submitWorkflowSignal('req-wrong-operation-version', samplePayload('evt-wrong-version'));
+    assert.equal(wrongOperationVersion.kind, 'unknown', 'wrong numeric operation version');
+    if (wrongOperationVersion.kind === 'unknown') {
+      assert.equal(
+        wrongOperationVersion.reason,
+        'undecodable_response',
+        'wrong numeric operation version',
+      );
     }
 
     const uncorrelatedCodeState = join(root, 'fault-unknown-code-wrong-request-id');
@@ -327,8 +443,30 @@ export async function runFaultScenarios(
       { AIZIGN_FAKE_FAULT: 'hang' },
       options.hangTimeoutMs ?? 500,
     ).submitWorkflowSignal('req-hang', samplePayload('evt-hang'));
-    assert.equal(hang.kind, 'unknown');
-    if (hang.kind === 'unknown') assert.equal(hang.reason, 'timeout');
+    assert.equal(hang.kind, 'unknown', 'proc-parent-timeout');
+    if (hang.kind === 'unknown') assert.equal(hang.reason, 'timeout', 'proc-parent-timeout');
+    options.caseExecuted?.('proc-parent-timeout');
+
+    const noClose = await make(
+      'fault-no-close-after-frame',
+      { AIZIGN_FAKE_FAULT: 'no-close-after-frame' },
+      options.hangTimeoutMs ?? 500,
+    ).submitWorkflowSignal('req-no-close', samplePayload('evt-no-close'));
+    assert.equal(noClose.kind, 'unknown', 'res-valid-stdout-open');
+    if (noClose.kind === 'unknown')
+      assert.equal(noClose.reason, 'timeout', 'res-valid-stdout-open');
+    options.caseExecuted?.('res-valid-stdout-open');
+
+    const processOpen = await make(
+      'fault-process-open-after-stdout-close',
+      { AIZIGN_FAKE_FAULT: 'process-open-after-stdout-close' },
+      options.hangTimeoutMs ?? 500,
+    ).submitWorkflowSignal('req-process-open', samplePayload('evt-process-open'));
+    assert.equal(processOpen.kind, 'unknown', 'res-valid-process-open');
+    if (processOpen.kind === 'unknown') {
+      assert.equal(processOpen.reason, 'timeout', 'res-valid-process-open');
+    }
+    options.caseExecuted?.('res-valid-process-open');
 
     // cancellation: the caller's abort kills the process; the outcome is unknown.
     const controller = new AbortController();
@@ -338,8 +476,9 @@ export async function runFaultScenarios(
       samplePayload('evt-abort'),
       { signal: controller.signal },
     );
-    assert.equal(aborted.kind, 'unknown');
-    if (aborted.kind === 'unknown') assert.equal(aborted.reason, 'aborted');
+    assert.equal(aborted.kind, 'unknown', 'proc-caller-abort');
+    if (aborted.kind === 'unknown') assert.equal(aborted.reason, 'aborted', 'proc-caller-abort');
+    options.caseExecuted?.('proc-caller-abort');
 
     const missing = factory({
       command: join(root, 'no-such-binary'),
@@ -350,8 +489,11 @@ export async function runFaultScenarios(
       'req-missing',
       samplePayload('evt-missing'),
     );
-    assert.equal(spawnFailed.kind, 'unknown');
-    if (spawnFailed.kind === 'unknown') assert.equal(spawnFailed.reason, 'spawn_failed');
+    assert.equal(spawnFailed.kind, 'unknown', 'proc-spawn-failed');
+    if (spawnFailed.kind === 'unknown') {
+      assert.equal(spawnFailed.reason, 'spawn_failed', 'proc-spawn-failed');
+    }
+    options.caseExecuted?.('proc-spawn-failed');
 
     const timeoutState = join(root, 'reconcile-handler-timeout');
     const timeoutClient = factory({
@@ -363,11 +505,12 @@ export async function runFaultScenarios(
     const timeout = await timeoutClient.reconcileWorkflowSignal('req-reconcile-timeout', {
       signal: samplePayload('evt-timeout').signal,
     });
-    assert.equal(timeout.kind, 'unknown');
+    assert.equal(timeout.kind, 'unknown', 'handler-post-dispatch-timeout');
     if (timeout.kind === 'unknown') {
       assert.equal(timeout.reason, 'correlation_mismatch');
       assert.equal(timeout.reportedCode, 'HANDLER_TIMEOUT');
     }
+    options.caseExecuted?.('handler-post-dispatch-timeout');
     assertMetadataOnly(readFakeRequests(timeoutState));
     assert.equal(
       readFakeRequests(timeoutState).length,
@@ -491,6 +634,11 @@ export async function runCoreClientConformance(
   factory: CoreClientFactory,
   options: ConformanceOptions = {},
 ): Promise<void> {
-  await runCoreScenarios(factory, fakeCoreCommand());
-  await runFaultScenarios(factory, options);
+  const root = mkdtempSync(join(tmpdir(), 'aizign-fake-core-command-'));
+  try {
+    await runCoreScenarios(factory, { command: fakeCoreExecutable(root) }, options);
+    await runFaultScenarios(factory, options);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 }

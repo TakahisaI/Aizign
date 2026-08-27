@@ -14,4 +14,4 @@ export {
   runCoreScenarios,
   samplePayload,
 } from './conformance.ts';
-export { fakeCoreCommand } from './fake-core-path.ts';
+export { fakeCoreExecutable } from './fake-core-path.ts';

@@ -6,7 +6,7 @@ without a harness or a network.
 
 | | |
 |---|---|
-| **Responsibility** | fake core process（Protocol v1、JSON state、fault injection）、`runCoreScenarios`（fakeでも実binaryでも）、内部fault scenarioを含む`runCoreClientConformance`、`assertMetadataOnly`、`samplePayload` |
+| **Responsibility** | canonical argvを受けるrepository-test fake executable（Protocol v1、JSON state、fault injection）、`runCoreScenarios`（fakeでも実binaryでも）、内部fault scenarioを含む`runCoreClientConformance`、`assertMetadataOnly`、`samplePayload` |
 | **Non-responsibility** | production core client、process/timing policy、harness固有のfake（すべてadapter側が持つ） |
 | **Inputs** | `CoreClientFactory`（testkit-owned `CoreClientFixtureConfig` → Protocol `CoreClient`） |
 | **Outputs** | `node:assert` による検証。違反で例外 |
@@ -38,8 +38,8 @@ harness-adapter conformanceは証明されません。非TypeScript adapterは�
 ```text
 src/
 ├── index.ts
-├── fake-core.ts           node fake-core.js hello | handle --state <dir>。submit / reconcile stateとfault injection
-├── fake-core-path.ts      fakeCoreCommand(): { command: process.execPath, args: [fake-core] }
+├── fake-core.ts           handle --state <dir>だけを受けるfake child。hello / submit / reconcileとfault injection
+├── fake-core-path.ts      fakeCoreExecutable(): canonical argvをそのままfake childへ渡すtest executable
 ├── conformance.ts         runCoreScenarios / runFaultScenarios / runCoreClientConformance、samplePayload、assertMetadataOnly
 └── conformance.test.ts    testkit-owned assertionのunit test
 ```
@@ -82,7 +82,9 @@ runnerが検査する経路:
 | 呼び出し側のabort | `unknown aborted` |
 | `requestId` / `kind` / `eventId` が送信と一致しない | `unknown correlation_mismatch` |
 | responseが `MAX_FRAME_BYTES` を超える | `unknown oversized_response`（childをkill） |
-| frame本体がちょうど `MAX_FRAME_BYTES` で、LF後にASCII whitespaceがある | frameを受理して通常分類（末尾whitespaceは保持しない） |
+| frame本体がちょうど `MAX_FRAME_BYTES` + LF + close | decode・相関できれば通常分類 |
+| LFなし、CRLF、LF後のspace / tab / CR / LF / second frame | `unknown undecodable_response` |
+| valid-looking frame + nonzero/signal、stdout/process closeなし | `unknown`。部分frameから成功を推測しない |
 | outbound requestが `MAX_REQUEST_BYTES` を超える | spawn前に `REQUEST_TOO_LARGE`でPromise reject。spawn 0回・request 0件・submit classificationなし |
 | reconciliationが `absent` | reconcile request 1件だけ。implicit submitなし |
 | stdoutにframeが2つ、または末尾に非whitespace | `unknown undecodable_response` |

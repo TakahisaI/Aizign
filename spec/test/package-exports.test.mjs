@@ -30,6 +30,7 @@ const surfaces = [
     manifest: 'packages/protocol/package.json',
     exportKey: '.',
     runtime: [
+      'BOOTSTRAP_ENVELOPE_VERSION',
       'CAPABILITY_WORKFLOW_SIGNAL_RECONCILE',
       'CAPABILITY_WORKFLOW_SIGNAL_SUBMIT',
       'DecodeFailure',
@@ -77,6 +78,7 @@ const surfaces = [
       'Request',
       'Response',
       'ResponseBody',
+      'ResponseVersion',
       'Role',
       'SentRequest',
       'SignalKind',
@@ -94,7 +96,7 @@ const surfaces = [
     exportKey: '.',
     runtime: [
       'assertMetadataOnly',
-      'fakeCoreCommand',
+      'fakeCoreExecutable',
       'readFakeRequests',
       'runCoreClientConformance',
       'runCoreScenarios',

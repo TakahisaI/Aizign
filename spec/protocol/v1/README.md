@@ -17,9 +17,8 @@ every byte after LF are outside process profile v1.
 - the client correlates response `requestId` / `kind` / (for signal success)
   `eventId`; mismatch is `unknown`
 
-The current CLI and TypeScript consumers still contain older EOF-terminated,
-post-LF-whitespace, and direct-hello behavior. Issue #76 S2 owns their atomic
-migration; that debt is not an alternate accepted profile.
+The current CLI and TypeScript consumers implement this framing and use the
+same canonical correlated `handle` path for hello and operations.
 
 ```text
 adapter ──(request frame)──▶ aizign handle --state <dir> ──(response frame)──▶ adapter

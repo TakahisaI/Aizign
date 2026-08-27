@@ -44,6 +44,11 @@ wireに流れるbytesそのもの（末尾の改行なし）。validなframeは1
 codec向けround-trip検査です。request decoderを持たないclient adapterへ
 `valid/request`をencoder fixtureとして要求しません。
 
+`valid/response/hello-future-operation-version.frame`はbootstrap envelope v1の
+helloがoperation Protocol v2をadvertiseできることを固定します。両codecはこの
+stable bootstrap shapeをdecodeしてから、client compatibility層でoperation version
+を拒否します。
+
 ## Encoder conformance
 
 directional client encoderは、このdirectoryのframe fixtureではなく

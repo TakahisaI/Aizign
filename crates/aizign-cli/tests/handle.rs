@@ -1,5 +1,6 @@
 //! The binary end to end: one frame in, one frame out, state on disk.
 
+use std::collections::BTreeSet;
 use std::io::Write as _;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
@@ -14,7 +15,8 @@ use aizign_core::workflow::Command as CoreCommand;
 ))]
 use aizign_protocol::{Disposition, ReconciliationDisposition};
 use aizign_protocol::{
-    MAX_REQUEST_BYTES, Request, RequestKind, ResponseBody, codes, decode_response, encode_request,
+    MAX_REQUEST_BYTES, Request, RequestKind, ResponseBody, ResponseVersion, codes,
+    decode_response_for, encode_request,
 };
 use aizign_store_jsonl::JOURNAL_FILE_NAME;
 #[cfg(all(
@@ -25,6 +27,45 @@ use aizign_store_jsonl::JOURNAL_FILE_NAME;
 ))]
 use aizign_store_jsonl::{COMMIT_FILE_NAME, JsonlJournal, LOCK_FILE_NAME};
 use aizign_testkit::{TempDir, signals};
+
+struct ProcessProfileRegistry {
+    expected: BTreeSet<String>,
+    executed: BTreeSet<String>,
+}
+
+impl ProcessProfileRegistry {
+    fn new(owner: &str) -> Self {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../../spec/process/v1/fixtures/cases.json"))
+                .expect("process-profile fixture");
+        let expected = fixture["cases"]
+            .as_array()
+            .expect("process-profile cases")
+            .iter()
+            .filter(|entry| {
+                entry["evidence"]
+                    .as_array()
+                    .is_some_and(|owners| owners.iter().any(|value| value == owner))
+            })
+            .map(|entry| entry["id"].as_str().expect("case id").to_owned())
+            .collect();
+        Self {
+            expected,
+            executed: BTreeSet::new(),
+        }
+    }
+
+    fn run(&mut self, case_id: &str, assertion: impl FnOnce()) {
+        assert!(self.expected.contains(case_id), "unassigned case {case_id}");
+        assert!(!self.executed.contains(case_id), "duplicate case {case_id}");
+        assertion();
+        self.executed.insert(case_id.to_owned());
+    }
+
+    fn complete(self) {
+        assert_eq!(self.executed, self.expected, "runtime case execution set");
+    }
+}
 
 fn aizign() -> Command {
     Command::new(env!("CARGO_BIN_EXE_aizign"))
@@ -47,6 +88,25 @@ fn run_handle(state: &Path, frame: &str) -> Output {
         .write_all(frame.as_bytes())
         .unwrap();
     child.wait_with_output().expect("wait for aizign")
+}
+
+fn run_handle_held_open(state: &Path, bytes: &str) -> Output {
+    let mut child = aizign()
+        .arg("handle")
+        .arg("--state")
+        .arg(state)
+        .env("AIZIGN_HANDLE_TIMEOUT_MS", "100")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn held-open aizign");
+    let mut stdin = child.stdin.take().expect("held-open stdin");
+    stdin.write_all(bytes.as_bytes()).expect("write held input");
+    stdin.flush().expect("flush held input");
+    let output = child.wait_with_output().expect("watchdog exits");
+    drop(stdin);
+    output
 }
 
 fn run_handle_with_timing(state: &Path, frame: &str) -> Output {
@@ -125,6 +185,13 @@ fn run_handle_with_umask(state: &Path, frame: &str, mask: &str) -> Output {
 }
 
 fn one_frame(output: &Output) -> aizign_protocol::Response {
+    one_frame_for(output, None)
+}
+
+fn one_frame_for(
+    output: &Output,
+    request_axis: Option<ResponseVersion>,
+) -> aizign_protocol::Response {
     let stdout = String::from_utf8(output.stdout.clone()).unwrap();
     assert_eq!(
         stdout.matches('\n').count(),
@@ -132,7 +199,9 @@ fn one_frame(output: &Output) -> aizign_protocol::Response {
         "stdout must be exactly one frame: {stdout:?}"
     );
     assert!(stdout.ends_with('\n'));
-    decode_response(stdout.trim_end().as_bytes()).expect("stdout is a protocol frame")
+    let body = stdout.strip_suffix('\n').expect("one terminating LF");
+    assert!(!body.contains('\n'), "no byte follows the response LF");
+    decode_response_for(body.as_bytes(), request_axis).expect("stdout is a protocol frame")
 }
 
 fn timing_metric(output: &Output) -> serde_json::Value {
@@ -166,6 +235,164 @@ fn reconcile_frame(signal: aizign_core::workflow::WorkflowSignal, request_id: &s
     .unwrap();
     frame.push('\n');
     frame
+}
+
+fn assert_profile_error(stream: &str, expected_code: &str) {
+    let dir = TempDir::new();
+    let response = one_frame(&run_handle(&dir.state(), stream));
+    assert_eq!(response.version, ResponseVersion::bootstrap());
+    assert_eq!(response.request_id, None);
+    assert_eq!(response.kind, None);
+    let ResponseBody::Error(error) = response.body else {
+        panic!("expected profile error")
+    };
+    assert_eq!(error.code().as_str(), expected_code);
+    assert!(!dir.state().exists(), "profile error created state");
+}
+
+fn assert_held_timeout(bytes: &str) {
+    let dir = TempDir::new();
+    let response = one_frame(&run_handle_held_open(&dir.state(), bytes));
+    assert_eq!(response.version, ResponseVersion::bootstrap());
+    let ResponseBody::Error(error) = response.body else {
+        panic!("expected held-open timeout")
+    };
+    assert_eq!(error.code().as_str(), codes::HANDLER_TIMEOUT);
+    assert!(!dir.state().exists(), "pre-dispatch timeout created state");
+}
+
+fn run_request_profile_cases(
+    cases: &mut ProcessProfileRegistry,
+    hello_body: &str,
+    hello_frame: &str,
+) {
+    cases.run("req-empty-eof", || {
+        assert_profile_error("", codes::INVALID_ENVELOPE);
+    });
+    cases.run("req-empty-held", || {
+        assert_held_timeout("");
+    });
+    cases.run("req-partial-held", || {
+        assert_held_timeout("{\"protocol\":\"aizign\"");
+    });
+    cases.run("req-max-held", || {
+        assert_held_timeout(&" ".repeat(MAX_REQUEST_BYTES));
+    });
+    cases.run("req-no-lf-eof", || {
+        assert_profile_error(hello_body, codes::INVALID_ENVELOPE);
+    });
+    cases.run("req-valid", || {
+        let response = one_frame(&run_handle(&TempDir::new().state(), hello_frame));
+        assert_eq!(response.version, ResponseVersion::bootstrap());
+        assert!(matches!(response.body, ResponseBody::Hello(_)));
+    });
+    cases.run("req-exact-bound", || {
+        let body = format!(
+            "{hello_body}{}",
+            " ".repeat(MAX_REQUEST_BYTES - hello_body.len())
+        );
+        let response = one_frame(&run_handle(&TempDir::new().state(), &format!("{body}\n")));
+        assert!(matches!(response.body, ResponseBody::Hello(_)));
+    });
+    cases.run("req-over-bound", || {
+        assert_profile_error(
+            &format!("{}\n", " ".repeat(MAX_REQUEST_BYTES + 1)),
+            codes::REQUEST_TOO_LARGE,
+        );
+    });
+    cases.run("req-crlf", || {
+        assert_profile_error(&format!("{hello_body}\r\n"), codes::INVALID_ENVELOPE);
+    });
+    cases.run("req-max-crlf", || {
+        assert_profile_error(
+            &format!("{}\r\n", " ".repeat(MAX_REQUEST_BYTES)),
+            codes::REQUEST_TOO_LARGE,
+        );
+    });
+    cases.run("req-json-space", || {
+        let response = one_frame(&run_handle(
+            &TempDir::new().state(),
+            &format!(" {hello_body} \n"),
+        ));
+        assert!(matches!(response.body, ResponseBody::Hello(_)));
+    });
+    for (case_id, suffix) in [
+        ("req-post-lf-space", " "),
+        ("req-post-lf-tab", "\t"),
+        ("req-post-lf-cr", "\r"),
+        ("req-post-lf-second-lf", "\n"),
+    ] {
+        cases.run(case_id, || {
+            assert_profile_error(&format!("{hello_frame}{suffix}"), codes::INVALID_ENVELOPE);
+        });
+    }
+    cases.run("req-post-lf-second-frame", || {
+        assert_profile_error(
+            &format!("{hello_frame}{hello_frame}"),
+            codes::INVALID_ENVELOPE,
+        );
+    });
+    cases.run("req-eof-held", || {
+        assert_held_timeout(hello_frame);
+    });
+}
+
+fn run_hello_profile_cases(
+    cases: &mut ProcessProfileRegistry,
+    hello_body: &str,
+    hello_frame: &str,
+) {
+    cases.run("hello-nonexistent-state", || {
+        let dir = TempDir::new();
+        let response = one_frame(&run_handle(&dir.state(), hello_frame));
+        assert!(matches!(response.body, ResponseBody::Hello(_)));
+        assert!(!dir.state().exists());
+    });
+    cases.run("hello-no-lf-eof", || {
+        assert_profile_error(hello_body, codes::INVALID_ENVELOPE);
+    });
+    cases.run("hello-post-lf-byte", || {
+        assert_profile_error(&format!("{hello_frame}x"), codes::INVALID_ENVELOPE);
+    });
+    cases.run("hello-over-bound", || {
+        assert_profile_error(
+            &format!("{}\n", "x".repeat(MAX_REQUEST_BYTES + 1)),
+            codes::REQUEST_TOO_LARGE,
+        );
+    });
+    cases.run("hello-held-open", || {
+        assert_held_timeout(hello_frame);
+    });
+    cases.run("kind-response-unsafe", || {
+        let dir = TempDir::new();
+        let long_kind = "x".repeat(65_000);
+        let frame = format!(
+            "{{\"protocol\":\"aizign\",\"version\":1,\"requestId\":\"req-long-kind\",\"kind\":\"{long_kind}\",\"payload\":{{}}}}\n"
+        );
+        let response = one_frame_for(
+            &run_handle(&dir.state(), &frame),
+            Some(ResponseVersion::operation()),
+        );
+        assert_eq!(response.version, ResponseVersion::operation());
+        assert_eq!(response.kind, None);
+        let ResponseBody::Error(error) = response.body else {
+            panic!("long kind must fail")
+        };
+        assert_eq!(error.code().as_str(), codes::UNKNOWN_KIND);
+        assert!(!dir.state().exists());
+    });
+}
+
+#[test]
+fn rust_cli_executes_every_assigned_process_profile_case() {
+    let mut cases = ProcessProfileRegistry::new("rust-cli");
+    let hello_body =
+        r#"{"protocol":"aizign","version":1,"requestId":"req-h","kind":"hello","payload":{}}"#;
+    let hello_frame = format!("{hello_body}\n");
+
+    run_request_profile_cases(&mut cases, hello_body, &hello_frame);
+    run_hello_profile_cases(&mut cases, hello_body, &hello_frame);
+    cases.complete();
 }
 
 #[test]
@@ -426,7 +653,7 @@ fn hello_request_frame_is_answered_with_its_request_id() {
     let dir = TempDir::new();
     let output = run_handle(
         &dir.state(),
-        r#"{"protocol":"aizign","version":1,"requestId":"req-h","kind":"hello","payload":{}}"#,
+        "{\"protocol\":\"aizign\",\"version\":1,\"requestId\":\"req-h\",\"kind\":\"hello\",\"payload\":{}}\n",
     );
     assert_eq!(output.status.code(), Some(0));
     let response = one_frame(&output);
@@ -576,6 +803,32 @@ fn invalid_raw_kind_is_never_copied_into_timing() {
     );
 }
 
+#[test]
+fn response_unsafe_unknown_kind_uses_bounded_null_correlation() {
+    let dir = TempDir::new();
+    let long_kind = "x".repeat(65_000);
+    let frame = format!(
+        "{{\"protocol\":\"aizign\",\"version\":1,\"requestId\":\"req-long-kind\",\"kind\":\"{long_kind}\",\"payload\":{{}}}}\n"
+    );
+    assert!(frame.len() <= MAX_REQUEST_BYTES + 1);
+    let output = run_handle(&dir.state(), &frame);
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stdout.len() <= aizign_protocol::MAX_FRAME_BYTES + 1);
+    let response = one_frame(&output);
+    assert_eq!(response.request_id.as_deref(), Some("req-long-kind"));
+    assert_eq!(response.kind, None);
+    let ResponseBody::Error(error) = response.body else {
+        panic!("long unknown kind must be a bounded error")
+    };
+    assert_eq!(error.code().as_str(), codes::UNKNOWN_KIND);
+    assert!(
+        !String::from_utf8(output.stderr)
+            .unwrap()
+            .contains(&long_kind)
+    );
+    assert!(!dir.state().exists());
+}
+
 #[cfg(all(
     target_os = "linux",
     target_arch = "x86_64",
@@ -695,6 +948,65 @@ fn malformed_and_oversized_frames_still_get_one_response() {
 }
 
 #[test]
+fn lf_less_crlf_and_post_lf_requests_fail_before_state() {
+    let cases = [
+        (
+            "lf-less-hello",
+            "{\"protocol\":\"aizign\",\"version\":1,\"requestId\":\"req-h\",\"kind\":\"hello\",\"payload\":{}}"
+                .to_owned(),
+            codes::INVALID_ENVELOPE,
+        ),
+        (
+            "lf-less-submit",
+            submit_frame("evt-lf-less", "req-lf-less")
+                .trim_end_matches('\n')
+                .to_owned(),
+            codes::INVALID_ENVELOPE,
+        ),
+        (
+            "crlf",
+            submit_frame("evt-crlf", "req-crlf").replace('\n', "\r\n"),
+            codes::INVALID_ENVELOPE,
+        ),
+        (
+            "post-lf-space",
+            format!("{} ", submit_frame("evt-space", "req-space")),
+            codes::INVALID_ENVELOPE,
+        ),
+        (
+            "post-lf-tab",
+            format!("{}\t", submit_frame("evt-tab", "req-tab")),
+            codes::INVALID_ENVELOPE,
+        ),
+        (
+            "post-lf-lf",
+            format!("{}\n", submit_frame("evt-lf", "req-lf")),
+            codes::INVALID_ENVELOPE,
+        ),
+    ];
+    for (name, stream, expected) in cases {
+        let dir = TempDir::new();
+        let response = one_frame(&run_handle(&dir.state(), &stream));
+        assert_eq!(response.request_id, None, "{name}");
+        assert_eq!(response.kind, None, "{name}");
+        let ResponseBody::Error(error) = response.body else {
+            panic!("{name}: expected framing error")
+        };
+        assert_eq!(error.code().as_str(), expected, "{name}");
+        assert!(!dir.state().exists(), "{name}: no state artifact");
+    }
+
+    let dir = TempDir::new();
+    let over_bound_crlf = format!("{}\r\n", " ".repeat(MAX_REQUEST_BYTES));
+    let ResponseBody::Error(error) = one_frame(&run_handle(&dir.state(), &over_bound_crlf)).body
+    else {
+        panic!("over-bound CRLF must fail")
+    };
+    assert_eq!(error.code().as_str(), codes::REQUEST_TOO_LARGE);
+    assert!(!dir.state().exists());
+}
+
+#[test]
 fn stdin_must_carry_exactly_one_frame() {
     let dir = TempDir::new();
     let two = format!(
@@ -717,26 +1029,16 @@ fn stdin_must_carry_exactly_one_frame() {
     };
     assert_eq!(error.code().as_str(), codes::INVALID_ENVELOPE);
 
-    // Trailing whitespace after the newline is fine.
+    // Every byte after the terminating LF is a profile error, including whitespace.
     let whitespace = format!("{}\n  \n", submit_frame("evt-a", "req-ws"));
-    let body = one_frame(&run_handle(&dir.state(), &whitespace)).body;
-    #[cfg(all(
-        target_os = "linux",
-        target_arch = "x86_64",
-        target_env = "gnu",
-        target_pointer_width = "64"
-    ))]
-    assert!(matches!(body, ResponseBody::WorkflowSignal(_)));
-    #[cfg(not(all(
-        target_os = "linux",
-        target_arch = "x86_64",
-        target_env = "gnu",
-        target_pointer_width = "64"
-    )))]
-    assert!(matches!(
-        body,
-        ResponseBody::Error(error) if error.code().as_str() == codes::CAPABILITY_UNSUPPORTED
-    ));
+    let ResponseBody::Error(error) = one_frame(&run_handle(&dir.state(), &whitespace)).body else {
+        panic!("post-LF whitespace must fail")
+    };
+    assert_eq!(error.code().as_str(), codes::INVALID_ENVELOPE);
+    assert!(
+        !dir.state().exists(),
+        "profile rejection has no state effect"
+    );
 }
 
 /// Pads a frame with trailing spaces (inside the frame, before its newline)
@@ -799,43 +1101,44 @@ fn trailing_content_is_still_rejected_at_the_frame_size_bound() {
 
 #[test]
 fn a_stdin_that_never_closes_ends_as_handler_timeout_not_a_hang() {
-    // The one-frame check scans to EOF, so the whole request (read included)
-    // must sit inside the watchdog: a caller holding stdin open after the
-    // trailing whitespace gets a bounded HANDLER_TIMEOUT, and the process
-    // exits without appending (#34).
-    let dir = TempDir::new();
-    let mut child = aizign()
-        .arg("handle")
-        .arg("--state")
-        .arg(dir.state())
-        .env("AIZIGN_HANDLE_TIMEOUT_MS", "300")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn aizign");
-    let mut stdin = child.stdin.take().unwrap();
-    stdin
-        .write_all(format!("{}  ", submit_frame("evt-held", "req-held")).as_bytes())
-        .unwrap();
-    stdin.flush().unwrap();
+    let exact_without_lf = " ".repeat(MAX_REQUEST_BYTES);
+    for (name, bytes) in [
+        ("zero", String::new()),
+        ("partial", "{\"protocol\":\"aizign\"".to_owned()),
+        ("exact-without-lf", exact_without_lf),
+        ("lf-awaiting-eof", submit_frame("evt-held", "req-held")),
+    ] {
+        let dir = TempDir::new();
+        let mut child = aizign()
+            .arg("handle")
+            .arg("--state")
+            .arg(dir.state())
+            .env("AIZIGN_HANDLE_TIMEOUT_MS", "300")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn aizign");
+        let mut stdin = child.stdin.take().unwrap();
+        stdin.write_all(bytes.as_bytes()).unwrap();
+        stdin.flush().unwrap();
 
-    // Keep stdin open; the watchdog must answer anyway, within bounded time.
-    let started = std::time::Instant::now();
-    let output = child.wait_with_output().expect("wait for aizign");
-    drop(stdin);
-    assert!(
-        started.elapsed() < Duration::from_secs(5),
-        "the process must exit on the watchdog, not wait for EOF"
-    );
-    let ResponseBody::Error(error) = one_frame(&output).body else {
-        panic!("error")
-    };
-    assert_eq!(error.code().as_str(), codes::HANDLER_TIMEOUT);
-    assert!(
-        !dir.state().join(JOURNAL_FILE_NAME).exists(),
-        "nothing is appended while stdin is still open"
-    );
+        let started = std::time::Instant::now();
+        let output = child.wait_with_output().expect("wait for aizign");
+        drop(stdin);
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "{name}: watchdog must not wait forever"
+        );
+        let ResponseBody::Error(error) = one_frame(&output).body else {
+            panic!("{name}: expected timeout")
+        };
+        assert_eq!(error.code().as_str(), codes::HANDLER_TIMEOUT, "{name}");
+        assert!(
+            !dir.state().exists(),
+            "{name}: pre-dispatch timeout has no state effect"
+        );
+    }
 }
 
 #[cfg(all(

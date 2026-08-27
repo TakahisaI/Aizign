@@ -19,6 +19,7 @@ export {
   type UnknownOutcome,
 } from './client.ts';
 export {
+  BOOTSTRAP_ENVELOPE_VERSION,
   type BoundedFrameExtraction,
   DecodeFailure,
   decodeRequest,
@@ -38,6 +39,7 @@ export {
   type Request,
   type Response,
   type ResponseBody,
+  type ResponseVersion,
 } from './envelope.ts';
 export { codes, isShortErrorCode, ProtocolError } from './error.ts';
 export {

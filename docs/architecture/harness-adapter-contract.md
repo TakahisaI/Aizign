@@ -92,9 +92,8 @@ required capabilities. It sends no operation on incompatibility or `unknown`.
 Direct `aizign hello` is provisional operator diagnostics only and is not an
 interchangeable adapter contract.
 
-The target process profile is accepted, while current CLI, DSH, fake-core, and
-benchmark consumers await atomic migration in Issue #76 S2. Their old behavior
-does not authorize another transport. A future transport accepted by an ADR may
+The current CLI, DSH, fake-core, and benchmark consumers implement process
+profile v1. A future transport accepted by an ADR may
 be added only if it preserves the applicable Protocol envelope, closed
 decoding, process/frame bounds, correlation, and outcome semantics. MCP, a
 harness SDK, or a provider API is not the Aizign wire authority.

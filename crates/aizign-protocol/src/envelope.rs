@@ -13,6 +13,8 @@ use crate::workflow_signal::{self, ReconciliationResult, SignalResult};
 pub const PROTOCOL_NAME: &str = "aizign";
 /// The wire protocol version this crate implements.
 pub const PROTOCOL_VERSION: u32 = 1;
+/// Stable envelope version used before an operation version is accepted.
+pub const BOOTSTRAP_ENVELOPE_VERSION: u32 = 1;
 /// Upper bound on any frame, request or response, in bytes.
 pub const MAX_FRAME_BYTES: usize = 64 * 1024;
 /// Alias kept for callers that only deal with requests.
@@ -67,13 +69,52 @@ pub struct DecodeFailure {
     pub request_id: Option<String>,
     /// The request kind, if the frame was JSON with a string `kind`.
     pub kind: Option<String>,
+    /// Version axis selected at the stage where decoding failed.
+    pub response_version: ResponseVersion,
     /// Why decoding failed.
     pub error: ProtocolError,
+}
+
+/// Source-qualified version axis for one response envelope.
+///
+/// The numeric values are both `1` today, but the variants must remain
+/// distinct so an operation error cannot silently fall back to the bootstrap
+/// version when the operation Protocol advances.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResponseVersion {
+    /// Stable envelope used before an operation version has been accepted.
+    Bootstrap(u32),
+    /// The accepted version of a registered or future operation axis.
+    AcceptedOperation(u32),
+}
+
+impl ResponseVersion {
+    /// Current bootstrap response axis.
+    #[must_use]
+    pub const fn bootstrap() -> Self {
+        Self::Bootstrap(BOOTSTRAP_ENVELOPE_VERSION)
+    }
+
+    /// Current operation response axis.
+    #[must_use]
+    pub const fn operation() -> Self {
+        Self::AcceptedOperation(PROTOCOL_VERSION)
+    }
+
+    /// Numeric value written to the wire.
+    #[must_use]
+    pub const fn wire(self) -> u32 {
+        match self {
+            Self::Bootstrap(version) | Self::AcceptedOperation(version) => version,
+        }
+    }
 }
 
 /// A response to be written as one line.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Response {
+    /// Bootstrap or accepted-operation source of the wire version.
+    pub version: ResponseVersion,
     /// The request id being answered; `None` only when it was unrecoverable.
     pub request_id: Option<String>,
     /// The request kind being answered; `None` only when it was unrecoverable.
@@ -169,6 +210,7 @@ fn valid_request_id(value: &str) -> bool {
 struct Recovered {
     request_id: Option<String>,
     kind: Option<String>,
+    response_version: ResponseVersion,
 }
 
 impl Recovered {
@@ -176,18 +218,20 @@ impl Recovered {
         DecodeFailure {
             request_id: self.request_id.clone(),
             kind: self.kind.clone(),
+            response_version: self.response_version,
             error,
         }
     }
 }
 
-/// Lenient first pass: checks size, protocol name, and version, and
-/// recovers correlation data, so that even a frame from a newer protocol
-/// version gets an addressed `PROTOCOL_VERSION_UNSUPPORTED` answer.
+/// Lenient first pass: checks size, protocol name, and the version axis chosen
+/// by the recovered kind. Exact `hello` uses the bootstrap axis; every other
+/// syntactically valid kind uses the operation axis before registry lookup.
 fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
     let unaddressed = |error: ProtocolError| DecodeFailure {
         request_id: None,
         kind: None,
+        response_version: ResponseVersion::bootstrap(),
         error,
     };
     if frame.len() > MAX_REQUEST_BYTES {
@@ -222,6 +266,7 @@ fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
                 .get("kind")
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_owned),
+            response_version: ResponseVersion::bootstrap(),
         };
         return Err(recovered.fail(ProtocolError::new(
             codes::INVALID_ENVELOPE,
@@ -234,7 +279,7 @@ fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
             error.to_string(),
         ))
     })?;
-    let recovered = Recovered {
+    let mut recovered = Recovered {
         request_id: probe
             .request_id
             .as_ref()
@@ -246,6 +291,7 @@ fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
             .as_ref()
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned),
+        response_version: ResponseVersion::bootstrap(),
     };
 
     if probe.protocol.as_ref().and_then(serde_json::Value::as_str) != Some(PROTOCOL_NAME) {
@@ -254,27 +300,48 @@ fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
             format!("protocol must be \"{PROTOCOL_NAME}\""),
         )));
     }
-    match probe.version.as_ref().and_then(serde_json::Value::as_u64) {
+    let version = match probe.version.as_ref().and_then(serde_json::Value::as_u64) {
         // `PROTOCOL_VERSION` is a `u32`, so versions beyond `u32::MAX` are
         // out of the protocol's integer range: `INVALID_ENVELOPE`, exactly
         // like the TypeScript decoder, which parses JSON numbers as `f64`
         // and applies the same bound. Only then can a version mismatch be
         // reported as `PROTOCOL_VERSION_UNSUPPORTED`.
-        Some(version) if version > u64::from(u32::MAX) => Err(recovered.fail(ProtocolError::new(
-            codes::INVALID_ENVELOPE,
-            format!("version must be an integer between 0 and {}", u32::MAX),
-        ))),
-        Some(version) if version == u64::from(PROTOCOL_VERSION) => Ok(recovered),
-        Some(version) => Err(recovered.fail(ProtocolError::new(
+        Some(version) if version > u64::from(u32::MAX) => {
+            return Err(recovered.fail(ProtocolError::new(
+                codes::INVALID_ENVELOPE,
+                format!("version must be an integer between 0 and {}", u32::MAX),
+            )));
+        }
+        Some(version) => version,
+        None => {
+            return Err(recovered.fail(ProtocolError::new(
+                codes::INVALID_ENVELOPE,
+                "version must be an unsigned integer",
+            )));
+        }
+    };
+
+    let Some(kind) = recovered.kind.as_deref() else {
+        // A non-string or missing kind cannot select an operation-version
+        // axis. The strict envelope pass reports the bootstrap-v1 shape
+        // failure instead of inventing an operation compatibility result.
+        return Ok(recovered);
+    };
+    let accepted = if kind == KIND_HELLO {
+        BOOTSTRAP_ENVELOPE_VERSION
+    } else {
+        PROTOCOL_VERSION
+    };
+    if version == u64::from(accepted) {
+        if kind != KIND_HELLO {
+            recovered.response_version = ResponseVersion::AcceptedOperation(accepted);
+        }
+        Ok(recovered)
+    } else {
+        Err(recovered.fail(ProtocolError::new(
             codes::PROTOCOL_VERSION_UNSUPPORTED,
-            format!(
-                "protocol version {version} is not supported; this binary speaks {PROTOCOL_VERSION}"
-            ),
-        ))),
-        None => Err(recovered.fail(ProtocolError::new(
-            codes::INVALID_ENVELOPE,
-            "version must be an unsigned integer",
-        ))),
+            format!("protocol version {version} is not supported; this axis speaks {accepted}"),
+        )))
     }
 }
 
@@ -298,7 +365,14 @@ pub fn decode_request(frame: &[u8]) -> Result<Request, DecodeFailure> {
             ),
         )));
     }
-    debug_assert_eq!(u64::from(envelope.version), u64::from(PROTOCOL_VERSION));
+    debug_assert_eq!(
+        envelope.version,
+        if envelope.kind == KIND_HELLO {
+            BOOTSTRAP_ENVELOPE_VERSION
+        } else {
+            PROTOCOL_VERSION
+        }
+    );
 
     let kind = match envelope.kind.as_str() {
         KIND_HELLO => {
@@ -355,7 +429,11 @@ pub fn encode_request(request: &Request) -> Result<String, ProtocolError> {
     };
     let envelope = RequestEnvelope {
         protocol: PROTOCOL_NAME.to_owned(),
-        version: PROTOCOL_VERSION,
+        version: if matches!(request.kind, RequestKind::Hello) {
+            BOOTSTRAP_ENVELOPE_VERSION
+        } else {
+            PROTOCOL_VERSION
+        },
         request_id: request.request_id.clone(),
         kind: request.kind.name().to_owned(),
         payload,
@@ -406,7 +484,7 @@ pub fn encode_response(response: &Response) -> Result<String, ProtocolError> {
     };
     let envelope = ResponseEnvelope {
         protocol: PROTOCOL_NAME.to_owned(),
-        version: PROTOCOL_VERSION,
+        version: response.version.wire(),
         request_id: response.request_id.clone(),
         kind: response.kind.clone(),
         ok,
@@ -428,6 +506,21 @@ pub fn encode_response(response: &Response) -> Result<String, ProtocolError> {
 
 /// Decodes one response frame. Used by adapters, testkits, and fixtures.
 pub fn decode_response(frame: &[u8]) -> Result<Response, ProtocolError> {
+    decode_response_for(frame, None)
+}
+
+/// Decodes one response while retaining the caller's request-stage version.
+///
+/// The context matters for bounded operation errors whose correlation kind was
+/// intentionally replaced with `null`: their wire version is still the
+/// accepted operation version even though the kind can no longer prove that
+/// from response bytes alone. The numeric value inside the supplied version is
+/// the exact value expected for that request stage. Pre-operation error codes
+/// remain on the current bootstrap version.
+pub fn decode_response_for(
+    frame: &[u8],
+    request_stage: Option<ResponseVersion>,
+) -> Result<Response, ProtocolError> {
     if frame.len() > MAX_FRAME_BYTES {
         return Err(ProtocolError::new(
             codes::INVALID_ENVELOPE,
@@ -453,15 +546,6 @@ pub fn decode_response(frame: &[u8]) -> Result<Response, ProtocolError> {
             format!("protocol must be \"{PROTOCOL_NAME}\""),
         ));
     }
-    if envelope.version != PROTOCOL_VERSION {
-        return Err(ProtocolError::new(
-            codes::PROTOCOL_VERSION_UNSUPPORTED,
-            format!(
-                "protocol version {} is not supported; this binary speaks {PROTOCOL_VERSION}",
-                envelope.version
-            ),
-        ));
-    }
     if envelope
         .request_id
         .as_deref()
@@ -472,6 +556,13 @@ pub fn decode_response(frame: &[u8]) -> Result<Response, ProtocolError> {
             "requestId must be null or match ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
         ));
     }
+    let version = decoded_response_version(
+        envelope.version,
+        envelope.kind.as_deref(),
+        envelope.ok,
+        envelope.error.as_ref().map(|error| error.code.as_str()),
+        request_stage,
+    )?;
     let body = match (envelope.ok, envelope.payload, envelope.error) {
         (true, Some(payload), None) => match envelope.kind.as_deref() {
             Some(KIND_HELLO) => {
@@ -518,8 +609,73 @@ pub fn decode_response(frame: &[u8]) -> Result<Response, ProtocolError> {
         }
     };
     Ok(Response {
+        version,
         request_id: envelope.request_id,
         kind: envelope.kind,
         body,
     })
+}
+
+fn decoded_response_version(
+    wire_version: u32,
+    kind: Option<&str>,
+    ok: bool,
+    error_code: Option<&str>,
+    request_stage: Option<ResponseVersion>,
+) -> Result<ResponseVersion, ProtocolError> {
+    let inferred_request_stage = || match request_stage {
+        Some(stage) => stage,
+        None if kind.is_some_and(|kind| kind != KIND_HELLO) => ResponseVersion::operation(),
+        None => ResponseVersion::bootstrap(),
+    };
+    let expected = if ok {
+        match kind {
+            Some(KIND_HELLO) => {
+                ResponseVersion::Bootstrap(expected_bootstrap_version(request_stage))
+            }
+            Some(_) => {
+                ResponseVersion::AcceptedOperation(expected_operation_version(request_stage))
+            }
+            None => inferred_request_stage(),
+        }
+    } else if error_code.is_some_and(is_unconditionally_bootstrap_error_code) {
+        ResponseVersion::Bootstrap(expected_bootstrap_version(request_stage))
+    } else {
+        inferred_request_stage()
+    };
+    if wire_version != expected.wire() {
+        let axis = match expected {
+            ResponseVersion::Bootstrap(_) => "bootstrap",
+            ResponseVersion::AcceptedOperation(_) => "accepted-operation",
+        };
+        return Err(ProtocolError::new(
+            codes::PROTOCOL_VERSION_UNSUPPORTED,
+            format!(
+                "{axis} response version must be {}; got {wire_version}",
+                expected.wire()
+            ),
+        ));
+    }
+    Ok(expected)
+}
+
+fn expected_bootstrap_version(request_stage: Option<ResponseVersion>) -> u32 {
+    match request_stage {
+        Some(ResponseVersion::Bootstrap(version)) => version,
+        Some(ResponseVersion::AcceptedOperation(_)) | None => BOOTSTRAP_ENVELOPE_VERSION,
+    }
+}
+
+fn expected_operation_version(request_stage: Option<ResponseVersion>) -> u32 {
+    match request_stage {
+        Some(ResponseVersion::AcceptedOperation(version)) => version,
+        Some(ResponseVersion::Bootstrap(_)) | None => PROTOCOL_VERSION,
+    }
+}
+
+fn is_unconditionally_bootstrap_error_code(code: &str) -> bool {
+    matches!(
+        code,
+        codes::REQUEST_TOO_LARGE | codes::PROTOCOL_VERSION_UNSUPPORTED | codes::HANDLER_TIMEOUT
+    )
 }

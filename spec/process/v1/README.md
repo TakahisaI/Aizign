@@ -10,9 +10,10 @@ schemas or error-code meanings, and it does not replace the
 [classification corpus](../../classification/README.md). “Compatibility
 error” below describes a decoded/correlated stage, not a new client outcome.
 
-The current CLI and clients do not yet fully implement this target. Issue #76
-S2 owns the atomic runtime, fixture, test, package-documentation, and benchmark
-migration.
+The Rust CLI, current Protocol codecs, DSH production client,
+adapter-testkit fake executable, and benchmark runner implement this profile.
+Their shared executable evidence is a non-normative projection of the stable
+case inventory below.
 
 ## Version axes
 
@@ -177,8 +178,9 @@ parent result `unknown` and non-retryable.
 
 ## Required fixture inventory
 
-S2 turns these stable case IDs into shared executable fixtures and focused
-Rust/TypeScript/fake-core/benchmark tests. Each case records stage, response
+[`fixtures/cases.json`](fixtures/cases.json) projects these stable case IDs into
+shared executable evidence and focused Rust/TypeScript/fake-core/benchmark
+tests. Each case records stage, response
 version/code/correlation, dispatch and state-effect eligibility, and parent
 treatment.
 
@@ -261,17 +263,14 @@ dispatch/effect” also forbids state-path inspection or artifact creation.
 | `proc-parent-timeout` | Parent lifecycle watchdog | Parent bound expires before required response/process close | No accepted response | Unusable | May already have occurred | Transport `unknown`; no retry |
 | `proc-caller-abort` | Parent caller lifecycle | Caller aborts before completion | No accepted response | Unusable | May already have occurred | Transport `unknown`; no retry |
 
-## Current migration debt
+## Implementation evidence
 
-At the S1 target, current code still diverges:
-
-- CLI accepts a non-empty EOF-terminated body without LF and ASCII whitespace
-  after LF.
-- DSH production preflight uses direct `aizign hello`, correlates only kind,
-  and exposes prefix `args` in its transport config.
-- TypeScript frame collection permits ASCII whitespace after LF and does not
-  close every process/exit state under this profile.
-- adapter-testkit fake core and benchmark paths retain direct hello and older
-  framing/wrapper behavior.
-
-These are explicit S2 debt, not alternate accepted profiles.
+The shared fixture projection contains every stable ID above exactly once.
+Repository checks reject an unlisted or duplicated projection. Each applicable
+Rust, TypeScript, plugin, and benchmark test uses the shared runtime registry;
+the registry records an ID only after its executable assertion succeeds and
+fails completion unless the executed set exactly matches that owner's fixture
+projection. The bootstrap-v1 future-operation hello fixture executes through
+both Protocol codecs.
+Ignored `lib/` directories are rebuilt only as ephemeral declaration/package
+evidence and are never candidate source paths.

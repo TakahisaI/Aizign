@@ -1,0 +1,1 @@
+{"protocol":"aizign","version":1,"requestId":"req-future-operation","kind":"hello","ok":true,"payload":{"protocolVersion":2,"journalSchemaVersion":1,"capabilities":["workflow.signal.submit","workflow.signal.reconcile"],"package":{"name":"aizign","version":"0.1.0"}}}

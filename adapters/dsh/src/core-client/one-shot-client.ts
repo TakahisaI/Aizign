@@ -5,6 +5,7 @@
 
 import { spawn } from 'node:child_process';
 import {
+  BOOTSTRAP_ENVELOPE_VERSION,
   type CallOptions,
   type CoreClient,
   checkCorrelation,
@@ -14,6 +15,7 @@ import {
   type HelloOutcome,
   MAX_FRAME_BYTES,
   OneShotFrameCollector,
+  PROTOCOL_VERSION,
   type ReconcileOutcome,
   type ReconcileUnknown,
   type Response,
@@ -36,7 +38,6 @@ import {
 /** DSH-owned configuration for one direct child process per Protocol operation. */
 export interface OneShotCoreClientConfig {
   readonly command: string;
-  readonly args?: readonly string[];
   readonly env?: Readonly<Record<string, string>>;
   readonly stateDir: string;
   readonly timeoutMs: number;
@@ -67,6 +68,30 @@ function reportedUnknown(code: string, message: string): UnknownOutcome {
     reason: 'reported_unknown',
     reportedCode: code,
     detail: `${code}: ${message}`,
+  };
+}
+
+function responseVersionMismatch(
+  response: Response,
+  expected: Response['version'],
+  allowBootstrapCompatibility = false,
+): UnknownOutcome | undefined {
+  if (response.version.axis === expected.axis && response.version.version === expected.version) {
+    return undefined;
+  }
+  if (
+    allowBootstrapCompatibility &&
+    response.body.type === 'error' &&
+    response.body.error.code === codes.PROTOCOL_VERSION_UNSUPPORTED &&
+    response.version.axis === 'bootstrap' &&
+    response.version.version === BOOTSTRAP_ENVELOPE_VERSION
+  ) {
+    return undefined;
+  }
+  return {
+    kind: 'unknown',
+    reason: 'undecodable_response',
+    detail: `response used ${response.version.axis}@${response.version.version}; expected ${expected.axis}@${expected.version}`,
   };
 }
 
@@ -112,18 +137,24 @@ export class OneShotCoreClient implements CoreClient {
   }
 
   async hello(requestId: string, options: CallOptions = {}): Promise<HelloOutcome> {
-    const exchange = await this.#exchange(['hello'], undefined, options.signal);
+    const frame = encodeRequest({ requestId, kind: 'hello' });
+    const exchange = await this.#exchange(frame, 'bootstrap', options.signal);
     const finish = (outcome: HelloOutcome, reportedErrorCode?: string) =>
       this.#finish('hello', exchange.timing, outcome, reportedErrorCode);
     if (exchange.kind === 'unknown') return finish(exchange.outcome);
-    // `aizign hello` has no request frame, so only the kind can be correlated.
-    if (exchange.response.kind !== 'hello') {
+    const mismatch = checkCorrelation({ requestId, kind: 'hello' }, exchange.response);
+    if (mismatch !== undefined) {
       return finish({
         kind: 'unknown',
         reason: 'correlation_mismatch',
-        detail: `kind: expected hello, got ${String(exchange.response.kind)} (${requestId})`,
+        detail: `${mismatch.field}: expected ${mismatch.expected}, got ${String(mismatch.actual)}`,
       });
     }
+    const wrongVersion = responseVersionMismatch(exchange.response, {
+      axis: 'bootstrap',
+      version: BOOTSTRAP_ENVELOPE_VERSION,
+    });
+    if (wrongVersion !== undefined) return finish(wrongVersion);
     const { body } = exchange.response;
     switch (body.type) {
       case 'hello':
@@ -156,11 +187,7 @@ export class OneShotCoreClient implements CoreClient {
     options: CallOptions = {},
   ): Promise<SubmitOutcome> {
     const frame = encodeRequest({ requestId, kind: 'workflow.signal.submit', payload });
-    const exchange = await this.#exchange(
-      ['handle', '--state', this.#config.stateDir],
-      frame,
-      options.signal,
-    );
+    const exchange = await this.#exchange(frame, 'accepted-operation', options.signal);
     const finish = (outcome: SubmitOutcome, reportedErrorCode?: string) =>
       this.#finish('workflow.signal.submit', exchange.timing, outcome, reportedErrorCode);
     if (exchange.kind === 'unknown') return finish(exchange.outcome);
@@ -180,6 +207,12 @@ export class OneShotCoreClient implements CoreClient {
         ...(reportedCode === undefined ? {} : { reportedCode }),
       });
     }
+    const wrongVersion = responseVersionMismatch(
+      exchange.response,
+      { axis: 'accepted-operation', version: PROTOCOL_VERSION },
+      true,
+    );
+    if (wrongVersion !== undefined) return finish(wrongVersion, reportedCode);
     const { body } = exchange.response;
     switch (body.type) {
       case 'workflow.signal':
@@ -216,11 +249,7 @@ export class OneShotCoreClient implements CoreClient {
     options: CallOptions = {},
   ): Promise<ReconcileOutcome> {
     const frame = encodeRequest({ requestId, kind: 'workflow.signal.reconcile', payload });
-    const exchange = await this.#exchange(
-      ['handle', '--state', this.#config.stateDir],
-      frame,
-      options.signal,
-    );
+    const exchange = await this.#exchange(frame, 'accepted-operation', options.signal);
     const finish = (outcome: ReconcileOutcome) =>
       this.#finish('workflow.signal.reconcile', exchange.timing, outcome);
     if (exchange.kind === 'unknown') return finish(exchange.outcome);
@@ -242,6 +271,13 @@ export class OneShotCoreClient implements CoreClient {
       };
       return finish(outcome);
     }
+
+    const wrongVersion = responseVersionMismatch(
+      exchange.response,
+      { axis: 'accepted-operation', version: PROTOCOL_VERSION },
+      true,
+    );
+    if (wrongVersion !== undefined) return finish(wrongVersion);
 
     const { body } = exchange.response;
     switch (body.type) {
@@ -302,11 +338,11 @@ export class OneShotCoreClient implements CoreClient {
   }
 
   #exchange(
-    subcommand: readonly string[],
-    frame: string | undefined,
+    frame: string,
+    requestAxis: Response['version']['axis'],
     signal: AbortSignal | undefined,
   ): Promise<Exchange> {
-    const { command, args = [], env = {}, timeoutMs } = this.#config;
+    const { command, env = {}, stateDir, timeoutMs } = this.#config;
     return new Promise((resolve) => {
       const started = performance.now();
       let spawnToExitMs: number | undefined;
@@ -337,7 +373,7 @@ export class OneShotCoreClient implements CoreClient {
       };
 
       try {
-        child = spawn(command, [...args, ...subcommand], {
+        child = spawn(command, ['handle', '--state', stateDir], {
           // Only PATH and the configured variables: the core never needs the
           // harness process environment, and credentials must not leak in.
           env: { PATH: process.env.PATH ?? '', ...env },
@@ -382,7 +418,8 @@ export class OneShotCoreClient implements CoreClient {
         );
       }, timeoutMs);
 
-      spawned.on('close', (code) => {
+      spawned.on('close', (code, closeSignal) => {
+        spawnToExitMs ??= performance.now() - started;
         const extraction = stdout.extract();
         if (extraction.kind === 'oversized') {
           settle(unknown('oversized_response', extraction.detail, timing()));
@@ -398,10 +435,34 @@ export class OneShotCoreClient implements CoreClient {
           settle(unknown('undecodable_response', extraction.detail, timing()));
           return;
         }
+        if (closeSignal !== null || code === null) {
+          settle(
+            unknown(
+              'no_response',
+              `process terminated without an exit code (${String(closeSignal)})`,
+              timing(),
+            ),
+          );
+          return;
+        }
+        if (code !== 0) {
+          settle(
+            unknown(
+              'undecodable_response',
+              `process exited ${code} while emitting a response frame`,
+              timing(),
+            ),
+          );
+          return;
+        }
         try {
           settle({
             kind: 'response',
-            response: decodeResponse(extraction.frame),
+            response: decodeResponse(extraction.frame, {
+              requestAxis,
+              bootstrapVersion: BOOTSTRAP_ENVELOPE_VERSION,
+              operationVersion: PROTOCOL_VERSION,
+            }),
             timing: timing(),
           });
         } catch (error) {
@@ -410,7 +471,7 @@ export class OneShotCoreClient implements CoreClient {
       });
 
       spawned.stdin?.on('error', () => undefined);
-      spawned.stdin?.end(frame === undefined ? undefined : `${frame}\n`);
+      spawned.stdin?.end(`${frame}\n`);
     });
   }
 }
