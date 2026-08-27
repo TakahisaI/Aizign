@@ -56,7 +56,7 @@ distribution form.
 ## Package contents
 
 - Rust: `cargo package --list --workspace` を `cargo xtask rust-check` が実行し、列挙が成功することを確認する。列挙結果へrepository safety policyは適用しない。crateのtestはrepositoryの `spec/` を読むので、packageされたcrate単体ではtestできない（libraryのbuildには影響しない）
-- TypeScript: each package's `pack:check` runs `npm pack --dry-run` to enumerate the packable set (`files` contains only `lib` and the README); it does not apply policy checks or content scans to the enumeration. This does not demonstrate standalone installability or distribution qualification.
+- TypeScript: each package's `pack:check` runs `npm pack --dry-run` to enumerate the packable set defined by that package's bounded `files` allowlist. The enumeration is not a policy check or content scan and does not demonstrate standalone installability or distribution qualification.
 
 ## Toolchainの更新
 
