@@ -9,7 +9,7 @@ This tree owns Aizign's machine-readable contracts. Documentation under
 | `protocol/vN/` | Wire contract: JSON Schema draft 2020-12 and examples | `crates/aizign-protocol`, `packages/protocol` |
 | `journal/vN/` | Durable journal-record schemas | `crates/aizign-store-jsonl` |
 | `store/vN/` | Committed-prefix metadata published by the JSONL writer | `crates/aizign-store-jsonl` |
-| `classification/` | Unversioned current-operation classification contract; the corpus and schema land in the Issue #75 implementation slice | Rust, TypeScript, CLI, timing, and benchmark tests |
+| `classification/` | Unversioned current-operation classification corpus and its closed sibling schema | Rust, TypeScript, CLI, timing, and benchmark tests |
 | `conformance/` | Fixtures whose decoder decisions must agree (`.frame` + `.expect.json`) | `cargo xtask conformance` for structure, Rust protocol tests, and TypeScript protocol tests |
 
 - `vN` is a protocol, journal-schema, or store-layout version, independent of

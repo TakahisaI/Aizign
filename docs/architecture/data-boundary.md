@@ -42,7 +42,7 @@ assumptions, threat classification, and known limitations are defined in
 | Trusted bounded opaque handle | A length-limited string issued by a trusted boundary. The core compares/stores it but does not interpret external content. |
 | Model-supplied bounded metadata | The current DSH tool accepts `artifactRef` and `shortErrorCode` from the model, validates only their closed shape/value constraints, and may persist them in an accepted signal. |
 | Structured signal | A closed DTO containing kind and bounded optional metadata such as `findingCount`, `artifactRef`, or `shortErrorCode`. Closed shape does not imply trusted value provenance. |
-| Source-qualified classification | Submit server disposition, client outcome, reconciliation disposition, child runtime observation, parent transport observation, and harness-native observation retain separate authorities even when words overlap. Cross-language classification ownership is defined by [`spec/classification/`](../../spec/classification/README.md); its corpus is planned for a later implementation slice. |
+| Source-qualified classification | Submit server disposition, client outcome, reconciliation disposition, child runtime observation, parent transport observation, and harness-native observation retain separate authorities even when words overlap. Cross-language classification rows are owned by [`spec/classification/`](../../spec/classification/README.md) and all production projections are checked against its 78 rows. |
 | Recognized Protocol error code | A fixed code whose meaning is registered and recognized for the operation; safe for that operation's classification, not a raw provider error body. |
 | Model-supplied signal `shortErrorCode` or unrecognized peer code | A bounded diagnostic-shaped string matching `^[A-Z][A-Z0-9_]{0,63}$`. Shape alone provides no semantic provenance or content-safety guarantee. |
 | Bounded timestamp | Supplied by the shell. The deterministic core does not read a clock. |
@@ -104,9 +104,9 @@ does not reserve a field or design the store work in #81.
 | Parent transport observation | A caller may emit metadata-only timing about spawn, response, correlation, and the client outcome. It does not replace the child observation or harness evidence. |
 | Harness-native observation | Adapter-specific evidence is classified only under that adapter's documented source, attribution, durability, and retention contract. It cannot override the journal. |
 
-The [classification contract](../../spec/classification/README.md) owns the
-target cross-language classification and disclosure rows; its corpus is not
-present in this contract-only slice. These terms do not form a universal
+The [classification corpus](../../spec/classification/README.md) owns the
+cross-language classification and disclosure rows. Production owners retain
+only minimal runtime projections checked exhaustively from it. These terms do not form a universal
 outcome service.
 
 ## Diagnostics and process environment
@@ -114,11 +114,11 @@ outcome service.
 | Boundary | Allowed output |
 |---|---|
 | `aizign` stdout | Exactly one Protocol v1 response frame |
-| `aizign` stderr | Normal content-free operational diagnostics. Opt-in child-runtime timing is provisional operational evidence. Engine use-case stages and JSONL physical stages retain separate owners and are composed by CLI without exposing a path or content. Until the ordered classification implementation lands, the child keeps its independent mapping and may diverge from this contract; afterward, classification/code disclosure must be driven by the exact rows owned by `spec/classification/`. Neither stage creates a stable public compatibility promise. |
+| `aizign` stderr | Normal content-free operational diagnostics. Opt-in child-runtime timing is provisional operational evidence. Engine use-case stages and JSONL physical stages retain separate owners and are composed by CLI without exposing a path or content. Child classification/code disclosure is exhaustively checked against the exact rows owned by `spec/classification/`. Neither stage creates a stable public compatibility promise. |
 | Human-readable Protocol error message | Operational control-plane diagnostic. Store and OS failures can include the configured state path or platform detail. It is not a model-safe field. |
 | DSH model-facing `HarnessError` | Stable code plus a fixed safe message for argument decoding, local Protocol validation, submit rejection, or unknown outcome. Raw argument keys, Protocol messages, and unknown detail are not forwarded; local Protocol errors are not retained as causes. |
 | Adapter log | Adapter-owned metadata under its documented policy; native IDs do not cross into the core |
-| DSH-owned adapter/parent timing sink | Closed metadata-only parent transport observations when explicitly configured through the provisional DSH transport surface. Until the ordered classification implementation lands, the DSH consumer keeps its independent mapping and may diverge from this contract; afterward, classification/code disclosure must be driven by the exact rows owned by `spec/classification/`. Timing remains provisional operational evidence, not Protocol or stable public compatibility. Sink failure is isolated from workflow outcomes; sink retention/access remain caller-owned. |
+| DSH-owned adapter/parent timing sink | Closed metadata-only parent transport observations when explicitly configured through the provisional DSH transport surface. DSH classification/code disclosure is exhaustively checked against the exact rows owned by `spec/classification/`. Timing remains provisional operational evidence, not Protocol or stable public compatibility. Sink failure is isolated from workflow outcomes; sink retention/access remain caller-owned. |
 | DSH child environment | `PATH` and explicitly configured client variables only; the parent harness environment is not inherited wholesale |
 
 Operational identity can itself be sensitive metadata. Log retention and sink

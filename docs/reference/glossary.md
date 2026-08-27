@@ -47,8 +47,8 @@ source-qualified; the same spelling does not imply the same authority.
 | **Live smoke** | 実harness、browser、providerを使うopt-in検査。通常CIでは起動しない |
 | **Composition root** | 依存を束ねる唯一の場所。`aizign-cli` |
 
-Cross-language classification ownership and the planned corpus are defined by
-[`spec/classification/`](../../spec/classification/README.md). The glossary does
+Cross-language classification ownership and the machine-readable corpus are
+defined by [`spec/classification/`](../../spec/classification/README.md). The glossary does
 not define a universal outcome service. Future-effect terms become current
 only after an accepted contract names the consumer and owner, Protocol
 kind/capability, durable record/authority/state shape, failure/reconciliation

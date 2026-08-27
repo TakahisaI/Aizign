@@ -32,8 +32,11 @@ for (const dir of [
   'spec/protocol/v1/schemas',
   'spec/journal/v1/schemas',
   'spec/store/v1/schemas',
+  'spec/classification',
 ]) {
-  for (const file of readdirSync(join(root, dir)).sort()) {
+  for (const file of readdirSync(join(root, dir))
+    .filter((file) => file.endsWith('.schema.json'))
+    .sort()) {
     ajv.addSchema(JSON.parse(readFileSync(join(root, dir, file), 'utf8')));
   }
 }

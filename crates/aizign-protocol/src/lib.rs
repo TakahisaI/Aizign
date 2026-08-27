@@ -25,7 +25,7 @@ pub use envelope::{
     Request, RequestKind, Response, ResponseBody, decode_request, decode_response, encode_request,
     encode_response,
 };
-pub use error::{ProtocolError, codes};
+pub use error::{CURRENT_FIXED_ERROR_CODES, ProtocolError, codes, is_current_fixed_error_code};
 pub use hello::{
     CAPABILITY_WORKFLOW_SIGNAL_RECONCILE, CAPABILITY_WORKFLOW_SIGNAL_SUBMIT, HelloInfo, PackageInfo,
 };

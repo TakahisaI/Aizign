@@ -8,11 +8,10 @@ import {
   type CallOptions,
   type CoreClient,
   checkCorrelation,
+  codes,
   decodeResponse,
   encodeRequest,
   type HelloOutcome,
-  isSubmitRejectionCode,
-  isUnknownOutcomeCode,
   MAX_FRAME_BYTES,
   OneShotFrameCollector,
   type ReconcileOutcome,
@@ -71,6 +70,40 @@ function reportedUnknown(code: string, message: string): UnknownOutcome {
   };
 }
 
+const CURRENT_FIXED_ERROR_CODES = new Set<string>(Object.values(codes));
+const CURRENT_UNKNOWN_OUTCOME_CODES = new Set<string>([
+  codes.INTERNAL,
+  codes.HANDLER_TIMEOUT,
+  codes.JOURNAL_OUTCOME_UNKNOWN,
+]);
+
+type CurrentOperationKind = Exclude<ParentOperationKind, 'preflight'>;
+type CorrelatedResponseCase =
+  | {
+      readonly kind: 'success';
+      readonly disposition: 'ok' | 'accepted' | 'duplicate' | 'conflict' | 'absent';
+    }
+  | { readonly kind: 'error' };
+
+/** Minimal production projection exhaustively checked against the corpus. */
+export function classifyCorrelatedOutcome(
+  operation: CurrentOperationKind,
+  responseCase: CorrelatedResponseCase,
+  reportedCode?: string,
+): TimingOutcome {
+  if (responseCase.kind === 'success') return responseCase.disposition;
+  if (
+    reportedCode === undefined ||
+    !CURRENT_FIXED_ERROR_CODES.has(reportedCode) ||
+    CURRENT_UNKNOWN_OUTCOME_CODES.has(reportedCode)
+  ) {
+    return 'unknown';
+  }
+  if (operation === 'hello') return 'error';
+  if (operation === 'workflow.signal.submit') return 'rejected';
+  return 'unknown';
+}
+
 export class OneShotCoreClient implements CoreClient {
   readonly #config: OneShotCoreClientConfig;
 
@@ -94,12 +127,18 @@ export class OneShotCoreClient implements CoreClient {
     const { body } = exchange.response;
     switch (body.type) {
       case 'hello':
-        return finish({ kind: 'ok', info: body.info });
+        return finish({
+          kind: classifyCorrelatedOutcome('hello', {
+            kind: 'success',
+            disposition: 'ok',
+          }) as 'ok',
+          info: body.info,
+        });
       case 'error':
         return finish(
-          isUnknownOutcomeCode(body.error.code)
-            ? reportedUnknown(body.error.code, body.error.message)
-            : { kind: 'error', code: body.error.code, message: body.error.message },
+          classifyCorrelatedOutcome('hello', { kind: 'error' }, body.error.code) === 'error'
+            ? { kind: 'error', code: body.error.code, message: body.error.message }
+            : reportedUnknown(body.error.code, body.error.message),
           body.error.code,
         );
       default:
@@ -144,10 +183,20 @@ export class OneShotCoreClient implements CoreClient {
     const { body } = exchange.response;
     switch (body.type) {
       case 'workflow.signal':
-        return finish({ kind: body.result.disposition, eventId: body.result.eventId });
+        return finish({
+          kind: classifyCorrelatedOutcome('workflow.signal.submit', {
+            kind: 'success',
+            disposition: body.result.disposition,
+          }) as 'accepted' | 'duplicate',
+          eventId: body.result.eventId,
+        });
       case 'error':
         return finish(
-          isSubmitRejectionCode(body.error.code)
+          classifyCorrelatedOutcome(
+            'workflow.signal.submit',
+            { kind: 'error' },
+            body.error.code,
+          ) === 'rejected'
             ? { kind: 'rejected', code: body.error.code, message: body.error.message }
             : reportedUnknown(body.error.code, body.error.message),
           body.error.code,
@@ -197,14 +246,26 @@ export class OneShotCoreClient implements CoreClient {
     const { body } = exchange.response;
     switch (body.type) {
       case 'workflow.signal.reconciliation':
-        return finish({ kind: body.result.disposition, eventId: body.result.eventId });
-      case 'error':
         return finish({
-          kind: 'unknown',
+          kind: classifyCorrelatedOutcome('workflow.signal.reconcile', {
+            kind: 'success',
+            disposition: body.result.disposition,
+          }) as 'accepted' | 'conflict' | 'absent',
+          eventId: body.result.eventId,
+        });
+      case 'error': {
+        const outcome = classifyCorrelatedOutcome(
+          'workflow.signal.reconcile',
+          { kind: 'error' },
+          body.error.code,
+        );
+        return finish({
+          kind: outcome === 'unknown' ? outcome : 'unknown',
           reason: 'reported_unknown',
           reportedCode: body.error.code,
           detail: `${body.error.code}: ${body.error.message}`,
         });
+      }
       default:
         return finish({
           kind: 'unknown',

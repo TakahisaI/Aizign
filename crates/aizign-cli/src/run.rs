@@ -16,7 +16,7 @@ use aizign_protocol::{
     CAPABILITY_WORKFLOW_SIGNAL_RECONCILE, CAPABILITY_WORKFLOW_SIGNAL_SUBMIT, Disposition,
     HelloInfo, MAX_REQUEST_BYTES, PROTOCOL_VERSION, PackageInfo, ProtocolError,
     ReconciliationDisposition, ReconciliationResult, Request, RequestKind, Response, ResponseBody,
-    SignalResult, codes, decode_request, encode_response,
+    SignalResult, codes, decode_request, encode_response, is_current_fixed_error_code,
 };
 use aizign_store_jsonl::{
     JOURNAL_SCHEMA_VERSION, JsonlJournal, JsonlJournalReader, STORE_PLATFORM_SUPPORTED,
@@ -388,12 +388,19 @@ fn record_semantic_outcome(kind: &str, body: &ResponseBody, timing: &mut Handler
         }
         ResponseBody::Error(error) => {
             let code = error.code().as_str();
-            timing.error_code = Some(code.to_owned());
+            let is_fixed = is_current_fixed_error_code(code);
+            timing.error_code = is_fixed.then(|| code.to_owned());
             timing.outcome = Some(
-                if kind == aizign_protocol::KIND_WORKFLOW_SIGNAL_RECONCILE
-                    || matches!(code, "JOURNAL_OUTCOME_UNKNOWN" | "HANDLER_TIMEOUT")
+                if !is_fixed
+                    || kind == aizign_protocol::KIND_WORKFLOW_SIGNAL_RECONCILE
+                    || matches!(
+                        code,
+                        "INTERNAL" | "HANDLER_TIMEOUT" | "JOURNAL_OUTCOME_UNKNOWN"
+                    )
                 {
                     "unknown"
+                } else if kind == aizign_protocol::KIND_HELLO {
+                    "error"
                 } else if code == "EVENT_CONFLICT" {
                     "conflict"
                 } else {
@@ -499,6 +506,96 @@ fn write_frame(response: &Response) -> u8 {
         Err(error) => {
             eprintln!("aizign: cannot write response frame: {error}");
             exit::IO
+        }
+    }
+}
+
+#[cfg(test)]
+mod classification_tests {
+    use aizign_core::EventId;
+    use aizign_protocol::{
+        Disposition, ProtocolError, ReconciliationDisposition, ReconciliationResult, ResponseBody,
+        SignalResult,
+    };
+    use serde_json::Value;
+
+    use super::{hello_info, record_semantic_outcome};
+    use crate::timing::HandlerTiming;
+
+    fn event_id() -> EventId {
+        EventId::new("evt-classification").expect("event id")
+    }
+
+    fn response_body(row: &Value) -> ResponseBody {
+        let response_case = &row["responseCase"];
+        if response_case["kind"] == "error" {
+            let code = row["reportedCode"]["value"]
+                .as_str()
+                .unwrap_or("FUTURE_OUTCOME_UNKNOWN");
+            return ResponseBody::Error(ProtocolError::new(code, "classification fixture"));
+        }
+
+        match row["operation"].as_str().expect("operation") {
+            "hello" => ResponseBody::Hello(hello_info()),
+            "workflow.signal.submit" => ResponseBody::WorkflowSignal(SignalResult {
+                disposition: match response_case["disposition"].as_str() {
+                    Some("accepted") => Disposition::Accepted,
+                    Some("duplicate") => Disposition::Duplicate,
+                    other => panic!("unexpected submit disposition {other:?}"),
+                },
+                event_id: event_id(),
+            }),
+            "workflow.signal.reconcile" => {
+                ResponseBody::WorkflowSignalReconciliation(ReconciliationResult {
+                    disposition: match response_case["disposition"].as_str() {
+                        Some("accepted") => ReconciliationDisposition::Accepted,
+                        Some("conflict") => ReconciliationDisposition::Conflict,
+                        Some("absent") => ReconciliationDisposition::Absent,
+                        other => panic!("unexpected reconciliation disposition {other:?}"),
+                    },
+                    event_id: event_id(),
+                })
+            }
+            other => panic!("unexpected operation {other}"),
+        }
+    }
+
+    #[test]
+    fn child_observations_follow_every_classification_corpus_row() {
+        let corpus: Value = serde_json::from_str(include_str!(
+            "../../../spec/classification/current-operations.json"
+        ))
+        .expect("classification corpus");
+        let rows = corpus["rows"].as_array().expect("rows");
+        assert_eq!(rows.len(), 78);
+
+        for row in rows {
+            let body = response_body(row);
+            let mut timing = HandlerTiming::default();
+            let operation = row["operation"].as_str().expect("operation");
+            record_semantic_outcome(operation, &body, &mut timing);
+
+            assert_eq!(
+                timing.outcome,
+                Some(
+                    row["childObservation"]["value"]
+                        .as_str()
+                        .expect("child outcome")
+                ),
+                "{} / {:?}",
+                operation,
+                row["reportedCode"]["value"]
+            );
+            let expected_code = row["timingCodeDisclosure"]
+                .as_bool()
+                .expect("timingCodeDisclosure")
+                .then(|| row["reportedCode"]["value"].as_str().map(ToOwned::to_owned))
+                .flatten();
+            assert_eq!(timing.error_code, expected_code);
+            assert_eq!(
+                row["reportedCode"]["kind"] == "none",
+                expected_code.is_none() && row["responseCase"]["kind"] == "success"
+            );
         }
     }
 }

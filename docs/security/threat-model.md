@@ -117,9 +117,9 @@ producer/consumer guard, with no external stability or migration promise.
 Timing observations remain qualified by their source. A child runtime
 observation, a returned client outcome, and a parent transport observation do
 not establish one universal semantic outcome. The
-[classification contract](../../spec/classification/README.md) defines the
-target cross-language authority without turning timing into a compatibility
-surface or claiming that current producers are already corpus-driven.
+[classification corpus](../../spec/classification/README.md) is the sole
+cross-language row authority. Current child and parent projections are checked
+against all 78 rows without turning timing into a compatibility surface.
 
 Current timing producers enforce metadata-only shapes and best-effort
 observer/sink isolation: request and event identity, paths, content, and

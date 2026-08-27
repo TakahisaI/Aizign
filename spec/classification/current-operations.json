@@ -1,0 +1,1796 @@
+{
+  "$schema": "https://aizign.dev/spec/classification/current-operations.schema.json",
+  "rows": [
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "success",
+        "disposition": "ok"
+      },
+      "reportedCode": {
+        "kind": "none"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "ok",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "ok"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "ok"
+      },
+      "timingCodeDisclosure": false,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "success",
+        "disposition": "accepted"
+      },
+      "reportedCode": {
+        "kind": "none"
+      },
+      "serverDisposition": "accepted",
+      "clientOutcome": "accepted",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "accepted"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "accepted"
+      },
+      "timingCodeDisclosure": false,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "success",
+        "disposition": "duplicate"
+      },
+      "reportedCode": {
+        "kind": "none"
+      },
+      "serverDisposition": "duplicate",
+      "clientOutcome": "duplicate",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "duplicate"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "duplicate"
+      },
+      "timingCodeDisclosure": false,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "success",
+        "disposition": "accepted"
+      },
+      "reportedCode": {
+        "kind": "none"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "accepted",
+      "reconciliationDisposition": "accepted",
+      "childObservation": {
+        "field": "outcome",
+        "value": "accepted"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "accepted"
+      },
+      "timingCodeDisclosure": false,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "success",
+        "disposition": "conflict"
+      },
+      "reportedCode": {
+        "kind": "none"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "conflict",
+      "reconciliationDisposition": "conflict",
+      "childObservation": {
+        "field": "outcome",
+        "value": "conflict"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "conflict"
+      },
+      "timingCodeDisclosure": false,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "success",
+        "disposition": "absent"
+      },
+      "reportedCode": {
+        "kind": "none"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "absent",
+      "reconciliationDisposition": "absent",
+      "childObservation": {
+        "field": "outcome",
+        "value": "absent"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "absent"
+      },
+      "timingCodeDisclosure": false,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "PROTOCOL_VERSION_UNSUPPORTED"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "error",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "INVALID_ENVELOPE"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "error",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "UNKNOWN_KIND"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "error",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "INVALID_PAYLOAD"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "error",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "REQUEST_TOO_LARGE"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "error",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "CAPABILITY_UNSUPPORTED"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "error",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "INVALID_EXPECTATION"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "error",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "INVALID_SIGNAL"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "error",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "WORKFLOW_MISMATCH"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "error",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "ASSIGNMENT_MISMATCH"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "error",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "ATTEMPT_MISMATCH"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "error",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "ROLE_MISMATCH"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "error",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "REVISION_MISMATCH"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "error",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "CANDIDATE_DIGEST_MISMATCH"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "error",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "EVENT_CONFLICT"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "error",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "JOURNAL_UNAVAILABLE"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "error",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "JOURNAL_CORRUPT"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "error",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "JOURNAL_SCHEMA_UNSUPPORTED"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "error",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "JOURNAL_LOCKED"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "error",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "JOURNAL_BOUND_EXCEEDED"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "error",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "error"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "INTERNAL"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "HANDLER_TIMEOUT"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "JOURNAL_OUTCOME_UNKNOWN"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "hello",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "wellFormedUnrecognized"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": false,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "PROTOCOL_VERSION_UNSUPPORTED"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "rejected",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "INVALID_ENVELOPE"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "rejected",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "UNKNOWN_KIND"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "rejected",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "INVALID_PAYLOAD"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "rejected",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "REQUEST_TOO_LARGE"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "rejected",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "CAPABILITY_UNSUPPORTED"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "rejected",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "INVALID_EXPECTATION"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "rejected",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "INVALID_SIGNAL"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "rejected",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "WORKFLOW_MISMATCH"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "rejected",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "ASSIGNMENT_MISMATCH"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "rejected",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "ATTEMPT_MISMATCH"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "rejected",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "ROLE_MISMATCH"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "rejected",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "REVISION_MISMATCH"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "rejected",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "CANDIDATE_DIGEST_MISMATCH"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "rejected",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "EVENT_CONFLICT"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "rejected",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "conflict"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "conflict"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "JOURNAL_UNAVAILABLE"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "rejected",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "JOURNAL_CORRUPT"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "rejected",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "JOURNAL_SCHEMA_UNSUPPORTED"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "rejected",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "JOURNAL_LOCKED"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "rejected",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "JOURNAL_BOUND_EXCEEDED"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "rejected",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "rejected"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "INTERNAL"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "HANDLER_TIMEOUT"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "JOURNAL_OUTCOME_UNKNOWN"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.submit",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "wellFormedUnrecognized"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": false,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "PROTOCOL_VERSION_UNSUPPORTED"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "INVALID_ENVELOPE"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "UNKNOWN_KIND"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "INVALID_PAYLOAD"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "REQUEST_TOO_LARGE"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "CAPABILITY_UNSUPPORTED"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "INVALID_EXPECTATION"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "INVALID_SIGNAL"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "WORKFLOW_MISMATCH"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "ASSIGNMENT_MISMATCH"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "ATTEMPT_MISMATCH"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "ROLE_MISMATCH"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "REVISION_MISMATCH"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "CANDIDATE_DIGEST_MISMATCH"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "EVENT_CONFLICT"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "JOURNAL_UNAVAILABLE"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "JOURNAL_CORRUPT"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "JOURNAL_SCHEMA_UNSUPPORTED"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "JOURNAL_LOCKED"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "JOURNAL_BOUND_EXCEEDED"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "INTERNAL"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "HANDLER_TIMEOUT"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "fixed",
+        "value": "JOURNAL_OUTCOME_UNKNOWN"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": true,
+      "automaticRetryAuthorized": false
+    },
+    {
+      "operation": "workflow.signal.reconcile",
+      "responseCase": {
+        "kind": "error"
+      },
+      "reportedCode": {
+        "kind": "wellFormedUnrecognized"
+      },
+      "serverDisposition": null,
+      "clientOutcome": "unknown",
+      "reconciliationDisposition": null,
+      "childObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "parentObservation": {
+        "field": "outcome",
+        "value": "unknown"
+      },
+      "timingCodeDisclosure": false,
+      "automaticRetryAuthorized": false
+    }
+  ]
+}

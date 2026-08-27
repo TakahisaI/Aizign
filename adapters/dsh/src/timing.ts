@@ -1,10 +1,6 @@
 /** DSH-owned metadata-only parent timing. This is not a Protocol contract. */
 
-import {
-  SUBMIT_REJECTION_CODES,
-  UNKNOWN_OUTCOME_CODES,
-  type UnknownOutcome,
-} from '@aizign/protocol';
+import { codes, type UnknownOutcome } from '@aizign/protocol';
 
 export type ParentOperationKind =
   | 'hello'
@@ -61,13 +57,9 @@ export function parentTimingOutcome(
   return outcomeKind;
 }
 
-const TIMING_ERROR_CODES: readonly string[] = Object.freeze([
-  ...SUBMIT_REJECTION_CODES,
-  ...UNKNOWN_OUTCOME_CODES,
-  'INTERNAL',
-]);
+const TIMING_ERROR_CODES = new Set<string>(Object.values(codes));
 
 /** Whether a fixed peer code may enter DSH's metadata-only timing channel. */
 export function isTimingErrorCode(code: string): boolean {
-  return TIMING_ERROR_CODES.includes(code);
+  return TIMING_ERROR_CODES.has(code);
 }

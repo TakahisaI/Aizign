@@ -71,9 +71,10 @@ closed.
 
 Cross-language classification ownership for current operation/code
 combinations belongs to the
-[classification contract](../../spec/classification/README.md). Its planned
-corpus is intentionally absent from this contract-only slice. Wire shapes and
-server codes remain owned by the Protocol specification. Architecture
+[classification contract](../../spec/classification/README.md). Its corpus is
+now the sole row authority and its consumer projections are checked
+exhaustively across Rust and TypeScript. Wire shapes and server codes remain
+owned by the Protocol specification. Architecture
 documents do not create a universal outcome service or a second semantic
 table.
 

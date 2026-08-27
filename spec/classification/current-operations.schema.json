@@ -1,0 +1,3789 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aizign.dev/spec/classification/current-operations.schema.json",
+  "title": "Aizign current-operation classification corpus",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "rows"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://aizign.dev/spec/classification/current-operations.schema.json"
+    },
+    "rows": {
+      "type": "array",
+      "minItems": 78,
+      "maxItems": 78,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/row"
+      },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "disposition"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "success"
+                  },
+                  "disposition": {
+                    "const": "ok"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "none"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "disposition"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "success"
+                  },
+                  "disposition": {
+                    "const": "accepted"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "none"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "disposition"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "success"
+                  },
+                  "disposition": {
+                    "const": "duplicate"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "none"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "disposition"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "success"
+                  },
+                  "disposition": {
+                    "const": "accepted"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "none"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "disposition"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "success"
+                  },
+                  "disposition": {
+                    "const": "conflict"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "none"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "disposition"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "success"
+                  },
+                  "disposition": {
+                    "const": "absent"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "none"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "PROTOCOL_VERSION_UNSUPPORTED"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "INVALID_ENVELOPE"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "UNKNOWN_KIND"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "INVALID_PAYLOAD"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "REQUEST_TOO_LARGE"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "CAPABILITY_UNSUPPORTED"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "INVALID_EXPECTATION"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "INVALID_SIGNAL"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "WORKFLOW_MISMATCH"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "ASSIGNMENT_MISMATCH"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "ATTEMPT_MISMATCH"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "ROLE_MISMATCH"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "REVISION_MISMATCH"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "CANDIDATE_DIGEST_MISMATCH"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "EVENT_CONFLICT"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "JOURNAL_UNAVAILABLE"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "JOURNAL_CORRUPT"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "JOURNAL_SCHEMA_UNSUPPORTED"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "JOURNAL_LOCKED"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "JOURNAL_BOUND_EXCEEDED"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "INTERNAL"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "HANDLER_TIMEOUT"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "JOURNAL_OUTCOME_UNKNOWN"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "wellFormedUnrecognized"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "PROTOCOL_VERSION_UNSUPPORTED"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "INVALID_ENVELOPE"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "UNKNOWN_KIND"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "INVALID_PAYLOAD"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "REQUEST_TOO_LARGE"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "CAPABILITY_UNSUPPORTED"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "INVALID_EXPECTATION"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "INVALID_SIGNAL"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "WORKFLOW_MISMATCH"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "ASSIGNMENT_MISMATCH"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "ATTEMPT_MISMATCH"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "ROLE_MISMATCH"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "REVISION_MISMATCH"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "CANDIDATE_DIGEST_MISMATCH"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "EVENT_CONFLICT"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "JOURNAL_UNAVAILABLE"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "JOURNAL_CORRUPT"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "JOURNAL_SCHEMA_UNSUPPORTED"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "JOURNAL_LOCKED"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "JOURNAL_BOUND_EXCEEDED"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "INTERNAL"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "HANDLER_TIMEOUT"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "JOURNAL_OUTCOME_UNKNOWN"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "wellFormedUnrecognized"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "PROTOCOL_VERSION_UNSUPPORTED"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "INVALID_ENVELOPE"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "UNKNOWN_KIND"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "INVALID_PAYLOAD"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "REQUEST_TOO_LARGE"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "CAPABILITY_UNSUPPORTED"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "INVALID_EXPECTATION"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "INVALID_SIGNAL"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "WORKFLOW_MISMATCH"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "ASSIGNMENT_MISMATCH"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "ATTEMPT_MISMATCH"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "ROLE_MISMATCH"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "REVISION_MISMATCH"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "CANDIDATE_DIGEST_MISMATCH"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "EVENT_CONFLICT"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "JOURNAL_UNAVAILABLE"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "JOURNAL_CORRUPT"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "JOURNAL_SCHEMA_UNSUPPORTED"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "JOURNAL_LOCKED"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "JOURNAL_BOUND_EXCEEDED"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "INTERNAL"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "HANDLER_TIMEOUT"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "value"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "fixed"
+                  },
+                  "value": {
+                    "const": "JOURNAL_OUTCOME_UNKNOWN"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "operation",
+              "responseCase",
+              "reportedCode"
+            ],
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "error"
+                  }
+                }
+              },
+              "reportedCode": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "wellFormedUnrecognized"
+                  }
+                }
+              }
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "value"
+      ],
+      "properties": {
+        "field": {
+          "const": "outcome"
+        },
+        "value": {
+          "enum": [
+            "ok",
+            "accepted",
+            "duplicate",
+            "conflict",
+            "absent",
+            "rejected",
+            "error",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation",
+        "responseCase",
+        "reportedCode",
+        "serverDisposition",
+        "clientOutcome",
+        "reconciliationDisposition",
+        "childObservation",
+        "parentObservation",
+        "timingCodeDisclosure",
+        "automaticRetryAuthorized"
+      ],
+      "properties": {
+        "operation": {
+          "enum": [
+            "hello",
+            "workflow.signal.submit",
+            "workflow.signal.reconcile"
+          ]
+        },
+        "responseCase": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "disposition"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "success"
+                },
+                "disposition": {
+                  "enum": [
+                    "ok",
+                    "accepted",
+                    "duplicate",
+                    "conflict",
+                    "absent"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "error"
+                }
+              }
+            }
+          ]
+        },
+        "reportedCode": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "none"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "value"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "fixed"
+                },
+                "value": {
+                  "enum": [
+                    "PROTOCOL_VERSION_UNSUPPORTED",
+                    "INVALID_ENVELOPE",
+                    "UNKNOWN_KIND",
+                    "INVALID_PAYLOAD",
+                    "REQUEST_TOO_LARGE",
+                    "CAPABILITY_UNSUPPORTED",
+                    "INVALID_EXPECTATION",
+                    "INVALID_SIGNAL",
+                    "WORKFLOW_MISMATCH",
+                    "ASSIGNMENT_MISMATCH",
+                    "ATTEMPT_MISMATCH",
+                    "ROLE_MISMATCH",
+                    "REVISION_MISMATCH",
+                    "CANDIDATE_DIGEST_MISMATCH",
+                    "EVENT_CONFLICT",
+                    "JOURNAL_UNAVAILABLE",
+                    "JOURNAL_CORRUPT",
+                    "JOURNAL_SCHEMA_UNSUPPORTED",
+                    "JOURNAL_LOCKED",
+                    "JOURNAL_BOUND_EXCEEDED",
+                    "INTERNAL",
+                    "HANDLER_TIMEOUT",
+                    "JOURNAL_OUTCOME_UNKNOWN"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "wellFormedUnrecognized"
+                }
+              }
+            }
+          ]
+        },
+        "serverDisposition": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "accepted",
+            "duplicate"
+          ]
+        },
+        "clientOutcome": {
+          "enum": [
+            "ok",
+            "accepted",
+            "duplicate",
+            "conflict",
+            "absent",
+            "rejected",
+            "error",
+            "unknown"
+          ]
+        },
+        "reconciliationDisposition": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "accepted",
+            "conflict",
+            "absent"
+          ]
+        },
+        "childObservation": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/observation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parentObservation": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/observation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timingCodeDisclosure": {
+          "type": "boolean"
+        },
+        "automaticRetryAuthorized": {
+          "const": false
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "hello"
+              },
+              "responseCase": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "success"
+                  }
+                }
+              }
+            },
+            "required": [
+              "operation",
+              "responseCase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "responseCase": {
+                "type": "object",
+                "properties": {
+                  "disposition": {
+                    "const": "ok"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.submit"
+              },
+              "responseCase": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "success"
+                  }
+                }
+              }
+            },
+            "required": [
+              "operation",
+              "responseCase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "responseCase": {
+                "type": "object",
+                "properties": {
+                  "disposition": {
+                    "enum": [
+                      "accepted",
+                      "duplicate"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "workflow.signal.reconcile"
+              },
+              "responseCase": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "success"
+                  }
+                }
+              }
+            },
+            "required": [
+              "operation",
+              "responseCase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "responseCase": {
+                "type": "object",
+                "properties": {
+                  "disposition": {
+                    "enum": [
+                      "accepted",
+                      "conflict",
+                      "absent"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "responseCase": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "success"
+                  }
+                }
+              }
+            },
+            "required": [
+              "responseCase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reportedCode": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "none"
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "reportedCode": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "kind",
+                      "value"
+                    ],
+                    "properties": {
+                      "kind": {
+                        "const": "fixed"
+                      },
+                      "value": {
+                        "enum": [
+                          "PROTOCOL_VERSION_UNSUPPORTED",
+                          "INVALID_ENVELOPE",
+                          "UNKNOWN_KIND",
+                          "INVALID_PAYLOAD",
+                          "REQUEST_TOO_LARGE",
+                          "CAPABILITY_UNSUPPORTED",
+                          "INVALID_EXPECTATION",
+                          "INVALID_SIGNAL",
+                          "WORKFLOW_MISMATCH",
+                          "ASSIGNMENT_MISMATCH",
+                          "ATTEMPT_MISMATCH",
+                          "ROLE_MISMATCH",
+                          "REVISION_MISMATCH",
+                          "CANDIDATE_DIGEST_MISMATCH",
+                          "EVENT_CONFLICT",
+                          "JOURNAL_UNAVAILABLE",
+                          "JOURNAL_CORRUPT",
+                          "JOURNAL_SCHEMA_UNSUPPORTED",
+                          "JOURNAL_LOCKED",
+                          "JOURNAL_BOUND_EXCEEDED",
+                          "INTERNAL",
+                          "HANDLER_TIMEOUT",
+                          "JOURNAL_OUTCOME_UNKNOWN"
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "kind"
+                    ],
+                    "properties": {
+                      "kind": {
+                        "const": "wellFormedUnrecognized"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

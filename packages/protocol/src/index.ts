@@ -12,14 +12,10 @@ export {
   type CorrelationMismatch,
   checkCorrelation,
   type HelloOutcome,
-  isSubmitRejectionCode,
-  isUnknownOutcomeCode,
   type ReconcileOutcome,
   type ReconcileUnknown,
   type SentRequest,
-  SUBMIT_REJECTION_CODES,
   type SubmitOutcome,
-  UNKNOWN_OUTCOME_CODES,
   type UnknownOutcome,
 } from './client.ts';
 export {
