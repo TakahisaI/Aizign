@@ -11,7 +11,7 @@ import {
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools';
 import type { SignalBinding, TrustedSignalValues } from '../../src/config.ts';
-import { canonicalJson, sha256Hex } from '../../src/evidence/digest.ts';
+import { canonicalJson, payloadDigest, sha256Hex } from '../../src/evidence/digest.ts';
 import {
   adapterCodes,
   createSubmitWorkflowSignalTool,
@@ -19,7 +19,6 @@ import {
   newRequestId,
   TOOL_NAME,
   toolParameters,
-  toPayload,
   toToolResult,
 } from '../../src/mapping/tool.ts';
 import { resolveTrustedSignalValues } from '../../src/mapping/trusted-values.ts';
@@ -112,7 +111,7 @@ test('the model-visible input schema exposes no identity fields', () => {
 });
 
 test('arguments are decoded closed and bound to the configured identity', () => {
-  const payload = toPayload(
+  const { payload } = resolveTrustedSignalValues(
     binding,
     trustedSignalValues,
     decodeArgs({ kind: 'review_findings', findingCount: 2 }, 'review'),
@@ -168,7 +167,7 @@ test('arguments are decoded closed and bound to the configured identity', () => 
 });
 
 test('Protocol validation stays in the client encoder and maps safely at the tool boundary', async () => {
-  const payload = toPayload(binding, trustedSignalValues, {
+  const { payload } = resolveTrustedSignalValues(binding, trustedSignalValues, {
     kind: 'review_passed',
     findingCount: 3,
   });
@@ -369,6 +368,29 @@ test('trusted-value mapping covers every signal kind and pins the provenance key
     reviewPassed.trustedValueMappingKey,
     reviewPassedWithOtherConfiguredValue.trustedValueMappingKey,
   );
+
+  const bindingChanged = resolveTrustedSignalValues(
+    { ...reviewBinding, eventId: 'evt-golden-other' },
+    trusted,
+    { kind: 'review_passed' },
+  );
+  assert.notEqual(reviewPassed.trustedValueMappingKey, bindingChanged.trustedValueMappingKey);
+  const blockedCodeChanged = resolveTrustedSignalValues(
+    reviewBinding,
+    { ...trusted, blockedShortErrorCode: 'BLOCKED_OTHER' },
+    { kind: 'review_passed' },
+  );
+  assert.notEqual(reviewPassed.trustedValueMappingKey, blockedCodeChanged.trustedValueMappingKey);
+
+  const kindChanged = resolveTrustedSignalValues(reviewBinding, trusted, {
+    kind: 'review_findings',
+  });
+  assert.equal(reviewPassed.trustedValueMappingKey, kindChanged.trustedValueMappingKey);
+  const countChanged = resolveTrustedSignalValues(reviewBinding, trusted, {
+    kind: 'review_passed',
+    findingCount: 17,
+  });
+  assert.equal(reviewPassed.trustedValueMappingKey, countChanged.trustedValueMappingKey);
   assert.equal(
     resolveTrustedSignalValues(
       reviewBinding,
@@ -377,4 +399,18 @@ test('trusted-value mapping covers every signal kind and pins the provenance key
     ).payload.signal.artifactRef,
     undefined,
   );
+});
+
+test('submitted payload and presentation metadata use the same resolved signal digest', async () => {
+  const client = stubClient({ kind: 'accepted', eventId: binding.eventId });
+  const tool = createSubmitWorkflowSignalTool(client, binding, trustedSignalValues);
+  const args = { kind: 'review_findings' as const, findingCount: 4 };
+  const value = await tool.execute(args, exec);
+  const meta = tool.output.presentationMeta?.(args, value as never) as {
+    payloadDigest: string;
+  };
+  assert.equal(client.calls.length, 1);
+  const [submitted] = client.calls;
+  assert.ok(submitted);
+  assert.equal(meta.payloadDigest, payloadDigest(submitted.signal));
 });

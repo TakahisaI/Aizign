@@ -1,7 +1,15 @@
 import { createRequire } from "node:module";
-import { readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
+import { inspect } from "node:util";
 
 const root = resolve(process.env.GITHUB_WORKSPACE ?? process.cwd());
 const profileDir = process.env.DSH_PROFILE_DIR;
@@ -208,17 +216,82 @@ console.log("source-workspace: temporary DSH registration and workspace links ve
 // stack. Rendered text is insufficient evidence: inspect the actual cause
 // objects so wrapper order, entry identity, inner code/message, and the absent
 // inner cause are all fixed at this exact host boundary (ADR-0026).
-const invalidConfigPath = resolve(profileDir, "aizign-invalid-config.cordis.yml");
 const fakeToolsPath = resolve(profileDir, "aizign-ci-tools.mjs");
-const rejectedCanary = "lowercase-private-canary";
+const registrationMarker = resolve(profileDir, "aizign-invalid-registration.marker");
+const invocationMarker = resolve(profileDir, "aizign-invalid-invocation.marker");
+const fakeBinaryPath = resolve(profileDir, "aizign-invalid-binary.mjs");
 writeFileSync(
   fakeToolsPath,
-  `export function apply(ctx) {\n  ctx.provide("tools", { register() { return () => undefined; } });\n}\n`,
+  `import { appendFileSync } from "node:fs";\nexport function apply(ctx) {\n  ctx.provide("tools", { register() { appendFileSync(${JSON.stringify(registrationMarker)}, "registered\\n"); return () => undefined; } });\n}\n`,
 );
 writeFileSync(
-  invalidConfigPath,
-  `- id: aizign-ci-tools\n  name: ./aizign-ci-tools.mjs\n- id: aizign-workflow-signal\n  name: "@aizign/adapter-dsh"\n  config:\n    binary: "/unused/aizign"\n    stateDir: "/unused/state"\n    timeoutMs: 15000\n    eventId: "evt-loader-boundary"\n    workflowId: "wf-loader-boundary"\n    assignmentId: "as-loader-boundary"\n    attemptId: "attempt-loader-boundary"\n    role: implementation\n    artifactRevision: "rev-loader-boundary"\n    candidateDigest:\n      algorithm: sha256\n      hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"\n    trustedSignalValues:\n      artifactRef: "artifact:loader-boundary"\n      blockedShortErrorCode: "${rejectedCanary}"\n`,
+  fakeBinaryPath,
+  `#!/usr/bin/env node\nimport { appendFileSync } from "node:fs";\nappendFileSync(${JSON.stringify(invocationMarker)}, "invoked\\n");\n`,
 );
+chmodSync(fakeBinaryPath, 0o755);
+
+const invalidCases = [
+  {
+    id: "malformed",
+    canaries: ["credential-synthetic-user-password-private-canary-lowercase"],
+    trustedLines: [
+      '      artifactRef: "artifact:loader-boundary"',
+      '      blockedShortErrorCode: "credential-synthetic-user-password-private-canary-lowercase"',
+    ],
+  },
+  {
+    id: "missing",
+    canaries: ["artifact:missing-required-member-canary"],
+    trustedLines: ['      artifactRef: "artifact:missing-required-member-canary"'],
+  },
+  {
+    id: "unknown",
+    canaries: ["ZW5jb2RlZC1wcml2YXRlLWNhbmFyeQ=="],
+    trustedLines: [
+      '      artifactRef: "artifact:loader-boundary"',
+      '      blockedShortErrorCode: "BLOCKED_BY_CONTROL_PLANE"',
+      '      unknownMember: "ZW5jb2RlZC1wcml2YXRlLWNhbmFyeQ=="',
+    ],
+  },
+  {
+    id: "role-incompatible",
+    canaries: ["ROLE_INCOMPATIBLE_PRIVATE_CANARY"],
+    trustedLines: ['      blockedShortErrorCode: "ROLE_INCOMPATIBLE_PRIVATE_CANARY"'],
+  },
+];
+
+function snapshotOwnData(value, seen = new WeakSet()) {
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value)) return "[Circular]";
+  seen.add(value);
+  const snapshot = {};
+  for (const key of Reflect.ownKeys(value)) {
+    const descriptor = Reflect.getOwnPropertyDescriptor(value, key);
+    const label = typeof key === "symbol" ? key.toString() : key;
+    snapshot[label] = descriptor && "value" in descriptor
+      ? snapshotOwnData(descriptor.value, seen)
+      : "[Accessor]";
+  }
+  return snapshot;
+}
+
+function assertErrorGraph(error, canaries) {
+  const chain = [];
+  for (let current = error; current !== undefined; current = current.cause) {
+    assert(current instanceof Error, "error graph contains a non-Error cause");
+    chain.push(current);
+  }
+  assert(chain.length === 4, `unexpected error chain length: ${chain.length}`);
+  const rendered = [
+    ...chain.flatMap((entry) => [entry.message, entry.stack ?? ""]),
+    inspect(error, { depth: Infinity, showHidden: true, getters: false, customInspect: false }),
+    JSON.stringify(snapshotOwnData(error)),
+  ].join("\n");
+  for (const canary of canaries) {
+    assert(!rendered.includes(canary), `rejected config canary leaked: ${canary}`);
+  }
+  return chain;
+}
 
 try {
   const webAppManifest = profileRequire.resolve("@deepseek-ai/dsh-web-app/package.json");
@@ -232,57 +305,70 @@ try {
   const { boot } = await import(
     pathToFileURL(appBootRequire.resolve("@deepseek-ai/dsh-app-boot")).href
   );
-  let outer;
-  try {
-    const context = await boot("dsh", invalidConfigPath, []);
-    await context.fiber.dispose();
-    fail("invalid trusted configuration unexpectedly booted");
-  } catch (error) {
-    outer = error;
-  }
-
-  const include = outer?.cause;
-  const adapter = include?.cause;
-  const inner = adapter?.cause;
-  for (const [label, error] of [
-    ["app boot", outer],
-    ["include entry", include],
-    ["adapter entry", adapter],
-  ]) {
-    assert(error instanceof Error && error.constructor === Error, `${label} is not a plain Error`);
-  }
-  assert(
-    outer.message.startsWith("dsh: plugin tree failed to load:"),
-    `unexpected app boot wrapper: ${outer.message}`,
-  );
-  assert(
-    include.message.startsWith("failed to apply loader entry include (cordis:include):"),
-    `unexpected include wrapper: ${include.message}`,
-  );
-  assert(
-    adapter.message.startsWith(
-      "failed to apply loader entry aizign-workflow-signal (@aizign/adapter-dsh):",
-    ),
-    `unexpected adapter wrapper: ${adapter.message}`,
-  );
-
   const adapterRequire = createRequire(pathToFileURL(profileAdapterManifest));
   const { HarnessError } = await import(
     pathToFileURL(adapterRequire.resolve("@deepseek-ai/dsh-llm")).href
   );
-  assert(inner instanceof HarnessError, "inner failure is not the adapter HarnessError");
-  assert(inner.code === "INVALID_EXPECTATION", `unexpected inner code: ${inner.code}`);
-  assert(
-    inner.message === "Aizign rejected invalid trusted signal configuration",
-    `unexpected inner message: ${inner.message}`,
-  );
-  assert(inner.cause === undefined && !Object.hasOwn(inner, "cause"), "inner error has a cause");
-  for (const error of [outer, include, adapter, inner]) {
-    assert(!error.message.includes(rejectedCanary), "rejected config value leaked into error chain");
+
+  for (const invalidCase of invalidCases) {
+    const invalidConfigPath = resolve(
+      profileDir,
+      `aizign-invalid-${invalidCase.id}.cordis.yml`,
+    );
+    const stateDir = resolve(profileDir, `aizign-invalid-${invalidCase.id}-state`);
+    writeFileSync(
+      invalidConfigPath,
+      `- id: aizign-ci-tools\n  name: ./aizign-ci-tools.mjs\n- id: aizign-workflow-signal\n  name: "@aizign/adapter-dsh"\n  config:\n    binary: ${JSON.stringify(fakeBinaryPath)}\n    stateDir: ${JSON.stringify(stateDir)}\n    timeoutMs: 15000\n    eventId: "evt-loader-boundary"\n    workflowId: "wf-loader-boundary"\n    assignmentId: "as-loader-boundary"\n    attemptId: "attempt-loader-boundary"\n    role: implementation\n    artifactRevision: "rev-loader-boundary"\n    candidateDigest:\n      algorithm: sha256\n      hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"\n    trustedSignalValues:\n${invalidCase.trustedLines.join("\n")}\n`,
+    );
+
+    let outer;
+    try {
+      const context = await boot("dsh", invalidConfigPath, []);
+      await context.fiber.dispose();
+      fail(`invalid trusted configuration unexpectedly booted: ${invalidCase.id}`);
+    } catch (error) {
+      outer = error;
+    }
+
+    const [appBoot, include, adapter, inner] = assertErrorGraph(outer, invalidCase.canaries);
+    for (const [label, error] of [
+      ["app boot", appBoot],
+      ["include entry", include],
+      ["adapter entry", adapter],
+    ]) {
+      assert(error.constructor === Error, `${label} is not a plain Error`);
+    }
+    assert(
+      appBoot.message.startsWith("dsh: plugin tree failed to load:"),
+      `unexpected app boot wrapper: ${appBoot.message}`,
+    );
+    assert(
+      include.message.startsWith("failed to apply loader entry include (cordis:include):"),
+      `unexpected include wrapper: ${include.message}`,
+    );
+    assert(
+      adapter.message.startsWith(
+        "failed to apply loader entry aizign-workflow-signal (@aizign/adapter-dsh):",
+      ),
+      `unexpected adapter wrapper: ${adapter.message}`,
+    );
+    assert(inner instanceof HarnessError, "inner failure is not the adapter HarnessError");
+    assert(inner.code === "INVALID_EXPECTATION", `unexpected inner code: ${inner.code}`);
+    assert(
+      inner.message === "Aizign rejected invalid trusted signal configuration",
+      `unexpected inner message: ${inner.message}`,
+    );
+    assert(inner.cause === undefined && !Object.hasOwn(inner, "cause"), "inner error has a cause");
+    assert(!existsSync(registrationMarker), "invalid config registered a tool");
+    assert(!existsSync(invocationMarker), "invalid config spawned the core process");
+    assert(!existsSync(stateDir), "invalid config created a state artifact");
+    rmSync(invalidConfigPath, { force: true });
   }
 } finally {
-  rmSync(invalidConfigPath, { force: true });
   rmSync(fakeToolsPath, { force: true });
+  rmSync(fakeBinaryPath, { force: true });
+  rmSync(registrationMarker, { force: true });
+  rmSync(invocationMarker, { force: true });
 }
 
 console.log("source-workspace: pinned DSH startup error wrapper chain verified");

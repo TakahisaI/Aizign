@@ -10,6 +10,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { assertMetadataOnly, readFakeRequests } from '@aizign/adapter-testkit';
+import { HarnessError } from '@deepseek-ai/dsh-llm';
+import type { ToolRunContext } from '@deepseek-ai/dsh-tools';
 import type { Config } from '../../src/config.ts';
 import { readSignalEvidence } from '../../src/evidence/cold-read.ts';
 import { apply } from '../../src/index.ts';
@@ -119,15 +121,56 @@ test('fake DSH maps a local Protocol source failure without invoking the core', 
     const dsh = new FakeDsh();
     await apply(dsh.context, config(fakeBinary(join(root, 'bin'), { invocationLog }), stateDir));
     const before = readFileSync(invocationLog, 'utf8').trim().split('\n').length;
-    for (const arguments_ of [
-      { kind: 'blocked', shortErrorCode: 'MODEL_SELECTED_VALUE' },
-      { kind: 'repair_submitted', artifactRef: 'model:selected' },
-    ]) {
+    const cases = [
+      {
+        arguments: {
+          kind: 'blocked',
+          shortErrorCode: 'credential-synthetic-user-password-private-canary',
+        },
+        canary: 'credential-synthetic-user-password-private-canary',
+      },
+      {
+        arguments: {
+          kind: 'repair_submitted',
+          artifactRef: 'ZW5jb2RlZC1wcml2YXRlLWNvbnRlbnQ=',
+        },
+        canary: 'ZW5jb2RlZC1wcml2YXRlLWNvbnRlbnQ=',
+      },
+    ] as const;
+    for (const { arguments: arguments_, canary } of cases) {
+      const exec = {
+        callId: 'private-call-canary',
+        signal: new AbortController().signal,
+      } as unknown as ToolRunContext;
+      await assert.rejects(dsh.tool(TOOL_NAME).execute(arguments_, exec), (error: unknown) => {
+        const snapshot = Object.fromEntries(
+          error instanceof Error
+            ? Reflect.ownKeys(error).map((key) => [
+                typeof key === 'symbol' ? key.toString() : key,
+                Reflect.getOwnPropertyDescriptor(error, key)?.value,
+              ])
+            : [],
+        );
+        return (
+          error instanceof HarnessError &&
+          error.code === 'INVALID_SIGNAL' &&
+          error.message === 'Aizign rejected invalid workflow signal input' &&
+          !('cause' in error) &&
+          !String(error.stack).includes(canary) &&
+          !JSON.stringify(snapshot).includes(canary)
+        );
+      });
       const outcome = await dsh.dispatch(TOOL_NAME, arguments_);
       assert.equal(outcome.error?.code, 'INVALID_SIGNAL');
+      const resultEvent = dsh.events.at(-1);
+      assert.equal(resultEvent?.type, 'tool/result');
+      assert.ok(!JSON.stringify(resultEvent).includes(canary));
     }
     const after = readFileSync(invocationLog, 'utf8').trim().split('\n').length;
     assert.equal(after, before, 'local Protocol failure must not spawn a submit process');
+    for (const { canary } of cases) {
+      assert.ok(!readFileSync(invocationLog, 'utf8').includes(canary));
+    }
     assert.equal(existsSync(join(stateDir, 'fake-requests.jsonl')), false);
   } finally {
     rmSync(root, { recursive: true, force: true });

@@ -14,7 +14,6 @@ import {
   type Role,
   type SignalKind,
   type SubmitOutcome,
-  type WorkflowSignalSubmitPayload,
 } from '@aizign/protocol';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import type { JsonSchemaNode, ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools';
@@ -106,19 +105,6 @@ export function decodeArgs(args: unknown, role: Role): SignalArgs {
 }
 
 /**
- * Binds the agent's arguments to the configured identity. Harness-local input
- * validation stays here; Protocol source validation belongs exclusively to
- * the client's `encodeRequest` boundary.
- */
-export function toPayload(
-  binding: SignalBinding,
-  trustedSignalValues: TrustedSignalValues,
-  args: SignalArgs,
-): WorkflowSignalSubmitPayload {
-  return resolveTrustedSignalValues(binding, trustedSignalValues, args).payload;
-}
-
-/**
  * A fresh, adapter-owned request id. Deliberately unrelated to the harness
  * call id: nothing harness-specific crosses the process boundary, not even
  * in the envelope (data boundary, hard invariant 8).
@@ -178,7 +164,11 @@ export function presentationMetaFor(
   let digest = '';
   try {
     digest = payloadDigest(
-      toPayload(binding, trustedSignalValues, decodeArgs(args, binding.expected.role)).signal,
+      resolveTrustedSignalValues(
+        binding,
+        trustedSignalValues,
+        decodeArgs(args, binding.expected.role),
+      ).payload.signal,
     );
   } catch {
     // Unreachable for a successful result; keep the callback total.
@@ -212,7 +202,11 @@ export function createSubmitWorkflowSignalTool(
       }),
     },
     async execute(args: unknown, exec: ToolRunContext) {
-      const payload = toPayload(binding, trustedSignalValues, decodeArgs(args, role));
+      const { payload } = resolveTrustedSignalValues(
+        binding,
+        trustedSignalValues,
+        decodeArgs(args, role),
+      );
       let outcome: SubmitOutcome;
       try {
         outcome = await client.submitWorkflowSignal(newRequestId(), payload, {
