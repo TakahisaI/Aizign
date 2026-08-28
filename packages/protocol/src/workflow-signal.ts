@@ -103,10 +103,20 @@ function requireString(object: Record<string, unknown>, key: string, path: strin
 
 function requireRole(object: Record<string, unknown>, path: string): Role {
   const value = ownDataValue(object, 'role', invalidPayload, path);
-  if (typeof value !== 'string' || !(ROLES as readonly string[]).includes(value)) {
-    throw invalidPayload(`${path}.role must be one of ${ROLES.join(', ')}`);
+  if (value !== 'implementation' && value !== 'review') {
+    throw invalidPayload(`${path}.role must be one of implementation, review`);
   }
-  return value as Role;
+  return value;
+}
+
+function isSignalKind(value: unknown): value is SignalKind {
+  return (
+    value === 'implementation_ready' ||
+    value === 'review_findings' ||
+    value === 'review_passed' ||
+    value === 'repair_submitted' ||
+    value === 'blocked'
+  );
 }
 
 function optionalField(object: Record<string, unknown>, key: string, path: string): unknown {
@@ -168,8 +178,10 @@ function decodeWorkflowSignalShape(value: unknown): WorkflowSignalShape {
     invalidPayload,
   );
   const kind = ownDataValue(value, 'kind', invalidPayload, 'signal');
-  if (typeof kind !== 'string' || !(SIGNAL_KINDS as readonly string[]).includes(kind)) {
-    throw invalidPayload(`signal.kind must be one of ${SIGNAL_KINDS.join(', ')}`);
+  if (!isSignalKind(kind)) {
+    throw invalidPayload(
+      'signal.kind must be one of implementation_ready, review_findings, review_passed, repair_submitted, blocked',
+    );
   }
   const findingCount = optionalField(value, 'findingCount', 'signal');
   if (
@@ -207,17 +219,15 @@ function decodeWorkflowSignalShape(value: unknown): WorkflowSignalShape {
 
 function validateWorkflowSignal(signal: WorkflowSignalShape): WorkflowSignal {
   const invalidSignal = (message: string) => new ProtocolError(codes.INVALID_SIGNAL, message);
-  for (const field of [
-    'eventId',
-    'workflowId',
-    'assignmentId',
-    'attemptId',
-    'artifactRevision',
-  ] as const) {
-    if (!isIdentifier(signal[field])) {
-      throw invalidSignal(`signal.${field}: not a stable identifier`);
-    }
-  }
+  if (!isIdentifier(signal.eventId)) throw invalidSignal('signal.eventId: not a stable identifier');
+  if (!isIdentifier(signal.workflowId))
+    throw invalidSignal('signal.workflowId: not a stable identifier');
+  if (!isIdentifier(signal.assignmentId))
+    throw invalidSignal('signal.assignmentId: not a stable identifier');
+  if (!isIdentifier(signal.attemptId))
+    throw invalidSignal('signal.attemptId: not a stable identifier');
+  if (!isIdentifier(signal.artifactRevision))
+    throw invalidSignal('signal.artifactRevision: not a stable identifier');
   if (!validDigest(signal.candidateDigest)) {
     throw invalidSignal('signal.candidateDigest: not a supported content digest');
   }
@@ -239,11 +249,10 @@ function validateWorkflowSignal(signal: WorkflowSignalShape): WorkflowSignal {
     candidateDigest: signal.candidateDigest,
     kind: signal.kind,
   };
-  for (const [key, value] of [
-    ['findingCount', signal.findingCount],
-    ['artifactRef', signal.artifactRef],
-    ['shortErrorCode', signal.shortErrorCode],
-  ] as const) {
+  const defineOptional = (
+    key: 'findingCount' | 'artifactRef' | 'shortErrorCode',
+    value: unknown,
+  ) => {
     if (value !== undefined) {
       Object.defineProperty(result, key, {
         value,
@@ -252,7 +261,10 @@ function validateWorkflowSignal(signal: WorkflowSignalShape): WorkflowSignal {
         writable: true,
       });
     }
-  }
+  };
+  defineOptional('findingCount', signal.findingCount);
+  defineOptional('artifactRef', signal.artifactRef);
+  defineOptional('shortErrorCode', signal.shortErrorCode);
   return result;
 }
 
@@ -283,11 +295,14 @@ export function buildWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubmi
   // Values: expectation first, then the signal, in the core's order.
   const invalidExpectation = (field: string, reason: string) =>
     new ProtocolError(codes.INVALID_EXPECTATION, `expected.${field}: ${reason}`);
-  for (const field of ['workflowId', 'assignmentId', 'attemptId', 'artifactRevision'] as const) {
-    if (!isIdentifier(expectedShape[field])) {
-      throw invalidExpectation(field, 'not a stable identifier');
-    }
-  }
+  if (!isIdentifier(expectedShape.workflowId))
+    throw invalidExpectation('workflowId', 'not a stable identifier');
+  if (!isIdentifier(expectedShape.assignmentId))
+    throw invalidExpectation('assignmentId', 'not a stable identifier');
+  if (!isIdentifier(expectedShape.attemptId))
+    throw invalidExpectation('attemptId', 'not a stable identifier');
+  if (!isIdentifier(expectedShape.artifactRevision))
+    throw invalidExpectation('artifactRevision', 'not a stable identifier');
   if (!validDigest(expectedShape.candidateDigest)) {
     throw invalidExpectation('candidateDigest', 'not a supported content digest');
   }

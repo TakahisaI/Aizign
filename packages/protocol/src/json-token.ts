@@ -115,7 +115,16 @@ function numberEnd(text: string, start: number): number {
   let index = start;
   while (index < text.length) {
     const char = text[index];
-    if (char === undefined || isJsonWhitespace(char) || ',]}:'.includes(char)) break;
+    if (
+      char === undefined ||
+      isJsonWhitespace(char) ||
+      char === ',' ||
+      char === ']' ||
+      char === '}' ||
+      char === ':'
+    ) {
+      break;
+    }
     index += 1;
   }
   return index;
@@ -295,7 +304,9 @@ export function scanJsonTokens(text: string): JsonTokenScan {
 
   let probeText = '';
   let copied = 0;
-  for (const replacement of replacements) {
+  for (let replacementIndex = 0; replacementIndex < replacements.length; replacementIndex += 1) {
+    const replacement = replacements[replacementIndex];
+    if (replacement === undefined) break;
     probeText += `${text.slice(copied, replacement.start)}${replacement.replacement}`;
     copied = replacement.end;
   }

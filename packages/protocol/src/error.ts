@@ -3,6 +3,8 @@
  * rejections reuse the codes defined by `aizign-core`.
  */
 
+import { isProxyValue } from './shape.ts';
+
 /** `^[A-Z][A-Z0-9_]{0,63}$` */
 export const SHORT_ERROR_CODE_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/;
 
@@ -74,6 +76,7 @@ export function isAuthenticProtocolError(value: unknown): value is ProtocolError
   if (
     typeof value !== 'object' ||
     value === null ||
+    isProxyValue(value) ||
     Object.getPrototypeOf(value) !== ProtocolError.prototype
   ) {
     return false;

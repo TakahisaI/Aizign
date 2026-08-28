@@ -342,7 +342,7 @@ fn check_typescript_sources(
                     .is_some_and(|name| name.ends_with(".test.ts"));
             if protocol_source {
                 for token in PROTOCOL_FORBIDDEN {
-                    if line.contains(token) {
+                    if line.contains(token) && !allowed_protocol_proxy_guard(path, line, token) {
                         findings.push(format!(
                             "{location}: Protocol production source contains DSH/process token `{token}`"
                         ));
@@ -360,6 +360,12 @@ fn check_typescript_sources(
         }
     }
     Ok(())
+}
+
+fn allowed_protocol_proxy_guard(path: &Path, line: &str, token: &str) -> bool {
+    token == "node:"
+        && path == Path::new("packages/protocol/src/shape.ts")
+        && line.trim() == "import { types as nodeTypes } from 'node:util';"
 }
 
 #[cfg(test)]
@@ -442,5 +448,26 @@ mod tests {
             }
         });
         assert_eq!(dependency_findings("@aizign/protocol", &manifest).len(), 2);
+    }
+
+    #[test]
+    fn protocol_proxy_guard_allows_only_the_exact_pinned_builtin_import() {
+        let shape = Path::new("packages/protocol/src/shape.ts");
+        let error = Path::new("packages/protocol/src/error.ts");
+        let exact = "import { types as nodeTypes } from 'node:util';";
+
+        assert!(allowed_protocol_proxy_guard(shape, exact, "node:"));
+        assert!(!allowed_protocol_proxy_guard(error, exact, "node:"));
+        assert!(!allowed_protocol_proxy_guard(
+            shape,
+            "import { readFileSync } from 'node:fs';",
+            "node:"
+        ));
+        assert!(!allowed_protocol_proxy_guard(
+            shape,
+            "import { types as nodeTypes } from 'node:util'; import 'node:fs';",
+            "node:"
+        ));
+        assert!(!allowed_protocol_proxy_guard(shape, exact, "process."));
     }
 }

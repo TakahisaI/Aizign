@@ -374,6 +374,93 @@ test('response version selection uses only boolean ok=false for bootstrap errors
   }
 });
 
+test('successful response kind selects its axis before request-context correlation', () => {
+  const hello = {
+    protocol: 'aizign',
+    version: 1,
+    requestId: 'req-axis-hello',
+    kind: 'hello',
+    ok: true,
+    payload: {
+      protocolVersion: 1,
+      journalSchemaVersion: 1,
+      capabilities: [],
+      package: { name: 'aizign', version: '0.1.0' },
+    },
+  };
+  const submit = {
+    protocol: 'aizign',
+    version: 1,
+    requestId: 'req-axis-submit',
+    kind: 'workflow.signal.submit',
+    ok: true,
+    payload: { disposition: 'accepted', eventId: 'evt-axis-submit' },
+  };
+  const reconcile = {
+    protocol: 'aizign',
+    version: 1,
+    requestId: 'req-axis-reconcile',
+    kind: 'workflow.signal.reconcile',
+    ok: true,
+    payload: { disposition: 'absent', eventId: 'evt-axis-reconcile' },
+  };
+
+  for (const [name, frame, context, expectedAxis] of [
+    [
+      'bootstrap-context-submit',
+      submit,
+      { requestAxis: 'bootstrap' as const },
+      'accepted-operation',
+    ],
+    [
+      'bootstrap-context-reconcile',
+      reconcile,
+      { requestAxis: 'bootstrap' as const },
+      'accepted-operation',
+    ],
+    ['operation-context-hello', hello, { requestAxis: 'accepted-operation' as const }, 'bootstrap'],
+    ['contextless-hello', hello, {}, 'bootstrap'],
+    ['contextless-submit', submit, {}, 'accepted-operation'],
+    ['contextless-reconcile', reconcile, {}, 'accepted-operation'],
+  ] as const) {
+    assert.equal(decodeResponse(JSON.stringify(frame), context).version.axis, expectedAxis, name);
+  }
+
+  const future = { ...submit, requestId: 'req-axis-future', kind: 'future.operation', payload: {} };
+  assert.throws(
+    () => decodeResponse(JSON.stringify(future), { requestAxis: 'bootstrap' }),
+    (error: unknown) =>
+      error instanceof DecodeFailure &&
+      error.error.code === codes.UNKNOWN_KIND &&
+      error.responseVersion.axis === 'accepted-operation',
+  );
+
+  const nullKind = { ...hello, requestId: 'req-axis-null', kind: null };
+  assert.throws(
+    () => decodeResponse(JSON.stringify(nullKind), { requestAxis: 'accepted-operation' }),
+    (error: unknown) =>
+      error instanceof DecodeFailure &&
+      error.error.code === codes.INVALID_ENVELOPE &&
+      error.responseVersion.axis === 'accepted-operation',
+  );
+
+  const bootstrapError = {
+    protocol: 'aizign',
+    version: 1,
+    requestId: 'req-axis-bootstrap-error',
+    kind: 'workflow.signal.submit',
+    ok: false,
+    error: { code: codes.PROTOCOL_VERSION_UNSUPPORTED, message: 'unsupported' },
+  };
+  assert.equal(
+    decodeResponse(JSON.stringify(bootstrapError), {
+      requestAxis: 'accepted-operation',
+      operationVersion: 2,
+    }).version.axis,
+    'bootstrap',
+  );
+});
+
 test('response error fields must be required own data properties', () => {
   const codeDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, 'code');
   const messageDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, 'message');

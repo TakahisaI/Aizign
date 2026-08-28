@@ -520,6 +520,92 @@ fn response_decoder_validates_the_source_stage_and_exact_numeric_version() {
 }
 
 #[test]
+fn successful_response_kind_selects_its_axis_before_request_context_correlation() {
+    let hello = r#"{"protocol":"aizign","version":1,"requestId":"req-axis-hello","kind":"hello","ok":true,"payload":{"protocolVersion":1,"journalSchemaVersion":1,"capabilities":[],"package":{"name":"aizign","version":"0.1.0"}}}"#;
+    let submit = r#"{"protocol":"aizign","version":1,"requestId":"req-axis-submit","kind":"workflow.signal.submit","ok":true,"payload":{"disposition":"accepted","eventId":"evt-axis-submit"}}"#;
+    let reconcile = r#"{"protocol":"aizign","version":1,"requestId":"req-axis-reconcile","kind":"workflow.signal.reconcile","ok":true,"payload":{"disposition":"absent","eventId":"evt-axis-reconcile"}}"#;
+
+    for (name, frame, context, expected_axis) in [
+        (
+            "bootstrap-context-submit",
+            submit,
+            Some(ResponseVersion::Bootstrap(1)),
+            ResponseVersion::AcceptedOperation(1),
+        ),
+        (
+            "bootstrap-context-reconcile",
+            reconcile,
+            Some(ResponseVersion::Bootstrap(1)),
+            ResponseVersion::AcceptedOperation(1),
+        ),
+        (
+            "operation-context-hello",
+            hello,
+            Some(ResponseVersion::AcceptedOperation(1)),
+            ResponseVersion::Bootstrap(1),
+        ),
+        (
+            "contextless-hello",
+            hello,
+            None,
+            ResponseVersion::Bootstrap(1),
+        ),
+        (
+            "contextless-submit",
+            submit,
+            None,
+            ResponseVersion::AcceptedOperation(1),
+        ),
+        (
+            "contextless-reconcile",
+            reconcile,
+            None,
+            ResponseVersion::AcceptedOperation(1),
+        ),
+    ] {
+        assert_eq!(
+            decode_response_for(frame.as_bytes(), context)
+                .unwrap_or_else(|error| panic!("{name}: {error}"))
+                .version,
+            expected_axis,
+            "{name}"
+        );
+    }
+
+    let future = r#"{"protocol":"aizign","version":1,"requestId":"req-axis-future","kind":"future.operation","ok":true,"payload":{}}"#;
+    let future_failure =
+        decode_response_for(future.as_bytes(), Some(ResponseVersion::Bootstrap(1))).unwrap_err();
+    assert_eq!(future_failure.code().as_str(), codes::UNKNOWN_KIND);
+    assert_eq!(
+        future_failure.response_version,
+        ResponseVersion::AcceptedOperation(1)
+    );
+
+    let null_kind = r#"{"protocol":"aizign","version":1,"requestId":"req-axis-null","kind":null,"ok":true,"payload":{}}"#;
+    let null_failure = decode_response_for(
+        null_kind.as_bytes(),
+        Some(ResponseVersion::AcceptedOperation(1)),
+    )
+    .unwrap_err();
+    assert_eq!(null_failure.code().as_str(), codes::INVALID_ENVELOPE);
+    assert_eq!(
+        null_failure.response_version,
+        ResponseVersion::AcceptedOperation(1)
+    );
+
+    let bootstrap_error = r#"{"protocol":"aizign","version":1,"requestId":"req-axis-bootstrap-error","kind":"workflow.signal.submit","ok":false,"error":{"code":"PROTOCOL_VERSION_UNSUPPORTED","message":"unsupported"}}"#;
+    assert_eq!(
+        decode_response_for(
+            bootstrap_error.as_bytes(),
+            Some(ResponseVersion::AcceptedOperation(2)),
+        )
+        .unwrap()
+        .version,
+        ResponseVersion::Bootstrap(1)
+    );
+}
+
+#[test]
 fn response_axis_requires_a_boolean_false_before_bootstrap_error_selection() {
     for (name, ok_member, expected_axis) in [
         (

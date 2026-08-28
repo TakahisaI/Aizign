@@ -149,7 +149,7 @@ const MAX_VERSION = 4_294_967_295;
 const MAX_VERSION_TEXT = String(MAX_VERSION);
 
 function parseVersionToken(token: string | undefined): number | null {
-  if (token === undefined || token.startsWith('-')) return null;
+  if (token === undefined || token[0] === '-') return null;
   if (token.length > MAX_VERSION_TEXT.length) return null;
   if (token.length === MAX_VERSION_TEXT.length && token > MAX_VERSION_TEXT) return null;
   return Number(token);
@@ -167,7 +167,12 @@ function stringifyWireGraph(root: Record<string, unknown>): string {
       configurable: false,
       writable: false,
     });
-    for (const key of Object.keys(current)) {
+    const keys = Object.keys(current);
+    for (let keyIndex = 0; keyIndex < keys.length; keyIndex += 1) {
+      const key = keys[keyIndex];
+      if (key === undefined) {
+        throw new ProtocolError(codes.INVALID_ENVELOPE, 'encoder key traversal failed');
+      }
       const descriptor = Object.getOwnPropertyDescriptor(current, key);
       if (descriptor !== undefined && 'value' in descriptor) {
         const value = descriptor.value;
@@ -177,13 +182,14 @@ function stringifyWireGraph(root: Record<string, unknown>): string {
   };
   protect(root);
   const frame = JSON.stringify(root);
-  if (
-    !frame.startsWith('{') ||
-    !frame.endsWith('}') ||
-    frame.includes('\n') ||
-    frame.includes('\r') ||
-    frame.startsWith('\uFEFF')
-  ) {
+  let containsRawLineBreak = false;
+  for (let index = 0; index < frame.length; index += 1) {
+    if (frame[index] === '\n' || frame[index] === '\r') {
+      containsRawLineBreak = true;
+      break;
+    }
+  }
+  if (frame[0] !== '{' || frame[frame.length - 1] !== '}' || containsRawLineBreak) {
     throw new ProtocolError(codes.INVALID_ENVELOPE, 'encoder produced an invalid frame');
   }
   return frame;
@@ -277,9 +283,9 @@ export function decodeRequest(frame: Uint8Array | string): Request {
   // Strict envelope.
   const invalidEnvelope = (message: string) => fail(codes.INVALID_ENVELOPE, message);
   assertOnlyKeys(value, ['protocol', 'version', 'requestId', 'kind', 'payload'], invalidEnvelope);
-  for (const key of ['requestId', 'kind', 'payload']) {
-    if (!Object.hasOwn(value, key)) throw invalidEnvelope(`missing field \`${key}\``);
-  }
+  if (!Object.hasOwn(value, 'requestId')) throw invalidEnvelope('missing field `requestId`');
+  if (!Object.hasOwn(value, 'kind')) throw invalidEnvelope('missing field `kind`');
+  if (!Object.hasOwn(value, 'payload')) throw invalidEnvelope('missing field `payload`');
   if (typeof value.requestId !== 'string') throw invalidEnvelope('requestId must be a string');
   if (!isRequestId(value.requestId)) {
     throw invalidEnvelope('requestId must match ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$');
@@ -545,20 +551,27 @@ export function decodeResponse(
     throw unaddressed(codes.INVALID_ENVELOPE, 'frame must be a JSON object');
   const recovered = correlationFromScan(scan);
   const probedCode = isShortErrorCode(scan.errorCode) ? scan.errorCode : undefined;
+  const probedOk = probeBoolean(scan.topLevelValues.get('ok'));
   const bootstrapCode =
-    probeBoolean(scan.topLevelValues.get('ok')) === false &&
+    probedOk === false &&
     probedCode !== undefined &&
-    new Set<string>([
-      codes.REQUEST_TOO_LARGE,
-      codes.PROTOCOL_VERSION_UNSUPPORTED,
-      codes.HANDLER_TIMEOUT,
-    ]).has(probedCode);
-  const axis: ResponseVersion['axis'] = bootstrapCode
-    ? 'bootstrap'
-    : (context.requestAxis ??
-      (recovered.kind !== null && recovered.kind !== KIND_HELLO
-        ? 'accepted-operation'
-        : 'bootstrap'));
+    (probedCode === codes.REQUEST_TOO_LARGE ||
+      probedCode === codes.PROTOCOL_VERSION_UNSUPPORTED ||
+      probedCode === codes.HANDLER_TIMEOUT);
+  const successAxis: ResponseVersion['axis'] | undefined =
+    probedOk === true && recovered.kind !== null
+      ? recovered.kind === KIND_HELLO
+        ? 'bootstrap'
+        : 'accepted-operation'
+      : undefined;
+  const axis: ResponseVersion['axis'] =
+    successAxis ??
+    (bootstrapCode
+      ? 'bootstrap'
+      : (context.requestAxis ??
+        (recovered.kind !== null && recovered.kind !== KIND_HELLO
+          ? 'accepted-operation'
+          : 'bootstrap')));
   const expectedVersion =
     axis === 'bootstrap'
       ? (context.bootstrapVersion ?? BOOTSTRAP_ENVELOPE_VERSION)
@@ -608,9 +621,9 @@ export function decodeResponse(
   );
   if (value.protocol !== PROTOCOL_NAME)
     throw invalidEnvelope(`protocol must be "${PROTOCOL_NAME}"`);
-  for (const key of ['requestId', 'kind', 'ok']) {
-    if (!Object.hasOwn(value, key)) throw invalidEnvelope(`missing field \`${key}\``);
-  }
+  if (!Object.hasOwn(value, 'requestId')) throw invalidEnvelope('missing field `requestId`');
+  if (!Object.hasOwn(value, 'kind')) throw invalidEnvelope('missing field `kind`');
+  if (!Object.hasOwn(value, 'ok')) throw invalidEnvelope('missing field `ok`');
   const { requestId, kind, ok } = value;
   if (requestId !== null && !isRequestId(requestId)) {
     throw invalidEnvelope('requestId must be null or match ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$');
@@ -802,7 +815,9 @@ export class OneShotFrameCollector {
     }
     const frame = new Uint8Array(this.#frameBytes);
     let offset = 0;
-    for (const chunk of this.#chunks) {
+    for (let chunkIndex = 0; chunkIndex < this.#chunks.length; chunkIndex += 1) {
+      const chunk = this.#chunks[chunkIndex];
+      if (chunk === undefined) continue;
       frame.set(chunk, offset);
       offset += chunk.length;
     }

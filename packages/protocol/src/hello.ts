@@ -53,13 +53,17 @@ export function buildHelloInfo(payload: unknown): HelloInfo {
     throw fail('journalSchemaVersion must be an integer between 1 and 4294967295');
   }
   const capabilities = arrayValues(capabilitiesValue, fail, 'capabilities');
-  if (!capabilities.every(isCapability)) {
-    throw fail(
-      'capabilities must be lowercase dot-separated names (^[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)*$, at most 128 bytes)',
-    );
-  }
-  if (new Set(capabilities).size !== capabilities.length) {
-    throw fail('capabilities must not repeat');
+  for (let index = 0; index < capabilities.length; index += 1) {
+    if (!isCapability(capabilities[index])) {
+      throw fail(
+        'capabilities must be lowercase dot-separated names (^[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)*$, at most 128 bytes)',
+      );
+    }
+    for (let earlier = 0; earlier < index; earlier += 1) {
+      if (capabilities[earlier] === capabilities[index]) {
+        throw fail('capabilities must not repeat');
+      }
+    }
   }
   assertClosedObject(pkg, ['name', 'version'], fail, 'package');
   const name = ownDataValue(pkg, 'name', fail, 'package');
@@ -105,8 +109,16 @@ export function checkCompatibility(
       detail: `binary speaks protocol ${hello.protocolVersion}; this adapter requires ${required.protocolVersion}`,
     };
   }
-  for (const capability of required.capabilities) {
-    if (!hello.capabilities.includes(capability)) {
+  for (let requiredIndex = 0; requiredIndex < required.capabilities.length; requiredIndex += 1) {
+    const capability = required.capabilities[requiredIndex];
+    let present = false;
+    for (let actualIndex = 0; actualIndex < hello.capabilities.length; actualIndex += 1) {
+      if (hello.capabilities[actualIndex] === capability) {
+        present = true;
+        break;
+      }
+    }
+    if (!present) {
       return { reason: 'missing_capability', detail: `binary lacks capability \`${capability}\`` };
     }
   }

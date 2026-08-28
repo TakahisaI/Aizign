@@ -637,6 +637,187 @@ test('outbound source validation rejects hostile descriptors and prototypes with
   assert.equal(toJsonCalls, 0);
 });
 
+test('outbound validation rejects proxies before traps and ignores mutable array methods', () => {
+  const invalidEnvelope = (error: unknown) =>
+    error instanceof ProtocolError && error.code === codes.INVALID_ENVELOPE;
+  const invalidPayload = (error: unknown) =>
+    error instanceof ProtocolError && error.code === codes.INVALID_PAYLOAD;
+  let objectProxyTraps = 0;
+  let arrayProxyTraps = 0;
+  let errorProxyTraps = 0;
+  const trappingHandler = (increment: () => void): ProxyHandler<object> => ({
+    getPrototypeOf() {
+      increment();
+      throw new Error('getPrototypeOf trap must not run');
+    },
+    ownKeys() {
+      increment();
+      throw new Error('ownKeys trap must not run');
+    },
+    getOwnPropertyDescriptor() {
+      increment();
+      throw new Error('getOwnPropertyDescriptor trap must not run');
+    },
+  });
+
+  const requestProxy = new Proxy(
+    { requestId: 'req-proxy', kind: 'hello' },
+    trappingHandler(() => {
+      objectProxyTraps += 1;
+    }),
+  ) as Request;
+  assert.throws(() => encodeRequest(requestProxy), invalidEnvelope);
+  assert.equal(objectProxyTraps, 0);
+
+  const capabilitiesProxy = new Proxy(
+    [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT],
+    trappingHandler(() => {
+      arrayProxyTraps += 1;
+    }),
+  ) as unknown as readonly string[];
+  const proxyArrayResponse: Response = {
+    version: { axis: 'bootstrap', version: 1 },
+    requestId: 'req-array-proxy',
+    kind: 'hello',
+    body: {
+      type: 'hello',
+      info: {
+        protocolVersion: 1,
+        journalSchemaVersion: 1,
+        capabilities: capabilitiesProxy,
+        package: { name: 'aizign', version: '0.1.0' },
+      },
+    },
+  };
+  assert.throws(() => encodeResponse(proxyArrayResponse), invalidPayload);
+  assert.equal(arrayProxyTraps, 0);
+
+  const errorProxy = new Proxy(
+    new ProtocolError(codes.INTERNAL, 'proxy'),
+    trappingHandler(() => {
+      errorProxyTraps += 1;
+    }),
+  ) as unknown as ProtocolError;
+  assert.throws(
+    () =>
+      encodeResponse({
+        version: { axis: 'accepted-operation', version: 1 },
+        requestId: 'req-error-proxy',
+        kind: 'workflow.signal.submit',
+        body: { type: 'error', error: errorProxy },
+      }),
+    invalidEnvelope,
+  );
+  assert.equal(errorProxyTraps, 0);
+
+  const everyDescriptor = Object.getOwnPropertyDescriptor(Array.prototype, 'every');
+  const includesDescriptor = Object.getOwnPropertyDescriptor(Array.prototype, 'includes');
+  const iteratorDescriptor = Object.getOwnPropertyDescriptor(Array.prototype, Symbol.iterator);
+  let everyCalls = 0;
+  let includesCalls = 0;
+  let iteratorCalls = 0;
+  let capabilityFailure: unknown;
+  let kindFailure: unknown;
+  let roleFailure: unknown;
+  let validFrame: string | undefined;
+  const validResponse: Response = {
+    version: { axis: 'bootstrap', version: 1 },
+    requestId: 'req-poisoned-array-methods',
+    kind: 'hello',
+    body: {
+      type: 'hello',
+      info: {
+        protocolVersion: 1,
+        journalSchemaVersion: 1,
+        capabilities: [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT],
+        package: { name: 'aizign', version: '0.1.0' },
+      },
+    },
+  };
+  const expectedFrame = encodeResponse(validResponse);
+  try {
+    Object.defineProperty(Array.prototype, 'every', {
+      configurable: true,
+      writable: true,
+      value: () => {
+        everyCalls += 1;
+        return true;
+      },
+    });
+    Object.defineProperty(Array.prototype, 'includes', {
+      configurable: true,
+      writable: true,
+      value: () => {
+        includesCalls += 1;
+        return true;
+      },
+    });
+    Object.defineProperty(Array.prototype, Symbol.iterator, {
+      configurable: true,
+      writable: true,
+      value: () => {
+        iteratorCalls += 1;
+        throw new Error('Array iterator must not run');
+      },
+    });
+    try {
+      encodeResponse({
+        ...validResponse,
+        body: {
+          type: 'hello',
+          info: {
+            protocolVersion: 1,
+            journalSchemaVersion: 1,
+            capabilities: ['NOT_A_VALID_CAPABILITY'],
+            package: { name: 'aizign', version: '0.1.0' },
+          } as HelloInfo,
+        },
+      });
+    } catch (error) {
+      capabilityFailure = error;
+    }
+    try {
+      const signal = { ...implementationReady('evt-poisoned-kind'), kind: 'future.kind' };
+      encodeRequest(
+        submitRequest(
+          'req-poisoned-kind',
+          expectedAssignment(),
+          signal as unknown as WorkflowSignal,
+        ),
+      );
+    } catch (error) {
+      kindFailure = error;
+    }
+    try {
+      const invalidExpected = { ...expectedAssignment(), role: 'operator' };
+      encodeRequest(
+        submitRequest(
+          'req-poisoned-role',
+          invalidExpected as unknown as ExpectedAssignment,
+          implementationReady('evt-poisoned-role'),
+        ),
+      );
+    } catch (error) {
+      roleFailure = error;
+    }
+    validFrame = encodeResponse(validResponse);
+  } finally {
+    if (everyDescriptor !== undefined)
+      Object.defineProperty(Array.prototype, 'every', everyDescriptor);
+    if (includesDescriptor !== undefined)
+      Object.defineProperty(Array.prototype, 'includes', includesDescriptor);
+    if (iteratorDescriptor !== undefined)
+      Object.defineProperty(Array.prototype, Symbol.iterator, iteratorDescriptor);
+  }
+  assert.equal(everyCalls, 0);
+  assert.equal(includesCalls, 0);
+  assert.equal(iteratorCalls, 0);
+  assert.ok(invalidPayload(capabilityFailure));
+  assert.ok(invalidPayload(kindFailure));
+  assert.ok(invalidPayload(roleFailure));
+  assert.equal(validFrame, expectedFrame);
+});
+
 test('fresh wire graphs shadow inherited object and array toJSON hooks', () => {
   const request = { requestId: 'req-prototype-hook', kind: 'hello' } as const;
   const response: Response = {
