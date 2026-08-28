@@ -1,0 +1,1 @@
+{"protocol":"aizign","version":1234567890123456789012345678901234567890,"requestId":"req-response-long-positive","kind":"hello","ok":false,"error":{"code":"INTERNAL","message":"x"}}

@@ -5,7 +5,13 @@
  */
 
 import { codes, isShortErrorCode, ProtocolError } from './error.ts';
-import { ARTIFACT_REF_PATTERN, assertOnlyKeys, isIdentifier, isPlainObject } from './shape.ts';
+import {
+  ARTIFACT_REF_PATTERN,
+  assertOnlyKeys,
+  isIdentifier,
+  isPlainObject,
+  ownDataValue,
+} from './shape.ts';
 
 export type Role = 'implementation' | 'review';
 export const ROLES: readonly Role[] = ['implementation', 'review'];
@@ -90,28 +96,40 @@ function invalidPayload(message: string): ProtocolError {
 }
 
 function requireString(object: Record<string, unknown>, key: string, path: string): string {
-  const value = object[key];
+  const value = ownDataValue(object, key, invalidPayload, path);
   if (typeof value !== 'string') throw invalidPayload(`${path}.${key} must be a string`);
   return value;
 }
 
 function requireRole(object: Record<string, unknown>, path: string): Role {
-  const value = object.role;
-  if (typeof value !== 'string' || !(ROLES as readonly string[]).includes(value)) {
-    throw invalidPayload(`${path}.role must be one of ${ROLES.join(', ')}`);
+  const value = ownDataValue(object, 'role', invalidPayload, path);
+  if (value !== 'implementation' && value !== 'review') {
+    throw invalidPayload(`${path}.role must be one of implementation, review`);
   }
-  return value as Role;
+  return value;
+}
+
+function isSignalKind(value: unknown): value is SignalKind {
+  return (
+    value === 'implementation_ready' ||
+    value === 'review_findings' ||
+    value === 'review_passed' ||
+    value === 'repair_submitted' ||
+    value === 'blocked'
+  );
 }
 
 function optionalField(object: Record<string, unknown>, key: string, path: string): unknown {
   if (!Object.hasOwn(object, key)) return undefined;
-  const value = object[key];
-  if (value === null) throw invalidPayload(`${path}.${key} must be omitted rather than null`);
+  const value = ownDataValue(object, key, invalidPayload, path);
+  if (value === null || value === undefined) {
+    throw invalidPayload(`${path}.${key} must be omitted rather than null or undefined`);
+  }
   return value;
 }
 
 function requireDigest(object: Record<string, unknown>, key: string, path: string): ContentDigest {
-  const value = object[key];
+  const value = ownDataValue(object, key, invalidPayload, path);
   if (!isPlainObject(value)) throw invalidPayload(`${path}.${key} must be an object`);
   assertOnlyKeys(value, ['algorithm', 'hex'], invalidPayload);
   const algorithm = requireString(value, 'algorithm', `${path}.${key}`);
@@ -159,15 +177,18 @@ function decodeWorkflowSignalShape(value: unknown): WorkflowSignalShape {
     ],
     invalidPayload,
   );
-  const kind = value.kind;
-  if (typeof kind !== 'string' || !(SIGNAL_KINDS as readonly string[]).includes(kind)) {
-    throw invalidPayload(`signal.kind must be one of ${SIGNAL_KINDS.join(', ')}`);
+  const kind = ownDataValue(value, 'kind', invalidPayload, 'signal');
+  if (!isSignalKind(kind)) {
+    throw invalidPayload(
+      'signal.kind must be one of implementation_ready, review_findings, review_passed, repair_submitted, blocked',
+    );
   }
   const findingCount = optionalField(value, 'findingCount', 'signal');
   if (
     findingCount !== undefined &&
     (typeof findingCount !== 'number' ||
       !Number.isInteger(findingCount) ||
+      Object.is(findingCount, -0) ||
       findingCount < 0 ||
       findingCount > U32_MAX)
   ) {
@@ -198,17 +219,15 @@ function decodeWorkflowSignalShape(value: unknown): WorkflowSignalShape {
 
 function validateWorkflowSignal(signal: WorkflowSignalShape): WorkflowSignal {
   const invalidSignal = (message: string) => new ProtocolError(codes.INVALID_SIGNAL, message);
-  for (const field of [
-    'eventId',
-    'workflowId',
-    'assignmentId',
-    'attemptId',
-    'artifactRevision',
-  ] as const) {
-    if (!isIdentifier(signal[field])) {
-      throw invalidSignal(`signal.${field}: not a stable identifier`);
-    }
-  }
+  if (!isIdentifier(signal.eventId)) throw invalidSignal('signal.eventId: not a stable identifier');
+  if (!isIdentifier(signal.workflowId))
+    throw invalidSignal('signal.workflowId: not a stable identifier');
+  if (!isIdentifier(signal.assignmentId))
+    throw invalidSignal('signal.assignmentId: not a stable identifier');
+  if (!isIdentifier(signal.attemptId))
+    throw invalidSignal('signal.attemptId: not a stable identifier');
+  if (!isIdentifier(signal.artifactRevision))
+    throw invalidSignal('signal.artifactRevision: not a stable identifier');
   if (!validDigest(signal.candidateDigest)) {
     throw invalidSignal('signal.candidateDigest: not a supported content digest');
   }
@@ -230,17 +249,31 @@ function validateWorkflowSignal(signal: WorkflowSignalShape): WorkflowSignal {
     candidateDigest: signal.candidateDigest,
     kind: signal.kind,
   };
-  if (signal.findingCount !== undefined) result.findingCount = signal.findingCount;
-  if (signal.artifactRef !== undefined) result.artifactRef = signal.artifactRef;
-  if (signal.shortErrorCode !== undefined) result.shortErrorCode = signal.shortErrorCode;
+  const defineOptional = (
+    key: 'findingCount' | 'artifactRef' | 'shortErrorCode',
+    value: unknown,
+  ) => {
+    if (value !== undefined) {
+      Object.defineProperty(result, key, {
+        value,
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
+    }
+  };
+  defineOptional('findingCount', signal.findingCount);
+  defineOptional('artifactRef', signal.artifactRef);
+  defineOptional('shortErrorCode', signal.shortErrorCode);
   return result;
 }
 
 /** Decodes the shape, then validates values the way the core does. */
-export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubmitPayload {
+export function buildWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubmitPayload {
   if (!isPlainObject(payload)) throw invalidPayload('payload must be an object');
   assertOnlyKeys(payload, ['expected', 'signal'], invalidPayload);
-  const { expected, signal } = payload;
+  const expected = ownDataValue(payload, 'expected', invalidPayload, 'payload');
+  const signal = ownDataValue(payload, 'signal', invalidPayload, 'payload');
   if (!isPlainObject(expected)) throw invalidPayload('expected must be an object');
 
   assertOnlyKeys(
@@ -262,15 +295,20 @@ export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubm
   // Values: expectation first, then the signal, in the core's order.
   const invalidExpectation = (field: string, reason: string) =>
     new ProtocolError(codes.INVALID_EXPECTATION, `expected.${field}: ${reason}`);
-  for (const field of ['workflowId', 'assignmentId', 'attemptId', 'artifactRevision'] as const) {
-    if (!isIdentifier(expectedShape[field])) {
-      throw invalidExpectation(field, 'not a stable identifier');
-    }
-  }
+  if (!isIdentifier(expectedShape.workflowId))
+    throw invalidExpectation('workflowId', 'not a stable identifier');
+  if (!isIdentifier(expectedShape.assignmentId))
+    throw invalidExpectation('assignmentId', 'not a stable identifier');
+  if (!isIdentifier(expectedShape.attemptId))
+    throw invalidExpectation('attemptId', 'not a stable identifier');
+  if (!isIdentifier(expectedShape.artifactRevision))
+    throw invalidExpectation('artifactRevision', 'not a stable identifier');
   if (!validDigest(expectedShape.candidateDigest)) {
     throw invalidExpectation('candidateDigest', 'not a supported content digest');
   }
-  const expectedResult: { -readonly [K in keyof ExpectedAssignment]: ExpectedAssignment[K] } = {
+  const expectedResult: {
+    -readonly [K in keyof ExpectedAssignment]: ExpectedAssignment[K];
+  } = {
     workflowId: expectedShape.workflowId,
     assignmentId: expectedShape.assignmentId,
     attemptId: expectedShape.attemptId,
@@ -278,7 +316,15 @@ export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubm
     artifactRevision: expectedShape.artifactRevision,
     candidateDigest: expectedShape.candidateDigest,
   };
-  return { expected: expectedResult, signal: validateWorkflowSignal(signalShape) };
+  return {
+    expected: expectedResult,
+    signal: validateWorkflowSignal(signalShape),
+  };
+}
+
+/** Decodes a submit payload through the package-internal fresh-wire builder. */
+export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubmitPayload {
+  return buildWorkflowSignalSubmit(payload);
 }
 
 /** The kind-specific rules shared with `aizign-core`. */
@@ -325,61 +371,28 @@ function validateSignalRules(
     throw fail(`${kind} does not carry shortErrorCode`);
 }
 
-/** Encodes a payload as a JSON-ready object, omitting absent optionals. */
-export function encodeWorkflowSignalSubmit(
-  payload: WorkflowSignalSubmitPayload,
-): Record<string, unknown> {
-  const { expected, signal } = payload;
-  return {
-    expected: {
-      workflowId: expected.workflowId,
-      assignmentId: expected.assignmentId,
-      attemptId: expected.attemptId,
-      role: expected.role,
-      artifactRevision: expected.artifactRevision,
-      candidateDigest: expected.candidateDigest,
-    },
-    signal: encodeWorkflowSignal(signal),
-  };
-}
-
-/** Encodes the shared closed workflow-signal DTO. */
-export function encodeWorkflowSignal(signal: WorkflowSignal): Record<string, unknown> {
-  const encoded: Record<string, unknown> = {
-    eventId: signal.eventId,
-    workflowId: signal.workflowId,
-    assignmentId: signal.assignmentId,
-    attemptId: signal.attemptId,
-    role: signal.role,
-    artifactRevision: signal.artifactRevision,
-    candidateDigest: signal.candidateDigest,
-    kind: signal.kind,
-  };
-  if (signal.findingCount !== undefined) encoded.findingCount = signal.findingCount;
-  if (signal.artifactRef !== undefined) encoded.artifactRef = signal.artifactRef;
-  if (signal.shortErrorCode !== undefined) encoded.shortErrorCode = signal.shortErrorCode;
-  return encoded;
-}
-
 /** Decodes the reconcile payload through the same signal rules as submit. */
-export function decodeWorkflowSignalReconcile(payload: unknown): WorkflowSignalReconcilePayload {
+export function buildWorkflowSignalReconcile(payload: unknown): WorkflowSignalReconcilePayload {
   if (!isPlainObject(payload)) throw invalidPayload('payload must be an object');
   assertOnlyKeys(payload, ['signal'], invalidPayload);
-  return { signal: validateWorkflowSignal(decodeWorkflowSignalShape(payload.signal)) };
+  return {
+    signal: validateWorkflowSignal(
+      decodeWorkflowSignalShape(ownDataValue(payload, 'signal', invalidPayload, 'payload')),
+    ),
+  };
 }
 
-/** Encodes a reconciliation request payload. */
-export function encodeWorkflowSignalReconcile(
-  payload: WorkflowSignalReconcilePayload,
-): Record<string, unknown> {
-  return { signal: encodeWorkflowSignal(payload.signal) };
+/** Decodes a reconcile payload through the package-internal fresh-wire builder. */
+export function decodeWorkflowSignalReconcile(payload: unknown): WorkflowSignalReconcilePayload {
+  return buildWorkflowSignalReconcile(payload);
 }
 
 /** Decodes the success payload of `workflow.signal.submit`. */
-export function decodeSignalResult(payload: unknown): SignalResult {
+export function buildSignalResult(payload: unknown): SignalResult {
   if (!isPlainObject(payload)) throw invalidPayload('payload must be an object');
   assertOnlyKeys(payload, ['disposition', 'eventId'], invalidPayload);
-  const { disposition, eventId } = payload;
+  const disposition = ownDataValue(payload, 'disposition', invalidPayload, 'payload');
+  const eventId = ownDataValue(payload, 'eventId', invalidPayload, 'payload');
   if (disposition !== 'accepted' && disposition !== 'duplicate') {
     throw invalidPayload('disposition must be accepted or duplicate');
   }
@@ -387,14 +400,25 @@ export function decodeSignalResult(payload: unknown): SignalResult {
   return { disposition, eventId };
 }
 
+/** Decodes a submit success payload through the package-internal builder. */
+export function decodeSignalResult(payload: unknown): SignalResult {
+  return buildSignalResult(payload);
+}
+
 /** Decodes the success payload of `workflow.signal.reconcile`. */
-export function decodeReconciliationResult(payload: unknown): ReconciliationResult {
+export function buildReconciliationResult(payload: unknown): ReconciliationResult {
   if (!isPlainObject(payload)) throw invalidPayload('payload must be an object');
   assertOnlyKeys(payload, ['disposition', 'eventId'], invalidPayload);
-  const { disposition, eventId } = payload;
+  const disposition = ownDataValue(payload, 'disposition', invalidPayload, 'payload');
+  const eventId = ownDataValue(payload, 'eventId', invalidPayload, 'payload');
   if (disposition !== 'accepted' && disposition !== 'conflict' && disposition !== 'absent') {
     throw invalidPayload('disposition must be accepted, conflict, or absent');
   }
   if (!isIdentifier(eventId)) throw invalidPayload('eventId must be a stable identifier');
   return { disposition, eventId };
+}
+
+/** Decodes a reconcile success payload through the package-internal builder. */
+export function decodeReconciliationResult(payload: unknown): ReconciliationResult {
+  return buildReconciliationResult(payload);
 }

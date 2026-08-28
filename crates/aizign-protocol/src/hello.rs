@@ -24,7 +24,8 @@ pub struct HelloInfo {
 }
 
 impl HelloInfo {
-    /// Contract checks past serde's shape (kept identical to
+    /// Contract checks shared by accepted-version decoding and the sole
+    /// outbound response encoder (kept identical to
     /// `spec/protocol/v1/schemas/hello.response.schema.json`): versions start
     /// at 1, capability names are well formed and unique. The capability
     /// *list* stays open so a client can still decode the handshake of a

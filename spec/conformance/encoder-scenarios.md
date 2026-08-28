@@ -186,7 +186,6 @@ full-codec decode-to-encode round trips remain covered by
 [the frame fixture README](README.md). A client that does not implement a
 request decoder or response encoder does not run those unused-direction tests.
 
-Issue #77 S1 records these target scenarios without adding runtime tests or
-fixture files. The current encoder suites do not yet prove this complete
-matrix. Issue #77 S2 must add the executable scenarios, focused mutation
-sentinels, and caller/producer spies atomically with the runtime migration.
+Issue #77 S2 implements this matrix in the Rust and TypeScript encoder suites,
+with focused mutation sentinels and caller/producer zero-side-effect evidence.
+The suites remain decoder-independent and use the production frame encoders.

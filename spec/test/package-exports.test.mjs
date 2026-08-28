@@ -52,8 +52,6 @@ const surfaces = [
       'decodeWorkflowSignalSubmit',
       'encodeRequest',
       'encodeResponse',
-      'encodeWorkflowSignalReconcile',
-      'encodeWorkflowSignalSubmit',
       'extractFrame',
       'isIdentifier',
       'isShortErrorCode',
@@ -433,6 +431,16 @@ test('TypeScript consumers cannot compile removed symbols or closed package path
     {
       name: 'removed-unknown-outcome-codes',
       source: "import { UNKNOWN_OUTCOME_CODES } from '@aizign/protocol';\n",
+      code: 2724,
+    },
+    {
+      name: 'removed-workflow-submit-payload-encoder',
+      source: "import { encodeWorkflowSignalSubmit } from '@aizign/protocol';\n",
+      code: 2724,
+    },
+    {
+      name: 'removed-workflow-reconcile-payload-encoder',
+      source: "import { encodeWorkflowSignalReconcile } from '@aizign/protocol';\n",
       code: 2724,
     },
     {

@@ -7,13 +7,13 @@ interface.
 | | |
 |---|---|
 | **Responsibility** | bootstrap / operation version axis、`decodeRequest` / `encodeRequest` / `decodeResponse` / `encodeResponse`（両方向 `MAX_FRAME_BYTES`）、`extractFrame` / `OneShotFrameCollector`（body + LF + immediate closeだけを受理）、`checkCorrelation`（`requestId` / `kind` / `eventId` の照合）、`hello` の `checkCompatibility`、submit / reconcileのpayload型とclosed decoder、`CoreClient` / submit・reconcile outcomeの契約型 |
-| **Non-responsibility** | process起動・environment・timeout・preflight・parent timing、filesystem、harness固有型、判断（coreの責務。decoderはcoreと同じ入力規則で **事前に** 拒否するだけ） |
+| **Non-responsibility** | process起動・environment・timeout・preflight・parent timing、filesystem、harness固有型、判断（coreの責務） |
 | **Inputs** | frame（`Uint8Array` / `string`）、payload object |
 | **Outputs** | `Request` / `Response`（source-qualified `ResponseVersion`付き）、`DecodeFailure`（復元した `requestId` / `kind` とresponse version axis付き）、`ProtocolError` |
 | **Hard invariants** | BOMなしUTF-8、body上限、exact LF + immediate close（CRLFと全post-LF byteを拒否）、well-formed Unicode、closed schema、kind-before-membershipのversion axis、encoderはbodyからversionを推測しない、operation consumerはresponse decodeへ要求axisと期待するbootstrap／operation version値を渡す、`spec/conformance` の全fixtureでRust実装と同じcodeと復元IDを返す、reconciliationの全failureは`unknown`、valid error codeは相関検査より先に`reportedCode`へ保持、blind retryしない |
 | **Allowed dependencies** | なし（runtime）。dev: workspace rootの `typescript` / `@biomejs/biome` / `@types/node` |
 | **Test command** | `npm test -w @aizign/protocol`（`node --test`、型はNodeがstripする） |
-| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0020](../../docs/adr/0020-narrow-typescript-exports-and-own-dsh-transport.md)、[0022](../../docs/adr/0022-define-the-canonical-one-shot-process-profile.md) |
+| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0020](../../docs/adr/0020-narrow-typescript-exports-and-own-dsh-transport.md)、[0022](../../docs/adr/0022-define-the-canonical-one-shot-process-profile.md)、[0023](../../docs/adr/0023-define-protocol-lexical-and-outbound-validation-boundaries.md) |
 
 ## Security boundary
 
@@ -32,8 +32,8 @@ wire contractの正本は [`spec/protocol/v1/`](../../spec/protocol/v1/README.md
 ```text
 src/
 ├── index.ts              closed exports
-├── envelope.ts           decode / encode（duplicate member走査 → lenient probe → strict envelope → kind dispatch）
-├── duplicate-member.ts   member重複とUnicode stringのlexical走査（内部実装）
+├── envelope.ts           sole request / response decode・encode boundary
+├── json-token.ts         duplicate member・Unicode・canonical integerの単一raw-token走査（内部実装）
 ├── error.ts              ProtocolError、codes、SHORT_ERROR_CODE_PATTERN
 ├── hello.ts              HelloInfo、decodeHelloInfo、checkCompatibility
 ├── workflow-signal.ts    shared signal、submit / reconcile payload、result decoder
@@ -68,10 +68,12 @@ codeがあれば、相関しないwatchdog responseでも診断用`reportedCode`
 します。TypeScriptでのclient boundary検証には
 [`@aizign/adapter-testkit`](../adapter-testkit/README.md)を使えます。
 
-outbound requestが `MAX_REQUEST_BYTES` を超える場合、`CoreClient` Promiseは
-process spawn前に `ProtocolError(REQUEST_TOO_LARGE)` でrejectします。これはcoreの
-`rejected`でもtransport後の`unknown`でもなく、`SubmitOutcome`を生成しないlocal
-failureです。
+`encodeRequest`はsource graphをdescriptor/prototypeまでclosedに検査し、freshな
+wire graphを一度だけserializeします。invalid/overlong public fieldはfinal bound
+guardより先にfield固有codeで失敗し、final bodyが `MAX_REQUEST_BYTES` を超えた場合
+だけ `REQUEST_TOO_LARGE` になります。どちらもprocess spawn・parent timing・stdin
+取得・writeより前のlocal failureで、peer outcomeを生成しません。payload encoderは
+package rootから公開されません。
 
 Process configuration, preflight, and parent timing are owned by the DSH
 adapter and are not Protocol exports. Repository control-plane consumers use

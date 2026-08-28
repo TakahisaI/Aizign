@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { assertMetadataOnly } from '@aizign/adapter-testkit';
-import type { CoreClient, SubmitOutcome, WorkflowSignalSubmitPayload } from '@aizign/protocol';
+import {
+  type CoreClient,
+  codes,
+  ProtocolError,
+  type SubmitOutcome,
+  type WorkflowSignalSubmitPayload,
+} from '@aizign/protocol';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools';
 import type { SignalBinding } from '../../src/config.ts';
@@ -146,38 +152,26 @@ test('arguments are decoded closed and bound to the configured identity', () => 
   assert.throws(() => decodeArgs('not an object', 'review'), HarnessError);
 });
 
-test('core rules are applied before any process is spawned', () => {
-  // review_passed with a non-zero finding count is rejected by the same rule the core uses.
-  assert.throws(
-    () => toPayload(binding, { kind: 'review_passed', findingCount: 3 }),
-    (error: unknown) => {
-      return error instanceof HarnessError && error.code === 'INVALID_SIGNAL';
-    },
-  );
-  assert.throws(
-    () => toPayload(binding, { kind: 'blocked' }),
-    (error: unknown) => {
-      return error instanceof HarnessError && error.code === 'INVALID_SIGNAL';
-    },
-  );
+test('Protocol validation stays in the client encoder and maps safely at the tool boundary', async () => {
+  const payload = toPayload(binding, { kind: 'review_passed', findingCount: 3 });
+  assert.equal(payload.signal.findingCount, 3, 'the mapper does not duplicate Protocol rules');
 
-  const privateMarker = 'synthetic-private-state/operator/workflow.jsonl';
-  assert.throws(
-    () =>
-      toPayload(binding, {
-        kind: 'review_findings',
-        findingCount: 1,
-        artifactRef: privateMarker,
-      }),
-    (error: unknown) => {
-      return (
-        error instanceof HarnessError &&
-        error.code === 'INVALID_SIGNAL' &&
-        error.message === 'Aizign rejected invalid workflow signal input' &&
-        !('cause' in error) &&
-        !JSON.stringify(error).includes(privateMarker)
-      );
-    },
+  const client = stubClient({ kind: 'accepted', eventId: binding.eventId });
+  client.submitWorkflowSignal = async () => {
+    throw new ProtocolError(
+      codes.INVALID_SIGNAL,
+      'synthetic-private-state/operator/workflow.jsonl',
+    );
+  };
+  const tool = createSubmitWorkflowSignalTool(client, binding);
+  await assert.rejects(
+    tool.execute({ kind: 'review_passed', findingCount: 3 }, exec),
+    (error: unknown) =>
+      error instanceof HarnessError &&
+      error.code === codes.INVALID_SIGNAL &&
+      error.message === 'Aizign rejected invalid workflow signal input' &&
+      !('cause' in error) &&
+      !JSON.stringify(error).includes('synthetic-private-state'),
   );
 });
 

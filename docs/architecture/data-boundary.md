@@ -142,9 +142,9 @@ response encoder either emits that source unchanged as a valid bounded body or
 fails before output.
 
 [ADR-0023](../adr/0023-define-protocol-lexical-and-outbound-validation-boundaries.md)
-and Issue #77 S1 establish this target data boundary. Current codec, package,
-client, producer, and fault paths retain explicit S2 migration debt and must
-not yet be described as fully enforcing it.
+defines this data boundary. Issue #77 S2 implements it across both codecs,
+package surfaces, the DSH caller, CLI/fake-core producers, and the shared
+conformance evidence.
 
 ## Diagnostics and process environment
 

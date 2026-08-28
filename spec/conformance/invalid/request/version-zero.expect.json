@@ -1,1 +1,1 @@
-{"code":"PROTOCOL_VERSION_UNSUPPORTED","requestId":"req-x6","kind":"hello","schema":false}
+{"code":"PROTOCOL_VERSION_UNSUPPORTED","requestId":"req-x6","kind":"hello","responseStage":"bootstrap","responseVersion":1,"schema":false}

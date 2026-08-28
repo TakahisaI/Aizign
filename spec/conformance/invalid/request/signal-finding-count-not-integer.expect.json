@@ -1,1 +1,1 @@
-{"code":"INVALID_PAYLOAD","requestId":"req-x","kind":"workflow.signal.submit","schema":true}
+{"code":"INVALID_PAYLOAD","requestId":"req-x","kind":"workflow.signal.submit","responseStage":"bootstrap","responseVersion":1,"schema":true}

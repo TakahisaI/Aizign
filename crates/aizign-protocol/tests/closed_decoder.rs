@@ -7,6 +7,10 @@ use aizign_protocol::{
     encode_request, encode_response,
 };
 
+fn protocol_error(code: &str, message: impl Into<String>) -> aizign_protocol::ProtocolError {
+    aizign_protocol::ProtocolError::try_new(code, message).expect("test code is well formed")
+}
+
 fn hello(extra: &str) -> String {
     format!(
         r#"{{"protocol":"aizign","version":1,"requestId":"req-1","kind":"hello","payload":{{}}{extra}}}"#
@@ -151,6 +155,108 @@ fn malformed_request_ids_are_rejected_and_not_echoed() {
 }
 
 #[test]
+fn malformed_json_grammar_is_rejected_before_correlation_recovery() {
+    for value in ["1e", "1.", "01", "-", r#""\q""#, r#""\u12""#] {
+        let frame = format!(
+            r#"{{"protocol":"aizign","version":1,"requestId":"req-syntax","kind":"hello","payload":{{"value":{value}}}}}"#
+        );
+        let failure = decode_request(frame.as_bytes()).unwrap_err();
+        assert_eq!(
+            failure.error.code().as_str(),
+            codes::INVALID_ENVELOPE,
+            "{value}"
+        );
+        assert_eq!(failure.request_id, None, "{value}");
+        assert_eq!(failure.kind, None, "{value}");
+        assert_eq!(
+            failure.response_version,
+            ResponseVersion::bootstrap(),
+            "{value}"
+        );
+    }
+}
+
+#[test]
+fn an_ill_formed_top_level_kind_is_not_recovered() {
+    let frame = r#"{"protocol":"aizign","version":1,"requestId":"req-unicode","kind":"\uD800","payload":{}}"#;
+    let failure = decode_request(frame.as_bytes()).unwrap_err();
+    assert_eq!(failure.error.code().as_str(), codes::INVALID_ENVELOPE);
+    assert_eq!(failure.request_id.as_deref(), Some("req-unicode"));
+    assert_eq!(failure.kind, None);
+}
+
+#[test]
+fn an_ill_formed_top_level_member_name_suppresses_all_correlation() {
+    let request_frames = [
+        String::from(
+            r#"{"\uD800":0,"protocol":"aizign","version":1,"requestId":"req-before","kind":"hello","payload":{}}"#,
+        ),
+        String::from(
+            r#"{"protocol":"aizign","version":1,"requestId":"req-between","\uD800":0,"kind":"hello","payload":{}}"#,
+        ),
+        String::from(
+            r#"{"protocol":"aizign","version":1,"requestId":"req-after","kind":"hello","\uD800":0,"payload":{}}"#,
+        ),
+        String::from(
+            r#"{"protocol":"aizign","version":1,"requestId":"req-old","requestId":"req-final","kind":"hello","\uD800":0,"payload":{}}"#,
+        ),
+        String::from(
+            r#"{"protocol":"aizign","version":2,"requestId":"req-version","kind":"hello","\uD800":0,"payload":{}}"#,
+        ),
+    ];
+    for frame in request_frames {
+        let failure = decode_request(frame.as_bytes()).unwrap_err();
+        assert_eq!(failure.code().as_str(), codes::INVALID_ENVELOPE, "{frame}");
+        assert_eq!(failure.request_id, None, "{frame}");
+        assert_eq!(failure.kind, None, "{frame}");
+        assert_eq!(
+            failure.response_version,
+            ResponseVersion::bootstrap(),
+            "{frame}"
+        );
+    }
+
+    let response_frames = [
+        String::from(
+            r#"{"\uD800":0,"protocol":"aizign","version":2,"requestId":"req-before","kind":"workflow.signal.submit","ok":false,"error":{"code":"INTERNAL","message":"x"}}"#,
+        ),
+        String::from(
+            r#"{"protocol":"aizign","version":2,"requestId":"req-between","\uD800":0,"kind":"workflow.signal.submit","ok":false,"error":{"code":"INTERNAL","message":"x"}}"#,
+        ),
+        String::from(
+            r#"{"protocol":"aizign","version":2,"requestId":"req-after","kind":"workflow.signal.submit","\uD800":0,"ok":false,"error":{"code":"INTERNAL","message":"x"}}"#,
+        ),
+        String::from(
+            r#"{"protocol":"aizign","version":2,"requestId":"req-old","requestId":"req-final","kind":"workflow.signal.submit","\uD800":0,"ok":false,"error":{"code":"INTERNAL","message":"x"}}"#,
+        ),
+        String::from(
+            r#"{"protocol":"aizign","version":3,"requestId":"req-version","kind":"workflow.signal.submit","\uD800":0,"ok":false,"error":{"code":"INTERNAL","message":"x"}}"#,
+        ),
+    ];
+    for frame in response_frames {
+        let failure = decode_response_for(
+            frame.as_bytes(),
+            Some(ResponseVersion::AcceptedOperation(2)),
+        )
+        .unwrap_err();
+        assert_eq!(failure.code().as_str(), codes::INVALID_ENVELOPE, "{frame}");
+        assert_eq!(failure.request_id, None, "{frame}");
+        assert_eq!(failure.kind, None, "{frame}");
+        assert_eq!(
+            failure.response_version,
+            ResponseVersion::AcceptedOperation(2),
+            "{frame}"
+        );
+    }
+
+    let nested = r#"{"protocol":"aizign","version":1,"requestId":"req-nested-key","kind":"hello","payload":{"\uD800":0}}"#;
+    let failure = decode_request(nested.as_bytes()).unwrap_err();
+    assert_eq!(failure.code().as_str(), codes::INVALID_ENVELOPE);
+    assert_eq!(failure.request_id.as_deref(), Some("req-nested-key"));
+    assert_eq!(failure.kind.as_deref(), Some("hello"));
+}
+
+#[test]
 fn unknown_kinds_are_rejected_with_recovered_ids() {
     let frame = r#"{"protocol":"aizign","version":1,"requestId":"req-5","kind":"workflow.other","payload":{}}"#;
     assert_eq!(
@@ -216,10 +322,7 @@ fn encoded_frames_carry_the_protocol_version_and_escape_newlines() {
         version: ResponseVersion::bootstrap(),
         request_id: None,
         kind: None,
-        body: ResponseBody::Error(aizign_protocol::ProtocolError::new(
-            codes::INTERNAL,
-            "line one\nline two",
-        )),
+        body: ResponseBody::Error(protocol_error(codes::INTERNAL, "line one\nline two")),
     };
     let frame = encode_response(&response).unwrap();
     assert!(!frame.contains('\n'));
@@ -237,13 +340,13 @@ fn encoded_frames_carry_the_protocol_version_and_escape_newlines() {
 }
 
 #[test]
-fn request_encoder_refuses_a_frame_above_the_bound() {
+fn request_encoder_rejects_overlong_fields_before_the_final_bound() {
     let request = Request {
         request_id: "r".repeat(MAX_REQUEST_BYTES),
         kind: RequestKind::Hello,
     };
     let error = encode_request(&request).unwrap_err();
-    assert_eq!(error.code().as_str(), codes::REQUEST_TOO_LARGE);
+    assert_eq!(error.code().as_str(), codes::INVALID_ENVELOPE);
 }
 
 #[test]
@@ -252,13 +355,47 @@ fn response_encoder_refuses_a_frame_above_the_bound() {
         version: ResponseVersion::operation(),
         request_id: Some("req-oversized".to_owned()),
         kind: Some("workflow.signal.submit".to_owned()),
-        body: ResponseBody::Error(aizign_protocol::ProtocolError::new(
-            codes::INTERNAL,
-            "x".repeat(MAX_FRAME_BYTES),
-        )),
+        body: ResponseBody::Error(protocol_error(codes::INTERNAL, "x".repeat(MAX_FRAME_BYTES))),
     };
     let error = encode_response(&response).unwrap_err();
     assert_eq!(error.code().as_str(), codes::INVALID_ENVELOPE);
+}
+
+#[test]
+fn huge_canonical_payload_integers_are_payload_failures() {
+    let huge = format!("1{}", "0".repeat(400));
+    let digest = "a".repeat(64);
+    let request = r#"{"protocol":"aizign","version":1,"requestId":"req-huge","kind":"workflow.signal.submit","payload":{"expected":{"workflowId":"wf-1","assignmentId":"as-1","attemptId":"attempt-1","role":"review","artifactRevision":"rev-1","candidateDigest":{"algorithm":"sha256","hex":"$DIGEST"}},"signal":{"eventId":"evt-1","workflowId":"wf-1","assignmentId":"as-1","attemptId":"attempt-1","role":"review","artifactRevision":"rev-1","candidateDigest":{"algorithm":"sha256","hex":"$DIGEST"},"kind":"review_findings","findingCount":$HUGE}}}"#
+        .replace("$DIGEST", &digest)
+        .replace("$HUGE", &huge);
+    assert_eq!(code_of(&request).2, codes::INVALID_PAYLOAD);
+
+    let response = format!(
+        r#"{{"protocol":"aizign","version":1,"requestId":"req-huge","kind":"hello","ok":true,"payload":{{"protocolVersion":{huge},"journalSchemaVersion":1,"capabilities":[],"package":{{"name":"aizign","version":"0.1.0"}}}}}}"#
+    );
+    assert_eq!(
+        decode_response(response.as_bytes())
+            .unwrap_err()
+            .error
+            .code()
+            .as_str(),
+        codes::INVALID_PAYLOAD
+    );
+}
+
+#[test]
+fn success_shape_does_not_select_bootstrap_from_an_error_code() {
+    let frame = r#"{"protocol":"aizign","version":2,"requestId":"req-axis-cross-product","kind":"workflow.signal.submit","ok":true,"error":{"code":"PROTOCOL_VERSION_UNSUPPORTED","message":"not an error response"}}"#;
+    let failure = decode_response_for(
+        frame.as_bytes(),
+        Some(ResponseVersion::AcceptedOperation(2)),
+    )
+    .unwrap_err();
+    assert_eq!(failure.error.code().as_str(), codes::INVALID_ENVELOPE);
+    assert_eq!(
+        failure.response_version,
+        ResponseVersion::AcceptedOperation(2)
+    );
 }
 
 #[test]
@@ -267,13 +404,10 @@ fn response_encoder_uses_the_explicit_source_qualified_axis() {
         version: ResponseVersion::AcceptedOperation(2),
         request_id: Some("req-future-operation".to_owned()),
         kind: Some("workflow.signal.submit".to_owned()),
-        body: ResponseBody::Error(aizign_protocol::ProtocolError::new(
-            codes::INTERNAL,
-            "operation failed",
-        )),
+        body: ResponseBody::Error(protocol_error(codes::INTERNAL, "operation failed")),
     };
     let bootstrap = Response {
-        version: ResponseVersion::Bootstrap(7),
+        version: ResponseVersion::Bootstrap(1),
         request_id: operation.request_id.clone(),
         kind: operation.kind.clone(),
         body: operation.body.clone(),
@@ -287,7 +421,17 @@ fn response_encoder_uses_the_explicit_source_qualified_axis() {
     assert!(
         encode_response(&bootstrap)
             .unwrap()
-            .contains("\"version\":7")
+            .contains("\"version\":1")
+    );
+    assert_eq!(
+        encode_response(&Response {
+            version: ResponseVersion::Bootstrap(7),
+            ..bootstrap
+        })
+        .unwrap_err()
+        .code()
+        .as_str(),
+        codes::INVALID_ENVELOPE
     );
 
     let null_kind = Response {
@@ -373,4 +517,300 @@ fn response_decoder_validates_the_source_stage_and_exact_numeric_version() {
         .as_str(),
         codes::PROTOCOL_VERSION_UNSUPPORTED
     );
+}
+
+#[test]
+fn successful_response_kind_selects_its_axis_before_request_context_correlation() {
+    let hello = r#"{"protocol":"aizign","version":1,"requestId":"req-axis-hello","kind":"hello","ok":true,"payload":{"protocolVersion":1,"journalSchemaVersion":1,"capabilities":[],"package":{"name":"aizign","version":"0.1.0"}}}"#;
+    let submit = r#"{"protocol":"aizign","version":1,"requestId":"req-axis-submit","kind":"workflow.signal.submit","ok":true,"payload":{"disposition":"accepted","eventId":"evt-axis-submit"}}"#;
+    let reconcile = r#"{"protocol":"aizign","version":1,"requestId":"req-axis-reconcile","kind":"workflow.signal.reconcile","ok":true,"payload":{"disposition":"absent","eventId":"evt-axis-reconcile"}}"#;
+
+    for (name, frame, context, expected_axis) in [
+        (
+            "bootstrap-context-submit",
+            submit,
+            Some(ResponseVersion::Bootstrap(1)),
+            ResponseVersion::AcceptedOperation(1),
+        ),
+        (
+            "bootstrap-context-reconcile",
+            reconcile,
+            Some(ResponseVersion::Bootstrap(1)),
+            ResponseVersion::AcceptedOperation(1),
+        ),
+        (
+            "operation-context-hello",
+            hello,
+            Some(ResponseVersion::AcceptedOperation(1)),
+            ResponseVersion::Bootstrap(1),
+        ),
+        (
+            "contextless-hello",
+            hello,
+            None,
+            ResponseVersion::Bootstrap(1),
+        ),
+        (
+            "contextless-submit",
+            submit,
+            None,
+            ResponseVersion::AcceptedOperation(1),
+        ),
+        (
+            "contextless-reconcile",
+            reconcile,
+            None,
+            ResponseVersion::AcceptedOperation(1),
+        ),
+    ] {
+        assert_eq!(
+            decode_response_for(frame.as_bytes(), context)
+                .unwrap_or_else(|error| panic!("{name}: {error}"))
+                .version,
+            expected_axis,
+            "{name}"
+        );
+    }
+
+    let future = r#"{"protocol":"aizign","version":1,"requestId":"req-axis-future","kind":"future.operation","ok":true,"payload":{}}"#;
+    let future_failure =
+        decode_response_for(future.as_bytes(), Some(ResponseVersion::Bootstrap(1))).unwrap_err();
+    assert_eq!(future_failure.code().as_str(), codes::UNKNOWN_KIND);
+    assert_eq!(
+        future_failure.response_version,
+        ResponseVersion::AcceptedOperation(1)
+    );
+
+    let null_kind = r#"{"protocol":"aizign","version":1,"requestId":"req-axis-null","kind":null,"ok":true,"payload":{}}"#;
+    let null_failure = decode_response_for(
+        null_kind.as_bytes(),
+        Some(ResponseVersion::AcceptedOperation(1)),
+    )
+    .unwrap_err();
+    assert_eq!(null_failure.code().as_str(), codes::INVALID_ENVELOPE);
+    assert_eq!(
+        null_failure.response_version,
+        ResponseVersion::AcceptedOperation(1)
+    );
+
+    let bootstrap_error = r#"{"protocol":"aizign","version":1,"requestId":"req-axis-bootstrap-error","kind":"workflow.signal.submit","ok":false,"error":{"code":"PROTOCOL_VERSION_UNSUPPORTED","message":"unsupported"}}"#;
+    assert_eq!(
+        decode_response_for(
+            bootstrap_error.as_bytes(),
+            Some(ResponseVersion::AcceptedOperation(2)),
+        )
+        .unwrap()
+        .version,
+        ResponseVersion::Bootstrap(1)
+    );
+}
+
+#[test]
+fn response_axis_requires_a_boolean_false_before_bootstrap_error_selection() {
+    for (name, ok_member, expected_axis) in [
+        (
+            "true",
+            r#","ok":true"#,
+            ResponseVersion::AcceptedOperation(2),
+        ),
+        ("missing", "", ResponseVersion::AcceptedOperation(2)),
+        (
+            "null",
+            r#","ok":null"#,
+            ResponseVersion::AcceptedOperation(2),
+        ),
+        (
+            "string",
+            r#","ok":"false""#,
+            ResponseVersion::AcceptedOperation(2),
+        ),
+    ] {
+        let frame = format!(
+            r#"{{"protocol":"aizign","version":2,"requestId":"req-ok-{name}","kind":"workflow.signal.submit"{ok_member},"error":{{"code":"PROTOCOL_VERSION_UNSUPPORTED","message":"unsupported"}}}}"#
+        );
+        let failure = decode_response_for(
+            frame.as_bytes(),
+            Some(ResponseVersion::AcceptedOperation(2)),
+        )
+        .unwrap_err();
+        assert_eq!(failure.response_version, expected_axis, "{name}");
+        assert_eq!(failure.code().as_str(), codes::INVALID_ENVELOPE, "{name}");
+        assert_eq!(failure.request_id, Some(format!("req-ok-{name}")));
+        assert_eq!(failure.kind.as_deref(), Some("workflow.signal.submit"));
+    }
+
+    let false_frame = r#"{"protocol":"aizign","version":1,"requestId":"req-ok-false","kind":"workflow.signal.submit","ok":false,"error":{"code":"PROTOCOL_VERSION_UNSUPPORTED","message":"unsupported"}}"#;
+    let response = decode_response_for(
+        false_frame.as_bytes(),
+        Some(ResponseVersion::AcceptedOperation(2)),
+    )
+    .unwrap();
+    assert_eq!(response.version, ResponseVersion::Bootstrap(1));
+    assert_eq!(response.request_id.as_deref(), Some("req-ok-false"));
+    assert_eq!(response.kind.as_deref(), Some("workflow.signal.submit"));
+    assert!(matches!(
+        response.body,
+        ResponseBody::Error(ref error)
+            if error.code().as_str() == codes::PROTOCOL_VERSION_UNSUPPORTED
+    ));
+}
+
+#[test]
+fn duplicate_members_recover_only_the_final_typed_spelling() {
+    for (name, duplicate, expected_request_id) in [
+        ("string-to-number", r#""old","requestId":17"#, None),
+        ("string-to-null", r#""old","requestId":null"#, None),
+        ("string-to-object", r#""old","requestId":{}"#, None),
+        (
+            "number-to-string",
+            r#"17,"requestId":"req-final""#,
+            Some("req-final"),
+        ),
+    ] {
+        let frame = format!(
+            r#"{{"protocol":"aizign","version":1,"requestId":{duplicate},"kind":"hello","payload":{{}}}}"#
+        );
+        let failure = decode_request(frame.as_bytes()).unwrap_err();
+        assert_eq!(failure.code().as_str(), codes::INVALID_ENVELOPE, "{name}");
+        assert_eq!(failure.request_id.as_deref(), expected_request_id, "{name}");
+    }
+
+    for (name, final_ok) in [("false-to-null", "null"), ("false-to-string", r#""false""#)] {
+        let frame = format!(
+            r#"{{"protocol":"aizign","version":2,"requestId":"req-{name}","kind":"workflow.signal.submit","ok":false,"ok":{final_ok},"error":{{"code":"PROTOCOL_VERSION_UNSUPPORTED","message":"unsupported"}}}}"#
+        );
+        let failure = decode_response_for(
+            frame.as_bytes(),
+            Some(ResponseVersion::AcceptedOperation(2)),
+        )
+        .unwrap_err();
+        assert_eq!(failure.code().as_str(), codes::INVALID_ENVELOPE, "{name}");
+        assert_eq!(
+            failure.response_version,
+            ResponseVersion::AcceptedOperation(2),
+            "{name}"
+        );
+    }
+
+    let replaced_error = r#"{"protocol":"aizign","version":2,"requestId":"req-error-null","kind":"workflow.signal.submit","ok":false,"error":{"code":"PROTOCOL_VERSION_UNSUPPORTED","message":"unsupported"},"error":null}"#;
+    let failure = decode_response_for(
+        replaced_error.as_bytes(),
+        Some(ResponseVersion::AcceptedOperation(2)),
+    )
+    .unwrap_err();
+    assert_eq!(failure.code().as_str(), codes::INVALID_ENVELOPE);
+    assert_eq!(
+        failure.response_version,
+        ResponseVersion::AcceptedOperation(2)
+    );
+}
+
+#[test]
+fn only_a_direct_error_code_can_select_the_bootstrap_response_axis() {
+    let nested = r#"{"protocol":"aizign","version":2,"requestId":"req-nested-code","kind":"workflow.signal.submit","ok":false,"error":{"meta":{"code":"PROTOCOL_VERSION_UNSUPPORTED"},"message":"unsupported"}}"#;
+    let failure = decode_response_for(
+        nested.as_bytes(),
+        Some(ResponseVersion::AcceptedOperation(2)),
+    )
+    .unwrap_err();
+    assert_eq!(failure.code().as_str(), codes::INVALID_ENVELOPE);
+    assert_eq!(failure.request_id.as_deref(), Some("req-nested-code"));
+    assert_eq!(
+        failure.response_version,
+        ResponseVersion::AcceptedOperation(2)
+    );
+
+    let direct = r#"{"protocol":"aizign","version":1,"requestId":"req-direct-code","kind":"workflow.signal.submit","ok":false,"error":{"code":"PROTOCOL_VERSION_UNSUPPORTED","message":"unsupported"}}"#;
+    assert_eq!(
+        decode_response_for(
+            direct.as_bytes(),
+            Some(ResponseVersion::AcceptedOperation(2)),
+        )
+        .unwrap()
+        .version,
+        ResponseVersion::Bootstrap(1)
+    );
+}
+
+#[test]
+fn deep_future_payloads_are_scanned_before_version_routing_without_a_depth_cutoff() {
+    let wrap = |leaf: &str| format!("{}{}{}", r#"{"next":"#.repeat(180), leaf, "}".repeat(180));
+    let valid = format!(
+        r#"{{"protocol":"aizign","version":2,"requestId":"req-deep","kind":"future.operation","payload":{}}}"#,
+        wrap("{}")
+    );
+    let failure = decode_request(valid.as_bytes()).unwrap_err();
+    assert_eq!(failure.code().as_str(), codes::PROTOCOL_VERSION_UNSUPPORTED);
+    assert_eq!(failure.request_id.as_deref(), Some("req-deep"));
+    assert_eq!(failure.kind.as_deref(), Some("future.operation"));
+
+    let duplicate = format!(
+        r#"{{"protocol":"aizign","version":2,"requestId":"req-deep","kind":"future.operation","payload":{}}}"#,
+        wrap(r#"{"same":1,"same":2}"#)
+    );
+    assert_eq!(
+        decode_request(duplicate.as_bytes())
+            .unwrap_err()
+            .code()
+            .as_str(),
+        codes::INVALID_ENVELOPE
+    );
+}
+
+#[test]
+fn deep_payload_detection_preserves_envelope_and_routing_precedence() {
+    let wrap = |leaf: &str| format!("{}{}{}", r#"{"next":"#.repeat(180), leaf, "}".repeat(180));
+    let cases = [
+        (
+            "known-kind",
+            format!(
+                r#"{{"protocol":"aizign","version":1,"requestId":"req-known","kind":"hello","payload":{}}}"#,
+                wrap("{}")
+            ),
+            codes::INVALID_PAYLOAD,
+        ),
+        (
+            "unknown-kind",
+            format!(
+                r#"{{"protocol":"aizign","version":1,"requestId":"req-unknown","kind":"future.operation","payload":{}}}"#,
+                wrap("{}")
+            ),
+            codes::UNKNOWN_KIND,
+        ),
+        (
+            "missing-kind",
+            format!(
+                r#"{{"protocol":"aizign","version":1,"requestId":"req-missing","payload":{}}}"#,
+                wrap("{}")
+            ),
+            codes::INVALID_ENVELOPE,
+        ),
+        (
+            "non-string-kind",
+            format!(
+                r#"{{"protocol":"aizign","version":1,"requestId":"req-non-string","kind":17,"payload":{}}}"#,
+                wrap("{}")
+            ),
+            codes::INVALID_ENVELOPE,
+        ),
+        (
+            "unknown-envelope-member",
+            format!(
+                r#"{{"protocol":"aizign","version":1,"requestId":"req-extra","kind":"hello","payload":{},"extra":true}}"#,
+                wrap("{}")
+            ),
+            codes::INVALID_ENVELOPE,
+        ),
+        (
+            "unsupported-version",
+            format!(
+                r#"{{"protocol":"aizign","version":2,"requestId":"req-version","kind":"hello","payload":{}}}"#,
+                wrap("{}")
+            ),
+            codes::PROTOCOL_VERSION_UNSUPPORTED,
+        ),
+    ];
+    for (name, frame, expected) in cases {
+        assert_eq!(code_of(&frame).2, expected, "{name}");
+    }
 }

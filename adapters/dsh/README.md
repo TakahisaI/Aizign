@@ -36,6 +36,11 @@ diagnostic renderer follows cause chains. DSH persistence remains auxiliary
 evidence with the limits below. See the
 [v0.1 threat model](../../docs/security/threat-model.md).
 
+Harness-local argument and binding checks remain adapter-owned. Protocol
+source validation is performed exactly once by `encodeRequest` inside
+`OneShotCoreClient`, before parent timing, process spawn, stdin acquisition, or
+write; the mapper has no encode-then-decode Protocol prevalidation path.
+
 ## Layout
 
 ```text

@@ -184,7 +184,7 @@ impl From<SignalKind> for KindDto {
 }
 
 fn field<T>(code: &str, name: &str, result: Result<T, IdentityError>) -> Result<T, ProtocolError> {
-    result.map_err(|error| ProtocolError::new(code, format!("{name}: {error}")))
+    result.map_err(|error| ProtocolError::from_valid_code(code, format!("{name}: {error}")))
 }
 
 fn digest(code: &str, name: &str, dto: &DigestDto) -> Result<Digest, ProtocolError> {
@@ -248,8 +248,9 @@ fn encode_signal(signal: &WorkflowSignal) -> SignalDto {
 /// expectation values are `INVALID_EXPECTATION`; invalid signal values and
 /// kind-specific violations are `INVALID_SIGNAL`.
 pub(crate) fn decode_submit(payload: serde_json::Value) -> Result<Command, ProtocolError> {
-    let payload: SubmitPayload = serde_json::from_value(payload)
-        .map_err(|error| ProtocolError::new(codes::INVALID_PAYLOAD, error.to_string()))?;
+    let payload: SubmitPayload = serde_json::from_value(payload).map_err(|error| {
+        ProtocolError::from_valid_code(codes::INVALID_PAYLOAD, error.to_string())
+    })?;
 
     let e = codes::INVALID_EXPECTATION;
     let expected = ExpectedAssignment {
@@ -306,8 +307,9 @@ pub(crate) fn encode_submit(command: &Command) -> serde_json::Value {
 pub(crate) fn decode_reconcile(
     payload: serde_json::Value,
 ) -> Result<WorkflowSignal, ProtocolError> {
-    let payload: ReconcilePayload = serde_json::from_value(payload)
-        .map_err(|error| ProtocolError::new(codes::INVALID_PAYLOAD, error.to_string()))?;
+    let payload: ReconcilePayload = serde_json::from_value(payload).map_err(|error| {
+        ProtocolError::from_valid_code(codes::INVALID_PAYLOAD, error.to_string())
+    })?;
     decode_signal(&payload.signal)
 }
 
@@ -374,8 +376,9 @@ struct ReconciliationResultDto {
 }
 
 pub(crate) fn decode_result(payload: serde_json::Value) -> Result<SignalResult, ProtocolError> {
-    let dto: SignalResultDto = serde_json::from_value(payload)
-        .map_err(|error| ProtocolError::new(codes::INVALID_PAYLOAD, error.to_string()))?;
+    let dto: SignalResultDto = serde_json::from_value(payload).map_err(|error| {
+        ProtocolError::from_valid_code(codes::INVALID_PAYLOAD, error.to_string())
+    })?;
     Ok(SignalResult {
         disposition: dto.disposition,
         event_id: field(
@@ -397,8 +400,9 @@ pub(crate) fn encode_result(result: &SignalResult) -> serde_json::Value {
 pub(crate) fn decode_reconciliation_result(
     payload: serde_json::Value,
 ) -> Result<ReconciliationResult, ProtocolError> {
-    let dto: ReconciliationResultDto = serde_json::from_value(payload)
-        .map_err(|error| ProtocolError::new(codes::INVALID_PAYLOAD, error.to_string()))?;
+    let dto: ReconciliationResultDto = serde_json::from_value(payload).map_err(|error| {
+        ProtocolError::from_valid_code(codes::INVALID_PAYLOAD, error.to_string())
+    })?;
     Ok(ReconciliationResult {
         disposition: dto.disposition,
         event_id: field(

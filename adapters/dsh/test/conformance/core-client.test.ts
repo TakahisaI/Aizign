@@ -4,7 +4,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -14,6 +14,7 @@ import {
   runCoreScenarios,
   samplePayload,
 } from '@aizign/adapter-testkit';
+import { codes, ProtocolError } from '@aizign/protocol';
 import { createProcessProfileRegistry } from '../../../../spec/process/v1/fixtures/registry.mjs';
 import { OneShotCoreClient } from '../../src/core-client/one-shot-client.ts';
 import type { ParentTimingMeasurement } from '../../src/timing.ts';
@@ -24,6 +25,54 @@ test('OneShotCoreClient executes every assigned process-profile case', async () 
     caseExecuted: registry.record,
   });
   registry.complete();
+});
+
+test('local encoder failures have zero transport and parent-timing side effects', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aizign-dsh-local-encode-'));
+  try {
+    const invocationLog = join(root, 'invocations.log');
+    const stateDir = join(root, 'state');
+    const measurements: ParentTimingMeasurement[] = [];
+    const client = new OneShotCoreClient({
+      command: fakeCoreExecutable(join(root, 'bin')),
+      env: { AIZIGN_FAKE_INVOCATION_LOG: invocationLog },
+      stateDir,
+      timeoutMs: 5_000,
+      timingSink: (measurement) => {
+        measurements.push(measurement);
+      },
+    });
+
+    const invalidSubmit = samplePayload('evt-invalid-submit');
+    const invalidReconcile = samplePayload('evt-invalid-reconcile');
+    await assert.rejects(
+      client.hello('invalid request id'),
+      (error: unknown) => error instanceof ProtocolError && error.code === codes.INVALID_ENVELOPE,
+    );
+    await assert.rejects(
+      client.submitWorkflowSignal('req-invalid-submit', {
+        ...invalidSubmit,
+        signal: { ...invalidSubmit.signal, findingCount: 1 },
+      }),
+      (error: unknown) => error instanceof ProtocolError && error.code === codes.INVALID_SIGNAL,
+    );
+    await assert.rejects(
+      client.reconcileWorkflowSignal('req-invalid-reconcile', {
+        signal: { ...invalidReconcile.signal, eventId: 'invalid event id' },
+      }),
+      (error: unknown) => error instanceof ProtocolError && error.code === codes.INVALID_SIGNAL,
+    );
+
+    assert.equal(measurements.length, 0, 'encoding failure cannot start parent timing');
+    assert.equal(existsSync(invocationLog), false, 'encoding failure cannot spawn a process');
+    assert.equal(
+      existsSync(stateDir),
+      false,
+      'encoding failure cannot acquire stdin or write state',
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('OneShotCoreClient does not inherit synthetic parent credentials', async () => {

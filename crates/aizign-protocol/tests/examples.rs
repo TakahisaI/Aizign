@@ -5,8 +5,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use aizign_protocol::{
-    Disposition, ReconciliationDisposition, Request, RequestKind, ResponseBody, decode_request,
-    decode_response, encode_request, encode_response,
+    Disposition, ReconciliationDisposition, Request, RequestKind, ResponseBody, ResponseVersion,
+    decode_request, decode_response, encode_request, encode_response,
 };
 
 fn examples_dir() -> PathBuf {
@@ -49,6 +49,15 @@ fn request_examples_round_trip() {
 fn response_examples_round_trip() {
     for (name, bytes) in examples(".response.json") {
         let response = decode_response(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));
+        let expected_axis = if name == "hello.response.json"
+            || name == "invalid-envelope.response.json"
+            || name == "version-unsupported.response.json"
+        {
+            ResponseVersion::bootstrap()
+        } else {
+            ResponseVersion::operation()
+        };
+        assert_eq!(response.version, expected_axis, "{name}: response axis");
         let encoded = encode_response(&response).unwrap_or_else(|error| panic!("{name}: {error}"));
         assert_eq!(json(encoded.as_bytes()), json(&bytes), "{name}");
         assert!(!encoded.contains('\n'), "{name}: frames are single lines");

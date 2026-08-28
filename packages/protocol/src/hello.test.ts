@@ -66,3 +66,19 @@ test('hello decoding matches the schema: versions from 1, well-formed unique cap
     );
   }
 });
+
+test('hello source validation does not invoke accessors', () => {
+  let calls = 0;
+  const hostile = Object.defineProperty({ ...hello }, 'capabilities', {
+    enumerable: true,
+    get: () => {
+      calls += 1;
+      return [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT];
+    },
+  });
+  assert.throws(
+    () => decodeHelloInfo(hostile),
+    (error: { code?: string }) => error.code === 'INVALID_PAYLOAD',
+  );
+  assert.equal(calls, 0);
+});

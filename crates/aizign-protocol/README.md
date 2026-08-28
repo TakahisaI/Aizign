@@ -11,7 +11,7 @@ Aizign Protocol v1: NDJSON envelopes, closed decoders, and explicit DTO ↔ doma
 | **Hard invariants** | closed schema（未知field、`null`、未登録kindを拒否）、submitとreconcileで同じsignal DTO / validationを使う、attempt / typed candidate digest shapeをdomain型へ明示変換、encoderはboundを超えるrequest / responseを生成しない、stdoutに出るのはresponse 1行だけ（改行をescape）、messageにrequest本文を含めない、`accepted` はwriter-published committed stateだけから作られる（engineの責務。このcrateは結果をencodeするだけ） |
 | **Allowed dependencies** | `aizign-core`、`serde`、`serde_json`（ADR-0009） |
 | **Test command** | `cargo test -p aizign-protocol` |
-| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md)、[0009](../../docs/adr/0009-serialization-dependencies-for-the-protocol-crate.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md) |
+| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md)、[0009](../../docs/adr/0009-serialization-dependencies-for-the-protocol-crate.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0023](../../docs/adr/0023-define-protocol-lexical-and-outbound-validation-boundaries.md) |
 
 ## Security boundary
 
@@ -30,7 +30,7 @@ src/
 ├── envelope.rs         Request / Response、decode_request / encode_request / decode_response / encode_response
 ├── error.rs            ProtocolError、codes::*
 ├── hello.rs            HelloInfo、PackageInfo、capability定数
-├── json_member.rs      member重複の事前検査（内部実装）
+├── json_token.rs       duplicate member・Unicode・canonical integerの単一raw-token走査（内部実装）
 └── workflow_signal.rs  submit / reconcileのshared signal DTO（private）と変換、各result / disposition
 tests/
 ├── examples.rs         spec/protocol/v1/examples の全fileをdecode → encodeで往復
@@ -42,9 +42,12 @@ tests/
 
 1. size（`MAX_REQUEST_BYTES`）→ `REQUEST_TOO_LARGE`
 2. BOMなしUTF-8とwell-formed Unicode → 違反は `INVALID_ENVELOPE`
-3. duplicate member走査（lexical。schemaで表現できず、streaming / folding parserで意味が分れるため）。相関データはfold後の値から復元する
-4. lenient probe: `protocol`、`version`、`requestId`、`kind` だけを読む。versionが違えば `PROTOCOL_VERSION_UNSUPPORTED` を **requestId付きで** 返せる。versionが整数range `0..=u32::MAX` 外なら `INVALID_ENVELOPE`
-5. strict envelope（`deny_unknown_fields`、payloadはobject）→ `INVALID_ENVELOPE`
-6. kind dispatch → `UNKNOWN_KIND` / `INVALID_PAYLOAD` / `INVALID_EXPECTATION` / workflow code
+3. source-order raw-token走査（duplicate member、Unicode scalar、canonical integer）
+4. lossless lenient probe: `protocol`、raw `version`、`requestId`、`kind`
+5. kind axisとversionを選択し、unsupportedならbootstrap-v1 response contextを保持
+6. accepted-version strict envelope（`deny_unknown_fields`、payloadはobject）
+7. kind dispatch → `UNKNOWN_KIND` / `INVALID_PAYLOAD` / `INVALID_EXPECTATION` / workflow code
 
-`DecodeFailure` は復元できた `request_id` / `kind` を持つので、shellは常にaddressed responseを書けます。
+`DecodeFailure` は復元できた `request_id` / `kind` とsource-qualified response
+version contextを保持します。`ProtocolError::try_new` はmalformed codeを拒否し、
+well-formedな未認識codeは保持します。

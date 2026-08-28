@@ -38,9 +38,8 @@ constructed. It is neither normalized nor retained as a peer-reported code.
 These local rules are owned by
 [`spec/protocol/v1/`](../../spec/protocol/v1/README.md#protocolerror-construction)
 and [ADR-0023](../adr/0023-define-protocol-lexical-and-outbound-validation-boundaries.md).
-They create no new stable code or semantic outcome. Issue #77 S1 establishes
-the target contract; the constructors and outbound validators remain explicit
-S2 migration debt until that implementation slice lands.
+They create no new stable code or semantic outcome. Issue #77 S2 implements
+the strict constructors and outbound validators in both Protocol languages.
 
 ## Protocol
 
@@ -51,7 +50,7 @@ Rust の `aizign-protocol::CURRENT_FIXED_ERROR_CODES` と TypeScript の
 | Code | 意味 | Status |
 |---|---|---|
 | `PROTOCOL_VERSION_UNSUPPORTED` | envelopeの `version` をこのbinaryが扱えない | implemented（`aizign-protocol`） |
-| `INVALID_ENVELOPE` | envelopeがclosed schemaに合わない（JSONでない、`protocol` 違い、欠落、型違い、未知field、`requestId` 不正）。target outbound contractではmalformed/forged error codeやresponse sourceもlocalにこのcodeで拒否する | implemented（`aizign-protocol`。Issue #77 outbound migration pending） |
+| `INVALID_ENVELOPE` | envelopeがclosed schemaに合わない（JSONでない、`protocol` 違い、欠落、型違い、未知field、`requestId` 不正）。malformed/forged error codeやresponse sourceもoutboundでlocalにこのcodeで拒否する | implemented（`aizign-protocol`） |
 | `UNKNOWN_KIND` | `kind` が未登録 | implemented（`aizign-protocol`） |
 | `INVALID_PAYLOAD` | payloadがkindのclosed schemaに合わない（欠落、型違い、未知field、`null`） | implemented（`aizign-protocol`） |
 | `REQUEST_TOO_LARGE` | request sizeがboundを超えた | implemented（`aizign-protocol`） |

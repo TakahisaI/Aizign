@@ -95,10 +95,9 @@ selection; typed response decoding moves before the process-profile selector;
 request-side response stage is discarded; or response failure correlation is
 lost.
 
-Issue #77 S1 records this target representation and inventory only. Existing
-response expectations do not yet carry all required correlation/stage fields,
-and the complete fixture families do not yet exist. Issue #77 S2 owns their
-atomic addition with both codec migrations.
+Issue #77 S2 added this closed fixture inventory atomically with both codec
+migrations. Every invalid request and response expectation carries the six
+required fields, and both implementations execute the same files.
 
 ## Encoder conformance
 

@@ -948,6 +948,28 @@ fn malformed_and_oversized_frames_still_get_one_response() {
 }
 
 #[test]
+fn future_version_with_a_payload_lexical_defect_keeps_bootstrap_failure_context() {
+    let dir = TempDir::new();
+    let frame = r#"{"protocol":"aizign","version":2,"requestId":"req-future-lexical","kind":"workflow.future","payload":{"findingCount":1.0}}
+"#;
+    let response = one_frame_for(
+        &run_handle(&dir.state(), frame),
+        Some(ResponseVersion::bootstrap()),
+    );
+    assert_eq!(response.version, ResponseVersion::bootstrap());
+    assert_eq!(response.request_id.as_deref(), Some("req-future-lexical"));
+    assert_eq!(response.kind.as_deref(), Some("workflow.future"));
+    let ResponseBody::Error(error) = response.body else {
+        panic!("expected lexical failure")
+    };
+    assert_eq!(error.code().as_str(), codes::INVALID_PAYLOAD);
+    assert!(
+        !dir.state().exists(),
+        "lexical failure must not touch state"
+    );
+}
+
+#[test]
 fn lf_less_crlf_and_post_lf_requests_fail_before_state() {
     let cases = [
         (

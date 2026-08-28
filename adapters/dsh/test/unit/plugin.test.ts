@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { fakeCoreExecutable } from '@aizign/adapter-testkit';
+import { fakeCoreExecutable, readFakeRequests } from '@aizign/adapter-testkit';
 import {
   CAPABILITY_WORKFLOW_SIGNAL_RECONCILE,
   CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
@@ -235,6 +235,16 @@ test('apply runs the preflight and registers exactly one scope-bound tool', asyn
       disposition: 'duplicate',
       eventId: 'evt-1',
     });
+    const requestsBeforeLocalFailure = readFakeRequests(config.stateDir).length;
+    await assert.rejects(
+      tool?.execute({ kind: 'blocked' }, exec),
+      (error: unknown) => error instanceof HarnessError && error.code === 'INVALID_SIGNAL',
+    );
+    assert.equal(
+      readFakeRequests(config.stateDir).length,
+      requestsBeforeLocalFailure,
+      'Protocol source failure is rejected before the registered tool reaches the core',
+    );
 
     // Incompatible core: nothing is registered.
     const incompatible = fakeContext();

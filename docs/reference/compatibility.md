@@ -65,9 +65,9 @@ normalization, or source-object `toJSON` behavior are not compatibility paths.
 The outbound constructor/export tightening is a deliberate pre-release public
 surface change.
 
-These are target claims established by Issue #77 S1. The current codecs and
-public surfaces retain named migration debt until Issue #77 S2 lands; they must
-not yet be described as fully ADR-0023-conforming.
+Issue #77 S2 implements these claims in both codecs and closes the affected
+public surfaces. Shared lexical fixtures, encoder matrices, and package export
+audits keep ADR-0023 conformance executable.
 
 初期のcommitted-prefix JSONL storeは `x86_64-unknown-linux-gnu` だけが検証済みで、x32を含む別ABIや別architecture / libcのLinuxなど、その他のbuildはsubmit / reconcile capabilityをadvertiseしません。
 x32は、64-bit targetと誤認しないことをCIでcross-compileするnegative boundaryに限定し、runtime support、release artifact、support claimは提供しません。

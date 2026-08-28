@@ -3,6 +3,8 @@
  * rejections reuse the codes defined by `aizign-core`.
  */
 
+import { isProxyValue } from './shape.ts';
+
 /** `^[A-Z][A-Z0-9_]{0,63}$` */
 export const SHORT_ERROR_CODE_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/;
 
@@ -44,16 +46,51 @@ export function isShortErrorCode(value: unknown): value is string {
  * may represent a decoded wire error, a local encode/validation failure, or a
  * workflow rejection. The message is not a model-safe field and may contain
  * state-path or operating-system detail; adapters must normalize it before a
- * model-facing boundary. Construct with a well-formed short code; operation
- * clients decide whether they recognize its semantics. A malformed code
- * degrades to `INTERNAL` so it cannot reach the wire.
+ * model-facing boundary. Construction rejects malformed raw codes; operation
+ * clients decide whether they recognize a well-formed code's semantics.
  */
+interface ProtocolErrorSnapshot {
+  readonly code: string;
+  readonly message: string;
+}
+
+const authenticProtocolErrors = new WeakMap<object, ProtocolErrorSnapshot>();
+
 export class ProtocolError extends Error {
   readonly code: string;
 
   constructor(code: string, message: string) {
+    if (!isShortErrorCode(code)) throw new TypeError('Protocol error code is malformed');
+    if (typeof message !== 'string') throw new TypeError('Protocol error message must be a string');
     super(message);
     this.name = 'ProtocolError';
-    this.code = isShortErrorCode(code) ? code : codes.INTERNAL;
+    this.code = code;
+    if (new.target === ProtocolError) {
+      authenticProtocolErrors.set(this, { code, message });
+    }
   }
+}
+
+/** Internal check for the sole sanctioned non-plain response source value. */
+export function isAuthenticProtocolError(value: unknown): value is ProtocolError {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    isProxyValue(value) ||
+    Object.getPrototypeOf(value) !== ProtocolError.prototype
+  ) {
+    return false;
+  }
+  const snapshot = authenticProtocolErrors.get(value);
+  if (snapshot === undefined) return false;
+  const code = Object.getOwnPropertyDescriptor(value, 'code');
+  const message = Object.getOwnPropertyDescriptor(value, 'message');
+  return (
+    code !== undefined &&
+    'value' in code &&
+    code.value === snapshot.code &&
+    message !== undefined &&
+    'value' in message &&
+    message.value === snapshot.message
+  );
 }

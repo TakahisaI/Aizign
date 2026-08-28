@@ -108,6 +108,30 @@ test('fake DSH → plugin → fake core → result → cold read', async () => {
   }
 });
 
+test('fake DSH maps a local Protocol source failure without invoking the core', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aizign-dsh-local-failure-'));
+  try {
+    const stateDir = join(root, 'state');
+    const invocationLog = join(root, 'invocations.log');
+    const dsh = new FakeDsh();
+    await apply(
+      dsh.context,
+      config(
+        fakeBinary(join(root, 'bin'), { AIZIGN_FAKE_INVOCATION_LOG: invocationLog }),
+        stateDir,
+      ),
+    );
+    const before = readFileSync(invocationLog, 'utf8').trim().split('\n').length;
+    const outcome = await dsh.dispatch(TOOL_NAME, { kind: 'blocked' });
+    assert.equal(outcome.error?.code, 'INVALID_SIGNAL');
+    const after = readFileSync(invocationLog, 'utf8').trim().split('\n').length;
+    assert.equal(after, before, 'local Protocol failure must not spawn a submit process');
+    assert.equal(existsSync(join(stateDir, 'fake-requests.jsonl')), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 const binary = process.env.AIZIGN_BINARY;
 test('fake DSH → plugin → real aizign binary → JSONL journal → cold read', {
   skip: binary === undefined ? 'set AIZIGN_BINARY to a built aizign binary' : false,

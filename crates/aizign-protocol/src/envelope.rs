@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{ProtocolError, codes};
 use crate::hello::HelloInfo;
-use crate::json_member::has_duplicate_members;
+use crate::json_token::{CorrelationSafety, FailureKind, ProbeValue, scan_json_tokens};
 use crate::workflow_signal::{self, ReconciliationResult, SignalResult};
 
 /// Value of the `protocol` field.
@@ -74,6 +74,22 @@ pub struct DecodeFailure {
     /// Why decoding failed.
     pub error: ProtocolError,
 }
+
+impl DecodeFailure {
+    /// Stable error code retained for callers that only need the rejection.
+    #[must_use]
+    pub fn code(&self) -> &aizign_core::ShortErrorCode {
+        self.error.code()
+    }
+}
+
+impl std::fmt::Display for DecodeFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.error.fmt(formatter)
+    }
+}
+
+impl std::error::Error for DecodeFailure {}
 
 /// Source-qualified version axis for one response envelope.
 ///
@@ -147,22 +163,6 @@ struct RequestEnvelope {
     payload: serde_json::Map<String, serde_json::Value>,
 }
 
-/// Lenient first pass: recovers version and correlation data without
-/// rejecting unknown fields, so a newer-version frame still gets a
-/// `PROTOCOL_VERSION_UNSUPPORTED` answer addressed to its request id.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Probe {
-    #[serde(default)]
-    protocol: Option<serde_json::Value>,
-    #[serde(default)]
-    version: Option<serde_json::Value>,
-    #[serde(default)]
-    request_id: Option<serde_json::Value>,
-    #[serde(default)]
-    kind: Option<serde_json::Value>,
-}
-
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct ResponseEnvelope {
@@ -206,11 +206,44 @@ fn valid_request_id(value: &str) -> bool {
         })
 }
 
+fn parse_version_token(token: Option<&String>) -> Option<u32> {
+    let token = token?;
+    if token.starts_with('-') {
+        return None;
+    }
+    token.parse().ok()
+}
+
+fn probe_string(value: Option<&ProbeValue>) -> Option<&str> {
+    match value {
+        Some(ProbeValue::String(value)) => Some(value),
+        _ => None,
+    }
+}
+
+fn probe_number(value: Option<&ProbeValue>) -> Option<&String> {
+    match value {
+        Some(ProbeValue::Number(value)) => Some(value),
+        _ => None,
+    }
+}
+
+fn probe_boolean(value: Option<&ProbeValue>) -> Option<bool> {
+    match value {
+        Some(ProbeValue::Boolean(value)) => Some(*value),
+        _ => None,
+    }
+}
+
 /// Correlation data recovered by the lenient first pass.
 struct Recovered {
     request_id: Option<String>,
     kind: Option<String>,
     response_version: ResponseVersion,
+    typed_text: String,
+    envelope_text: String,
+    payload_integer_out_of_range: bool,
+    payload_exceeds_typed_depth: bool,
 }
 
 impl Recovered {
@@ -235,7 +268,7 @@ fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
         error,
     };
     if frame.len() > MAX_REQUEST_BYTES {
-        return Err(unaddressed(ProtocolError::new(
+        return Err(unaddressed(ProtocolError::from_valid_code(
             codes::REQUEST_TOO_LARGE,
             format!(
                 "request is {} bytes; at most {MAX_REQUEST_BYTES} allowed",
@@ -243,82 +276,71 @@ fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
             ),
         )));
     }
-    if has_duplicate_members(frame) {
-        // The frame repeats a member, so it never reaches interpretation.
-        // Correlation data is recovered from the folded view — the last
-        // spelling of each field wins, exactly what the TypeScript
-        // decoder's `JSON.parse` produces before any check runs. The
-        // typed `Probe` rejects duplicates itself, so the folded view is
-        // read through an untyped map instead.
-        let folded: serde_json::Value = serde_json::from_slice(frame).map_err(|error| {
-            unaddressed(ProtocolError::new(
-                codes::INVALID_ENVELOPE,
-                error.to_string(),
-            ))
-        })?;
-        let recovered = Recovered {
-            request_id: folded
-                .get("requestId")
-                .and_then(serde_json::Value::as_str)
-                .filter(|value| valid_request_id(value))
-                .map(str::to_owned),
-            kind: folded
-                .get("kind")
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_owned),
-            response_version: ResponseVersion::bootstrap(),
-        };
-        return Err(recovered.fail(ProtocolError::new(
-            codes::INVALID_ENVELOPE,
-            "frame repeats a JSON member; repeated members are not part of the contract",
-        )));
-    }
-    let probe: Probe = serde_json::from_slice(frame).map_err(|error| {
-        unaddressed(ProtocolError::new(
+    let text = std::str::from_utf8(frame).map_err(|error| {
+        unaddressed(ProtocolError::from_valid_code(
             codes::INVALID_ENVELOPE,
             error.to_string(),
         ))
     })?;
+    if text.starts_with('\u{feff}') {
+        return Err(unaddressed(ProtocolError::from_valid_code(
+            codes::INVALID_ENVELOPE,
+            "UTF-8 BOM is not allowed before a JSON frame",
+        )));
+    }
+    let scan = scan_json_tokens(text);
+    if let Some(message) = scan.syntax_error {
+        return Err(unaddressed(ProtocolError::from_valid_code(
+            codes::INVALID_ENVELOPE,
+            message,
+        )));
+    }
+    if !scan.top_level_object {
+        return Err(unaddressed(ProtocolError::from_valid_code(
+            codes::INVALID_ENVELOPE,
+            "frame must be a JSON object",
+        )));
+    }
+    let correlation_safe = scan.correlation_safety == CorrelationSafety::Safe;
     let mut recovered = Recovered {
-        request_id: probe
-            .request_id
-            .as_ref()
-            .and_then(serde_json::Value::as_str)
+        request_id: correlation_safe
+            .then(|| scan.top_level_values.get("requestId"))
+            .flatten()
+            .and_then(|value| probe_string(Some(value)))
             .filter(|value| valid_request_id(value))
             .map(str::to_owned),
-        kind: probe
-            .kind
-            .as_ref()
-            .and_then(serde_json::Value::as_str)
+        kind: correlation_safe
+            .then(|| probe_string(scan.top_level_values.get("kind")))
+            .flatten()
             .map(str::to_owned),
         response_version: ResponseVersion::bootstrap(),
+        typed_text: scan.typed_text.clone(),
+        envelope_text: scan.envelope_text.clone(),
+        payload_integer_out_of_range: scan.payload_integer_out_of_range,
+        payload_exceeds_typed_depth: scan.payload_exceeds_typed_depth,
     };
 
-    if probe.protocol.as_ref().and_then(serde_json::Value::as_str) != Some(PROTOCOL_NAME) {
-        return Err(recovered.fail(ProtocolError::new(
+    if let Some(failure) = scan.failure {
+        let code = if failure.kind == FailureKind::NoncanonicalNumber && failure.in_payload {
+            codes::INVALID_PAYLOAD
+        } else {
+            codes::INVALID_ENVELOPE
+        };
+        return Err(recovered.fail(ProtocolError::from_valid_code(code, failure.message)));
+    }
+
+    if probe_string(scan.top_level_values.get("protocol")) != Some(PROTOCOL_NAME) {
+        return Err(recovered.fail(ProtocolError::from_valid_code(
             codes::INVALID_ENVELOPE,
             format!("protocol must be \"{PROTOCOL_NAME}\""),
         )));
     }
-    let version = match probe.version.as_ref().and_then(serde_json::Value::as_u64) {
-        // `PROTOCOL_VERSION` is a `u32`, so versions beyond `u32::MAX` are
-        // out of the protocol's integer range: `INVALID_ENVELOPE`, exactly
-        // like the TypeScript decoder, which parses JSON numbers as `f64`
-        // and applies the same bound. Only then can a version mismatch be
-        // reported as `PROTOCOL_VERSION_UNSUPPORTED`.
-        Some(version) if version > u64::from(u32::MAX) => {
-            return Err(recovered.fail(ProtocolError::new(
-                codes::INVALID_ENVELOPE,
-                format!("version must be an integer between 0 and {}", u32::MAX),
-            )));
-        }
-        Some(version) => version,
-        None => {
-            return Err(recovered.fail(ProtocolError::new(
-                codes::INVALID_ENVELOPE,
-                "version must be an unsigned integer",
-            )));
-        }
+    let Some(version) = parse_version_token(probe_number(scan.top_level_values.get("version")))
+    else {
+        return Err(recovered.fail(ProtocolError::from_valid_code(
+            codes::INVALID_ENVELOPE,
+            format!("version must be an integer between 0 and {}", u32::MAX),
+        )));
     };
 
     let Some(kind) = recovered.kind.as_deref() else {
@@ -332,13 +354,13 @@ fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
     } else {
         PROTOCOL_VERSION
     };
-    if version == u64::from(accepted) {
+    if version == accepted {
         if kind != KIND_HELLO {
             recovered.response_version = ResponseVersion::AcceptedOperation(accepted);
         }
         Ok(recovered)
     } else {
-        Err(recovered.fail(ProtocolError::new(
+        Err(recovered.fail(ProtocolError::from_valid_code(
             codes::PROTOCOL_VERSION_UNSUPPORTED,
             format!("protocol version {version} is not supported; this axis speaks {accepted}"),
         )))
@@ -350,14 +372,15 @@ pub fn decode_request(frame: &[u8]) -> Result<Request, DecodeFailure> {
     let recovered = probe(frame)?;
     let fail = |error: ProtocolError| recovered.fail(error);
 
-    let envelope: RequestEnvelope = serde_json::from_slice(frame).map_err(|error| {
-        fail(ProtocolError::new(
-            codes::INVALID_ENVELOPE,
-            error.to_string(),
-        ))
-    })?;
-    if !valid_request_id(&envelope.request_id) {
-        return Err(fail(ProtocolError::new(
+    let structural: RequestEnvelope =
+        serde_json::from_str(&recovered.envelope_text).map_err(|error| {
+            fail(ProtocolError::from_valid_code(
+                codes::INVALID_ENVELOPE,
+                error.to_string(),
+            ))
+        })?;
+    if !valid_request_id(&structural.request_id) {
+        return Err(fail(ProtocolError::from_valid_code(
             codes::INVALID_ENVELOPE,
             format!(
                 "requestId must match ^[A-Za-z0-9][A-Za-z0-9._:-]{{0,{}}}$",
@@ -366,38 +389,72 @@ pub fn decode_request(frame: &[u8]) -> Result<Request, DecodeFailure> {
         )));
     }
     debug_assert_eq!(
-        envelope.version,
-        if envelope.kind == KIND_HELLO {
+        structural.version,
+        if structural.kind == KIND_HELLO {
             BOOTSTRAP_ENVELOPE_VERSION
         } else {
             PROTOCOL_VERSION
         }
     );
+    if !matches!(
+        structural.kind.as_str(),
+        KIND_HELLO | KIND_WORKFLOW_SIGNAL_SUBMIT | KIND_WORKFLOW_SIGNAL_RECONCILE
+    ) {
+        return Err(fail(ProtocolError::from_valid_code(
+            codes::UNKNOWN_KIND,
+            format!("kind \"{}\" is not registered", structural.kind),
+        )));
+    }
+    if recovered.payload_exceeds_typed_depth {
+        return Err(fail(ProtocolError::from_valid_code(
+            codes::INVALID_PAYLOAD,
+            "payload does not match the bounded Protocol v1 shape",
+        )));
+    }
+
+    let envelope: RequestEnvelope =
+        serde_json::from_str(&recovered.typed_text).map_err(|error| {
+            fail(ProtocolError::from_valid_code(
+                codes::INVALID_PAYLOAD,
+                error.to_string(),
+            ))
+        })?;
 
     let kind = match envelope.kind.as_str() {
         KIND_HELLO => {
             if !envelope.payload.is_empty() {
-                return Err(fail(ProtocolError::new(
+                return Err(fail(ProtocolError::from_valid_code(
                     codes::INVALID_PAYLOAD,
                     "hello takes an empty object payload",
                 )));
             }
             RequestKind::Hello
         }
-        KIND_WORKFLOW_SIGNAL_SUBMIT => RequestKind::SubmitWorkflowSignal(Box::new(
-            workflow_signal::decode_submit(serde_json::Value::Object(envelope.payload))
-                .map_err(fail)?,
-        )),
-        KIND_WORKFLOW_SIGNAL_RECONCILE => RequestKind::ReconcileWorkflowSignal(Box::new(
-            workflow_signal::decode_reconcile(serde_json::Value::Object(envelope.payload))
-                .map_err(fail)?,
-        )),
-        other => {
-            return Err(fail(ProtocolError::new(
-                codes::UNKNOWN_KIND,
-                format!("kind \"{other}\" is not registered"),
-            )));
+        KIND_WORKFLOW_SIGNAL_SUBMIT => {
+            if recovered.payload_integer_out_of_range {
+                return Err(fail(ProtocolError::from_valid_code(
+                    codes::INVALID_PAYLOAD,
+                    "payload integer is outside the unsigned 32-bit range",
+                )));
+            }
+            RequestKind::SubmitWorkflowSignal(Box::new(
+                workflow_signal::decode_submit(serde_json::Value::Object(envelope.payload))
+                    .map_err(fail)?,
+            ))
         }
+        KIND_WORKFLOW_SIGNAL_RECONCILE => {
+            if recovered.payload_integer_out_of_range {
+                return Err(fail(ProtocolError::from_valid_code(
+                    codes::INVALID_PAYLOAD,
+                    "payload integer is outside the unsigned 32-bit range",
+                )));
+            }
+            RequestKind::ReconcileWorkflowSignal(Box::new(
+                workflow_signal::decode_reconcile(serde_json::Value::Object(envelope.payload))
+                    .map_err(fail)?,
+            ))
+        }
+        _ => unreachable!("kind membership was checked before payload decode"),
     };
 
     Ok(Request {
@@ -413,6 +470,12 @@ pub fn decode_request(frame: &[u8]) -> Result<Request, DecodeFailure> {
 /// Returns `REQUEST_TOO_LARGE` rather than producing a frame above
 /// `MAX_REQUEST_BYTES`.
 pub fn encode_request(request: &Request) -> Result<String, ProtocolError> {
+    if !valid_request_id(&request.request_id) {
+        return Err(ProtocolError::from_valid_code(
+            codes::INVALID_ENVELOPE,
+            "requestId must match ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+        ));
+    }
     let payload = match &request.kind {
         RequestKind::Hello => serde_json::Map::new(),
         RequestKind::SubmitWorkflowSignal(command) => match workflow_signal::encode_submit(command)
@@ -439,8 +502,12 @@ pub fn encode_request(request: &Request) -> Result<String, ProtocolError> {
         payload,
     };
     let frame = serde_json::to_string(&envelope).expect("envelopes serialize without error");
+    finish_request_frame(frame)
+}
+
+fn finish_request_frame(frame: String) -> Result<String, ProtocolError> {
     if frame.len() > MAX_REQUEST_BYTES {
-        return Err(ProtocolError::new(
+        return Err(ProtocolError::from_valid_code(
             codes::REQUEST_TOO_LARGE,
             format!(
                 "request is {} bytes; at most {MAX_REQUEST_BYTES} allowed",
@@ -451,6 +518,23 @@ pub fn encode_request(request: &Request) -> Result<String, ProtocolError> {
     Ok(frame)
 }
 
+fn validate_success_response_kind(response: &Response) -> Result<(), ProtocolError> {
+    if matches!(&response.body, ResponseBody::Error(_)) {
+        return Ok(());
+    }
+    match response.kind.as_deref() {
+        Some(KIND_HELLO | KIND_WORKFLOW_SIGNAL_SUBMIT | KIND_WORKFLOW_SIGNAL_RECONCILE) => Ok(()),
+        Some(kind) => Err(ProtocolError::from_valid_code(
+            codes::UNKNOWN_KIND,
+            format!("kind \"{kind}\" is not registered"),
+        )),
+        None => Err(ProtocolError::from_valid_code(
+            codes::INVALID_ENVELOPE,
+            "successful responses must name their kind",
+        )),
+    }
+}
+
 /// Encodes a response as one line (no trailing newline). The output never
 /// contains a raw newline: `serde_json` escapes control characters.
 ///
@@ -459,6 +543,58 @@ pub fn encode_request(request: &Request) -> Result<String, ProtocolError> {
 /// Returns `INVALID_ENVELOPE` rather than producing a frame above
 /// `MAX_FRAME_BYTES`.
 pub fn encode_response(response: &Response) -> Result<String, ProtocolError> {
+    if response
+        .request_id
+        .as_deref()
+        .is_some_and(|request_id| !valid_request_id(request_id))
+    {
+        return Err(ProtocolError::from_valid_code(
+            codes::INVALID_ENVELOPE,
+            "requestId must be null or match ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+        ));
+    }
+    let valid_version_context = match response.version {
+        ResponseVersion::Bootstrap(version) => version == BOOTSTRAP_ENVELOPE_VERSION,
+        ResponseVersion::AcceptedOperation(version) => version >= 1,
+    };
+    if !valid_version_context {
+        return Err(ProtocolError::from_valid_code(
+            codes::INVALID_ENVELOPE,
+            "response version must name a valid selected version context",
+        ));
+    }
+    validate_success_response_kind(response)?;
+    match (&response.version, response.kind.as_deref(), &response.body) {
+        (ResponseVersion::Bootstrap(version), Some(KIND_HELLO), ResponseBody::Hello(info))
+            if *version == BOOTSTRAP_ENVELOPE_VERSION =>
+        {
+            info.validate().map_err(|message| {
+                ProtocolError::from_valid_code(codes::INVALID_PAYLOAD, message)
+            })?;
+        }
+        (
+            ResponseVersion::AcceptedOperation(_),
+            Some(KIND_WORKFLOW_SIGNAL_SUBMIT),
+            ResponseBody::WorkflowSignal(_),
+        )
+        | (
+            ResponseVersion::AcceptedOperation(_),
+            Some(KIND_WORKFLOW_SIGNAL_RECONCILE),
+            ResponseBody::WorkflowSignalReconciliation(_),
+        )
+        | (
+            ResponseVersion::Bootstrap(BOOTSTRAP_ENVELOPE_VERSION)
+            | ResponseVersion::AcceptedOperation(_),
+            _,
+            ResponseBody::Error(_),
+        ) => {}
+        _ => {
+            return Err(ProtocolError::from_valid_code(
+                codes::INVALID_ENVELOPE,
+                "response kind, body, and selected version context are inconsistent",
+            ));
+        }
+    }
     let (ok, payload, error) = match &response.body {
         ResponseBody::Hello(info) => (
             true,
@@ -493,7 +629,7 @@ pub fn encode_response(response: &Response) -> Result<String, ProtocolError> {
     };
     let frame = serde_json::to_string(&envelope).expect("envelopes serialize without error");
     if frame.len() > MAX_FRAME_BYTES {
-        return Err(ProtocolError::new(
+        return Err(ProtocolError::from_valid_code(
             codes::INVALID_ENVELOPE,
             format!(
                 "response is {} bytes; at most {MAX_FRAME_BYTES} allowed",
@@ -505,7 +641,7 @@ pub fn encode_response(response: &Response) -> Result<String, ProtocolError> {
 }
 
 /// Decodes one response frame. Used by adapters, testkits, and fixtures.
-pub fn decode_response(frame: &[u8]) -> Result<Response, ProtocolError> {
+pub fn decode_response(frame: &[u8]) -> Result<Response, DecodeFailure> {
     decode_response_for(frame, None)
 }
 
@@ -517,118 +653,274 @@ pub fn decode_response(frame: &[u8]) -> Result<Response, ProtocolError> {
 /// from response bytes alone. The numeric value inside the supplied version is
 /// the exact value expected for that request stage. Pre-operation error codes
 /// remain on the current bootstrap version.
+// Keeping the normative gate order linear makes accidental typed decoding or
+// version selection before the raw-token pass visible in review.
+#[allow(clippy::too_many_lines)]
 pub fn decode_response_for(
     frame: &[u8],
     request_stage: Option<ResponseVersion>,
-) -> Result<Response, ProtocolError> {
+) -> Result<Response, DecodeFailure> {
+    let initial_version = request_stage.unwrap_or_else(ResponseVersion::bootstrap);
+    let unaddressed = |error: ProtocolError| DecodeFailure {
+        request_id: None,
+        kind: None,
+        response_version: initial_version,
+        error,
+    };
     if frame.len() > MAX_FRAME_BYTES {
-        return Err(ProtocolError::new(
+        return Err(unaddressed(ProtocolError::from_valid_code(
             codes::INVALID_ENVELOPE,
             format!(
                 "response is {} bytes; at most {MAX_FRAME_BYTES} allowed",
                 frame.len()
             ),
-        ));
+        )));
     }
-    if has_duplicate_members(frame) {
-        // Same rule as requests (see `probe`): a repeated member has no
-        // single meaning, so the frame never reaches interpretation.
-        return Err(ProtocolError::new(
+    let text = std::str::from_utf8(frame).map_err(|error| {
+        unaddressed(ProtocolError::from_valid_code(
             codes::INVALID_ENVELOPE,
-            "frame repeats a JSON member; repeated members are not part of the contract",
-        ));
+            error.to_string(),
+        ))
+    })?;
+    if text.starts_with('\u{feff}') {
+        return Err(unaddressed(ProtocolError::from_valid_code(
+            codes::INVALID_ENVELOPE,
+            "UTF-8 BOM is not allowed before a JSON frame",
+        )));
     }
-    let envelope: ResponseEnvelope = serde_json::from_slice(frame)
-        .map_err(|error| ProtocolError::new(codes::INVALID_ENVELOPE, error.to_string()))?;
-    if envelope.protocol != PROTOCOL_NAME {
-        return Err(ProtocolError::new(
+    let scan = scan_json_tokens(text);
+    if let Some(message) = scan.syntax_error {
+        return Err(unaddressed(ProtocolError::from_valid_code(
+            codes::INVALID_ENVELOPE,
+            message,
+        )));
+    }
+    if !scan.top_level_object {
+        return Err(unaddressed(ProtocolError::from_valid_code(
+            codes::INVALID_ENVELOPE,
+            "frame must be a JSON object",
+        )));
+    }
+    let correlation_safe = scan.correlation_safety == CorrelationSafety::Safe;
+    let recovered = Recovered {
+        request_id: correlation_safe
+            .then(|| scan.top_level_values.get("requestId"))
+            .flatten()
+            .and_then(|value| probe_string(Some(value)))
+            .filter(|value| valid_request_id(value))
+            .map(str::to_owned),
+        kind: correlation_safe
+            .then(|| probe_string(scan.top_level_values.get("kind")))
+            .flatten()
+            .map(str::to_owned),
+        response_version: initial_version,
+        typed_text: scan.typed_text.clone(),
+        envelope_text: scan.envelope_text.clone(),
+        payload_integer_out_of_range: scan.payload_integer_out_of_range,
+        payload_exceeds_typed_depth: scan.payload_exceeds_typed_depth,
+    };
+    let ok = probe_boolean(scan.top_level_values.get("ok"));
+    let error_code = scan.error_code.as_deref();
+    let expected =
+        expected_response_version(recovered.kind.as_deref(), ok, error_code, request_stage);
+    let fail = |error: ProtocolError| DecodeFailure {
+        request_id: recovered.request_id.clone(),
+        kind: recovered.kind.clone(),
+        response_version: expected,
+        error,
+    };
+    if let Some(failure) = scan.failure {
+        let code = if failure.kind == FailureKind::NoncanonicalNumber && failure.in_payload {
+            codes::INVALID_PAYLOAD
+        } else {
+            codes::INVALID_ENVELOPE
+        };
+        return Err(fail(ProtocolError::from_valid_code(code, failure.message)));
+    }
+    if probe_string(scan.top_level_values.get("protocol")) != Some(PROTOCOL_NAME) {
+        return Err(fail(ProtocolError::from_valid_code(
             codes::INVALID_ENVELOPE,
             format!("protocol must be \"{PROTOCOL_NAME}\""),
-        ));
+        )));
     }
-    if envelope
+    let Some(wire_version) =
+        parse_version_token(probe_number(scan.top_level_values.get("version")))
+    else {
+        return Err(fail(ProtocolError::from_valid_code(
+            codes::INVALID_ENVELOPE,
+            format!("version must be an integer between 0 and {}", u32::MAX),
+        )));
+    };
+    if wire_version != expected.wire() {
+        let axis = match expected {
+            ResponseVersion::Bootstrap(_) => "bootstrap",
+            ResponseVersion::AcceptedOperation(_) => "accepted-operation",
+        };
+        return Err(fail(ProtocolError::from_valid_code(
+            codes::PROTOCOL_VERSION_UNSUPPORTED,
+            format!(
+                "{axis} response version must be {}; got {wire_version}",
+                expected.wire()
+            ),
+        )));
+    }
+    let structural: ResponseEnvelope =
+        serde_json::from_str(&recovered.envelope_text).map_err(|error| {
+            fail(ProtocolError::from_valid_code(
+                codes::INVALID_ENVELOPE,
+                error.to_string(),
+            ))
+        })?;
+    if structural.protocol != PROTOCOL_NAME {
+        return Err(fail(ProtocolError::from_valid_code(
+            codes::INVALID_ENVELOPE,
+            format!("protocol must be \"{PROTOCOL_NAME}\""),
+        )));
+    }
+    if structural
         .request_id
         .as_deref()
         .is_some_and(|id| !valid_request_id(id))
     {
-        return Err(ProtocolError::new(
+        return Err(fail(ProtocolError::from_valid_code(
             codes::INVALID_ENVELOPE,
             "requestId must be null or match ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
-        ));
+        )));
     }
-    let version = decoded_response_version(
-        envelope.version,
-        envelope.kind.as_deref(),
-        envelope.ok,
-        envelope.error.as_ref().map(|error| error.code.as_str()),
-        request_stage,
-    )?;
+    match (
+        structural.ok,
+        structural.payload.as_ref(),
+        structural.error.as_ref(),
+    ) {
+        (true, Some(_), None) => match structural.kind.as_deref() {
+            Some(KIND_HELLO | KIND_WORKFLOW_SIGNAL_SUBMIT | KIND_WORKFLOW_SIGNAL_RECONCILE) => {}
+            Some(other) => {
+                return Err(fail(ProtocolError::from_valid_code(
+                    codes::UNKNOWN_KIND,
+                    format!("kind \"{other}\" is not registered"),
+                )));
+            }
+            None => {
+                return Err(fail(ProtocolError::from_valid_code(
+                    codes::INVALID_ENVELOPE,
+                    "successful responses must name their kind",
+                )));
+            }
+        },
+        (false, None, Some(_)) => {}
+        _ => {
+            return Err(fail(ProtocolError::from_valid_code(
+                codes::INVALID_ENVELOPE,
+                "ok responses carry exactly payload; error responses carry exactly error",
+            )));
+        }
+    }
+    if structural.ok && recovered.payload_exceeds_typed_depth {
+        return Err(fail(ProtocolError::from_valid_code(
+            codes::INVALID_PAYLOAD,
+            "payload does not match the bounded Protocol v1 shape",
+        )));
+    }
+
+    let envelope: ResponseEnvelope =
+        serde_json::from_str(&recovered.typed_text).map_err(|error| {
+            fail(ProtocolError::from_valid_code(
+                codes::INVALID_PAYLOAD,
+                error.to_string(),
+            ))
+        })?;
     let body = match (envelope.ok, envelope.payload, envelope.error) {
         (true, Some(payload), None) => match envelope.kind.as_deref() {
             Some(KIND_HELLO) => {
+                if recovered.payload_integer_out_of_range {
+                    return Err(fail(ProtocolError::from_valid_code(
+                        codes::INVALID_PAYLOAD,
+                        "payload integer is outside the unsigned 32-bit range",
+                    )));
+                }
                 let info: crate::HelloInfo = serde_json::from_value(payload).map_err(|error| {
-                    ProtocolError::new(codes::INVALID_PAYLOAD, error.to_string())
+                    fail(ProtocolError::from_valid_code(
+                        codes::INVALID_PAYLOAD,
+                        error.to_string(),
+                    ))
                 })?;
-                info.validate()
-                    .map_err(|message| ProtocolError::new(codes::INVALID_PAYLOAD, message))?;
+                info.validate().map_err(|message| {
+                    fail(ProtocolError::from_valid_code(
+                        codes::INVALID_PAYLOAD,
+                        message,
+                    ))
+                })?;
                 ResponseBody::Hello(info)
             }
             Some(KIND_WORKFLOW_SIGNAL_SUBMIT) => {
-                ResponseBody::WorkflowSignal(workflow_signal::decode_result(payload)?)
+                if recovered.payload_integer_out_of_range {
+                    return Err(fail(ProtocolError::from_valid_code(
+                        codes::INVALID_PAYLOAD,
+                        "payload integer is outside the unsigned 32-bit range",
+                    )));
+                }
+                ResponseBody::WorkflowSignal(workflow_signal::decode_result(payload).map_err(fail)?)
             }
-            Some(KIND_WORKFLOW_SIGNAL_RECONCILE) => ResponseBody::WorkflowSignalReconciliation(
-                workflow_signal::decode_reconciliation_result(payload)?,
-            ),
+            Some(KIND_WORKFLOW_SIGNAL_RECONCILE) => {
+                if recovered.payload_integer_out_of_range {
+                    return Err(fail(ProtocolError::from_valid_code(
+                        codes::INVALID_PAYLOAD,
+                        "payload integer is outside the unsigned 32-bit range",
+                    )));
+                }
+                ResponseBody::WorkflowSignalReconciliation(
+                    workflow_signal::decode_reconciliation_result(payload).map_err(fail)?,
+                )
+            }
             Some(other) => {
-                return Err(ProtocolError::new(
+                return Err(fail(ProtocolError::from_valid_code(
                     codes::UNKNOWN_KIND,
                     format!("kind \"{other}\" is not registered"),
-                ));
+                )));
             }
             None => {
-                return Err(ProtocolError::new(
+                return Err(fail(ProtocolError::from_valid_code(
                     codes::INVALID_ENVELOPE,
                     "successful responses must name their kind",
-                ));
+                )));
             }
         },
         (false, None, Some(error)) => {
             if aizign_core::ShortErrorCode::new(&error.code).is_err() {
-                return Err(ProtocolError::new(
+                return Err(fail(ProtocolError::from_valid_code(
                     codes::INVALID_ENVELOPE,
                     "error.code must match ^[A-Z][A-Z0-9_]{0,63}$",
-                ));
+                )));
             }
-            ResponseBody::Error(ProtocolError::new(&error.code, error.message))
+            ResponseBody::Error(ProtocolError::from_valid_code(&error.code, error.message))
         }
         _ => {
-            return Err(ProtocolError::new(
+            return Err(fail(ProtocolError::from_valid_code(
                 codes::INVALID_ENVELOPE,
                 "ok responses carry exactly payload; error responses carry exactly error",
-            ));
+            )));
         }
     };
     Ok(Response {
-        version,
+        version: expected,
         request_id: envelope.request_id,
         kind: envelope.kind,
         body,
     })
 }
 
-fn decoded_response_version(
-    wire_version: u32,
+fn expected_response_version(
     kind: Option<&str>,
-    ok: bool,
+    ok: Option<bool>,
     error_code: Option<&str>,
     request_stage: Option<ResponseVersion>,
-) -> Result<ResponseVersion, ProtocolError> {
+) -> ResponseVersion {
     let inferred_request_stage = || match request_stage {
         Some(stage) => stage,
         None if kind.is_some_and(|kind| kind != KIND_HELLO) => ResponseVersion::operation(),
         None => ResponseVersion::bootstrap(),
     };
-    let expected = if ok {
+    if ok == Some(true) {
         match kind {
             Some(KIND_HELLO) => {
                 ResponseVersion::Bootstrap(expected_bootstrap_version(request_stage))
@@ -638,25 +930,11 @@ fn decoded_response_version(
             }
             None => inferred_request_stage(),
         }
-    } else if error_code.is_some_and(is_unconditionally_bootstrap_error_code) {
+    } else if ok == Some(false) && error_code.is_some_and(is_unconditionally_bootstrap_error_code) {
         ResponseVersion::Bootstrap(expected_bootstrap_version(request_stage))
     } else {
         inferred_request_stage()
-    };
-    if wire_version != expected.wire() {
-        let axis = match expected {
-            ResponseVersion::Bootstrap(_) => "bootstrap",
-            ResponseVersion::AcceptedOperation(_) => "accepted-operation",
-        };
-        return Err(ProtocolError::new(
-            codes::PROTOCOL_VERSION_UNSUPPORTED,
-            format!(
-                "{axis} response version must be {}; got {wire_version}",
-                expected.wire()
-            ),
-        ));
     }
-    Ok(expected)
 }
 
 fn expected_bootstrap_version(request_stage: Option<ResponseVersion>) -> u32 {
@@ -678,4 +956,27 @@ fn is_unconditionally_bootstrap_error_code(code: &str) -> bool {
         code,
         codes::REQUEST_TOO_LARGE | codes::PROTOCOL_VERSION_UNSUPPORTED | codes::HANDLER_TIMEOUT
     )
+}
+
+#[cfg(test)]
+mod encoder_bound_tests {
+    use super::{MAX_REQUEST_BYTES, finish_request_frame};
+    use crate::codes;
+
+    #[test]
+    fn final_request_guard_accepts_the_bound_and_rejects_the_next_byte() {
+        assert_eq!(
+            finish_request_frame("x".repeat(MAX_REQUEST_BYTES))
+                .unwrap()
+                .len(),
+            MAX_REQUEST_BYTES
+        );
+        assert_eq!(
+            finish_request_frame("x".repeat(MAX_REQUEST_BYTES + 1))
+                .unwrap_err()
+                .code()
+                .as_str(),
+            codes::REQUEST_TOO_LARGE
+        );
+    }
 }

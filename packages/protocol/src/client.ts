@@ -110,14 +110,14 @@ export type ReconcileOutcome =
     }
   | ReconcileUnknown;
 
-/** One-shot request/response against the core. */
+/**
+ * One-shot request/response against the core. Invalid outbound source values
+ * for hello, submit, or reconcile reject with a local `ProtocolError` before
+ * timing or transport and return no operation outcome. The sole request
+ * encoder owns both field validation and its final frame bound.
+ */
 export interface CoreClient {
   hello(requestId: string, options?: CallOptions): Promise<HelloOutcome>;
-  /**
-   * An outbound frame above `MAX_REQUEST_BYTES` rejects with
-   * `ProtocolError(REQUEST_TOO_LARGE)` before transport; it returns no
-   * `SubmitOutcome`.
-   */
   submitWorkflowSignal(
     requestId: string,
     payload: WorkflowSignalSubmitPayload,

@@ -71,3 +71,22 @@ test('fake core preserves the operation version when unsafe kind correlation is 
   });
   registry.complete();
 });
+
+test('fake core writes zero stdout bytes when the sole response encoder rejects its source', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aizign-fake-core-invalid-response-'));
+  try {
+    const result = spawnSync(
+      fakeCoreExecutable(join(root, 'bin')),
+      ['handle', '--state', join(root, 'state')],
+      {
+        env: { ...process.env, AIZIGN_FAKE_FAULT: 'invalid-response-source' },
+        input:
+          '{"protocol":"aizign","version":1,"requestId":"req-invalid-source","kind":"hello","payload":{}}\n',
+      },
+    );
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout.length, 0, result.stderr.toString());
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

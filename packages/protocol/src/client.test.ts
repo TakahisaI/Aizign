@@ -61,3 +61,18 @@ test('reconciliation success also correlates the queried event id', () => {
     'eventId',
   );
 });
+
+test('correlation does not reinterpret the response version axis', () => {
+  const futureOperation = {
+    ...accepted,
+    version: { axis: 'accepted-operation' as const, version: 2 },
+  };
+  assert.equal(
+    checkCorrelation(
+      { requestId: 'req-1', kind: 'workflow.signal.submit', eventId: 'evt-1' },
+      futureOperation,
+    ),
+    undefined,
+  );
+  assert.deepEqual(futureOperation.version, { axis: 'accepted-operation', version: 2 });
+});
