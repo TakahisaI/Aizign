@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -10,12 +10,13 @@ import {
   type CoreClient,
   checkCompatibility,
 } from '@aizign/protocol';
-import type { Context } from '@deepseek-ai/cordis';
+import { Context } from '@deepseek-ai/cordis';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools';
 import { createProcessProfileRegistry } from '../../../../spec/process/v1/fixtures/registry.mjs';
 import type { Config } from '../../src/config.ts';
 import { OneShotCoreClient } from '../../src/core-client/one-shot-client.ts';
+import * as adapterPlugin from '../../src/index.ts';
 import { apply, Config as ConfigSchema, inject, name } from '../../src/index.ts';
 import { preflight, RECONCILIATION_REQUIRED } from '../../src/lifecycle/preflight.ts';
 import { adapterCodes as codes } from '../../src/mapping/tool.ts';
@@ -36,6 +37,10 @@ function fakeBinaryConfig(stateDir: string): Config {
     candidateDigest: {
       algorithm: 'sha256',
       hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    },
+    trustedSignalValues: {
+      artifactRef: 'artifact:implementation',
+      blockedShortErrorCode: 'BLOCKED_BY_CONTROL_PLANE',
     },
   };
 }
@@ -69,9 +74,55 @@ test('plugin shape: name, inject, and a schemastery Config', () => {
       algorithm: 'sha256',
       hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     },
+    trustedSignalValues: { blockedShortErrorCode: 'BLOCKED_BY_CONTROL_PLANE' },
   });
   assert.equal(parsed.timeoutMs, 15_000);
   assert.throws(() => ConfigSchema({ binary: '/x/aizign' } as Config));
+});
+
+test('direct Cordis Fiber preserves the cause-free trusted-config failure before effects', async () => {
+  const context = new Context();
+  let registrations = 0;
+  const disposeTools = context.provide('tools', {
+    register() {
+      registrations += 1;
+      return () => undefined;
+    },
+  });
+  const canary = 'credential-synthetic-user-password-private-canary-lowercase';
+  const config = {
+    ...fakeBinaryConfig('/unused/direct-cordis-state'),
+    binary: '/unused/direct-cordis-binary',
+    trustedSignalValues: {
+      artifactRef: 'artifact:direct-cordis',
+      blockedShortErrorCode: canary,
+    },
+  };
+  try {
+    await assert.rejects(
+      Promise.resolve(context.plugin(adapterPlugin, config)),
+      (error: unknown) => {
+        return (
+          error instanceof HarnessError &&
+          error.code === 'INVALID_EXPECTATION' &&
+          error.message === 'Aizign rejected invalid trusted signal configuration' &&
+          !('cause' in error) &&
+          !String(error.stack).includes(canary) &&
+          !JSON.stringify(
+            Object.fromEntries(
+              Reflect.ownKeys(error).map((key) => [
+                typeof key === 'symbol' ? key.toString() : key,
+                Reflect.getOwnPropertyDescriptor(error, key)?.value,
+              ]),
+            ),
+          ).includes(canary)
+        );
+      },
+    );
+    assert.equal(registrations, 0);
+  } finally {
+    await disposeTools();
+  }
 });
 
 test('preflight accepts a compatible core and rejects an incompatible or unreachable one', async () => {
@@ -248,7 +299,7 @@ test('apply runs without optional native evidence and registers one scope-bound 
     });
     const requestsBeforeLocalFailure = readFakeRequests(config.stateDir).length;
     await assert.rejects(
-      tool?.execute({ kind: 'blocked' }, exec),
+      tool?.execute({ kind: 'blocked', shortErrorCode: 'MODEL_CHOICE' }, exec),
       (error: unknown) => error instanceof HarnessError && error.code === 'INVALID_SIGNAL',
     );
     assert.equal(
@@ -275,6 +326,31 @@ test('apply runs without optional native evidence and registers one scope-bound 
       (error: unknown) => error instanceof HarnessError && error.code === codes.UNAVAILABLE,
     );
     assert.equal(broken.registered.length, 0, 'no tool is offered when the preflight fails');
+
+    // Trusted-value validation is the first startup action and preserves the
+    // exact cause-free adapter-owned error.
+    const invalidInvocationLog = join(root, 'invalid-trusted-invocations.log');
+    const invalidTrusted = fakeContext();
+    await assert.rejects(
+      apply(invalidTrusted, {
+        ...config,
+        binary: fakeBinary(join(root, 'invalid-trusted'), {
+          invocationLog: invalidInvocationLog,
+        }),
+        trustedSignalValues: {
+          ...config.trustedSignalValues,
+          blockedShortErrorCode: 'private-lowercase-canary',
+        },
+      }),
+      (error: unknown) =>
+        error instanceof HarnessError &&
+        error.code === 'INVALID_EXPECTATION' &&
+        error.message === 'Aizign rejected invalid trusted signal configuration' &&
+        !('cause' in error) &&
+        !JSON.stringify(error).includes('private-lowercase-canary'),
+    );
+    assert.equal(invalidTrusted.registered.length, 0);
+    assert.equal(existsSync(invalidInvocationLog), false, 'invalid config must not run preflight');
 
     // Invalid identity in the configuration never reaches the binary.
     await assert.rejects(

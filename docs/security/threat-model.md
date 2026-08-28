@@ -41,7 +41,7 @@ must name an enforcement owner and the regression evidence that guards it.
 | Domain | Trusted for | Not trusted for / boundary |
 |---|---|---|
 | Human operator / control plane | Binary and state-path selection; assignment identity; `eventId` generation or retention; candidate-digest provenance; adapter configuration | A wrong but valid state path is not detected. Configuration still receives shape validation. |
-| Model / agent | Nothing across the control boundary | Model-visible arguments are untrusted. In the current DSH tool the model selects signal kind and optional values including `artifactRef` and `shortErrorCode`; accepted opaque values can reach the journal. |
+| Model / agent | Nothing across the control boundary | Model-visible arguments are untrusted. In the current DSH tool the model selects only signal kind and optional `findingCount`; attempts to supply `artifactRef`, `shortErrorCode`, identity, or any unknown member fail before submission. |
 | Harness adapter | Native input mapping; preflight; identity isolation; model-visible schema; correlation and outcome preservation | The core cannot prove that a well-formed signal from a malicious adapter has honest provenance. |
 | Harness runtime / provider SDK | Only the native behavior explicitly documented by that adapter | Native IDs and session records are not core identity or workflow-acceptance authority. |
 | Remote provider / network | Nothing in the core contract | Availability, confidentiality, ordering, and retention are adapter/provider concerns. |
@@ -134,8 +134,8 @@ compatibility and migration rules.
 
 Treat these as untrusted and validate before use:
 
-- model-visible tool arguments, including the current DSH `artifactRef` and
-  `shortErrorCode` strings;
+- model-visible tool arguments, including the current DSH signal `kind` and
+  optional `findingCount`;
 - every Protocol v1 byte frame, including output from a spawned binary;
 - every journal and commit-metadata byte read after open;
 - every harness/provider event used for auxiliary evidence; and
@@ -145,31 +145,32 @@ Treat these as trusted assumptions after local shape validation:
 
 - configured binary and state-directory selection;
 - configured workflow/assignment/attempt/candidate identity;
+- the current DSH closed `trustedSignalValues` producer and its configured
+  `artifactRef` / blocked-signal `shortErrorCode` values;
 - the artifact authority's candidate-digest calculation;
 - the adapter implementation that maps native input and withholds identity;
 - the local account and kernel; and
 - provider or harness guarantees explicitly claimed by an adapter.
 
-Shape validation does not turn a model-supplied opaque value into trusted
-metadata. In particular, the current DSH `artifactRef` and `shortErrorCode`
-accept bounded strings from the model and do not scan those values for
-credentials, prompts, encoded content, or other sensitive material. Such a
-value can be persisted in the control journal if the signal is accepted.
+Shape validation does not authenticate an opaque value or prove its semantics.
+The current DSH adapter removes `artifactRef` and `shortErrorCode` from the
+ordinary model surface and injects locally validated configured values, but it
+does not scan those trusted values for credentials, prompts, encoded content,
+or other sensitive material. Such a value can be persisted in the control
+journal if the signal is accepted.
 
-### Accepted DSH migration target
+### Current DSH enforcement
 
 [ADR-0025](../adr/0025-move-dsh-signal-values-behind-trusted-configuration.md)
-accepts a pending change to the ordinary DSH path. The model-visible tool will
+is implemented by the ordinary DSH path. The model-visible tool
 retain only `kind` and optional `findingCount`; a required closed configuration
-bundle supplied by the operator or trusted control plane will own the bounded
+bundle supplied by the operator or trusted control plane owns the bounded
 `artifactRef` and blocked-signal `shortErrorCode` values. One adapter-internal
-resolver will return the exact signal plus a separate full-binding/full-
+resolver returns the exact signal plus a separate full-binding/full-
 trusted-bundle mapping key for a later lifecycle owner.
 
-Acceptance of that target is not runtime enforcement evidence. Until its
-atomic runtime migration lands, the current inputs and `Not guaranteed` matrix
-row remain unchanged. After it lands, the stronger supported-path claim will
-exclude arbitrary model selection of those two strings, but it will not cover
+The stronger supported-path claim excludes arbitrary model selection of those
+two strings, but it does not cover
 direct Protocol clients, malicious or compromised adapters or control planes,
 existing journal records, harness-owned copies of model input, semantic secret
 scanning, or authenticity of trusted configured values. The mapping key is not
@@ -191,7 +192,7 @@ threat crosses layers, the row uses the weakest end-to-end level.
 | Peer returns a well-formed but unrecognized error code | Detected and fail closed | Core clients and DSH outcome mapping | Submit returns `unknown` with diagnostic `reportedCode`; the model-facing boundary emits fixed `AIZIGN_OUTCOME_UNKNOWN` and does not retry | Protocol classification unit tests, fake-core fault scenario, and DSH safe-error mapping test | A trusted control-plane consumer can still observe the peer code and must not assign semantics it does not recognize |
 | Model controls stable identity or candidate digest | Runtime enforced | Current DSH adapter | Closed input schema omits stable identity; validated configuration is injected | DSH input-schema, config, mapping, and captured-envelope tests | The successful DSH result discloses the fixed `eventId`; non-selection is enforced, not identity confidentiality, and a malicious adapter can still submit a well-formed false value |
 | Harness/provider identity leaks into core identity or envelope | Runtime enforced | Current DSH adapter mapping | Use an adapter nonce and construct the envelope without native IDs | DSH captured-envelope round-trip tests | Generic key scanning cannot prove value provenance; each adapter owns native-value tests |
-| Model-supplied opaque value contains a prompt, output, credential, token, or encoded content | Not guaranteed | No semantic value scanner in v0.1 | A syntactically valid `artifactRef` or `shortErrorCode` can be accepted and journaled | Tests prove only closed shape and known native-ID exclusion | Current DSH exposes both strings to the model; Issue #72 must close both free-string paths before any stronger end-to-end allowed-value claim |
+| Opaque value contains a prompt, output, credential, token, or encoded content | Trusted assumption | Trusted producer / direct Protocol client; no semantic value scanner in v0.1 | Current DSH rejects model selection and injects only the closed configured values; a syntactically valid trusted value can still be accepted and journaled | DSH tests prove model-field removal, descriptor-first config validation, exact trusted injection, and known native-ID exclusion | Trusted configuration and direct Protocol clients remain responsible for value semantics; no scanning, signature, or attestation is claimed |
 | A dedicated raw-content, environment, credential, or native-ID field is added to protocol/journal | Runtime enforced | Closed protocol and journal schemas/DTOs | Reject unknown fields; owned encoders do not define such fields | Protocol/journal fixtures and schema tests | This is structural exclusion only and does not inspect allowed string values |
 | Parent harness credential environment leaks to `aizign` | Runtime enforced | Each adapter's native process launcher; current DSH owner is `OneShotCoreClient` | Build from empty plus the adapter's closed allowlist; DSH permits only parent PATH when present | Native complete-environment equality plus sensitive-parent exclusion scenarios | No credential manager exists; a future production variable needs a separate accepted contract |
 | Expected and signal binding disagree | Runtime enforced | Deterministic core | Compare workflow, assignment, attempt, role, revision, then candidate digest before duplicate/conflict | Core mismatch-order, protocol, and replay tests | This compares the two submitted values; it does not establish which external assignment or candidate is current |
@@ -248,7 +249,7 @@ general provider, network, or persistence guarantees.
 | 7. Human authorization is revision-bound and append-only | Future authorization context; not implemented in v0.1 | Not claimed as implemented |
 | 8. Provider identity is not core identity | Adapter mapping and provider-neutral core/protocol/journal types | Dependency/public audit and DSH captured-envelope tests |
 | 9. Restart reconciliation is bounded and read-only | Store reader, engine port separation, CLI composition | Store read-only/bounds tests and reconciliation tests |
-| 10. Journal is metadata-only and producers do not place raw content/credentials in allowed values | Closed DTOs prohibit dedicated raw-content fields; producer mapping owns allowed-value semantics | Shape exclusion is tested. End-to-end value-content exclusion is not guaranteed while DSH accepts model-supplied `artifactRef` or `shortErrorCode` |
+| 10. Journal is metadata-only and producers do not place raw content/credentials in allowed values | Closed DTOs prohibit dedicated raw-content fields; producer mapping owns allowed-value semantics | Current DSH removes both opaque strings from the model surface and tests exact trusted injection. End-to-end semantic exclusion still depends on trusted producers and direct Protocol clients. |
 | 11. No automatic remote publication or force update | No such runtime operation exists in v0.1 | Not claimed beyond absence and repository policy |
 | 12. Same identity/content is duplicate; changed content is conflict | Deterministic core | Core decision, replay, engine, and client scenarios |
 

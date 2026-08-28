@@ -19,9 +19,9 @@ assumptions, threat classification, and known limitations are defined in
   [canonical process profile](../../spec/process/v1/README.md). Diagnostics use
   stderr and remain payload-free, metadata-only operational data.
 - A closed schema controls shape, not provenance or string semantics. The
-  current DSH adapter exposes `artifactRef` and `shortErrorCode` to the model,
-  so v0.1 does not mechanically guarantee that every allowed opaque value is
-  free of prohibited content.
+  supported DSH adapter obtains `artifactRef` and blocked-signal
+  `shortErrorCode` from a closed trusted-configuration bundle, but the trusted
+  producer remains responsible for their allowed-value semantics.
 
 ## Adapter-only data
 
@@ -41,33 +41,29 @@ assumptions, threat classification, and known limitations are defined in
 | Stable workflow identity | `workflowId`, `assignmentId`, `attemptId`, `artifactRevision`, and `eventId`; fixed or retained by the trusted control plane/adapter, never model-selected. |
 | Candidate digest | SHA-256 computed by the control plane or artifact authority from the intended candidate bytes. The core validates, carries, and compares it; it does not compute or authenticate it. |
 | Trusted bounded opaque handle | A length-limited string issued by a trusted boundary. The core compares/stores it but does not interpret external content. |
-| Model-supplied bounded metadata | The current DSH tool accepts `artifactRef` and `shortErrorCode` from the model, validates only their closed shape/value constraints, and may persist them in an accepted signal. |
+| Model-supplied bounded metadata | The current DSH tool accepts only signal `kind` and optional `findingCount`; it rejects every other model argument before submission. |
 | Structured signal | A closed DTO containing kind and bounded optional metadata such as `findingCount`, `artifactRef`, or `shortErrorCode`. Closed shape does not imply trusted value provenance. |
 | Source-qualified classification | Submit server disposition, client outcome, reconciliation disposition, child runtime observation, parent transport observation, and harness-native observation retain separate authorities even when words overlap. Cross-language classification rows are owned by [`spec/classification/`](../../spec/classification/README.md) and all production projections are checked against its 78 rows. |
 | Recognized Protocol error code | A fixed code whose meaning is registered and recognized for the operation; safe for that operation's classification, not a raw provider error body. |
-| Model-supplied signal `shortErrorCode` or unrecognized peer code | A bounded diagnostic-shaped string matching `^[A-Z][A-Z0-9_]{0,63}$`. Shape alone provides no semantic provenance or content-safety guarantee. |
+| Trusted signal `shortErrorCode` or unrecognized peer code | A bounded diagnostic-shaped string matching `^[A-Z][A-Z0-9_]{0,63}$`. Shape alone provides no semantic provenance or content-safety guarantee. |
 | Bounded timestamp | Supplied by the shell. The deterministic core does not read a clock. |
 
 `artifactRef`, `shortErrorCode`, and other allowed opaque fields are not a
-covert-content detector. The normal DSH adapter currently lets the untrusted
-model choose both strings; a syntactically valid credential-like fragment or
-encoded content can therefore reach the protocol and journal without a
-malicious adapter. Moving both free-string paths behind trusted configuration,
-finite selectors, or equivalent authority is a separate contract change.
+covert-content detector. The supported DSH adapter prevents the ordinary model
+from choosing the two strings, but a trusted producer or a direct Protocol
+client can still supply a syntactically valid credential-like fragment or
+encoded content.
 
-### Accepted DSH migration target
+### Current DSH enforcement
 
 [ADR-0025](../adr/0025-move-dsh-signal-values-behind-trusted-configuration.md)
-accepts a pending DSH migration that closes both ordinary model-controlled
-paths together. Its target model-visible arguments are exactly `kind` and
+is implemented by the DSH adapter. Its model-visible arguments are exactly `kind` and
 optional `findingCount`; one required closed trusted-configuration bundle owns
 the bounded `artifactRef` and blocked-signal `shortErrorCode` values. A single
-adapter-internal resolver will construct the exact Protocol payload and the
+adapter-internal resolver constructs the exact Protocol payload and the
 separate full-binding/full-trusted-bundle mapping key.
 
-This target is not current runtime enforcement. Until the migration lands, the
-current DSH statements above and the `Not guaranteed` threat classification
-remain authoritative. After it lands, the supported-path guarantee still does
+The supported-path guarantee does
 not cover direct Protocol clients, malicious or compromised adapters or control
 planes, existing journal records, harness-owned copies of model input, semantic
 secret scanning, or value authenticity. The mapping key is not a Protocol,
@@ -104,8 +100,9 @@ rewrite both journal and commit metadata.
 The prohibited column is a field/shape guarantee. It does not mean the runtime
 can recognize credential or raw-content semantics inside every structurally
 allowed string. Producers remain obligated by hard invariant 10 not to put
-such content there, but end-to-end allowed-value exclusion is not guaranteed in
-v0.1 while model-supplied `artifactRef` or `shortErrorCode` remains supported.
+such content there. The supported DSH model cannot select `artifactRef` or
+`shortErrorCode`, but end-to-end semantic exclusion is not guaranteed for
+trusted configured values or direct Protocol clients.
 
 Future effect-intent, claim, result, and reconciliation fields are not journal
 data today. Adding any such field requires an accepted contract that names the

@@ -9,9 +9,19 @@ import {
   type ExpectedAssignment,
   isIdentifier,
   type Role,
-  type WorkflowSignalSubmitPayload,
 } from '@aizign/protocol';
+import { HarnessError } from '@deepseek-ai/dsh-llm';
 import z from '@deepseek-ai/schemastery';
+
+const INVALID_TRUSTED_CONFIG_MESSAGE = 'Aizign rejected invalid trusted signal configuration';
+const ARTIFACT_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+const SHORT_ERROR_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
+
+/** Control-plane values that the model must never select or alter. */
+export interface TrustedSignalValues {
+  readonly artifactRef?: string;
+  readonly blockedShortErrorCode: string;
+}
 
 /** Raw configuration as DSH hands it to the plugin. */
 export interface Config {
@@ -29,9 +39,10 @@ export interface Config {
   role: Role;
   artifactRevision: string;
   candidateDigest: ContentDigest;
+  trustedSignalValues: TrustedSignalValues;
 }
 
-export const Config: z<Config> = z.object({
+const ConfigShape = z.object({
   binary: z.string().required(),
   stateDir: z.string().required(),
   timeoutMs: z.number().min(1).max(600_000).default(15_000),
@@ -47,7 +58,15 @@ export const Config: z<Config> = z.object({
       hex: z.string().required(),
     })
     .required(),
+  // The nested record is deliberately opaque to Schemastery. The transform
+  // below inspects its descriptors before any member value is read.
+  trustedSignalValues: z.any(),
 });
+
+export const Config: z<Config> = z.transform(ConfigShape, (config) => ({
+  ...config,
+  trustedSignalValues: validateTrustedSignalValues(config.trustedSignalValues, config.role),
+})) as z<Config>;
 
 /** The identity the plugin binds every submitted signal to. */
 export interface SignalBinding {
@@ -61,6 +80,7 @@ export interface AdapterConfig {
   readonly stateDir: string;
   readonly timeoutMs: number;
   readonly binding: SignalBinding;
+  readonly trustedSignalValues: TrustedSignalValues;
 }
 
 export class ConfigError extends Error {
@@ -70,8 +90,60 @@ export class ConfigError extends Error {
   }
 }
 
+function invalidTrustedConfig(): HarnessError {
+  return new HarnessError(INVALID_TRUSTED_CONFIG_MESSAGE, 'INVALID_EXPECTATION');
+}
+
+/**
+ * Validates the caller-owned trusted bundle without invoking getters or
+ * inheriting data through a prototype. The returned record is a fresh,
+ * immutable copy and contains no caller-owned references.
+ */
+export function validateTrustedSignalValues(value: unknown, role: unknown): TrustedSignalValues {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype ||
+    Object.getOwnPropertySymbols(value).length !== 0
+  ) {
+    throw invalidTrustedConfig();
+  }
+
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const keys = Object.keys(descriptors);
+  if (
+    keys.some((key) => !['artifactRef', 'blockedShortErrorCode'].includes(key)) ||
+    !Object.hasOwn(descriptors, 'blockedShortErrorCode')
+  ) {
+    throw invalidTrustedConfig();
+  }
+  for (const descriptor of Object.values(descriptors)) {
+    if (!('value' in descriptor) || !descriptor.enumerable) throw invalidTrustedConfig();
+  }
+
+  const artifactRef = descriptors.artifactRef?.value;
+  const blockedShortErrorCode = descriptors.blockedShortErrorCode?.value;
+  if (
+    (Object.hasOwn(descriptors, 'artifactRef') && artifactRef === undefined) ||
+    (artifactRef !== undefined &&
+      (typeof artifactRef !== 'string' || !ARTIFACT_REF.test(artifactRef))) ||
+    typeof blockedShortErrorCode !== 'string' ||
+    !SHORT_ERROR_CODE.test(blockedShortErrorCode) ||
+    (role === 'implementation' && artifactRef === undefined)
+  ) {
+    throw invalidTrustedConfig();
+  }
+
+  return Object.freeze({
+    ...(artifactRef === undefined ? {} : { artifactRef }),
+    blockedShortErrorCode,
+  });
+}
+
 /** Validates values the schema cannot (identifier patterns, non-empty paths). */
 export function validateConfig(config: Config): AdapterConfig {
+  const trustedSignalValues = validateTrustedSignalValues(config.trustedSignalValues, config.role);
   if (config.binary.trim().length === 0) throw new ConfigError('binary must be a non-empty path');
   if (config.stateDir.trim().length === 0)
     throw new ConfigError('stateDir must be a non-empty path');
@@ -117,16 +189,6 @@ export function validateConfig(config: Config): AdapterConfig {
         },
       },
     },
-  };
-}
-
-/** The payload skeleton every submission from this binding starts from. */
-export function bindingPayload(
-  binding: SignalBinding,
-  signal: Omit<WorkflowSignalSubmitPayload['signal'], keyof ExpectedAssignment | 'eventId'>,
-): WorkflowSignalSubmitPayload {
-  return {
-    expected: binding.expected,
-    signal: { ...binding.expected, eventId: binding.eventId, ...signal },
+    trustedSignalValues,
   };
 }

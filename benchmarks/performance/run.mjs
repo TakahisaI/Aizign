@@ -899,10 +899,14 @@ async function runConcurrencySweep(
   }
 }
 
-function dshEvents(count, dependencies) {
+export function dshEvents(count, dependencies) {
   const args = { kind: 'implementation_ready' };
   const binding = { eventId: TARGET_EVENT_ID, expected: FIXED_EXPECTED };
-  const meta = dependencies.presentationMetaFor(binding, args, {
+  const trustedSignalValues = {
+    artifactRef: 'artifact:benchmark',
+    blockedShortErrorCode: 'BLOCKED_BY_BENCHMARK',
+  };
+  const meta = dependencies.presentationMetaFor(binding, trustedSignalValues, args, {
     disposition: 'accepted',
     eventId: TARGET_EVENT_ID,
   });

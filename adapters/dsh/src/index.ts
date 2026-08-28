@@ -45,5 +45,7 @@ export async function apply(ctx: Context, raw: PluginConfig): Promise<void> {
   }
   const client = createClient(config);
   await preflight(client);
-  ctx.tools.register(createSubmitWorkflowSignalTool(client, config.binding));
+  ctx.tools.register(
+    createSubmitWorkflowSignalTool(client, config.binding, config.trustedSignalValues),
+  );
 }

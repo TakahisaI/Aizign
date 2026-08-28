@@ -155,6 +155,21 @@ value semantics.
 
 ## Consequences
 
+### Implementation note — 2026-08-28
+
+The atomic runtime migration is implemented by the DSH adapter. The ordinary
+tool arguments are now exactly `{ kind, findingCount? }`; startup validates a
+fresh closed `trustedSignalValues` record before preflight and tool
+registration; and the sole internal resolver returns the exact payload plus
+the pinned mapping key. The stronger supported-path statement is therefore a
+current runtime claim, subject to the residual limitations in this ADR.
+
+The exact host-owned startup wrapper chain for rejected trusted configuration
+is recorded separately by
+[ADR-0026](0026-pin-the-dsh-startup-error-wrapper-boundary.md). Issue #79 still
+owns lifecycle/persistence of the resolver pair and Issue #80 still owns
+removal of the provisional evidence surface.
+
 ### Positive
 
 - The ordinary DSH model-visible surface will no longer own either opaque

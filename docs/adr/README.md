@@ -35,6 +35,7 @@
 | [0023](0023-define-protocol-lexical-and-outbound-validation-boundaries.md) | Define Protocol lexical and outbound validation boundaries | Accepted |
 | [0024](0024-require-isolated-adapter-child-environments.md) | Require isolated adapter child environments | Accepted |
 | [0025](0025-move-dsh-signal-values-behind-trusted-configuration.md) | Move DSH signal values behind trusted configuration | Accepted |
+| [0026](0026-pin-the-dsh-startup-error-wrapper-boundary.md) | Pin the DSH startup error wrapper boundary | Accepted |
 
 ADR-0016 partially supersedes ADR-0005's earlier `AGENTS.md` editing-constraint
 statement only; ADR-0005's other accepted decisions remain in force.
@@ -68,3 +69,8 @@ the two ordinary DSH `artifactRef` and `shortErrorCode` producer authorities
 model-controlled. ADR-0015's current-runtime facts remain true until the
 ADR-0025 migration lands; its other trust-boundary decisions and hard invariant
 10's producer obligation remain Accepted.
+
+ADR-0026 fixes the diagnostic wrapper chain produced by the exact DSH and
+Cordis loader pins while applying ADR-0025. It does not transfer ownership of
+the adapter's inner error or change Protocol, classification, retry, or
+workflow authority.

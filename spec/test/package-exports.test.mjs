@@ -460,6 +460,12 @@ test('TypeScript consumers cannot compile removed symbols or closed package path
       code: 2353,
     },
     {
+      name: 'trusted-signal-values-are-required',
+      source:
+        "import type { PluginConfig } from '@aizign/adapter-dsh';\nconst config: PluginConfig = { binary: '/aizign', stateDir: '/state', eventId: 'evt', workflowId: 'wf', assignmentId: 'as', attemptId: 'attempt', role: 'review', artifactRevision: 'rev', candidateDigest: { algorithm: 'sha256', hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' } };\nvoid config;\n",
+      code: 2741,
+    },
+    {
       name: 'protocol-deep-path',
       source: "import type { CoreClient } from '@aizign/protocol/src/client.js';\n",
       code: 2307,

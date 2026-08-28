@@ -34,6 +34,10 @@ const baseArgs = [
   'rev-live-1',
   '--candidate-digest',
   'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  '--artifact-ref',
+  'artifact:live-smoke',
+  '--blocked-short-error-code',
+  'BLOCKED_BY_LIVE_SMOKE',
 ];
 
 function generate(args) {
@@ -64,6 +68,9 @@ test('overrides the bundle-layer entry by id instead of inserting a duplicate', 
   assert.match(output, /^ {4}role: implementation$/m);
   assert.match(output, /^ {4}candidateDigest:$/m);
   assert.match(output, /^ {6}algorithm: sha256$/m);
+  assert.match(output, /^ {4}trustedSignalValues:$/m);
+  assert.match(output, /^ {6}artifactRef: "artifact:live-smoke"$/m);
+  assert.match(output, /^ {6}blockedShortErrorCode: "BLOCKED_BY_LIVE_SMOKE"$/m);
 });
 
 test('passes an explicit timeout through', () => {
@@ -76,6 +83,8 @@ test('rejects identifiers, roles, and timeouts the adapter would refuse', () => 
     ['--attempt-id', 'attempt live'],
     ['--role', 'reviewer'],
     ['--candidate-digest', 'ABC'],
+    ['--artifact-ref', 'bad ref'],
+    ['--blocked-short-error-code', 'lowercase'],
     ['--timeout-ms', '0'],
   ];
   for (const [key, value] of bad) {
@@ -91,4 +100,19 @@ test('rejects identifiers, roles, and timeouts the adapter would refuse', () => 
     assert.equal(result.stdout, '');
     assert.match(result.stderr, /^make-patch: /);
   }
+});
+
+test('review may omit artifactRef while implementation may not', () => {
+  const withoutArtifact = baseArgs.filter(
+    (arg, index) => arg !== '--artifact-ref' && baseArgs[index - 1] !== '--artifact-ref',
+  );
+  const review = withoutArtifact.map((arg, index) =>
+    withoutArtifact[index - 1] === '--role' ? 'review' : arg,
+  );
+  assert.doesNotMatch(generate(review), /^ {6}artifactRef:/m);
+  const implementation = spawnSync(process.execPath, [script, ...withoutArtifact], {
+    encoding: 'utf8',
+  });
+  assert.equal(implementation.status, 2);
+  assert.match(implementation.stderr, /--artifact-ref is required for implementation role/);
 });

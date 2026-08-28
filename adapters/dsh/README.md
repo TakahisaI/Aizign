@@ -6,12 +6,12 @@ The DSH harness adapter: a cordis plugin that registers one **scope-bound** `sub
 |---|---|
 | **Responsibility** | DSH plugin entry（`name` / `inject` / `Config` / `apply`）、model-visible tool用preflight（canonical framed `handle` hello → exact correlation → protocol version + submit capability）、`OneShotCoreClient`、agentの引数 → `workflow.signal.submit` payload のmapping、control-plane向けread-only reconciliation clientとその独立したcapability requirement、coreの結果 → tool result / `HarnessError`、harness-persisted success metadata integration（`tool/result` の `meta` にbinding / payload digestを記録し、session logのcold readでbinding digestを照合） |
 | **Non-responsibility** | 判断（core）、journal（coreのJSONL。DSH persistenceには書かない）、identityの決定（configで固定。agentはinputとして指定・変更できない。成功resultでは固定済み`eventId`を知る）、live smokeの手順（operatorの `op/`） |
-| **Inputs** | plugin config（binary、stateDir、timeoutMs、eventId + workflow / assignment / attempt / candidate digest）、agentのtool call `{ kind, findingCount?, artifactRef?, shortErrorCode? }` |
+| **Inputs** | plugin config（binary、stateDir、timeoutMs、eventId + workflow / assignment / attempt / candidate digest + closed `trustedSignalValues`）、agentのtool call `{ kind, findingCount? }` |
 | **Outputs** | model tool result `{ disposition: accepted \| duplicate, eventId }`、control-plane reconciliation outcome、または `HarnessError`（protocol / workflow code、`AIZIGN_OUTCOME_UNKNOWN`、`AIZIGN_UNAVAILABLE`、`AIZIGN_INCOMPATIBLE`） |
 | **Hard invariants** | control-plane identityをmodelに選択させない、reconciliationをmodel-visible toolにしない、DSH native IDをenvelopeへ入れない、全operationをshellなしのexact `handle --state stateDir`で起動、helloも`requestId` / `kind`を照合、signal successは`eventId`も照合、stdoutはbyte列のままbody上限・exact LF・stdout/process close・zero exitを確認しCRLFと全post-LF byteを拒否、lifecycle faultは`unknown`で再送しない、session readのpartial evidenceを採用しない、preflight失敗時はtoolを登録しない、環境変数を子processへ丸ごと渡さない（PATHのみ） |
 | **Allowed dependencies** | `@aizign/protocol`。peer: `@deepseek-ai/cordis` 4.0.1、`dsh-llm` / `dsh-tools` 0.1.1-rc.2、`schemastery` 3.18.1（exact、ADR-0010）。dev: `@aizign/adapter-testkit` |
 | **Test command** | `npm test -w @aizign/adapter-dsh`（`AIZIGN_BINARY` を与えると実binaryにも） |
-| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0010](../../docs/adr/0010-harness-sdk-dependencies-and-node-policy.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0020](../../docs/adr/0020-narrow-typescript-exports-and-own-dsh-transport.md)、[0022](../../docs/adr/0022-define-the-canonical-one-shot-process-profile.md)、[0024](../../docs/adr/0024-require-isolated-adapter-child-environments.md) |
+| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0010](../../docs/adr/0010-harness-sdk-dependencies-and-node-policy.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0020](../../docs/adr/0020-narrow-typescript-exports-and-own-dsh-transport.md)、[0022](../../docs/adr/0022-define-the-canonical-one-shot-process-profile.md)、[0024](../../docs/adr/0024-require-isolated-adapter-child-environments.md)、[0025](../../docs/adr/0025-move-dsh-signal-values-behind-trusted-configuration.md)、[0026](../../docs/adr/0026-pin-the-dsh-startup-error-wrapper-boundary.md) |
 
 ## Security boundary
 
@@ -24,10 +24,11 @@ environment configuration. If the parent has no PATH the child receives an
 empty mapping. Repository tests and benchmarks place controls inside generated
 non-production executable wrappers. Closed tool arguments prevent the model from choosing
 stable identity, but neither the core nor schema can prove honest provenance
-from a malicious adapter. The ordinary model can also supply `artifactRef` and
-`shortErrorCode`; their closed shape and bounds are validated, but their text
-is not scanned for credentials, prompts, or encoded content. End-to-end
-semantic exclusion is therefore not guaranteed. Protocol diagnostic messages
+from a malicious adapter. The ordinary model cannot supply `artifactRef` or
+`shortErrorCode`; the adapter validates and injects those values from closed
+trusted configuration before preflight or tool registration. Their text is
+not scanned for credentials, prompts, or encoded content, so trusted producers
+remain responsible for semantic exclusion. Protocol diagnostic messages
 are control-plane data and may contain state-path or operating-system detail;
 the tool mapping retains the stable code but replaces argument decoding, local
 Protocol validation, rejected, and unknown detail with fixed model-safe
@@ -47,13 +48,15 @@ write; the mapper has no encode-then-decode Protocol prevalidation path.
 ```text
 src/
 ├── index.ts                       stable plugin entry: name / inject / Config / PluginConfig / apply
-├── config.ts                      Config（schemastery）、validateConfig、SignalBinding、bindingPayload
+├── config.ts                      Config（schemastery）、descriptor-first trusted-value validation、SignalBinding
 ├── core-client/one-shot-client.ts OneShotCoreClient（submit / reconcile、spawn → 1 frame → 1 frame、相関照合、frame bound、abort、unknownの分類）
 ├── timing.ts                      DSH-owned parent timing、fixed-code disclosure、sink isolation
 ├── experimental/
 │   ├── transport.ts              closed provisional production-client / preflight / timing exports
 │   └── evidence.ts               closed provisional cold-read / presentation exports（Issue #80で削除）
-├── mapping/tool.ts                createSubmitWorkflowSignalTool、decodeArgs、toPayload、toToolResult、presentationMetaFor、adapterCodes
+├── mapping/
+│   ├── tool.ts                    createSubmitWorkflowSignalTool、closed `{kind,findingCount?}` decode、result mapping
+│   └── trusted-values.ts          sole trusted-value injection + mapping-key resolver
 ├── lifecycle/preflight.ts         hello → checkCompatibility
 └── evidence/
     ├── digest.ts                  canonicalJson、bindingDigest、payloadDigest（sha256）
@@ -91,7 +94,16 @@ operatorのpatchはその entry を **id で上書き**して有効化します�
     candidateDigest:
       algorithm: sha256
       hex: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    trustedSignalValues:
+      artifactRef: artifact:implementation-01   # implementationでは必須、reviewでは省略可
+      blockedShortErrorCode: BLOCKED_BY_CONTROL_PLANE
 ```
+
+`trustedSignalValues` はplain own-data recordだけを受け付けます。alias、default、
+`null`、明示的`undefined`、accessor、symbol、custom prototype、unknown memberは
+`INVALID_EXPECTATION`で起動前に拒否されます。`blockedShortErrorCode`は両roleで
+必須、`artifactRef`はimplementationで必須・reviewで任意です。拒否messageは
+固定され、raw valueやcauseを保持しません。
 
 `dsh --profile <name> --patch <file> --dump-config` で、合成後の tree に `aizign-workflow-signal` が `disabled: false` と上記 `config` で現れることを確認できます。
 [`experiments/dsh-live-smoke/make-patch.mjs`](../../experiments/dsh-live-smoke/make-patch.mjs) はこの形を生成します。
@@ -136,11 +148,12 @@ temporary `DSH_HOME` after verification.
 ## Capability classification
 
 This adapter satisfies the current minimum signal-submission behavior through
-protocol preflight, trusted config-bound identity injection, full response
+protocol preflight, trusted config-bound identity and opaque-value injection, full response
 correlation, exact outcome propagation, non-collapse of `unknown`,
-the closed metadata field set with producer obligations for opaque values,
+the closed metadata field set with producer obligations for trusted opaque values,
 model-facing diagnostic normalization, and bounded process I/O. This does not
-claim semantic inspection of model-supplied `artifactRef` or `shortErrorCode`.
+claim semantic inspection or authenticity of configured `artifactRef` or
+`blockedShortErrorCode`.
 
 It also demonstrates three optional harness adapter integrations:
 
@@ -226,3 +239,12 @@ successful correlated helloで判明したversion / required submit capability
 | `AIZIGN_OUTCOME_UNKNOWN` | 提出の結果が不明（無応答、garbage、2 frame、oversized、相関不一致、timeout、abort、`JOURNAL_OUTCOME_UNKNOWN`、`HANDLER_TIMEOUT`、`INTERNAL`、正形式だが未認識のpeer code）。peer codeはcontrol-plane診断にのみ保持し、この固定adapter codeへ正規化してmodelへ返す。再送しない |
 | `INVALID_SIGNAL` ほか | operation-specific allowlist上の確定的なprotocol / workflow / journal rejection codeだけを保持 |
 | `INVALID_EXPECTATION` | plugin configの検証に失敗 |
+
+Malformed `trustedSignalValues` produces the fixed inner error
+`HarnessError("Aizign rejected invalid trusted signal configuration",
+"INVALID_EXPECTATION")` without a cause. Under the supported pinned DSH
+startup path it is then wrapped by `@deepseek-ai/cordis-plugin-loader` for the
+adapter entry, by the loader for the include entry, and finally by
+`@deepseek-ai/dsh-app-boot`; these outer plain `Error` wrappers are host-owned
+diagnostic context and do not change the adapter code or add rejected values.
+See [ADR-0026](../../docs/adr/0026-pin-the-dsh-startup-error-wrapper-boundary.md).
