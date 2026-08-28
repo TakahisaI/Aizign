@@ -430,6 +430,17 @@ test('response encoder checks success kind membership before body mapping', () =
     assert.throws(
       () =>
         encodeResponse({
+          version: { axis: 'bootstrap', version: 7 },
+          requestId: 'req-future-success',
+          kind: 'future.operation',
+          body,
+        }),
+      (error: unknown) => error instanceof ProtocolError && error.code === codes.INVALID_ENVELOPE,
+      `${body.type}: invalid bootstrap context`,
+    );
+    assert.throws(
+      () =>
+        encodeResponse({
           version: { axis: 'accepted-operation', version: 1 },
           requestId: 'req-future-success',
           kind: 'future.operation',

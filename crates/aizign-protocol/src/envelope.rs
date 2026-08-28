@@ -553,10 +553,14 @@ pub fn encode_response(response: &Response) -> Result<String, ProtocolError> {
             "requestId must be null or match ^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
         ));
     }
-    if response.version.wire() == 0 {
+    let valid_version_context = match response.version {
+        ResponseVersion::Bootstrap(version) => version == BOOTSTRAP_ENVELOPE_VERSION,
+        ResponseVersion::AcceptedOperation(version) => version >= 1,
+    };
+    if !valid_version_context {
         return Err(ProtocolError::from_valid_code(
             codes::INVALID_ENVELOPE,
-            "response version must be at least 1",
+            "response version must name a valid selected version context",
         ));
     }
     validate_success_response_kind(response)?;

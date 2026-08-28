@@ -374,6 +374,76 @@ test('response version selection uses only boolean ok=false for bootstrap errors
   }
 });
 
+test('response error fields must be required own data properties', () => {
+  const codeDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, 'code');
+  const messageDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, 'message');
+  let codeGetterCalls = 0;
+  let messageGetterCalls = 0;
+  const decodeError = (error: Record<string, unknown>) =>
+    decodeResponse(
+      JSON.stringify({
+        protocol: 'aizign',
+        version: 1,
+        requestId: 'req-inherited-error',
+        kind: 'hello',
+        ok: false,
+        error,
+      }),
+    );
+  const invalidEnvelope = (error: unknown) =>
+    error instanceof DecodeFailure && error.error.code === codes.INVALID_ENVELOPE;
+
+  try {
+    Object.defineProperty(Object.prototype, 'code', {
+      configurable: true,
+      value: codes.INTERNAL,
+    });
+    assert.throws(() => decodeError({ message: 'own message' }), invalidEnvelope);
+
+    delete (Object.prototype as { code?: unknown }).code;
+    Object.defineProperty(Object.prototype, 'message', {
+      configurable: true,
+      value: 'inherited message',
+    });
+    assert.throws(() => decodeError({ code: codes.INTERNAL }), invalidEnvelope);
+
+    delete (Object.prototype as { message?: unknown }).message;
+    Object.defineProperty(Object.prototype, 'code', {
+      configurable: true,
+      get() {
+        codeGetterCalls += 1;
+        return codes.INTERNAL;
+      },
+    });
+    assert.throws(() => decodeError({ message: 'own message' }), invalidEnvelope);
+    assert.equal(codeGetterCalls, 0);
+
+    delete (Object.prototype as { code?: unknown }).code;
+    Object.defineProperty(Object.prototype, 'message', {
+      configurable: true,
+      get() {
+        messageGetterCalls += 1;
+        return 'inherited message';
+      },
+    });
+    assert.throws(() => decodeError({ code: codes.INTERNAL }), invalidEnvelope);
+    assert.equal(messageGetterCalls, 0);
+
+    const decoded = decodeError({ code: codes.INTERNAL, message: 'own message' });
+    assert.equal(decoded.body.type, 'error');
+    assert.equal(decoded.body.type === 'error' && decoded.body.error.code, codes.INTERNAL);
+    assert.equal(decoded.body.type === 'error' && decoded.body.error.message, 'own message');
+  } finally {
+    if (codeDescriptor === undefined) delete (Object.prototype as { code?: unknown }).code;
+    else Object.defineProperty(Object.prototype, 'code', codeDescriptor);
+    if (messageDescriptor === undefined) {
+      delete (Object.prototype as { message?: unknown }).message;
+    } else {
+      Object.defineProperty(Object.prototype, 'message', messageDescriptor);
+    }
+  }
+});
+
 test('duplicate members recover only the final typed spelling', () => {
   const requestCases: ReadonlyArray<readonly [string, string, string | null]> = [
     ['string-to-number', '"old","requestId":17', null],

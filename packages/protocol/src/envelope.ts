@@ -687,16 +687,20 @@ export function decodeResponse(
     const error = value.error;
     if (!isPlainObject(error)) throw invalidEnvelope('error must be an object');
     assertOnlyKeys(error, ['code', 'message'], invalidEnvelope);
-    if (!isShortErrorCode(error.code))
+    const rawCode = ownDataValue(error, 'code', invalidEnvelope, 'error');
+    const rawMessage = ownDataValue(error, 'message', invalidEnvelope, 'error');
+    if (!isShortErrorCode(rawCode))
       throw invalidEnvelope('error.code must match ^[A-Z][A-Z0-9_]{0,63}$');
-    if (typeof error.message !== 'string') throw invalidEnvelope('error.message must be a string');
+    if (typeof rawMessage !== 'string' || !isWellFormedUnicode(rawMessage)) {
+      throw invalidEnvelope('error.message must be a well-formed string');
+    }
     return {
       version: { axis, version: wireVersion },
       requestId,
       kind,
       body: {
         type: 'error',
-        error: new ProtocolError(error.code, error.message),
+        error: new ProtocolError(rawCode, rawMessage),
       },
     };
   }

@@ -578,6 +578,20 @@ fn response_encoder_checks_success_kind_membership_before_body_mapping() {
         }),
     ];
     for body in success_bodies {
+        let invalid_bootstrap_context = Response {
+            version: aizign_protocol::ResponseVersion::Bootstrap(7),
+            request_id: Some("req-future-success".to_owned()),
+            kind: Some("future.operation".to_owned()),
+            body: body.clone(),
+        };
+        assert_eq!(
+            encode_response(&invalid_bootstrap_context)
+                .unwrap_err()
+                .code()
+                .as_str(),
+            codes::INVALID_ENVELOPE
+        );
+
         let response = Response {
             version: aizign_protocol::ResponseVersion::operation(),
             request_id: Some("req-future-success".to_owned()),
