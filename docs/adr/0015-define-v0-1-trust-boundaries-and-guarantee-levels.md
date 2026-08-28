@@ -4,6 +4,13 @@
 - Date: 2026-08-25
 - Related: ADR-0003, ADR-0004, ADR-0007, ADR-0012, ADR-0013, ADR-0014, Issue #52, Issue #72, PR #70
 
+> **Partial supersession:** [ADR-0025](0025-move-dsh-signal-values-behind-trusted-configuration.md)
+> supersedes only this ADR's accepted direction that leaves the two ordinary
+> DSH `artifactRef` and `shortErrorCode` producer authorities model-controlled.
+> This ADR's factual description of the current runtime remains true until that
+> migration lands. All other trust-boundary decisions and hard invariant 10's
+> producer obligation remain Accepted.
+
 ## Context
 
 Aizign already has separate rules for closed protocol decoding, metadata-only

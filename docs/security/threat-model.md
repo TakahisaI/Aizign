@@ -156,6 +156,27 @@ accept bounded strings from the model and do not scan those values for
 credentials, prompts, encoded content, or other sensitive material. Such a
 value can be persisted in the control journal if the signal is accepted.
 
+### Accepted DSH migration target
+
+[ADR-0025](../adr/0025-move-dsh-signal-values-behind-trusted-configuration.md)
+accepts a pending change to the ordinary DSH path. The model-visible tool will
+retain only `kind` and optional `findingCount`; a required closed configuration
+bundle supplied by the operator or trusted control plane will own the bounded
+`artifactRef` and blocked-signal `shortErrorCode` values. One adapter-internal
+resolver will return the exact signal plus a separate full-binding/full-
+trusted-bundle mapping key for a later lifecycle owner.
+
+Acceptance of that target is not runtime enforcement evidence. Until its
+atomic runtime migration lands, the current inputs and `Not guaranteed` matrix
+row remain unchanged. After it lands, the stronger supported-path claim will
+exclude arbitrary model selection of those two strings, but it will not cover
+direct Protocol clients, malicious or compromised adapters or control planes,
+existing journal records, harness-owned copies of model input, semantic secret
+scanning, or authenticity of trusted configured values. The mapping key is not
+a signature, Protocol/journal field, workflow outcome, harness-evidence value,
+or Issue #79 lifecycle key. Issue #80 retains removal ownership for the
+provisional evidence surface.
+
 ## Threat and failure matrix
 
 The guarantee-level column uses only the five values defined above. Where a

@@ -34,6 +34,7 @@
 | [0022](0022-define-the-canonical-one-shot-process-profile.md) | Define the canonical one-shot process profile | Accepted |
 | [0023](0023-define-protocol-lexical-and-outbound-validation-boundaries.md) | Define Protocol lexical and outbound validation boundaries | Accepted |
 | [0024](0024-require-isolated-adapter-child-environments.md) | Require isolated adapter child environments | Accepted |
+| [0025](0025-move-dsh-signal-values-behind-trusted-configuration.md) | Move DSH signal values behind trusted configuration | Accepted |
 
 ADR-0016 partially supersedes ADR-0005's earlier `AGENTS.md` editing-constraint
 statement only; ADR-0005's other accepted decisions remain in force.
@@ -61,3 +62,9 @@ ADR-0024 partially supersedes only ADR-0020's arbitrary caller-provided
 production child-environment entries. ADR-0020's single DSH transport owner and
 closed experimental subpaths, ADR-0022's process ownership, ADR-0017's
 classification ownership, and Issue #80's evidence disposition remain in force.
+
+ADR-0025 partially supersedes only ADR-0015's accepted direction that leaves
+the two ordinary DSH `artifactRef` and `shortErrorCode` producer authorities
+model-controlled. ADR-0015's current-runtime facts remain true until the
+ADR-0025 migration lands; its other trust-boundary decisions and hard invariant
+10's producer obligation remain Accepted.
