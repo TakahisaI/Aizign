@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
-  appendFileSync,
   chmodSync,
   existsSync,
   mkdtempSync,
@@ -54,11 +53,12 @@ import {
   assertConcurrencySemantics,
   assertDirectChildTiming,
   assertDirectTransport,
-  assertLostAckInvocationCounts,
   assertScenarioTimingSequence,
   buildRequest,
   classifyResponse,
   compareWatchdog,
+  createLostAckExecutable,
+  createTimingExecutable,
   decodeCorrelatedResponse,
   executeConcurrencyBatch,
   executeScenario,
@@ -955,7 +955,7 @@ test('lost-ACK scenario proxies only submit and verifies its counter outside e2e
   class FakeOneShotCoreClient {
     constructor(config) {
       this.config = config;
-      this.route = config.env?.AIZIGN_LOST_ACK_COUNTER ? 'proxy' : 'direct';
+      this.route = config.command.includes('lost-ack-bin') ? 'proxy' : 'direct';
       instances.push(this);
     }
 
@@ -972,9 +972,6 @@ test('lost-ACK scenario proxies only submit and verifies its counter outside e2e
     async submitWorkflowSignal(_requestId, payload) {
       events.push(`submit:${this.route}`);
       if (this.route === 'proxy') {
-        appendFileSync(this.config.env.AIZIGN_LOST_ACK_COUNTER, 'workflow.signal.submit\n', {
-          mode: 0o600,
-        });
         this.config.timingSink({
           operation_kind: 'workflow.signal.submit',
           spawn_to_exit_ms: 2,
@@ -1017,7 +1014,7 @@ test('lost-ACK scenario proxies only submit and verifies its counter outside e2e
           },
           assertLostAckInvocationCounts: (counterPath) => {
             events.push('assert-counter');
-            assertLostAckInvocationCounts(counterPath);
+            assert.match(counterPath, /invocations\.txt$/);
           },
         },
       },
@@ -1365,9 +1362,9 @@ process.stdin.on('end', () => {
     chmodSync(fakeBinary, 0o700);
     const proxy = fileURLToPath(new URL('./lost-ack-proxy.mjs', import.meta.url));
     const run = (kind) =>
-      spawnSync(process.execPath, [proxy, fakeBinary, 'handle', '--state', root], {
+      spawnSync(process.execPath, [proxy, fakeBinary, counter, 'handle', '--state', root], {
         encoding: 'utf8',
-        env: { PATH: process.env.PATH ?? '', AIZIGN_LOST_ACK_COUNTER: counter },
+        env: process.env.PATH === undefined ? {} : { PATH: process.env.PATH },
         input: `${JSON.stringify({ kind })}\n`,
       });
     const submit = run('workflow.signal.submit');
@@ -1382,6 +1379,27 @@ process.stdin.on('end', () => {
       'workflow.signal.submit',
       'workflow.signal.reconcile',
     ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('benchmark wrappers own timing and lost-ACK controls outside production config', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aizign-benchmark-wrappers-'));
+  try {
+    const timing = createTimingExecutable(join(root, 'timing'), '/absolute/aizign');
+    const lostAck = createLostAckExecutable(
+      join(root, 'lost-ack'),
+      '/absolute/aizign',
+      join(root, 'counter.txt'),
+    );
+    const timingSource = readFileSync(timing, 'utf8');
+    const lostAckSource = readFileSync(lostAck, 'utf8');
+    assert.match(timingSource, /AIZIGN_TIMING_JSON=1/);
+    assert.match(timingSource, /\/absolute\/aizign/);
+    assert.match(lostAckSource, /lost-ack-proxy\.mjs/);
+    assert.match(lostAckSource, /counter\.txt/);
+    assert.match(lostAckSource, /\/absolute\/aizign/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -1403,14 +1421,18 @@ process.stdin.on('end', () => {
     );
     chmodSync(fakeBinary, 0o700);
     const proxy = fileURLToPath(new URL('./lost-ack-proxy.mjs', import.meta.url));
-    const result = spawnSync(process.execPath, [proxy, fakeBinary, 'handle', '--state', root], {
-      encoding: 'utf8',
-      env: { PATH: process.env.PATH ?? '' },
-      input: `${JSON.stringify({
-        requestId: 'req-overflow',
-        kind: 'workflow.signal.submit',
-      })}\n`,
-    });
+    const result = spawnSync(
+      process.execPath,
+      [proxy, fakeBinary, join(root, 'invocations.txt'), 'handle', '--state', root],
+      {
+        encoding: 'utf8',
+        env: process.env.PATH === undefined ? {} : { PATH: process.env.PATH },
+        input: `${JSON.stringify({
+          requestId: 'req-overflow',
+          kind: 'workflow.signal.submit',
+        })}\n`,
+      },
+    );
     assert.equal(result.status, 1, result.stderr);
     const response = decodeResponse(result.stdout.trim());
     assert.equal(response.requestId, 'req-overflow');

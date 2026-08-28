@@ -46,8 +46,8 @@
  * `AIZIGN_FAKE_INVOCATION_LOG` records that this process started, allowing a
  * caller to prove that local validation failed before spawn.
  * `AIZIGN_FAKE_ARGV_LOG` records the exact argv received by the fake binary.
- * `AIZIGN_FAKE_ASSERT_ENV_ABSENT` names a synthetic parent variable that must
- * not be inherited by the child process.
+ * These variables are injected only by repository-test executable wrappers;
+ * production client configuration has no environment-control surface.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -255,12 +255,6 @@ async function main(argv: readonly string[]): Promise<number> {
   if (argvLog !== undefined) {
     writeFileSync(argvLog, `${JSON.stringify(argv)}\n`, { flag: 'a', mode: 0o600 });
   }
-  const forbiddenEnvName = process.env.AIZIGN_FAKE_ASSERT_ENV_ABSENT;
-  if (forbiddenEnvName !== undefined && process.env[forbiddenEnvName] !== undefined) {
-    process.stderr.write('forbidden parent environment variable was inherited\n');
-    return 3;
-  }
-
   const fault = process.env.AIZIGN_FAKE_FAULT;
   if (fault === 'exit-2') return 2;
   if (fault === 'hang') {

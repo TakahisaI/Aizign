@@ -114,13 +114,7 @@ test('fake DSH maps a local Protocol source failure without invoking the core', 
     const stateDir = join(root, 'state');
     const invocationLog = join(root, 'invocations.log');
     const dsh = new FakeDsh();
-    await apply(
-      dsh.context,
-      config(
-        fakeBinary(join(root, 'bin'), { AIZIGN_FAKE_INVOCATION_LOG: invocationLog }),
-        stateDir,
-      ),
-    );
+    await apply(dsh.context, config(fakeBinary(join(root, 'bin'), { invocationLog }), stateDir));
     const before = readFileSync(invocationLog, 'utf8').trim().split('\n').length;
     const outcome = await dsh.dispatch(TOOL_NAME, { kind: 'blocked' });
     assert.equal(outcome.error?.code, 'INVALID_SIGNAL');
@@ -146,7 +140,7 @@ test('a crashed core leaves an unknown outcome, one submission, and no inferred 
     const dsh = new FakeDsh();
     // The handshake must succeed; only the submission is sabotaged.
     await apply(dsh.context, config(fakeBinary(join(root, 'ok')), stateDir));
-    const crashing = fakeBinary(join(root, 'crash'), { AIZIGN_FAKE_FAULT: 'no-response' });
+    const crashing = fakeBinary(join(root, 'crash'), { fault: 'no-response' });
     const crashedDsh = new FakeDsh();
     // preflight hello also gets no response → fail closed, no tool.
     await assert.rejects(apply(crashedDsh.context, config(crashing, stateDir)));
@@ -156,7 +150,7 @@ test('a crashed core leaves an unknown outcome, one submission, and no inferred 
     const unknownDsh = new FakeDsh();
     await apply(
       unknownDsh.context,
-      config(fakeBinary(join(root, 'unknown'), { AIZIGN_FAKE_FAULT: 'journal-unknown' }), stateDir),
+      config(fakeBinary(join(root, 'unknown'), { fault: 'journal-unknown' }), stateDir),
     );
     const outcome = await unknownDsh.dispatch(TOOL_NAME, { kind: 'implementation_ready' });
     assert.equal(outcome.error?.code, codes.OUTCOME_UNKNOWN);

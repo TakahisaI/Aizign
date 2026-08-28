@@ -400,7 +400,7 @@ operational evidence rather than a stable Protocol compatibility surface.
 | `INVALID_EXPECTATION` | `expected` の値が不正（識別子の文字種・長さ、またはcandidate digestのhex形式） |
 | `INVALID_SIGNAL` ほかworkflow code | `signal` の値や制約、expectationとの不一致、conflict |
 | `JOURNAL_*` | journalまたはstore commit metadataを開けない・検証できない・書けない。`JOURNAL_OUTCOME_UNKNOWN` は再送せず、reconciliationでもpublished boundaryを越えるtailを確定しない |
-| `CAPABILITY_UNSUPPORTED` | kindは既知だが、このbuildではoperationを提供できない。verified storeを持たないtargetへsubmit / reconcileを直接送った場合など |
+| `CAPABILITY_UNSUPPORTED` | accepted operation versionの下でProtocol-registered operation requestをdecodeしたが、このbinary/build/targetがoperationを提供しない。verified storeを持たないtargetへの直接submit / reconcileなど。successful `hello`のcapability欠落やadapter-native機能欠落からparentが合成するcodeではない |
 | `HANDLER_TIMEOUT` | process profileのwatchdogが成立。required EOF前を含むpre-dispatch timeoutはstate effectなし。dispatch開始後はappendまたはreconciliationの結果が不明になり得る。bootstrap-v1 errorで`requestId` / `kind` は `null` |
 | `INTERNAL` | 分類不能。詳細はstderr |
 

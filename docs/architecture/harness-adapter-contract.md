@@ -101,6 +101,62 @@ harness SDK, or a provider API is not the Aizign wire authority.
 Each request uses an adapter-owned nonce for `requestId`. Native harness
 identifiers must not be repurposed as correlation or workflow identity.
 
+## Child process environment
+
+Every process-spawning adapter constructs the child environment from an empty
+mapping plus a closed, documented allowlist. It must not copy the parent
+environment wholesale or expose an open production environment mapping.
+
+The allowlist excludes credentials and tokens; provider, harness, session,
+call, thread, turn, and delivery identity; HOME and XDG/config/cache locations;
+parent diagnostics and tracing/exporter controls; unrelated locale/runtime
+configuration; unrelated `AIZIGN_*` variables; and all fake/fault-injection
+controls. A future process-profile variable requires an accepted contract that
+names the variable and owner.
+
+An adapter may copy PATH only when its documented launch path needs interpreter
+lookup for the already configured executable. This does not authorize relative
+paths, cwd behavior, executable discovery, shell invocation, or arbitrary
+interpreter configuration. Repository tests and benchmarks may use generated
+non-production executable wrappers to inject controls after the adapter-owned
+launch boundary.
+
+Each adapter claiming process-spawn conformance owns a native test that
+captures the complete environment received at that launch boundary and
+compares its exact keys and values with the documented allowlist. Denylist
+assertions or a fake client alone are insufficient.
+
+The current DSH projection is exactly parent PATH when it exists, otherwise an
+empty mapping. Its native evidence owns these stable scenarios:
+
+| ID | Required evidence |
+|---|---|
+| `adapter-env-path-present-exact` | Complete child environment is exactly the parent PATH key/value |
+| `adapter-env-path-absent-empty` | Parent PATH absent produces exactly `{}`; no empty PATH is synthesized |
+| `adapter-env-sensitive-parent-excluded` | Credential, provider/session/call, HOME/XDG, diagnostic, unrelated `AIZIGN_*`, and fake controls are absent from the complete capture |
+
+## Capability absence
+
+`CAPABILITY_UNSUPPORTED` is a core Protocol response only. It means the binary
+decoded a Protocol-registered operation request under an accepted operation
+version but the current binary/build/target does not provide that operation.
+It is not synthesized from successful hello data and does not represent
+harness-native availability.
+
+The three absence sources remain distinct:
+
+| ID | Source-qualified result |
+|---|---|
+| `adapter-submit-capability-missing` | Correlated hello lacks required submit; parent compatibility fails, DSH returns `AIZIGN_INCOMPATIBLE`, no submit is sent, and no Protocol code is synthesized |
+| `adapter-reconcile-capability-missing` | Submit is usable; caller-local `checkCompatibility` observes missing reconciliation and sends no reconcile request; no code/outcome/API is added |
+| `adapter-native-integration-absent` | Adapter-native feature is unavailable or not exposed; Protocol preflight, submit, reconciliation, and classification are unchanged |
+
+For a successful correlated hello whose operation version is incompatible or
+whose required submit capability is missing, DSH parent timing contains exactly
+`operation_kind: preflight`, `outcome: rejected`, no `error_code`, and no
+`unknown_reason`. An actual decoded peer error remains subject to the existing
+fixed-code disclosure rule.
+
 ## Source-qualified classifications
 
 Similar words from different sources do not carry the same authority.

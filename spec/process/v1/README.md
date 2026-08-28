@@ -51,7 +51,9 @@ adapter conformance, or compatibility evidence.
 
 Cwd, relative-path qualification, and executable discovery are intentionally
 unsupported and unspecified. A future support claim requires a separate
-accepted owner. Environment and capability boundaries remain separate work.
+accepted owner. The language-neutral [harness adapter contract](../../../docs/architecture/harness-adapter-contract.md#child-process-environment)
+owns child-environment construction and capability-source separation; this
+process profile does not own an environment-variable list.
 
 ## Request stream
 

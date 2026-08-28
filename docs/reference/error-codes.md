@@ -54,7 +54,7 @@ Rust の `aizign-protocol::CURRENT_FIXED_ERROR_CODES` と TypeScript の
 | `UNKNOWN_KIND` | `kind` が未登録 | implemented（`aizign-protocol`） |
 | `INVALID_PAYLOAD` | payloadがkindのclosed schemaに合わない（欠落、型違い、未知field、`null`） | implemented（`aizign-protocol`） |
 | `REQUEST_TOO_LARGE` | request sizeがboundを超えた | implemented（`aizign-protocol`） |
-| `CAPABILITY_UNSUPPORTED` | 要求された操作をこのbinaryまたはadapterが提供しない。初期storeの未検証platformでsubmit / reconcileを直接要求した場合を含む | implemented（`aizign-cli`） |
+| `CAPABILITY_UNSUPPORTED` | accepted operation versionでdecodeしたProtocol-registered operationをこのbinary/build/targetが提供しない。初期storeの未検証platformへの直接submit / reconcileを含む。adapter機能欠落やsuccessful helloからは合成しない | implemented（`aizign-cli`） |
 | `INTERNAL` | 分類できない内部error。詳細はstderr。submit clientは確定的rejectionへ縮約せず`unknown`にする | implemented（`aizign-cli`: clock失敗） |
 | `HANDLER_TIMEOUT` | 処理が時間boundを超えた。進行中のappendまたはreconciliationの結果は不明。再送しない。uncorrelated watchdog responseから得たcodeはreconciliation clientが診断用`reportedCode`として保持する | implemented（`aizign-cli`） |
 

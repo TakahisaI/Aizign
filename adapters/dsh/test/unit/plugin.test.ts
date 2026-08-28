@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -8,6 +8,7 @@ import {
   CAPABILITY_WORKFLOW_SIGNAL_RECONCILE,
   CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
   type CoreClient,
+  checkCompatibility,
 } from '@aizign/protocol';
 import type { Context } from '@deepseek-ai/cordis';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
@@ -16,16 +17,13 @@ import { createProcessProfileRegistry } from '../../../../spec/process/v1/fixtur
 import type { Config } from '../../src/config.ts';
 import { OneShotCoreClient } from '../../src/core-client/one-shot-client.ts';
 import { apply, Config as ConfigSchema, inject, name } from '../../src/index.ts';
-import { preflight } from '../../src/lifecycle/preflight.ts';
+import { preflight, RECONCILIATION_REQUIRED } from '../../src/lifecycle/preflight.ts';
 import { adapterCodes as codes } from '../../src/mapping/tool.ts';
 import type { ParentTimingMeasurement } from '../../src/timing.ts';
 import { fakeBinary } from '../helpers/fake-dsh.ts';
 
 /** A fake that wraps the fake core script so `binary` alone is enough. */
-function fakeBinaryConfig(
-  stateDir: string,
-  env: Record<string, string> = {},
-): Config & { env: Record<string, string> } {
+function fakeBinaryConfig(stateDir: string): Config {
   return {
     binary: '/unused/fake-core',
     stateDir,
@@ -39,7 +37,6 @@ function fakeBinaryConfig(
       algorithm: 'sha256',
       hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     },
-    env,
   };
 }
 
@@ -97,28 +94,41 @@ test('preflight accepts a compatible core and rejects an incompatible or unreach
   });
   assert.equal(typeof (timing[0] as { preflight_ms: number }).preflight_ms, 'number');
 
+  const reconciliationInvocationLog = join(root, 'reconciliation-check-invocations.log');
   const submitOnly = new OneShotCoreClient({
-    command,
-    env: { AIZIGN_FAKE_CAPABILITIES: CAPABILITY_WORKFLOW_SIGNAL_SUBMIT },
+    command: fakeCoreExecutable(join(root, 'submit-only'), {
+      capabilities: [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT],
+      invocationLog: reconciliationInvocationLog,
+    }),
     stateDir: '/unused',
     timeoutMs: 5_000,
   });
+  const submitOnlyInfo = await preflight(submitOnly, {
+    timingSink: async () => {
+      throw new Error('timing sink unavailable');
+    },
+  });
   assert.deepEqual(
-    (
-      await preflight(submitOnly, {
-        timingSink: async () => {
-          throw new Error('timing sink unavailable');
-        },
-      })
-    ).capabilities,
+    submitOnlyInfo.capabilities,
     [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT],
     'the model-visible submit tool must not require the separate control-plane capability',
+  );
+  assert.equal(
+    checkCompatibility(submitOnlyInfo, RECONCILIATION_REQUIRED)?.reason,
+    'missing_capability',
+    'adapter-reconcile-capability-missing',
+  );
+  assert.equal(
+    readFileSync(reconciliationInvocationLog, 'utf8').trim().split('\n').length,
+    1,
+    'the caller-local reconciliation check sends no reconcile request',
   );
   await new Promise<void>((resolve) => setImmediate(resolve));
 
   const reconcileOnly = new OneShotCoreClient({
-    command,
-    env: { AIZIGN_FAKE_CAPABILITIES: CAPABILITY_WORKFLOW_SIGNAL_RECONCILE },
+    command: fakeCoreExecutable(join(root, 'reconcile-only'), {
+      capabilities: [CAPABILITY_WORKFLOW_SIGNAL_RECONCILE],
+    }),
     stateDir: '/unused',
     timeoutMs: 5_000,
   });
@@ -133,16 +143,17 @@ test('preflight accepts a compatible core and rejects an incompatible or unreach
       return error instanceof HarnessError && error.code === codes.INCOMPATIBLE;
     },
   );
-  assert.equal(
-    missingCapabilityTiming[0]?.error_code,
-    'CAPABILITY_UNSUPPORTED',
-    'hello-missing-capability',
-  );
+  assert.deepEqual(missingCapabilityTiming[0], {
+    operation_kind: 'preflight',
+    preflight_ms: missingCapabilityTiming[0]?.preflight_ms,
+    outcome: 'rejected',
+  });
   processCases.record('hello-missing-capability');
 
   const future = new OneShotCoreClient({
-    command,
-    env: { AIZIGN_FAKE_HELLO_PROTOCOL_VERSION: '2' },
+    command: fakeCoreExecutable(join(root, 'future-version'), {
+      helloProtocolVersion: 2,
+    }),
     stateDir: '/unused',
     timeoutMs: 5_000,
   });
@@ -157,11 +168,11 @@ test('preflight accepts a compatible core and rejects an incompatible or unreach
       return error instanceof HarnessError && error.code === codes.INCOMPATIBLE;
     },
   );
-  assert.equal(
-    versionTiming[0]?.error_code,
-    'PROTOCOL_VERSION_UNSUPPORTED',
-    'hello-future-operation',
-  );
+  assert.deepEqual(versionTiming[0], {
+    operation_kind: 'preflight',
+    preflight_ms: versionTiming[0]?.preflight_ms,
+    outcome: 'rejected',
+  });
   processCases.record('hello-future-operation');
   processCases.complete();
 
@@ -201,8 +212,7 @@ test('preflight accepts a compatible core and rejects an incompatible or unreach
   await new Promise<void>((resolve) => setImmediate(resolve));
 
   const silent = new OneShotCoreClient({
-    command,
-    env: { AIZIGN_FAKE_FAULT: 'no-response' },
+    command: fakeCoreExecutable(join(root, 'silent'), { fault: 'no-response' }),
     stateDir: '/unused',
     timeoutMs: 5_000,
   });
@@ -212,13 +222,14 @@ test('preflight accepts a compatible core and rejects an incompatible or unreach
   rmSync(root, { recursive: true, force: true });
 });
 
-test('apply runs the preflight and registers exactly one scope-bound tool', async () => {
+test('apply runs without optional native evidence and registers one scope-bound tool', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aizign-dsh-plugin-'));
   try {
     const ctx = fakeContext();
     const config = fakeBinaryConfig(join(root, 'state'));
     await apply(ctx, { ...config, binary: fakeBinary(root) });
     assert.equal(ctx.registered.length, 1);
+    assert.ok(ctx.registered[0], 'adapter-native-integration-absent');
     const tool = ctx.registered[0];
     assert.equal(tool?.name, 'submit_workflow_signal');
 
@@ -251,7 +262,7 @@ test('apply runs the preflight and registers exactly one scope-bound tool', asyn
     await assert.rejects(
       apply(incompatible, {
         ...config,
-        binary: fakeBinary(join(root, 'v2'), { AIZIGN_FAKE_HELLO_PROTOCOL_VERSION: '2' }),
+        binary: fakeBinary(join(root, 'v2'), { helloProtocolVersion: 2 }),
       }),
       (error: unknown) => error instanceof HarnessError && error.code === codes.INCOMPATIBLE,
     );

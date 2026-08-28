@@ -5,8 +5,6 @@
  * the cold read can be exercised without a harness.
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { fakeCoreExecutable } from '@aizign/adapter-testkit';
 import type { Context } from '@deepseek-ai/cordis';
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools';
@@ -96,15 +94,9 @@ export class FakeDsh implements EvidenceSource {
 }
 
 /** An executable that runs the fake core, so a plain `binary` path reaches it. */
-export function fakeBinary(dir: string, env: Record<string, string> = {}): string {
-  const fake = fakeCoreExecutable(join(dir, 'core'));
-  const exports = Object.entries(env)
-    .map(([key, value]) => `export ${key}=${JSON.stringify(value)}`)
-    .join('\n');
-  mkdirSync(dir, { recursive: true });
-  const path = join(dir, 'aizign-fake');
-  writeFileSync(path, `#!/bin/sh\n${exports}\nexec ${JSON.stringify(fake)} "$@"\n`, {
-    mode: 0o755,
-  });
-  return path;
+export function fakeBinary(
+  dir: string,
+  controls: Parameters<typeof fakeCoreExecutable>[1] = {},
+): string {
+  return fakeCoreExecutable(dir, controls);
 }

@@ -83,7 +83,9 @@ change the existing performance budgets.
 
 ## Measurement intervals
 
-child側の計測は`AIZIGN_TIMING_JSON=1`でopt inします。
+child側の計測はbenchmark-owned generated executableが内部で
+`AIZIGN_TIMING_JSON=1`を設定してopt inします。production
+`OneShotCoreClientConfig`にはtimingまたはlost-ACK用environment entryを渡しません。
 `aizign handle`は通常のlogに加え、`aizign_timing:`で始まるmetadata-only JSONをstderrへ一行出力します。
 opt inしていない通常経路は追加のstage clock、observer、journal statを実行せず、非observed engine APIを使います。
 未到達のstageは0ではなくfield自体を省略します。

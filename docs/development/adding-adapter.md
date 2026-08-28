@@ -28,29 +28,33 @@ runtime or development dependencies required of every adapter.
    model-visible surface, optional capabilities, and validation plan.
 2. Implement Protocol v1 `hello` compatibility and the minimum
    signal-submission behavior from the architecture contract.
-3. Inject workflow, assignment, attempt, role, artifact revision, and candidate
+3. For every child process, start from an empty environment and add only the
+   exact documented allowlist. Prove the complete native child environment,
+   not only named omissions. Keep fake/fault controls in test-owned executable
+   wrappers rather than production configuration.
+4. Inject workflow, assignment, attempt, role, artifact revision, and candidate
    digest from trusted control-plane configuration. Obtain `eventId` from that
    trusted configuration or generate and retain it in the adapter/control
    plane for the same logical submission. Do not accept any of these fields
    from model-visible arguments.
-4. Generate adapter-owned request nonces. Keep harness session, call, thread,
+5. Generate adapter-owned request nonces. Keep harness session, call, thread,
    provider, and delivery identifiers out of the complete protocol envelope.
-5. Enforce request/response bounds and correlation, and preserve all submit
+6. Enforce request/response bounds and correlation, and preserve all submit
    outcome classifications. An outbound oversize failure happens locally
    before transport and produces no submit classification. Exercise every
    applicable `unknown` path and prove that it does not trigger a blind submit
    retry.
-6. Run the language-neutral wire fixtures and the applicable core-client
+7. Run the language-neutral wire fixtures and the applicable core-client
    scenario groups described by the architecture contract.
-7. Test the native entrypoint/registration where applicable, native input
+8. Test the native entrypoint/registration where applicable, native input
    mapping, trusted identity injection, any model-visible schema, and harness
    error mapping in harness-native fake tests owned by the adapter. Test
    persistence, native session/call handling, lifecycle, and evidence semantics
    only when the adapter claims them.
-8. Document optional integrations and their actual durability, retention,
+9. Document optional integrations and their actual durability, retention,
    integrity, I/O-bound, and cancellation limits. Do not promote them into the
    generic minimum.
-9. Record the supported harness version in
+10. Record the supported harness version in
    [`docs/reference/compatibility.md`](../reference/compatibility.md), then run
    the repository checks.
 
