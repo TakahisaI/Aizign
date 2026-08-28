@@ -56,7 +56,8 @@ operator patch（`make-patch.mjs` の出力）はその entry を **id で上書
 |---|---|
 | `{"kind":"implementation_ready"}` | `{"disposition":"accepted","eventId":...}` |
 | 同じ引数をもう一度 | `disposition: duplicate` |
-| `{"kind":"blocked","shortErrorCode":"CHANGED"}`（同じeventId） | error `EVENT_CONFLICT` |
+| `{"kind":"blocked"}`（同じeventId。configの`blockedShortErrorCode`を注入） | error `EVENT_CONFLICT` |
+| `{"kind":"blocked","shortErrorCode":"MODEL_CHOICE"}` | error `INVALID_SIGNAL`（spawn前） |
 | identityを引数に入れる（例 `{"kind":"implementation_ready","eventId":"…"}`） | error `INVALID_SIGNAL`（adapterの `decodeArgs` が **spawn前** に拒否。coreは起動せず、journalは変わらない） |
 | DSHを通常停止 → 再起動 → 同じ引数 | `disposition: duplicate`（journalが正本） |
 
@@ -114,6 +115,8 @@ node experiments/dsh-live-smoke/make-patch.mjs \
   --event-id evt-live-1 --workflow-id wf-live --assignment-id as-live --attempt-id attempt-live-1 \
   --role implementation --revision rev-live-1 \
   --candidate-digest aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+  --artifact-ref artifact:live-smoke \
+  --blocked-short-error-code BLOCKED_BY_LIVE_SMOKE \
   > /abs/path/outside/repo/aizign-live.patch.yml
 
 # smoke後に journal を metadata だけで要約（--json で result.schema.json の journal 形式）

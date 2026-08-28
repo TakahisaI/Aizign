@@ -60,6 +60,7 @@ import {
   createLostAckExecutable,
   createTimingExecutable,
   decodeCorrelatedResponse,
+  dshEvents,
   executeConcurrencyBatch,
   executeScenario,
   MAX_BENCHMARK_STDERR_BYTES,
@@ -97,6 +98,31 @@ const CLASSIFICATION_ROWS = JSON.parse(
 test('runner v7 names the production TypeScript transport explicitly', () => {
   assert.equal(RUNNER_VERSION, 7);
   assert.equal(TYPESCRIPT_TRANSPORT, 'typescript_dsh');
+});
+
+test('DSH evidence fixtures pass one fixed trusted-value bundle without changing event shape', () => {
+  let received;
+  const { events } = dshEvents(2, {
+    presentationMetaFor(binding, trustedSignalValues, args, value) {
+      received = { binding, trustedSignalValues, args, value };
+      return {
+        tool: 'submit_workflow_signal',
+        eventId: binding.eventId,
+        disposition: 'accepted',
+        bindingDigest: 'binding-digest',
+        payloadDigest: 'payload-digest',
+      };
+    },
+  });
+  assert.deepEqual(received.trustedSignalValues, {
+    artifactRef: 'artifact:benchmark',
+    blockedShortErrorCode: 'BLOCKED_BY_BENCHMARK',
+  });
+  assert.deepEqual(received.args, { kind: 'implementation_ready' });
+  assert.equal(events.length, 2);
+  assert.deepEqual(JSON.parse(events[0].data.arguments), { kind: 'implementation_ready' });
+  assert.equal(JSON.stringify(events).includes('artifact:benchmark'), false);
+  assert.equal(JSON.stringify(events).includes('BLOCKED_BY_BENCHMARK'), false);
 });
 
 function renderAggregates(aggregates, samples = 2) {

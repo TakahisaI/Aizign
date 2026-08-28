@@ -24,6 +24,11 @@ const binding: SignalBinding = {
   },
 };
 
+const trustedSignalValues = {
+  artifactRef: 'artifact:evidence',
+  blockedShortErrorCode: 'BLOCKED_BY_CONTROL_PLANE',
+} as const;
+
 function source(events: SessionEventLike[]): EvidenceSource {
   return { readFrom: async () => ({ events }) };
 }
@@ -70,7 +75,10 @@ test('canonical JSON sorts keys recursively and drops undefined', () => {
 
 test('a recorded call/result pair with matching event and binding metadata is evidence', async () => {
   const args = { kind: 'implementation_ready' };
-  const meta = presentationMetaFor(binding, args, { disposition: 'accepted', eventId: 'evt-1' });
+  const meta = presentationMetaFor(binding, trustedSignalValues, args, {
+    disposition: 'accepted',
+    eventId: 'evt-1',
+  });
   const evidence = await readSignalEvidence(
     source([call(3, 'c1', args), result(4, 'c1', meta)]),
     'session-x',
@@ -91,7 +99,10 @@ test('a recorded call/result pair with matching event and binding metadata is ev
 
 test('cold-read timing is metadata-only and cannot change evidence', async () => {
   const args = { kind: 'implementation_ready' };
-  const meta = presentationMetaFor(binding, args, { disposition: 'accepted', eventId: 'evt-1' });
+  const meta = presentationMetaFor(binding, trustedSignalValues, args, {
+    disposition: 'accepted',
+    eventId: 'evt-1',
+  });
   const timings: unknown[] = [];
   const evidence = await readSignalEvidence(
     source([call(3, 'c1', args), result(4, 'c1', meta)]),
@@ -138,7 +149,7 @@ test('a call without a result is unknown, never inferred from later prose', asyn
 
 test('results bound to another identity or without our metadata are unknown', async () => {
   const args = { kind: 'implementation_ready' };
-  const other = presentationMetaFor({ ...binding, eventId: 'evt-9' }, args, {
+  const other = presentationMetaFor({ ...binding, eventId: 'evt-9' }, trustedSignalValues, args, {
     disposition: 'accepted',
     eventId: 'evt-9',
   });
@@ -188,7 +199,10 @@ test('an error result is unknown, never a binding-attributed rejection (#32)', a
 
 test('caller timeout and the post-read event guard are unknown, never partial', async () => {
   const args = { kind: 'implementation_ready' };
-  const meta = presentationMetaFor(binding, args, { disposition: 'accepted', eventId: 'evt-1' });
+  const meta = presentationMetaFor(binding, trustedSignalValues, args, {
+    disposition: 'accepted',
+    eventId: 'evt-1',
+  });
   const events = [call(1, 'c1', args), result(2, 'c1', meta)];
   const bounded = await readSignalEvidence(source(events), 's', binding, { maxEvents: 1 });
   assert.deepEqual(bounded, {

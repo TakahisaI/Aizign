@@ -1,10 +1,10 @@
 /**
  * The `submit_workflow_signal` tool as the agent sees it: scope-bound. The
- * agent supplies only what it can know (kind, finding count, artifact
- * reference, short error code); the control plane fixed the identity in the
- * plugin configuration, so it never appears in the input parameter schema,
- * arguments, or prompt. The successful result discloses the fixed `eventId`
- * for correlation, but the agent cannot select or alter it.
+ * agent supplies only what it can know (kind and finding count); the control
+ * plane fixes identity and every opaque signal string in plugin configuration,
+ * so none appears in the input parameter schema, arguments, or prompt. The
+ * successful result discloses the fixed `eventId` for correlation, but the
+ * agent cannot select or alter it.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -18,8 +18,9 @@ import {
 } from '@aizign/protocol';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import type { JsonSchemaNode, ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools';
-import { bindingPayload, type SignalBinding } from '../config.ts';
+import type { SignalBinding, TrustedSignalValues } from '../config.ts';
 import { bindingDigest, payloadDigest } from '../evidence/digest.ts';
+import { resolveTrustedSignalValues } from './trusted-values.ts';
 
 export const TOOL_NAME = 'submit_workflow_signal';
 
@@ -52,8 +53,6 @@ export function toolParameters(role: Role): Record<string, unknown> {
     properties: {
       kind: { type: 'string', enum: [...kindsForRole(role)] },
       findingCount: { type: 'integer', description: 'Non-negative count of findings' },
-      artifactRef: { type: 'string' },
-      shortErrorCode: { type: 'string' },
     },
     required: ['kind'],
   };
@@ -74,8 +73,6 @@ const TOOL_OUTPUT: JsonSchemaNode = {
 export interface SignalArgs {
   readonly kind: SignalKind;
   readonly findingCount?: number;
-  readonly artifactRef?: string;
-  readonly shortErrorCode?: string;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -87,11 +84,11 @@ export function decodeArgs(args: unknown, role: Role): SignalArgs {
   const fail = () => new HarnessError(INVALID_TOOL_INPUT_MESSAGE, 'INVALID_SIGNAL');
   if (!isPlainObject(args)) throw fail();
   for (const key of Object.keys(args)) {
-    if (!['kind', 'findingCount', 'artifactRef', 'shortErrorCode'].includes(key)) {
+    if (!['kind', 'findingCount'].includes(key)) {
       throw fail();
     }
   }
-  const { kind, findingCount, artifactRef, shortErrorCode } = args;
+  const { kind, findingCount } = args;
   if (typeof kind !== 'string' || !(kindsForRole(role) as readonly string[]).includes(kind)) {
     throw fail();
   }
@@ -101,16 +98,10 @@ export function decodeArgs(args: unknown, role: Role): SignalArgs {
   ) {
     throw fail();
   }
-  if (artifactRef !== undefined && typeof artifactRef !== 'string') throw fail();
-  if (shortErrorCode !== undefined && typeof shortErrorCode !== 'string') {
-    throw fail();
-  }
   const decoded: { -readonly [K in keyof SignalArgs]: SignalArgs[K] } = {
     kind: kind as SignalKind,
   };
   if (findingCount !== undefined) decoded.findingCount = findingCount as number;
-  if (artifactRef !== undefined) decoded.artifactRef = artifactRef;
-  if (shortErrorCode !== undefined) decoded.shortErrorCode = shortErrorCode;
   return decoded;
 }
 
@@ -119,8 +110,12 @@ export function decodeArgs(args: unknown, role: Role): SignalArgs {
  * validation stays here; Protocol source validation belongs exclusively to
  * the client's `encodeRequest` boundary.
  */
-export function toPayload(binding: SignalBinding, args: SignalArgs): WorkflowSignalSubmitPayload {
-  return bindingPayload(binding, args);
+export function toPayload(
+  binding: SignalBinding,
+  trustedSignalValues: TrustedSignalValues,
+  args: SignalArgs,
+): WorkflowSignalSubmitPayload {
+  return resolveTrustedSignalValues(binding, trustedSignalValues, args).payload;
 }
 
 /**
@@ -172,6 +167,7 @@ export interface SignalPresentationMeta {
 
 export function presentationMetaFor(
   binding: SignalBinding,
+  trustedSignalValues: TrustedSignalValues,
   args: unknown,
   value: unknown,
 ): SignalPresentationMeta {
@@ -181,7 +177,9 @@ export function presentationMetaFor(
       : null;
   let digest = '';
   try {
-    digest = payloadDigest(toPayload(binding, decodeArgs(args, binding.expected.role)).signal);
+    digest = payloadDigest(
+      toPayload(binding, trustedSignalValues, decodeArgs(args, binding.expected.role)).signal,
+    );
   } catch {
     // Unreachable for a successful result; keep the callback total.
   }
@@ -198,6 +196,7 @@ export function presentationMetaFor(
 export function createSubmitWorkflowSignalTool(
   client: CoreClient,
   binding: SignalBinding,
+  trustedSignalValues: TrustedSignalValues,
 ): ToolDefinition {
   const role = binding.expected.role;
   return {
@@ -208,10 +207,12 @@ export function createSubmitWorkflowSignalTool(
     output: {
       schema: TOOL_OUTPUT,
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
-      presentationMeta: (args, value) => ({ ...presentationMetaFor(binding, args, value) }),
+      presentationMeta: (args, value) => ({
+        ...presentationMetaFor(binding, trustedSignalValues, args, value),
+      }),
     },
     async execute(args: unknown, exec: ToolRunContext) {
-      const payload = toPayload(binding, decodeArgs(args, role));
+      const payload = toPayload(binding, trustedSignalValues, decodeArgs(args, role));
       let outcome: SubmitOutcome;
       try {
         outcome = await client.submitWorkflowSignal(newRequestId(), payload, {

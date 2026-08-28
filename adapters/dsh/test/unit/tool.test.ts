@@ -10,7 +10,8 @@ import {
 } from '@aizign/protocol';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools';
-import type { SignalBinding } from '../../src/config.ts';
+import type { SignalBinding, TrustedSignalValues } from '../../src/config.ts';
+import { canonicalJson, sha256Hex } from '../../src/evidence/digest.ts';
 import {
   adapterCodes,
   createSubmitWorkflowSignalTool,
@@ -21,6 +22,7 @@ import {
   toPayload,
   toToolResult,
 } from '../../src/mapping/tool.ts';
+import { resolveTrustedSignalValues } from '../../src/mapping/trusted-values.ts';
 
 const binding: SignalBinding = {
   eventId: 'evt-fixed',
@@ -36,6 +38,11 @@ const binding: SignalBinding = {
     },
   },
 };
+
+const trustedSignalValues = {
+  artifactRef: 'artifact:review',
+  blockedShortErrorCode: 'BLOCKED_BY_CONTROL_PLANE',
+} as const satisfies TrustedSignalValues;
 
 function stubClient(
   outcome: SubmitOutcome,
@@ -72,14 +79,10 @@ test('the model-visible input schema exposes no identity fields', () => {
   const tool = createSubmitWorkflowSignalTool(
     stubClient({ kind: 'accepted', eventId: 'evt-fixed' }),
     binding,
+    trustedSignalValues,
   );
   const modelVisibleInputDefinition = JSON.stringify({ description: tool.description, schema });
-  assert.deepEqual(Object.keys(schema.properties).sort(), [
-    'artifactRef',
-    'findingCount',
-    'kind',
-    'shortErrorCode',
-  ]);
+  assert.deepEqual(Object.keys(schema.properties).sort(), ['findingCount', 'kind']);
   assert.equal(schema.additionalProperties, false);
   const kinds = (schema.properties.kind as { enum: string[] }).enum;
   assert.deepEqual(kinds, ['review_passed', 'review_findings', 'blocked']);
@@ -101,6 +104,8 @@ test('the model-visible input schema exposes no identity fields', () => {
     binding.expected.attemptId,
     binding.expected.artifactRevision,
     binding.expected.candidateDigest.hex,
+    trustedSignalValues.artifactRef,
+    trustedSignalValues.blockedShortErrorCode,
   ]) {
     assert.ok(!modelVisibleInputDefinition.includes(configuredValue), configuredValue);
   }
@@ -109,6 +114,7 @@ test('the model-visible input schema exposes no identity fields', () => {
 test('arguments are decoded closed and bound to the configured identity', () => {
   const payload = toPayload(
     binding,
+    trustedSignalValues,
     decodeArgs({ kind: 'review_findings', findingCount: 2 }, 'review'),
   );
   assert.equal(payload.signal.eventId, 'evt-fixed');
@@ -116,6 +122,7 @@ test('arguments are decoded closed and bound to the configured identity', () => 
   assert.equal(payload.signal.attemptId, 'attempt-review');
   assert.equal(payload.signal.role, 'review');
   assert.equal(payload.signal.findingCount, 2);
+  assert.equal(payload.signal.artifactRef, 'artifact:review');
   assert.deepEqual(payload.expected, binding.expected);
   assertMetadataOnly(payload);
 
@@ -129,6 +136,14 @@ test('arguments are decoded closed and bound to the configured identity', () => 
         !error.message.includes('eventId')
       );
     },
+  );
+  assert.throws(
+    () => decodeArgs({ kind: 'blocked', shortErrorCode: 'MODEL_CHOICE' }, 'review'),
+    (error: unknown) => error instanceof HarnessError && error.code === 'INVALID_SIGNAL',
+  );
+  assert.throws(
+    () => decodeArgs({ kind: 'review_findings', artifactRef: 'model:value' }, 'review'),
+    (error: unknown) => error instanceof HarnessError && error.code === 'INVALID_SIGNAL',
   );
   const privateMarker = 'synthetic-private-state/operator/workflow.jsonl';
   assert.throws(
@@ -153,7 +168,10 @@ test('arguments are decoded closed and bound to the configured identity', () => 
 });
 
 test('Protocol validation stays in the client encoder and maps safely at the tool boundary', async () => {
-  const payload = toPayload(binding, { kind: 'review_passed', findingCount: 3 });
+  const payload = toPayload(binding, trustedSignalValues, {
+    kind: 'review_passed',
+    findingCount: 3,
+  });
   assert.equal(payload.signal.findingCount, 3, 'the mapper does not duplicate Protocol rules');
 
   const client = stubClient({ kind: 'accepted', eventId: binding.eventId });
@@ -163,7 +181,7 @@ test('Protocol validation stays in the client encoder and maps safely at the too
       'synthetic-private-state/operator/workflow.jsonl',
     );
   };
-  const tool = createSubmitWorkflowSignalTool(client, binding);
+  const tool = createSubmitWorkflowSignalTool(client, binding, trustedSignalValues);
   await assert.rejects(
     tool.execute({ kind: 'review_passed', findingCount: 3 }, exec),
     (error: unknown) =>
@@ -217,7 +235,7 @@ test('outcomes map to safe harness errors without forwarding protocol detail', a
     reportedCode: 'FUTURE_OUTCOME_UNKNOWN',
     detail: 'FUTURE_OUTCOME_UNKNOWN: synthetic-private-state/operator/workflow.jsonl',
   });
-  const tool = createSubmitWorkflowSignalTool(client, binding);
+  const tool = createSubmitWorkflowSignalTool(client, binding, trustedSignalValues);
   assert.equal(tool.name, TOOL_NAME);
   await assert.rejects(
     tool.execute({ kind: 'review_passed', findingCount: 0 }, exec),
@@ -243,6 +261,7 @@ test('the tool renders and presents only identity and digests', () => {
   const tool = createSubmitWorkflowSignalTool(
     stubClient({ kind: 'accepted', eventId: 'evt-fixed' }),
     binding,
+    trustedSignalValues,
   );
   const value = { disposition: 'accepted', eventId: 'evt-fixed' };
   assert.deepEqual(tool.output.render({ kind: 'review_passed' }, value), [
@@ -267,4 +286,95 @@ test('the tool renders and presents only identity and digests', () => {
   // Total even for arguments that could never have produced a result.
   const degraded = tool.output.presentationMeta?.('garbage', value) as Record<string, unknown>;
   assert.equal(degraded.payloadDigest, '');
+});
+
+test('trusted-value mapping covers every signal kind and pins the provenance key', () => {
+  const implementationBinding: SignalBinding = {
+    eventId: 'evt-golden',
+    expected: {
+      workflowId: 'wf-golden',
+      assignmentId: 'as-golden',
+      attemptId: 'attempt-golden',
+      role: 'implementation',
+      artifactRevision: 'rev-golden',
+      candidateDigest: {
+        algorithm: 'sha256',
+        hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      },
+    },
+  };
+  const trusted = {
+    artifactRef: 'artifact:golden',
+    blockedShortErrorCode: 'BLOCKED_GOLDEN',
+  } as const;
+  const implementationReady = resolveTrustedSignalValues(implementationBinding, trusted, {
+    kind: 'implementation_ready',
+  });
+  const canonicalRecord = canonicalJson({
+    schemaVersion: 1,
+    eventId: implementationBinding.eventId,
+    expected: implementationBinding.expected,
+    artifactRef: trusted.artifactRef,
+    blockedShortErrorCode: trusted.blockedShortErrorCode,
+  });
+  assert.equal(
+    canonicalRecord,
+    '{"artifactRef":"artifact:golden","blockedShortErrorCode":"BLOCKED_GOLDEN","eventId":"evt-golden","expected":{"artifactRevision":"rev-golden","assignmentId":"as-golden","attemptId":"attempt-golden","candidateDigest":{"algorithm":"sha256","hex":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"role":"implementation","workflowId":"wf-golden"},"schemaVersion":1}',
+  );
+  assert.equal(
+    implementationReady.trustedValueMappingKey,
+    sha256Hex(`aizign:dsh:trusted-signal-values:v1\n${canonicalRecord}`),
+  );
+  assert.equal(
+    implementationReady.trustedValueMappingKey,
+    '5c26aa27d3c344bb54671eac57ca71bf50349b44de322e0dc631d81793b626fc',
+  );
+  assert.equal(implementationReady.payload.signal.artifactRef, undefined);
+  assert.equal(implementationReady.payload.signal.shortErrorCode, undefined);
+  assert.equal(
+    resolveTrustedSignalValues(implementationBinding, trusted, { kind: 'repair_submitted' }).payload
+      .signal.artifactRef,
+    'artifact:golden',
+  );
+  assert.equal(
+    resolveTrustedSignalValues(implementationBinding, trusted, { kind: 'blocked' }).payload.signal
+      .shortErrorCode,
+    'BLOCKED_GOLDEN',
+  );
+
+  const reviewBinding: SignalBinding = {
+    ...implementationBinding,
+    expected: { ...implementationBinding.expected, role: 'review' },
+  };
+  assert.equal(
+    resolveTrustedSignalValues(reviewBinding, trusted, { kind: 'review_findings' }).payload.signal
+      .artifactRef,
+    'artifact:golden',
+  );
+  assert.equal(
+    resolveTrustedSignalValues(reviewBinding, trusted, { kind: 'review_passed' }).payload.signal
+      .artifactRef,
+    undefined,
+  );
+  const reviewPassed = resolveTrustedSignalValues(reviewBinding, trusted, {
+    kind: 'review_passed',
+  });
+  const reviewPassedWithOtherConfiguredValue = resolveTrustedSignalValues(
+    reviewBinding,
+    { ...trusted, artifactRef: 'artifact:other' },
+    { kind: 'review_passed' },
+  );
+  assert.deepEqual(reviewPassed.payload, reviewPassedWithOtherConfiguredValue.payload);
+  assert.notEqual(
+    reviewPassed.trustedValueMappingKey,
+    reviewPassedWithOtherConfiguredValue.trustedValueMappingKey,
+  );
+  assert.equal(
+    resolveTrustedSignalValues(
+      reviewBinding,
+      { blockedShortErrorCode: 'BLOCKED_GOLDEN' },
+      { kind: 'review_findings' },
+    ).payload.signal.artifactRef,
+    undefined,
+  );
 });

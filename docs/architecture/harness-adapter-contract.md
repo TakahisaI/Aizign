@@ -62,8 +62,9 @@ A v0.1 signal-submission adapter must:
 10. use the closed protocol field set, add no dedicated raw-content or
    credential field, and require producers not to place prompts, model output,
    reasoning, credentials, or encoded content in allowed opaque values. Closed
-   shape is enforced; end-to-end value semantics are not guaranteed while a
-   model can supply an opaque value such as the current DSH `artifactRef`;
+   shape is enforced; each adapter must document and test which trusted
+   boundary owns every opaque value, while end-to-end value semantics remain
+   the producer's responsibility;
 11. treat human-readable protocol diagnostics as operational data, not as
    model-safe text, and normalize them before a model-visible error boundary;
    and

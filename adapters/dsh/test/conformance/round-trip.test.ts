@@ -30,6 +30,10 @@ function config(binary: string, stateDir: string): Config {
       algorithm: 'sha256',
       hex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     },
+    trustedSignalValues: {
+      artifactRef: 'artifact:round-trip',
+      blockedShortErrorCode: 'CHANGED_MY_MIND',
+    },
   };
 }
 
@@ -73,7 +77,6 @@ async function roundTrip(binary: string, journalFile: string | undefined): Promi
     assert.deepEqual(again.value, { disposition: 'duplicate', eventId: 'evt-round-trip' });
     const conflict = await dsh.dispatch(TOOL_NAME, {
       kind: 'blocked',
-      shortErrorCode: 'CHANGED_MY_MIND',
     });
     assert.equal(conflict.error?.code, 'EVENT_CONFLICT');
 
@@ -116,8 +119,13 @@ test('fake DSH maps a local Protocol source failure without invoking the core', 
     const dsh = new FakeDsh();
     await apply(dsh.context, config(fakeBinary(join(root, 'bin'), { invocationLog }), stateDir));
     const before = readFileSync(invocationLog, 'utf8').trim().split('\n').length;
-    const outcome = await dsh.dispatch(TOOL_NAME, { kind: 'blocked' });
-    assert.equal(outcome.error?.code, 'INVALID_SIGNAL');
+    for (const arguments_ of [
+      { kind: 'blocked', shortErrorCode: 'MODEL_SELECTED_VALUE' },
+      { kind: 'repair_submitted', artifactRef: 'model:selected' },
+    ]) {
+      const outcome = await dsh.dispatch(TOOL_NAME, arguments_);
+      assert.equal(outcome.error?.code, 'INVALID_SIGNAL');
+    }
     const after = readFileSync(invocationLog, 'utf8').trim().split('\n').length;
     assert.equal(after, before, 'local Protocol failure must not spawn a submit process');
     assert.equal(existsSync(join(stateDir, 'fake-requests.jsonl')), false);

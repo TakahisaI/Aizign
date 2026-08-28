@@ -185,6 +185,8 @@ jobs:
             --role implementation \
             --revision aizign-ci-revision \
             --candidate-digest aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+            --artifact-ref artifact:aizign-ci \
+            --blocked-short-error-code BLOCKED_BY_AIZIGN_CI \
             > "${RUNNER_TEMP}/aizign-dsh-config.patch.yml"
           DSH_HOME="${dsh_home}" npx --yes \
             --package=pnpm@11.7.0 \
