@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{ProtocolError, codes};
 use crate::hello::HelloInfo;
-use crate::json_token::{FailureKind, ProbeValue, scan_json_tokens};
+use crate::json_token::{CorrelationSafety, FailureKind, ProbeValue, scan_json_tokens};
 use crate::workflow_signal::{self, ReconciliationResult, SignalResult};
 
 /// Value of the `protocol` field.
@@ -301,14 +301,18 @@ fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
             "frame must be a JSON object",
         )));
     }
+    let correlation_safe = scan.correlation_safety == CorrelationSafety::Safe;
     let mut recovered = Recovered {
-        request_id: scan
-            .top_level_values
-            .get("requestId")
+        request_id: correlation_safe
+            .then(|| scan.top_level_values.get("requestId"))
+            .flatten()
             .and_then(|value| probe_string(Some(value)))
             .filter(|value| valid_request_id(value))
             .map(str::to_owned),
-        kind: probe_string(scan.top_level_values.get("kind")).map(str::to_owned),
+        kind: correlation_safe
+            .then(|| probe_string(scan.top_level_values.get("kind")))
+            .flatten()
+            .map(str::to_owned),
         response_version: ResponseVersion::bootstrap(),
         typed_text: scan.typed_text.clone(),
         envelope_text: scan.envelope_text.clone(),
@@ -514,6 +518,23 @@ fn finish_request_frame(frame: String) -> Result<String, ProtocolError> {
     Ok(frame)
 }
 
+fn validate_success_response_kind(response: &Response) -> Result<(), ProtocolError> {
+    if matches!(&response.body, ResponseBody::Error(_)) {
+        return Ok(());
+    }
+    match response.kind.as_deref() {
+        Some(KIND_HELLO | KIND_WORKFLOW_SIGNAL_SUBMIT | KIND_WORKFLOW_SIGNAL_RECONCILE) => Ok(()),
+        Some(kind) => Err(ProtocolError::from_valid_code(
+            codes::UNKNOWN_KIND,
+            format!("kind \"{kind}\" is not registered"),
+        )),
+        None => Err(ProtocolError::from_valid_code(
+            codes::INVALID_ENVELOPE,
+            "successful responses must name their kind",
+        )),
+    }
+}
+
 /// Encodes a response as one line (no trailing newline). The output never
 /// contains a raw newline: `serde_json` escapes control characters.
 ///
@@ -538,6 +559,7 @@ pub fn encode_response(response: &Response) -> Result<String, ProtocolError> {
             "response version must be at least 1",
         ));
     }
+    validate_success_response_kind(response)?;
     match (&response.version, response.kind.as_deref(), &response.body) {
         (ResponseVersion::Bootstrap(version), Some(KIND_HELLO), ResponseBody::Hello(info))
             if *version == BOOTSTRAP_ENVELOPE_VERSION =>
@@ -675,14 +697,18 @@ pub fn decode_response_for(
             "frame must be a JSON object",
         )));
     }
+    let correlation_safe = scan.correlation_safety == CorrelationSafety::Safe;
     let recovered = Recovered {
-        request_id: scan
-            .top_level_values
-            .get("requestId")
+        request_id: correlation_safe
+            .then(|| scan.top_level_values.get("requestId"))
+            .flatten()
             .and_then(|value| probe_string(Some(value)))
             .filter(|value| valid_request_id(value))
             .map(str::to_owned),
-        kind: probe_string(scan.top_level_values.get("kind")).map(str::to_owned),
+        kind: correlation_safe
+            .then(|| probe_string(scan.top_level_values.get("kind")))
+            .flatten()
+            .map(str::to_owned),
         response_version: initial_version,
         typed_text: scan.typed_text.clone(),
         envelope_text: scan.envelope_text.clone(),

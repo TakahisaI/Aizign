@@ -132,6 +132,7 @@ function probeBoolean(value: JsonProbeValue | undefined): boolean | undefined {
 }
 
 function correlationFromScan(scan: ReturnType<typeof scanJsonTokens>): Recovered {
+  if (scan.topLevelMemberNameUnicodeDefect) return { requestId: null, kind: null };
   const requestIdValue = probeString(scan.topLevelValues.get('requestId'));
   const kindValue = probeString(scan.topLevelValues.get('kind'));
   const requestId =
@@ -408,6 +409,16 @@ export function encodeResponse(response: Response): string {
   const body = ownDataValue(response, 'body', invalidEnvelope, 'response');
   assertClosedObject(body, ['type', 'info', 'result', 'error'], invalidEnvelope, 'response.body');
   const type = ownDataValue(body, 'type', invalidEnvelope, 'response.body');
+  const assertSuccessKindMembership = (): void => {
+    if (kind === null) throw invalidEnvelope('successful responses must name their kind');
+    if (
+      kind !== KIND_HELLO &&
+      kind !== KIND_WORKFLOW_SIGNAL_SUBMIT &&
+      kind !== KIND_WORKFLOW_SIGNAL_RECONCILE
+    ) {
+      throw new ProtocolError(codes.UNKNOWN_KIND, `kind "${kind}" is not registered`);
+    }
+  };
   const base = {
     protocol: PROTOCOL_NAME,
     version: wireVersion,
@@ -417,6 +428,7 @@ export function encodeResponse(response: Response): string {
   let frame: string;
   switch (type) {
     case 'hello': {
+      assertSuccessKindMembership();
       assertClosedObject(body, ['type', 'info'], invalidEnvelope, 'response.body');
       if (axis !== 'bootstrap' || kind !== KIND_HELLO) {
         throw invalidEnvelope('hello success requires hello kind and bootstrap version');
@@ -426,6 +438,7 @@ export function encodeResponse(response: Response): string {
       break;
     }
     case 'workflow.signal': {
+      assertSuccessKindMembership();
       assertClosedObject(body, ['type', 'result'], invalidEnvelope, 'response.body');
       if (axis !== 'accepted-operation' || kind !== KIND_WORKFLOW_SIGNAL_SUBMIT) {
         throw invalidEnvelope('submit success requires submit kind and accepted-operation version');
@@ -437,6 +450,7 @@ export function encodeResponse(response: Response): string {
       break;
     }
     case 'workflow.signal.reconciliation': {
+      assertSuccessKindMembership();
       assertClosedObject(body, ['type', 'result'], invalidEnvelope, 'response.body');
       if (axis !== 'accepted-operation' || kind !== KIND_WORKFLOW_SIGNAL_RECONCILE) {
         throw invalidEnvelope(

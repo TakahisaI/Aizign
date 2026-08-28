@@ -13,6 +13,15 @@ test('the lexical scan rejects lone surrogates in every string token', () => {
     assert.equal(scanJsonTokens(frame).failure?.kind, 'invalid-unicode', frame);
   }
   assert.equal(scanJsonTokens(String.raw`{"message":"\uD83D\uDE00"}`).failure, null);
+  assert.equal(
+    scanJsonTokens(String.raw`{"requestId":"req-1","\uD800":true}`).topLevelMemberNameUnicodeDefect,
+    true,
+  );
+  assert.equal(
+    scanJsonTokens(String.raw`{"requestId":"req-1","payload":{"\uD800":true}}`)
+      .topLevelMemberNameUnicodeDefect,
+    false,
+  );
 });
 
 test('the lexical scan reports the first duplicate or noncanonical number in source order', () => {

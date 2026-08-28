@@ -28,6 +28,8 @@ export interface JsonTokenScan {
   readonly topLevelObject: boolean;
   /** Final typed spelling for each top-level member, including duplicates. */
   readonly topLevelValues: ReadonlyMap<string, JsonProbeValue>;
+  /** An ill-formed root member name makes diagnostic correlation unsafe. */
+  readonly topLevelMemberNameUnicodeDefect: boolean;
   /** `error.code`, when `error` is a top-level object with a string code. */
   readonly errorCode: string | undefined;
 }
@@ -133,6 +135,7 @@ export function scanJsonTokens(text: string): JsonTokenScan {
       probeText: text,
       topLevelObject: false,
       topLevelValues: new Map(),
+      topLevelMemberNameUnicodeDefect: false,
       errorCode: undefined,
     };
   }
@@ -145,6 +148,7 @@ export function scanJsonTokens(text: string): JsonTokenScan {
   }> = [];
   let syntaxError: { index: number; message: string } | null = null;
   let failure: JsonTokenFailure | null = null;
+  let topLevelMemberNameUnicodeDefect = false;
   let errorCode: string | undefined;
   let index = 0;
 
@@ -185,7 +189,9 @@ export function scanJsonTokens(text: string): JsonTokenScan {
       const after = nextNonWhitespace(text, end);
       const parent = levels.at(-1);
       const isMemberName = text[after] === ':' && parent?.kind === 'object';
-      if (decoded !== null && !isWellFormedUnicode(decoded)) {
+      const unicodeValid = decoded !== null && isWellFormedUnicode(decoded);
+      if (decoded !== null && !unicodeValid) {
+        if (isMemberName && levels.length === 1) topLevelMemberNameUnicodeDefect = true;
         fail({
           kind: 'invalid-unicode',
           index,
@@ -210,11 +216,7 @@ export function scanJsonTokens(text: string): JsonTokenScan {
         parent.keys.add(decoded);
         parent.pendingKey = decoded;
       } else {
-        recordValue(
-          decoded !== null && isWellFormedUnicode(decoded)
-            ? { kind: 'string', value: decoded }
-            : { kind: 'invalid' },
-        );
+        recordValue(unicodeValid ? { kind: 'string', value: decoded } : { kind: 'invalid' });
         consumePendingKey(levels);
       }
       index = end;
@@ -304,6 +306,7 @@ export function scanJsonTokens(text: string): JsonTokenScan {
     probeText,
     topLevelObject: text.trimStart().startsWith('{'),
     topLevelValues,
+    topLevelMemberNameUnicodeDefect,
     errorCode,
   };
 }

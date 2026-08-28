@@ -557,6 +557,74 @@ fn response_encoders_match_every_protocol_example_without_decoding() {
 }
 
 #[test]
+fn response_encoder_checks_success_kind_membership_before_body_mapping() {
+    let success_bodies = [
+        ResponseBody::Hello(HelloInfo {
+            protocol_version: 1,
+            journal_schema_version: 1,
+            capabilities: Vec::new(),
+            package: PackageInfo {
+                name: "aizign".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+        }),
+        ResponseBody::WorkflowSignal(SignalResult {
+            disposition: Disposition::Accepted,
+            event_id: event_id(),
+        }),
+        ResponseBody::WorkflowSignalReconciliation(ReconciliationResult {
+            disposition: ReconciliationDisposition::Absent,
+            event_id: event_id(),
+        }),
+    ];
+    for body in success_bodies {
+        let response = Response {
+            version: aizign_protocol::ResponseVersion::operation(),
+            request_id: Some("req-future-success".to_owned()),
+            kind: Some("future.operation".to_owned()),
+            body,
+        };
+        assert_eq!(
+            encode_response(&response).unwrap_err().code().as_str(),
+            codes::UNKNOWN_KIND
+        );
+    }
+
+    let wrong_mapping = Response {
+        version: aizign_protocol::ResponseVersion::operation(),
+        request_id: Some("req-wrong-success".to_owned()),
+        kind: Some("workflow.signal.reconcile".to_owned()),
+        body: ResponseBody::WorkflowSignal(SignalResult {
+            disposition: Disposition::Accepted,
+            event_id: event_id(),
+        }),
+    };
+    assert_eq!(
+        encode_response(&wrong_mapping).unwrap_err().code().as_str(),
+        codes::INVALID_ENVELOPE
+    );
+
+    let null_kind = Response {
+        version: aizign_protocol::ResponseVersion::bootstrap(),
+        request_id: Some("req-null-success".to_owned()),
+        kind: None,
+        body: ResponseBody::Hello(HelloInfo {
+            protocol_version: 1,
+            journal_schema_version: 1,
+            capabilities: Vec::new(),
+            package: PackageInfo {
+                name: "aizign".to_owned(),
+                version: "0.1.0".to_owned(),
+            },
+        }),
+    };
+    assert_eq!(
+        encode_response(&null_kind).unwrap_err().code().as_str(),
+        codes::INVALID_ENVELOPE
+    );
+}
+
+#[test]
 fn response_encoder_preserves_event_id_provenance() {
     let cases = [
         response(

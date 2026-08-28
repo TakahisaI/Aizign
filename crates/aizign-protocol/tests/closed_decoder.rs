@@ -186,6 +186,77 @@ fn an_ill_formed_top_level_kind_is_not_recovered() {
 }
 
 #[test]
+fn an_ill_formed_top_level_member_name_suppresses_all_correlation() {
+    let request_frames = [
+        String::from(
+            r#"{"\uD800":0,"protocol":"aizign","version":1,"requestId":"req-before","kind":"hello","payload":{}}"#,
+        ),
+        String::from(
+            r#"{"protocol":"aizign","version":1,"requestId":"req-between","\uD800":0,"kind":"hello","payload":{}}"#,
+        ),
+        String::from(
+            r#"{"protocol":"aizign","version":1,"requestId":"req-after","kind":"hello","\uD800":0,"payload":{}}"#,
+        ),
+        String::from(
+            r#"{"protocol":"aizign","version":1,"requestId":"req-old","requestId":"req-final","kind":"hello","\uD800":0,"payload":{}}"#,
+        ),
+        String::from(
+            r#"{"protocol":"aizign","version":2,"requestId":"req-version","kind":"hello","\uD800":0,"payload":{}}"#,
+        ),
+    ];
+    for frame in request_frames {
+        let failure = decode_request(frame.as_bytes()).unwrap_err();
+        assert_eq!(failure.code().as_str(), codes::INVALID_ENVELOPE, "{frame}");
+        assert_eq!(failure.request_id, None, "{frame}");
+        assert_eq!(failure.kind, None, "{frame}");
+        assert_eq!(
+            failure.response_version,
+            ResponseVersion::bootstrap(),
+            "{frame}"
+        );
+    }
+
+    let response_frames = [
+        String::from(
+            r#"{"\uD800":0,"protocol":"aizign","version":2,"requestId":"req-before","kind":"workflow.signal.submit","ok":false,"error":{"code":"INTERNAL","message":"x"}}"#,
+        ),
+        String::from(
+            r#"{"protocol":"aizign","version":2,"requestId":"req-between","\uD800":0,"kind":"workflow.signal.submit","ok":false,"error":{"code":"INTERNAL","message":"x"}}"#,
+        ),
+        String::from(
+            r#"{"protocol":"aizign","version":2,"requestId":"req-after","kind":"workflow.signal.submit","\uD800":0,"ok":false,"error":{"code":"INTERNAL","message":"x"}}"#,
+        ),
+        String::from(
+            r#"{"protocol":"aizign","version":2,"requestId":"req-old","requestId":"req-final","kind":"workflow.signal.submit","\uD800":0,"ok":false,"error":{"code":"INTERNAL","message":"x"}}"#,
+        ),
+        String::from(
+            r#"{"protocol":"aizign","version":3,"requestId":"req-version","kind":"workflow.signal.submit","\uD800":0,"ok":false,"error":{"code":"INTERNAL","message":"x"}}"#,
+        ),
+    ];
+    for frame in response_frames {
+        let failure = decode_response_for(
+            frame.as_bytes(),
+            Some(ResponseVersion::AcceptedOperation(2)),
+        )
+        .unwrap_err();
+        assert_eq!(failure.code().as_str(), codes::INVALID_ENVELOPE, "{frame}");
+        assert_eq!(failure.request_id, None, "{frame}");
+        assert_eq!(failure.kind, None, "{frame}");
+        assert_eq!(
+            failure.response_version,
+            ResponseVersion::AcceptedOperation(2),
+            "{frame}"
+        );
+    }
+
+    let nested = r#"{"protocol":"aizign","version":1,"requestId":"req-nested-key","kind":"hello","payload":{"\uD800":0}}"#;
+    let failure = decode_request(nested.as_bytes()).unwrap_err();
+    assert_eq!(failure.code().as_str(), codes::INVALID_ENVELOPE);
+    assert_eq!(failure.request_id.as_deref(), Some("req-nested-key"));
+    assert_eq!(failure.kind.as_deref(), Some("hello"));
+}
+
+#[test]
 fn unknown_kinds_are_rejected_with_recovered_ids() {
     let frame = r#"{"protocol":"aizign","version":1,"requestId":"req-5","kind":"workflow.other","payload":{}}"#;
     assert_eq!(

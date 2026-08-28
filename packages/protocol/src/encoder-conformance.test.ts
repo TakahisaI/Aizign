@@ -408,6 +408,63 @@ test('response encoder preserves event id provenance', () => {
   }
 });
 
+test('response encoder checks success kind membership before body mapping', () => {
+  const hello: HelloInfo = {
+    protocolVersion: 1,
+    journalSchemaVersion: 1,
+    capabilities: [],
+    package: { name: 'aizign', version: '0.1.0' },
+  };
+  const successBodies: readonly Response['body'][] = [
+    { type: 'hello', info: hello },
+    {
+      type: 'workflow.signal',
+      result: { disposition: 'accepted', eventId: 'evt-future-submit' },
+    },
+    {
+      type: 'workflow.signal.reconciliation',
+      result: { disposition: 'absent', eventId: 'evt-future-reconcile' },
+    },
+  ];
+  for (const body of successBodies) {
+    assert.throws(
+      () =>
+        encodeResponse({
+          version: { axis: 'accepted-operation', version: 1 },
+          requestId: 'req-future-success',
+          kind: 'future.operation',
+          body,
+        }),
+      (error: unknown) => error instanceof ProtocolError && error.code === codes.UNKNOWN_KIND,
+      body.type,
+    );
+  }
+
+  assert.throws(
+    () =>
+      encodeResponse({
+        version: { axis: 'accepted-operation', version: 1 },
+        requestId: 'req-wrong-success',
+        kind: 'workflow.signal.reconcile',
+        body: {
+          type: 'workflow.signal',
+          result: { disposition: 'accepted', eventId: 'evt-wrong-success' },
+        },
+      }),
+    (error: unknown) => error instanceof ProtocolError && error.code === codes.INVALID_ENVELOPE,
+  );
+  assert.throws(
+    () =>
+      encodeResponse({
+        version: { axis: 'bootstrap', version: 1 },
+        requestId: 'req-null-success',
+        kind: null,
+        body: { type: 'hello', info: hello },
+      }),
+    (error: unknown) => error instanceof ProtocolError && error.code === codes.INVALID_ENVELOPE,
+  );
+});
+
 test('outbound source validation rejects hostile descriptors and prototypes without executing them', () => {
   const invalidEnvelope = (error: unknown) =>
     error instanceof ProtocolError && error.code === codes.INVALID_ENVELOPE;
@@ -424,12 +481,47 @@ test('outbound source validation rejects hostile descriptors and prototypes with
   assert.throws(() => encodeRequest(accessorRequest), invalidEnvelope);
   assert.equal(getterCalls, 0);
 
-  const nonEnumerable = { requestId: 'req-hidden', kind: 'hello' };
-  Object.defineProperty(nonEnumerable, 'requestId', {
-    value: 'req-hidden',
+  const nonEnumerable = {};
+  Object.defineProperties(nonEnumerable, {
+    requestId: { value: 'req-hidden', enumerable: false },
+    kind: { value: 'hello', enumerable: false },
+  });
+  assert.equal(
+    encodeRequest(nonEnumerable as Request),
+    encodeRequest({ requestId: 'req-hidden', kind: 'hello' }),
+  );
+
+  const unknownNonEnumerable = { requestId: 'req-hidden-unknown', kind: 'hello' };
+  Object.defineProperty(unknownNonEnumerable, 'hidden', {
+    value: true,
     enumerable: false,
   });
-  assert.throws(() => encodeRequest(nonEnumerable as Request), invalidEnvelope);
+  assert.throws(() => encodeRequest(unknownNonEnumerable as Request), invalidEnvelope);
+
+  const hiddenCapabilities = [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT];
+  Object.defineProperty(hiddenCapabilities, '0', {
+    value: CAPABILITY_WORKFLOW_SIGNAL_SUBMIT,
+    enumerable: false,
+  });
+  const hiddenCapabilityResponse: Response = {
+    version: { axis: 'bootstrap', version: 1 },
+    requestId: 'req-hidden-index',
+    kind: 'hello',
+    body: {
+      type: 'hello',
+      info: {
+        protocolVersion: 1,
+        journalSchemaVersion: 1,
+        capabilities: hiddenCapabilities,
+        package: { name: 'aizign', version: '0.1.0' },
+      },
+    },
+  };
+  assert.deepEqual(
+    (JSON.parse(encodeResponse(hiddenCapabilityResponse)) as { payload: HelloInfo }).payload
+      .capabilities,
+    [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT],
+  );
 
   const symbolRequest = {
     requestId: 'req-symbol',

@@ -30,6 +30,12 @@ pub(crate) enum ProbeValue {
     Invalid,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CorrelationSafety {
+    Safe,
+    Suppressed,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct Scan {
     pub(crate) syntax_error: Option<&'static str>,
@@ -38,6 +44,7 @@ pub(crate) struct Scan {
     pub(crate) envelope_text: String,
     pub(crate) top_level_object: bool,
     pub(crate) top_level_values: HashMap<String, ProbeValue>,
+    pub(crate) correlation_safety: CorrelationSafety,
     pub(crate) error_code: Option<String>,
     pub(crate) payload_integer_out_of_range: bool,
     pub(crate) payload_exceeds_typed_depth: bool,
@@ -456,6 +463,7 @@ pub(crate) fn scan_json_tokens(text: &str) -> Scan {
             envelope_text: text.to_owned(),
             top_level_object: false,
             top_level_values: HashMap::new(),
+            correlation_safety: CorrelationSafety::Safe,
             error_code: None,
             payload_integer_out_of_range: false,
             payload_exceeds_typed_depth: false,
@@ -468,6 +476,7 @@ pub(crate) fn scan_json_tokens(text: &str) -> Scan {
     let mut error_code = None;
     let mut syntax_error = None;
     let mut failure = None;
+    let mut correlation_safety = CorrelationSafety::Safe;
     let mut payload_integer_out_of_range = false;
     let mut payload_exceeds_typed_depth = false;
     let mut index = 0;
@@ -489,6 +498,9 @@ pub(crate) fn scan_json_tokens(text: &str) -> Scan {
                 let after = next_non_whitespace(bytes, end);
                 let is_member_name = bytes.get(after) == Some(&b':');
                 if !unicode_valid {
+                    if is_member_name && levels.len() == 1 {
+                        correlation_safety = CorrelationSafety::Suppressed;
+                    }
                     record_failure(
                         &mut failure,
                         Failure {
@@ -682,6 +694,7 @@ pub(crate) fn scan_json_tokens(text: &str) -> Scan {
         envelope_text,
         top_level_object: text.trim_start().starts_with('{'),
         top_level_values,
+        correlation_safety,
         error_code,
         payload_integer_out_of_range,
         payload_exceeds_typed_depth,
@@ -690,7 +703,7 @@ pub(crate) fn scan_json_tokens(text: &str) -> Scan {
 
 #[cfg(test)]
 mod tests {
-    use super::{FailureKind, ProbeValue, scan_json_tokens};
+    use super::{CorrelationSafety, FailureKind, ProbeValue, scan_json_tokens};
 
     #[test]
     fn scans_duplicates_unicode_and_numbers_in_source_order() {
@@ -710,6 +723,15 @@ mod tests {
                 .failure
                 .unwrap()
                 .in_payload
+        );
+        assert_eq!(
+            scan_json_tokens(r#"{"requestId":"req-1","\uD800":true}"#).correlation_safety,
+            CorrelationSafety::Suppressed
+        );
+        assert_eq!(
+            scan_json_tokens(r#"{"requestId":"req-1","payload":{"\uD800":true}}"#)
+                .correlation_safety,
+            CorrelationSafety::Safe
         );
     }
 

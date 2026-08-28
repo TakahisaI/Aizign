@@ -22,7 +22,6 @@ export function assertClosedObject(
     if (descriptor === undefined || !('value' in descriptor)) {
       throw makeError(`${path}.${key} must be an own data property`);
     }
-    if (!descriptor.enumerable) throw makeError(`${path}.${key} must be enumerable`);
   }
 }
 
@@ -59,8 +58,8 @@ export function arrayValues(
   }
   for (let index = 0; index < value.length; index += 1) {
     const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-    if (descriptor === undefined || !('value' in descriptor) || !descriptor.enumerable) {
-      throw makeError(`${path}[${index}] must be an own enumerable data property`);
+    if (descriptor === undefined || !('value' in descriptor)) {
+      throw makeError(`${path}[${index}] must be an own data property`);
     }
     Object.defineProperty(result, String(index), {
       value: descriptor.value,

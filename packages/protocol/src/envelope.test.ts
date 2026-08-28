@@ -232,6 +232,65 @@ test('an ill-formed top-level kind is not retained as correlation metadata', () 
   );
 });
 
+test('an ill-formed top-level member name suppresses all correlation', () => {
+  const requestFrames = [
+    String.raw`{"\uD800":0,"protocol":"aizign","version":1,"requestId":"req-before","kind":"hello","payload":{}}`,
+    String.raw`{"protocol":"aizign","version":1,"requestId":"req-between","\uD800":0,"kind":"hello","payload":{}}`,
+    String.raw`{"protocol":"aizign","version":1,"requestId":"req-after","kind":"hello","\uD800":0,"payload":{}}`,
+    String.raw`{"protocol":"aizign","version":1,"requestId":"req-old","requestId":"req-final","kind":"hello","\uD800":0,"payload":{}}`,
+    String.raw`{"protocol":"aizign","version":2,"requestId":"req-version","kind":"hello","\uD800":0,"payload":{}}`,
+  ];
+  for (const frame of requestFrames) {
+    assert.throws(
+      () => decodeRequest(frame),
+      (error: unknown) =>
+        error instanceof DecodeFailure &&
+        error.error.code === codes.INVALID_ENVELOPE &&
+        error.requestId === null &&
+        error.kind === null &&
+        error.responseVersion.axis === 'bootstrap' &&
+        error.responseVersion.version === 1,
+      frame,
+    );
+  }
+
+  const responseFrames = [
+    String.raw`{"\uD800":0,"protocol":"aizign","version":2,"requestId":"req-before","kind":"workflow.signal.submit","ok":false,"error":{"code":"INTERNAL","message":"x"}}`,
+    String.raw`{"protocol":"aizign","version":2,"requestId":"req-between","\uD800":0,"kind":"workflow.signal.submit","ok":false,"error":{"code":"INTERNAL","message":"x"}}`,
+    String.raw`{"protocol":"aizign","version":2,"requestId":"req-after","kind":"workflow.signal.submit","\uD800":0,"ok":false,"error":{"code":"INTERNAL","message":"x"}}`,
+    String.raw`{"protocol":"aizign","version":2,"requestId":"req-old","requestId":"req-final","kind":"workflow.signal.submit","\uD800":0,"ok":false,"error":{"code":"INTERNAL","message":"x"}}`,
+    String.raw`{"protocol":"aizign","version":3,"requestId":"req-version","kind":"workflow.signal.submit","\uD800":0,"ok":false,"error":{"code":"INTERNAL","message":"x"}}`,
+  ];
+  for (const frame of responseFrames) {
+    assert.throws(
+      () =>
+        decodeResponse(frame, {
+          requestAxis: 'accepted-operation',
+          bootstrapVersion: 1,
+          operationVersion: 2,
+        }),
+      (error: unknown) =>
+        error instanceof DecodeFailure &&
+        error.error.code === codes.INVALID_ENVELOPE &&
+        error.requestId === null &&
+        error.kind === null &&
+        error.responseVersion.axis === 'accepted-operation' &&
+        error.responseVersion.version === 2,
+      frame,
+    );
+  }
+
+  const nested = String.raw`{"protocol":"aizign","version":1,"requestId":"req-nested-key","kind":"hello","payload":{"\uD800":0}}`;
+  assert.throws(
+    () => decodeRequest(nested),
+    (error: unknown) =>
+      error instanceof DecodeFailure &&
+      error.error.code === codes.INVALID_ENVELOPE &&
+      error.requestId === 'req-nested-key' &&
+      error.kind === 'hello',
+  );
+});
+
 test('canonical integers beyond the host numeric range remain payload failures', () => {
   const huge = `1${'0'.repeat(400)}`;
   const digest = 'a'.repeat(64);
