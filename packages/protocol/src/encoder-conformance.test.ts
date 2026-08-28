@@ -582,3 +582,85 @@ test('fresh wire graphs shadow inherited object and array toJSON hooks', () => {
     else Object.defineProperty(Array.prototype, 'toJSON', arrayToJson);
   }
 });
+
+test('fresh wire construction ignores inherited setters and getter-only properties', () => {
+  const findingRequest = submitRequest(
+    'req-inherited-setter',
+    reviewExpectedAssignment(),
+    reviewFindings('evt-inherited-setter'),
+  );
+  const blockedRequest = submitRequest(
+    'req-inherited-code',
+    expectedAssignment(),
+    blocked('evt-inherited-code'),
+  );
+  const helloResponse: Response = {
+    version: { axis: 'bootstrap', version: 1 },
+    requestId: 'req-inherited-array',
+    kind: 'hello',
+    body: {
+      type: 'hello',
+      info: {
+        protocolVersion: 1,
+        journalSchemaVersion: 1,
+        capabilities: [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT],
+        package: { name: 'aizign', version: '0.1.0' },
+      },
+    },
+  };
+  const expectedFinding = encodeRequest(findingRequest);
+  const expectedBlocked = encodeRequest(blockedRequest);
+  const expectedHello = encodeResponse(helloResponse);
+  const keys = ['findingCount', 'artifactRef', 'shortErrorCode'] as const;
+  const originals = new Map(
+    keys.map((key) => [key, Object.getOwnPropertyDescriptor(Object.prototype, key)] as const),
+  );
+  const arrayZero = Object.getOwnPropertyDescriptor(Array.prototype, '0');
+  let calls = 0;
+  let actualFinding = '';
+  let actualBlocked = '';
+  let actualHello = '';
+  try {
+    Object.defineProperty(Object.prototype, 'findingCount', {
+      configurable: true,
+      set: () => {
+        calls += 1;
+      },
+    });
+    Object.defineProperty(Object.prototype, 'artifactRef', {
+      configurable: true,
+      get: () => {
+        calls += 1;
+        return 'forged';
+      },
+    });
+    Object.defineProperty(Object.prototype, 'shortErrorCode', {
+      configurable: true,
+      set: () => {
+        calls += 1;
+      },
+    });
+    Object.defineProperty(Array.prototype, '0', {
+      configurable: true,
+      set: () => {
+        calls += 1;
+      },
+    });
+    actualFinding = encodeRequest(findingRequest);
+    actualBlocked = encodeRequest(blockedRequest);
+    actualHello = encodeResponse(helloResponse);
+  } finally {
+    for (const key of keys) {
+      const descriptor = originals.get(key);
+      if (descriptor === undefined) delete (Object.prototype as Record<string, unknown>)[key];
+      else Object.defineProperty(Object.prototype, key, descriptor);
+    }
+    if (arrayZero === undefined)
+      delete (Array.prototype as unknown as Record<string, unknown>)['0'];
+    else Object.defineProperty(Array.prototype, '0', arrayZero);
+  }
+  assert.equal(calls, 0);
+  assert.equal(actualFinding, expectedFinding);
+  assert.equal(actualBlocked, expectedBlocked);
+  assert.equal(actualHello, expectedHello);
+});

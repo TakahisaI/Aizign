@@ -9,6 +9,12 @@ export interface JsonTokenFailure {
   readonly message: string;
 }
 
+export type JsonProbeValue =
+  | { readonly kind: 'string'; readonly value: string }
+  | { readonly kind: 'boolean'; readonly value: boolean }
+  | { readonly kind: 'number'; readonly raw: string }
+  | { readonly kind: 'null' | 'object' | 'array' | 'invalid' };
+
 export interface JsonTokenScan {
   /** Fatal JSON grammar defect; callers must reject it before correlation recovery. */
   readonly syntaxError: {
@@ -20,14 +26,10 @@ export interface JsonTokenScan {
   readonly probeText: string;
   /** Whether the complete JSON value is an object at the root. */
   readonly topLevelObject: boolean;
-  /** Losslessly recovered, well-formed top-level string values. */
-  readonly topLevelStrings: ReadonlyMap<string, string>;
-  /** Losslessly recovered top-level boolean values. */
-  readonly topLevelBooleans: ReadonlyMap<string, boolean>;
+  /** Final typed spelling for each top-level member, including duplicates. */
+  readonly topLevelValues: ReadonlyMap<string, JsonProbeValue>;
   /** `error.code`, when `error` is a top-level object with a string code. */
   readonly errorCode: string | undefined;
-  /** Raw top-level number spellings, before any JavaScript numeric coercion. */
-  readonly topLevelNumbers: ReadonlyMap<string, string>;
 }
 
 const JSON_NUMBER = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/;
@@ -37,14 +39,13 @@ interface ObjectLevel {
   readonly kind: 'object';
   readonly keys: Set<string>;
   readonly inPayload: boolean;
-  readonly inError: boolean;
+  readonly directError: boolean;
   pendingKey: string | undefined;
 }
 
 interface ArrayLevel {
   readonly kind: 'array';
   readonly inPayload: boolean;
-  readonly inError: boolean;
 }
 
 type Level = ObjectLevel | ArrayLevel;
@@ -103,13 +104,6 @@ function valueIsPayload(levels: readonly Level[]): boolean {
   return levels.length === 1 && parent.kind === 'object' && parent.pendingKey === 'payload';
 }
 
-function valueIsError(levels: readonly Level[]): boolean {
-  const parent = levels.at(-1);
-  if (parent === undefined) return false;
-  if (parent.inError) return true;
-  return levels.length === 1 && parent.kind === 'object' && parent.pendingKey === 'error';
-}
-
 function consumePendingKey(levels: readonly Level[]): void {
   const parent = levels.at(-1);
   if (parent?.kind === 'object') parent.pendingKey = undefined;
@@ -138,16 +132,12 @@ export function scanJsonTokens(text: string): JsonTokenScan {
       failure: null,
       probeText: text,
       topLevelObject: false,
-      topLevelStrings: new Map(),
-      topLevelBooleans: new Map(),
+      topLevelValues: new Map(),
       errorCode: undefined,
-      topLevelNumbers: new Map(),
     };
   }
   const levels: Level[] = [];
-  const topLevelStrings = new Map<string, string>();
-  const topLevelBooleans = new Map<string, boolean>();
-  const topLevelNumbers = new Map<string, string>();
+  const topLevelValues = new Map<string, JsonProbeValue>();
   const replacements: Array<{
     start: number;
     end: number;
@@ -160,6 +150,17 @@ export function scanJsonTokens(text: string): JsonTokenScan {
 
   const fail = (candidate: JsonTokenFailure) => {
     if (failure === null || candidate.index < failure.index) failure = candidate;
+  };
+  const recordValue = (value: JsonProbeValue): void => {
+    const parent = levels.at(-1);
+    if (parent?.kind !== 'object' || parent.pendingKey === undefined) return;
+    if (levels.length === 1) {
+      topLevelValues.set(parent.pendingKey, value);
+      if (parent.pendingKey === 'error') errorCode = undefined;
+    }
+    if (parent.directError && parent.pendingKey === 'code') {
+      errorCode = value.kind === 'string' ? value.value : undefined;
+    }
   };
 
   while (index < text.length) {
@@ -209,14 +210,11 @@ export function scanJsonTokens(text: string): JsonTokenScan {
         parent.keys.add(decoded);
         parent.pendingKey = decoded;
       } else {
-        if (decoded !== null && isWellFormedUnicode(decoded)) {
-          if (levels.length === 1 && parent?.kind === 'object' && parent.pendingKey !== undefined) {
-            topLevelStrings.set(parent.pendingKey, decoded);
-          }
-          if (parent?.kind === 'object' && parent.inError && parent.pendingKey === 'code') {
-            errorCode = decoded;
-          }
-        }
+        recordValue(
+          decoded !== null && isWellFormedUnicode(decoded)
+            ? { kind: 'string', value: decoded }
+            : { kind: 'invalid' },
+        );
         consumePendingKey(levels);
       }
       index = end;
@@ -225,7 +223,13 @@ export function scanJsonTokens(text: string): JsonTokenScan {
 
     if (char === '{' || char === '[') {
       const inPayload = valueIsPayload(levels);
-      const inError = valueIsError(levels);
+      const parent = levels.at(-1);
+      const directError =
+        char === '{' &&
+        levels.length === 1 &&
+        parent?.kind === 'object' &&
+        parent.pendingKey === 'error';
+      recordValue({ kind: char === '{' ? 'object' : 'array' });
       consumePendingKey(levels);
       levels.push(
         char === '{'
@@ -233,10 +237,10 @@ export function scanJsonTokens(text: string): JsonTokenScan {
               kind: 'object',
               keys: new Set(),
               inPayload,
-              inError,
+              directError,
               pendingKey: undefined,
             }
-          : { kind: 'array', inPayload, inError },
+          : { kind: 'array', inPayload },
       );
       index += 1;
       continue;
@@ -258,10 +262,7 @@ export function scanJsonTokens(text: string): JsonTokenScan {
         index = end;
         continue;
       }
-      const parent = levels.at(-1);
-      const topLevelKey =
-        levels.length === 1 && parent?.kind === 'object' ? parent.pendingKey : undefined;
-      if (topLevelKey !== undefined) topLevelNumbers.set(topLevelKey, token);
+      recordValue({ kind: 'number', raw: token });
       const inPayload = valueIsPayload(levels);
       if (!CANONICAL_INTEGER.test(token)) {
         fail({
@@ -278,15 +279,13 @@ export function scanJsonTokens(text: string): JsonTokenScan {
     }
 
     if (char === 't' || char === 'f' || char === 'n') {
-      const parent = levels.at(-1);
-      const topLevelKey =
-        levels.length === 1 && parent?.kind === 'object' ? parent.pendingKey : undefined;
-      if (
-        topLevelKey !== undefined &&
-        (text.startsWith('true', index) || text.startsWith('false', index))
-      ) {
-        topLevelBooleans.set(topLevelKey, text.startsWith('true', index));
-      }
+      recordValue(
+        text.startsWith('true', index)
+          ? { kind: 'boolean', value: true }
+          : text.startsWith('false', index)
+            ? { kind: 'boolean', value: false }
+            : { kind: 'null' },
+      );
       consumePendingKey(levels);
     }
     index += 1;
@@ -304,9 +303,7 @@ export function scanJsonTokens(text: string): JsonTokenScan {
     failure,
     probeText,
     topLevelObject: text.trimStart().startsWith('{'),
-    topLevelStrings,
-    topLevelBooleans,
+    topLevelValues,
     errorCode,
-    topLevelNumbers,
   };
 }

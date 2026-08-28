@@ -40,13 +40,23 @@ test('the probe text replaces numbers without coercing them', () => {
     '{"version":2,"requestId":"req-1","kind":"workflow.future","payload":{"n":999999999999999999999999}}',
   );
   assert.equal(scan.syntaxError, null);
-  assert.equal(scan.topLevelNumbers.get('version'), '2');
+  assert.deepEqual(scan.topLevelValues.get('version'), { kind: 'number', raw: '2' });
   assert.deepEqual(JSON.parse(scan.probeText), {
     version: 0,
     requestId: 'req-1',
     kind: 'workflow.future',
     payload: { n: 0 },
   });
+});
+
+test('top-level probe slots retain only the final duplicate spelling', () => {
+  const scan = scanJsonTokens(
+    '{"requestId":"old","requestId":17,"ok":false,"ok":null,"error":{"code":"INTERNAL"},"error":null}',
+  );
+  assert.deepEqual(scan.topLevelValues.get('requestId'), { kind: 'number', raw: '17' });
+  assert.deepEqual(scan.topLevelValues.get('ok'), { kind: 'null' });
+  assert.deepEqual(scan.topLevelValues.get('error'), { kind: 'null' });
+  assert.equal(scan.errorCode, undefined);
 });
 
 test('the lexical scan has no nesting cutoff', () => {

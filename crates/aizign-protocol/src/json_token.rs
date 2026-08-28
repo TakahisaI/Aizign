@@ -19,16 +19,26 @@ pub(crate) struct Failure {
     pub(crate) message: &'static str,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ProbeValue {
+    String(String),
+    Boolean(bool),
+    Number(String),
+    Null,
+    Object,
+    Array,
+    Invalid,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct Scan {
     pub(crate) syntax_error: Option<&'static str>,
     pub(crate) failure: Option<Failure>,
     pub(crate) typed_text: String,
+    pub(crate) envelope_text: String,
     pub(crate) top_level_object: bool,
-    pub(crate) top_level_strings: HashMap<String, String>,
-    pub(crate) top_level_booleans: HashMap<String, bool>,
+    pub(crate) top_level_values: HashMap<String, ProbeValue>,
     pub(crate) error_code: Option<String>,
-    pub(crate) top_level_numbers: HashMap<String, String>,
     pub(crate) payload_integer_out_of_range: bool,
     pub(crate) payload_exceeds_typed_depth: bool,
 }
@@ -37,12 +47,15 @@ enum Level {
     Object {
         keys: HashSet<String>,
         in_payload: bool,
-        in_error: bool,
+        direct_error: bool,
+        container_start: usize,
+        top_level_payload: bool,
         pending_key: Option<String>,
     },
     Array {
         in_payload: bool,
-        in_error: bool,
+        container_start: usize,
+        top_level_payload: bool,
     },
 }
 
@@ -50,12 +63,6 @@ impl Level {
     const fn in_payload(&self) -> bool {
         match self {
             Self::Object { in_payload, .. } | Self::Array { in_payload, .. } => *in_payload,
-        }
-    }
-
-    const fn in_error(&self) -> bool {
-        match self {
-            Self::Object { in_error, .. } | Self::Array { in_error, .. } => *in_error,
         }
     }
 }
@@ -96,22 +103,6 @@ fn value_is_payload(levels: &[Level]) -> bool {
             pending_key: Some(key),
             ..
         } if levels.len() == 1 && key == "payload"
-    )
-}
-
-fn value_is_error(levels: &[Level]) -> bool {
-    let Some(parent) = levels.last() else {
-        return false;
-    };
-    if parent.in_error() {
-        return true;
-    }
-    matches!(
-        parent,
-        Level::Object {
-            pending_key: Some(key),
-            ..
-        } if levels.len() == 1 && key == "error"
     )
 }
 
@@ -423,6 +414,34 @@ fn record_failure(current: &mut Option<Failure>, candidate: Failure) {
     }
 }
 
+fn record_probe_value(
+    levels: &[Level],
+    value: ProbeValue,
+    top_level_values: &mut HashMap<String, ProbeValue>,
+    error_code: &mut Option<String>,
+) {
+    let Some(Level::Object {
+        direct_error,
+        pending_key: Some(key),
+        ..
+    }) = levels.last()
+    else {
+        return;
+    };
+    if levels.len() == 1 {
+        top_level_values.insert(key.clone(), value.clone());
+        if key == "error" {
+            *error_code = None;
+        }
+    }
+    if *direct_error && key == "code" {
+        *error_code = match value {
+            ProbeValue::String(value) => Some(value),
+            _ => None,
+        };
+    }
+}
+
 /// Scans strings, members, and raw number tokens without numeric coercion.
 // This single pass deliberately keeps duplicate, Unicode, and number findings
 // in source order; splitting it by finding type would create competing scans.
@@ -434,20 +453,18 @@ pub(crate) fn scan_json_tokens(text: &str) -> Scan {
             syntax_error: Some(message),
             failure: None,
             typed_text: text.to_owned(),
+            envelope_text: text.to_owned(),
             top_level_object: false,
-            top_level_strings: HashMap::new(),
-            top_level_booleans: HashMap::new(),
+            top_level_values: HashMap::new(),
             error_code: None,
-            top_level_numbers: HashMap::new(),
             payload_integer_out_of_range: false,
             payload_exceeds_typed_depth: false,
         };
     }
     let mut levels = Vec::new();
     let mut typed_replacements: Vec<(usize, usize, &'static str)> = Vec::new();
-    let mut top_level_numbers = HashMap::new();
-    let mut top_level_strings = HashMap::new();
-    let mut top_level_booleans = HashMap::new();
+    let mut envelope_replacements: Vec<(usize, usize, &'static str)> = Vec::new();
+    let mut top_level_values = HashMap::new();
     let mut error_code = None;
     let mut syntax_error = None;
     let mut failure = None;
@@ -512,49 +529,85 @@ pub(crate) fn scan_json_tokens(text: &str) -> Scan {
                         *pending_key = Some(name);
                     }
                 } else {
-                    if unicode_valid
-                        && let Ok(value) = decoded
-                        && let Some(Level::Object {
-                            in_error,
-                            pending_key: Some(key),
-                            ..
-                        }) = levels.last()
-                    {
-                        if levels.len() == 1 {
-                            top_level_strings.insert(key.clone(), value.clone());
-                        }
-                        if *in_error && key == "code" {
-                            error_code = Some(value);
-                        }
-                    }
+                    record_probe_value(
+                        &levels,
+                        if unicode_valid {
+                            decoded.map_or(ProbeValue::Invalid, ProbeValue::String)
+                        } else {
+                            ProbeValue::Invalid
+                        },
+                        &mut top_level_values,
+                        &mut error_code,
+                    );
                     consume_pending_key(&mut levels);
                 }
                 index = end;
             }
             b'{' | b'[' => {
                 let in_payload = value_is_payload(&levels);
-                let in_error = value_is_error(&levels);
+                let top_level_payload = matches!(
+                    levels.last(),
+                    Some(Level::Object {
+                        pending_key: Some(key),
+                        ..
+                    }) if levels.len() == 1 && key == "payload"
+                );
+                let direct_error = bytes[index] == b'{'
+                    && matches!(
+                        levels.last(),
+                        Some(Level::Object {
+                            pending_key: Some(key),
+                            ..
+                        }) if levels.len() == 1 && key == "error"
+                    );
                 if in_payload && levels.len() >= TYPED_JSON_DEPTH_LIMIT {
                     payload_exceeds_typed_depth = true;
                 }
+                record_probe_value(
+                    &levels,
+                    if bytes[index] == b'{' {
+                        ProbeValue::Object
+                    } else {
+                        ProbeValue::Array
+                    },
+                    &mut top_level_values,
+                    &mut error_code,
+                );
                 consume_pending_key(&mut levels);
                 levels.push(if bytes[index] == b'{' {
                     Level::Object {
                         keys: HashSet::new(),
                         in_payload,
-                        in_error,
+                        direct_error,
+                        container_start: index,
+                        top_level_payload,
                         pending_key: None,
                     }
                 } else {
                     Level::Array {
                         in_payload,
-                        in_error,
+                        container_start: index,
+                        top_level_payload,
                     }
                 });
                 index += 1;
             }
             b'}' | b']' => {
-                levels.pop();
+                if let Some(level) = levels.pop() {
+                    match level {
+                        Level::Object {
+                            container_start,
+                            top_level_payload: true,
+                            ..
+                        } => envelope_replacements.push((container_start, index + 1, "{}")),
+                        Level::Array {
+                            container_start,
+                            top_level_payload: true,
+                            ..
+                        } => envelope_replacements.push((container_start, index + 1, "[]")),
+                        _ => {}
+                    }
+                }
                 index += 1;
             }
             b'-' | b'0'..=b'9' => {
@@ -565,15 +618,12 @@ pub(crate) fn scan_json_tokens(text: &str) -> Scan {
                     index = end;
                     continue;
                 }
-                let top_level_key = match levels.last() {
-                    Some(Level::Object { pending_key, .. }) if levels.len() == 1 => {
-                        pending_key.clone()
-                    }
-                    _ => None,
-                };
-                if let Some(key) = top_level_key {
-                    top_level_numbers.insert(key, token.to_owned());
-                }
+                record_probe_value(
+                    &levels,
+                    ProbeValue::Number(token.to_owned()),
+                    &mut top_level_values,
+                    &mut error_code,
+                );
                 let in_payload = value_is_payload(&levels);
                 if !is_canonical_integer(token) {
                     record_failure(
@@ -593,19 +643,18 @@ pub(crate) fn scan_json_tokens(text: &str) -> Scan {
                 index = end;
             }
             b't' | b'f' | b'n' => {
-                let top_level_key = match levels.last() {
-                    Some(Level::Object { pending_key, .. }) if levels.len() == 1 => {
-                        pending_key.clone()
-                    }
-                    _ => None,
-                };
-                if let Some(key) = top_level_key {
+                record_probe_value(
+                    &levels,
                     if bytes.get(index..index + 4) == Some(b"true") {
-                        top_level_booleans.insert(key, true);
+                        ProbeValue::Boolean(true)
                     } else if bytes.get(index..index + 5) == Some(b"false") {
-                        top_level_booleans.insert(key, false);
-                    }
-                }
+                        ProbeValue::Boolean(false)
+                    } else {
+                        ProbeValue::Null
+                    },
+                    &mut top_level_values,
+                    &mut error_code,
+                );
                 consume_pending_key(&mut levels);
                 index += 1;
             }
@@ -625,15 +674,15 @@ pub(crate) fn scan_json_tokens(text: &str) -> Scan {
         result
     };
     let typed_text = apply_replacements(typed_replacements);
+    let envelope_text = apply_replacements(envelope_replacements);
     Scan {
         syntax_error,
         failure,
         typed_text,
+        envelope_text,
         top_level_object: text.trim_start().starts_with('{'),
-        top_level_strings,
-        top_level_booleans,
+        top_level_values,
         error_code,
-        top_level_numbers,
         payload_integer_out_of_range,
         payload_exceeds_typed_depth,
     }
@@ -641,7 +690,7 @@ pub(crate) fn scan_json_tokens(text: &str) -> Scan {
 
 #[cfg(test)]
 mod tests {
-    use super::{FailureKind, scan_json_tokens};
+    use super::{FailureKind, ProbeValue, scan_json_tokens};
 
     #[test]
     fn scans_duplicates_unicode_and_numbers_in_source_order() {
@@ -683,12 +732,29 @@ mod tests {
         let scan = scan_json_tokens(
             r#"{"version":2,"requestId":"req-1","kind":"workflow.future","payload":{"n":999999999999999999999999}}"#,
         );
-        assert_eq!(scan.top_level_numbers["version"], "2");
+        assert_eq!(
+            scan.top_level_values["version"],
+            ProbeValue::Number("2".to_owned())
+        );
         assert!(scan.syntax_error.is_none());
         assert_eq!(
             scan.typed_text,
             r#"{"version":2,"requestId":"req-1","kind":"workflow.future","payload":{"n":0}}"#
         );
         assert!(scan.payload_integer_out_of_range);
+    }
+
+    #[test]
+    fn probe_slots_retain_only_the_final_duplicate_spelling() {
+        let scan = scan_json_tokens(
+            r#"{"requestId":"old","requestId":17,"ok":false,"ok":null,"error":{"code":"INTERNAL"},"error":null}"#,
+        );
+        assert_eq!(
+            scan.top_level_values["requestId"],
+            ProbeValue::Number("17".to_owned())
+        );
+        assert_eq!(scan.top_level_values["ok"], ProbeValue::Null);
+        assert_eq!(scan.top_level_values["error"], ProbeValue::Null);
+        assert_eq!(scan.error_code, None);
     }
 }

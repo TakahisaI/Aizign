@@ -239,9 +239,20 @@ function validateWorkflowSignal(signal: WorkflowSignalShape): WorkflowSignal {
     candidateDigest: signal.candidateDigest,
     kind: signal.kind,
   };
-  if (signal.findingCount !== undefined) result.findingCount = signal.findingCount;
-  if (signal.artifactRef !== undefined) result.artifactRef = signal.artifactRef;
-  if (signal.shortErrorCode !== undefined) result.shortErrorCode = signal.shortErrorCode;
+  for (const [key, value] of [
+    ['findingCount', signal.findingCount],
+    ['artifactRef', signal.artifactRef],
+    ['shortErrorCode', signal.shortErrorCode],
+  ] as const) {
+    if (value !== undefined) {
+      Object.defineProperty(result, key, {
+        value,
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
+    }
+  }
   return result;
 }
 

@@ -315,6 +315,93 @@ test('response version selection uses only boolean ok=false for bootstrap errors
   }
 });
 
+test('duplicate members recover only the final typed spelling', () => {
+  const requestCases: ReadonlyArray<readonly [string, string, string | null]> = [
+    ['string-to-number', '"old","requestId":17', null],
+    ['string-to-null', '"old","requestId":null', null],
+    ['string-to-object', '"old","requestId":{}', null],
+    ['number-to-string', '17,"requestId":"req-final"', 'req-final'],
+  ];
+  for (const [name, duplicate, expectedRequestId] of requestCases) {
+    const frame = `{"protocol":"aizign","version":1,"requestId":${duplicate},"kind":"hello","payload":{}}`;
+    assert.throws(
+      () => decodeRequest(frame),
+      (error: unknown) =>
+        error instanceof DecodeFailure &&
+        error.error.code === codes.INVALID_ENVELOPE &&
+        error.requestId === expectedRequestId,
+      name,
+    );
+  }
+
+  for (const [name, finalOk] of [
+    ['false-to-null', 'null'],
+    ['false-to-string', '"false"'],
+  ] as const) {
+    const frame = `{"protocol":"aizign","version":2,"requestId":"req-${name}","kind":"workflow.signal.submit","ok":false,"ok":${finalOk},"error":{"code":"PROTOCOL_VERSION_UNSUPPORTED","message":"unsupported"}}`;
+    assert.throws(
+      () =>
+        decodeResponse(frame, {
+          requestAxis: 'accepted-operation',
+          bootstrapVersion: 1,
+          operationVersion: 2,
+        }),
+      (error: unknown) =>
+        error instanceof DecodeFailure &&
+        error.error.code === codes.INVALID_ENVELOPE &&
+        error.responseVersion.axis === 'accepted-operation' &&
+        error.responseVersion.version === 2,
+      name,
+    );
+  }
+
+  const replacedError =
+    '{"protocol":"aizign","version":2,"requestId":"req-error-null","kind":"workflow.signal.submit","ok":false,"error":{"code":"PROTOCOL_VERSION_UNSUPPORTED","message":"unsupported"},"error":null}';
+  assert.throws(
+    () =>
+      decodeResponse(replacedError, {
+        requestAxis: 'accepted-operation',
+        bootstrapVersion: 1,
+        operationVersion: 2,
+      }),
+    (error: unknown) =>
+      error instanceof DecodeFailure &&
+      error.error.code === codes.INVALID_ENVELOPE &&
+      error.responseVersion.axis === 'accepted-operation' &&
+      error.responseVersion.version === 2,
+  );
+});
+
+test('only a direct error code can select the bootstrap response axis', () => {
+  const nested =
+    '{"protocol":"aizign","version":2,"requestId":"req-nested-code","kind":"workflow.signal.submit","ok":false,"error":{"meta":{"code":"PROTOCOL_VERSION_UNSUPPORTED"},"message":"unsupported"}}';
+  assert.throws(
+    () =>
+      decodeResponse(nested, {
+        requestAxis: 'accepted-operation',
+        bootstrapVersion: 1,
+        operationVersion: 2,
+      }),
+    (error: unknown) =>
+      error instanceof DecodeFailure &&
+      error.error.code === codes.INVALID_ENVELOPE &&
+      error.requestId === 'req-nested-code' &&
+      error.responseVersion.axis === 'accepted-operation' &&
+      error.responseVersion.version === 2,
+  );
+
+  const direct =
+    '{"protocol":"aizign","version":1,"requestId":"req-direct-code","kind":"workflow.signal.submit","ok":false,"error":{"code":"PROTOCOL_VERSION_UNSUPPORTED","message":"unsupported"}}';
+  assert.deepEqual(
+    decodeResponse(direct, {
+      requestAxis: 'accepted-operation',
+      bootstrapVersion: 1,
+      operationVersion: 2,
+    }).version,
+    { axis: 'bootstrap', version: 1 },
+  );
+});
+
 test('deep future payloads are scanned at every depth before version routing', () => {
   const wrap = (leaf: string) => `${'{"next":'.repeat(180)}${leaf}${'}'.repeat(180)}`;
   const valid = `{"protocol":"aizign","version":2,"requestId":"req-deep","kind":"future.operation","payload":${wrap('{}')}}`;
@@ -332,6 +419,49 @@ test('deep future payloads are scanned at every depth before version routing', (
     (error: unknown) =>
       error instanceof DecodeFailure && error.error.code === codes.INVALID_ENVELOPE,
   );
+});
+
+test('deep payload detection preserves envelope and routing precedence', () => {
+  const wrap = (leaf: string) => `${'{"next":'.repeat(180)}${leaf}${'}'.repeat(180)}`;
+  const cases: ReadonlyArray<readonly [string, string, string]> = [
+    [
+      'known-kind',
+      `{"protocol":"aizign","version":1,"requestId":"req-known","kind":"hello","payload":${wrap('{}')}}`,
+      codes.INVALID_PAYLOAD,
+    ],
+    [
+      'unknown-kind',
+      `{"protocol":"aizign","version":1,"requestId":"req-unknown","kind":"future.operation","payload":${wrap('{}')}}`,
+      codes.UNKNOWN_KIND,
+    ],
+    [
+      'missing-kind',
+      `{"protocol":"aizign","version":1,"requestId":"req-missing","payload":${wrap('{}')}}`,
+      codes.INVALID_ENVELOPE,
+    ],
+    [
+      'non-string-kind',
+      `{"protocol":"aizign","version":1,"requestId":"req-non-string","kind":17,"payload":${wrap('{}')}}`,
+      codes.INVALID_ENVELOPE,
+    ],
+    [
+      'unknown-envelope-member',
+      `{"protocol":"aizign","version":1,"requestId":"req-extra","kind":"hello","payload":${wrap('{}')},"extra":true}`,
+      codes.INVALID_ENVELOPE,
+    ],
+    [
+      'unsupported-version',
+      `{"protocol":"aizign","version":2,"requestId":"req-version","kind":"hello","payload":${wrap('{}')}}`,
+      codes.PROTOCOL_VERSION_UNSUPPORTED,
+    ],
+  ];
+  for (const [name, frame, expected] of cases) {
+    assert.throws(
+      () => decodeRequest(frame),
+      (error: unknown) => error instanceof DecodeFailure && error.error.code === expected,
+      name,
+    );
+  }
 });
 
 test('request validation precedes the package-internal final bound guard', async () => {

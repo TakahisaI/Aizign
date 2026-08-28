@@ -6,7 +6,7 @@
 
 import { codes, isAuthenticProtocolError, isShortErrorCode, ProtocolError } from './error.ts';
 import { buildHelloInfo, type HelloInfo } from './hello.ts';
-import { isWellFormedUnicode, scanJsonTokens } from './json-token.ts';
+import { isWellFormedUnicode, type JsonProbeValue, scanJsonTokens } from './json-token.ts';
 import {
   assertClosedObject,
   assertOnlyKeys,
@@ -119,9 +119,21 @@ function decodeFrame(frame: Uint8Array | string): string {
 
 type Recovered = { requestId: string | null; kind: string | null };
 
+function probeString(value: JsonProbeValue | undefined): string | undefined {
+  return value?.kind === 'string' ? value.value : undefined;
+}
+
+function probeNumber(value: JsonProbeValue | undefined): string | undefined {
+  return value?.kind === 'number' ? value.raw : undefined;
+}
+
+function probeBoolean(value: JsonProbeValue | undefined): boolean | undefined {
+  return value?.kind === 'boolean' ? value.value : undefined;
+}
+
 function correlationFromScan(scan: ReturnType<typeof scanJsonTokens>): Recovered {
-  const requestIdValue = scan.topLevelStrings.get('requestId');
-  const kindValue = scan.topLevelStrings.get('kind');
+  const requestIdValue = probeString(scan.topLevelValues.get('requestId'));
+  const kindValue = probeString(scan.topLevelValues.get('kind'));
   const requestId =
     requestIdValue !== undefined && IDENTIFIER_PATTERN.test(requestIdValue) ? requestIdValue : null;
   const kind = kindValue ?? null;
@@ -144,11 +156,9 @@ function parseVersionToken(token: string | undefined): number | null {
 
 /** Serializes a fresh validated wire graph without consulting prototype hooks. */
 function stringifyWireGraph(root: Record<string, unknown>): string {
-  const pending: object[] = [root];
   const visited = new WeakSet<object>();
-  while (pending.length > 0) {
-    const current = pending.pop();
-    if (current === undefined || visited.has(current)) continue;
+  const protect = (current: object): void => {
+    if (visited.has(current)) return;
     visited.add(current);
     Object.defineProperty(current, 'toJSON', {
       value: undefined,
@@ -160,10 +170,11 @@ function stringifyWireGraph(root: Record<string, unknown>): string {
       const descriptor = Object.getOwnPropertyDescriptor(current, key);
       if (descriptor !== undefined && 'value' in descriptor) {
         const value = descriptor.value;
-        if (typeof value === 'object' && value !== null) pending.push(value);
+        if (typeof value === 'object' && value !== null) protect(value);
       }
     }
-  }
+  };
+  protect(root);
   const frame = JSON.stringify(root);
   if (
     !frame.startsWith('{') ||
@@ -224,17 +235,17 @@ export function decodeRequest(frame: Uint8Array | string): Request {
     );
   }
 
-  if (scan.topLevelStrings.get('protocol') !== PROTOCOL_NAME) {
+  if (probeString(scan.topLevelValues.get('protocol')) !== PROTOCOL_NAME) {
     throw bootstrapFail(codes.INVALID_ENVELOPE, `protocol must be "${PROTOCOL_NAME}"`);
   }
-  const version = parseVersionToken(scan.topLevelNumbers.get('version'));
+  const version = parseVersionToken(probeNumber(scan.topLevelValues.get('version')));
   if (version === null) {
     throw bootstrapFail(
       codes.INVALID_ENVELOPE,
       `version must be an integer between 0 and ${MAX_VERSION}`,
     );
   }
-  const recoveredKind = scan.topLevelStrings.get('kind');
+  const recoveredKind = probeString(scan.topLevelValues.get('kind'));
   const acceptedVersion =
     recoveredKind === undefined
       ? undefined
@@ -521,7 +532,7 @@ export function decodeResponse(
   const recovered = correlationFromScan(scan);
   const probedCode = isShortErrorCode(scan.errorCode) ? scan.errorCode : undefined;
   const bootstrapCode =
-    scan.topLevelBooleans.get('ok') === false &&
+    probeBoolean(scan.topLevelValues.get('ok')) === false &&
     probedCode !== undefined &&
     new Set<string>([
       codes.REQUEST_TOO_LARGE,
@@ -554,10 +565,10 @@ export function decodeResponse(
       scan.failure.message,
     );
   }
-  if (scan.topLevelStrings.get('protocol') !== PROTOCOL_NAME) {
+  if (probeString(scan.topLevelValues.get('protocol')) !== PROTOCOL_NAME) {
     throw fail(codes.INVALID_ENVELOPE, `protocol must be "${PROTOCOL_NAME}"`);
   }
-  const wireVersion = parseVersionToken(scan.topLevelNumbers.get('version'));
+  const wireVersion = parseVersionToken(probeNumber(scan.topLevelValues.get('version')));
   if (wireVersion === null) {
     throw fail(codes.INVALID_ENVELOPE, `version must be an integer between 0 and ${MAX_VERSION}`);
   }
@@ -748,7 +759,12 @@ export class OneShotFrameCollector {
         return false;
       }
       if (frameEnd > 0) {
-        this.#chunks.push(Uint8Array.from(chunk.subarray(0, frameEnd)));
+        Object.defineProperty(this.#chunks, String(this.#chunks.length), {
+          value: Uint8Array.from(chunk.subarray(0, frameEnd)),
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        });
         this.#frameBytes += frameEnd;
       }
       if (newline < 0) return true;

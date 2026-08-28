@@ -62,7 +62,12 @@ export function arrayValues(
     if (descriptor === undefined || !('value' in descriptor) || !descriptor.enumerable) {
       throw makeError(`${path}[${index}] must be an own enumerable data property`);
     }
-    result.push(descriptor.value);
+    Object.defineProperty(result, String(index), {
+      value: descriptor.value,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
   }
   if (keys.length !== result.length + 1) {
     throw makeError(`${path} must not contain out-of-range array properties`);
