@@ -18,7 +18,7 @@ pub mod codes {
     pub const INVALID_PAYLOAD: &str = "INVALID_PAYLOAD";
     /// The request exceeds the size bound.
     pub const REQUEST_TOO_LARGE: &str = "REQUEST_TOO_LARGE";
-    /// The kind is known but not enabled by this binary or adapter.
+    /// A registered operation is not provided by this binary, build, or target.
     pub const CAPABILITY_UNSUPPORTED: &str = "CAPABILITY_UNSUPPORTED";
     /// An unclassified failure; details go to stderr, never to the wire.
     pub const INTERNAL: &str = "INTERNAL";

@@ -39,7 +39,6 @@ import {
 /** DSH-owned configuration for one direct child process per Protocol operation. */
 export interface OneShotCoreClientConfig {
   readonly command: string;
-  readonly env?: Readonly<Record<string, string>>;
   readonly stateDir: string;
   readonly timeoutMs: number;
   readonly timingSink?: ParentTimingSink;
@@ -357,7 +356,7 @@ export class OneShotCoreClient implements CoreClient {
     requestAxis: Response['version']['axis'],
     signal: AbortSignal | undefined,
   ): Promise<Exchange> {
-    const { command, env = {}, stateDir, timeoutMs } = this.#config;
+    const { command, stateDir, timeoutMs } = this.#config;
     return new Promise((resolve) => {
       const started = performance.now();
       let spawnToExitMs: number | undefined;
@@ -389,9 +388,9 @@ export class OneShotCoreClient implements CoreClient {
 
       try {
         child = spawn(command, ['handle', '--state', stateDir], {
-          // Only PATH and the configured variables: the core never needs the
-          // harness process environment, and credentials must not leak in.
-          env: { PATH: process.env.PATH ?? '', ...env },
+          // Preserve PATH only when the parent actually has it. The configured
+          // executable remains authoritative; no other harness state crosses.
+          env: process.env.PATH === undefined ? {} : { PATH: process.env.PATH },
           stdio: ['pipe', 'pipe', 'pipe'],
         });
       } catch (error) {

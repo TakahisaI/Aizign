@@ -76,10 +76,9 @@ test('fake core writes zero stdout bytes when the sole response encoder rejects 
   const root = mkdtempSync(join(tmpdir(), 'aizign-fake-core-invalid-response-'));
   try {
     const result = spawnSync(
-      fakeCoreExecutable(join(root, 'bin')),
+      fakeCoreExecutable(join(root, 'bin'), { fault: 'invalid-response-source' }),
       ['handle', '--state', join(root, 'state')],
       {
-        env: { ...process.env, AIZIGN_FAKE_FAULT: 'invalid-response-source' },
         input:
           '{"protocol":"aizign","version":1,"requestId":"req-invalid-source","kind":"hello","payload":{}}\n',
       },

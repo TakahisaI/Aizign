@@ -572,8 +572,7 @@ export function assertDirectChildTiming(benchmarkCase, result) {
 async function runDshOperation(OneShotCoreClient, binary, stateDir, benchmarkCase) {
   const timings = [];
   const client = new OneShotCoreClient({
-    command: binary,
-    env: { AIZIGN_TIMING_JSON: '1' },
+    command: createTimingExecutable(`${stateDir}-timing-bin`, binary),
     stateDir,
     timeoutMs: OPERATION_TIMEOUT_MS,
     timingSink: (measurement) => {
@@ -1068,23 +1067,22 @@ export async function executeScenario(context, scenario, phase, index) {
   };
   const directClient = new context.dependencies.OneShotCoreClient({
     ...clientConfig,
-    command: context.config.binary,
-    env: { AIZIGN_TIMING_JSON: '1' },
+    command: createTimingExecutable(
+      context.nextState(`scenario-${scenario}-timing-bin`),
+      context.config.binary,
+    ),
   });
   const lostAckExecutable = losesSubmitAcknowledgement
     ? createLostAckExecutable(
         context.nextState(`scenario-${scenario}-lost-ack-bin`),
         context.config.binary,
+        counterPath,
       )
     : undefined;
   const lostAckClient = losesSubmitAcknowledgement
     ? new context.dependencies.OneShotCoreClient({
         ...clientConfig,
         command: lostAckExecutable,
-        env: {
-          AIZIGN_LOST_ACK_COUNTER: counterPath,
-          AIZIGN_TIMING_JSON: '1',
-        },
       })
     : undefined;
   const now = context.dependencies.now ?? (() => performance.now());
@@ -1563,12 +1561,23 @@ function shellQuote(value) {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
-export function createLostAckExecutable(directory, binary) {
+export function createTimingExecutable(directory, binary) {
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const executable = join(directory, 'aizign-timing');
+  writeFileSync(
+    executable,
+    `#!/bin/sh\nAIZIGN_TIMING_JSON=1\nexport AIZIGN_TIMING_JSON\nexec ${shellQuote(binary)} "$@"\n`,
+    { mode: 0o755 },
+  );
+  return executable;
+}
+
+export function createLostAckExecutable(directory, binary, counterPath) {
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const executable = join(directory, 'aizign-lost-ack');
   writeFileSync(
     executable,
-    `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(LOST_ACK_PROXY)} ${shellQuote(binary)} "$@"\n`,
+    `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(LOST_ACK_PROXY)} ${shellQuote(binary)} ${shellQuote(counterPath)} "$@"\n`,
     { mode: 0o755 },
   );
   return executable;
@@ -1577,7 +1586,7 @@ export function createLostAckExecutable(directory, binary) {
 export function verifyReleaseBinary(binary, stateDir, protocol, timeoutMs = OPERATION_TIMEOUT_MS) {
   const request = { requestId: 'req-benchmark-preflight', kind: 'hello' };
   const hello = spawnSync(binary, ['handle', '--state', stateDir], {
-    env: { PATH: process.env.PATH ?? '' },
+    env: process.env.PATH === undefined ? {} : { PATH: process.env.PATH },
     input: `${protocol.encodeRequest(request)}\n`,
     timeout: timeoutMs,
     killSignal: 'SIGKILL',

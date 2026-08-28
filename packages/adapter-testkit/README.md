@@ -13,7 +13,13 @@ without a harness or a network.
 | **Hard invariants** | supplied production clientに対してno-response / garbage / invalid UTF-8 / hang / `JOURNAL_OUTCOME_UNKNOWN` / 未認識だが正形式のpeer code / spawn失敗を **すべて `unknown`** と検査する（成功にも失敗にも縮約しない、再送しない）、submit / reconciliationの相関不一致でもerror codeを診断用`reportedCode`として保持、reconciliationのaccepted / conflict / absentを検証、lost acknowledgement後もblind submit retryしない、harness IDや本文がframeに現れない |
 | **Allowed dependencies** | `@aizign/protocol` |
 | **Test command** | `npm test -w @aizign/adapter-testkit` |
-| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0020](../../docs/adr/0020-narrow-typescript-exports-and-own-dsh-transport.md) |
+| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0020](../../docs/adr/0020-narrow-typescript-exports-and-own-dsh-transport.md)、[0024](../../docs/adr/0024-require-isolated-adapter-child-environments.md) |
+
+`CoreClientFixtureConfig` contains only command, state directory, and timeout.
+Fault, version, capability, and log controls are embedded in the generated
+test executable by `fakeCoreExecutable`; they never pass through production
+client configuration. Native adapter environment conformance remains owned by
+the adapter test, not this fake-core runner.
 
 ## Security boundary
 

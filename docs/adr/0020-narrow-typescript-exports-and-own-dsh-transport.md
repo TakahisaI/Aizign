@@ -7,6 +7,13 @@
 - Implementation checkpoint: [`I89-A8A3FD0-A`](https://github.com/TakahisaI/Aizign/issues/89#issuecomment-5426502135), amended by [`I89-A8A3FD0-A1`](https://github.com/TakahisaI/Aizign/issues/89#issuecomment-5426909643)
 - Readiness: [Maintainer decision for slice `S1`](https://github.com/TakahisaI/Aizign/issues/89#issuecomment-5426990095)
 
+## Partial supersession — ADR-0024
+
+[ADR-0024](0024-require-isolated-adapter-child-environments.md) supersedes only
+this decision's allowance for arbitrary caller-provided production child
+environment entries. DSH remains the sole production TypeScript transport
+owner and retains the closed experimental transport/evidence subpaths.
+
 ## Follow-up status — 2026-08-27
 
 The Issue #75 `S1` follow-up removes the temporary Protocol classification

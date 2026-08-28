@@ -50,21 +50,22 @@ async function readStdin() {
 }
 
 async function main(argv) {
-  const [binary, ...args] = argv;
-  if (binary === undefined) throw new Error('usage: lost-ack-proxy.mjs <aizign> <subcommand>');
+  const [binary, counter, ...args] = argv;
+  if (binary === undefined || counter === undefined) {
+    throw new Error('usage: lost-ack-proxy.mjs <aizign> <counter> <subcommand>');
+  }
   if (args.length !== 3 || args[0] !== 'handle' || args[1] !== '--state' || !args[2]) {
     throw new Error('lost-ack proxy requires canonical handle --state <dir> argv');
   }
   const input = await readStdin();
   const kind = requestKind(input);
-  const counter = process.env.AIZIGN_LOST_ACK_COUNTER;
-  if (counter !== undefined) appendFileSync(counter, `${kind}\n`, { mode: 0o600 });
+  appendFileSync(counter, `${kind}\n`, { mode: 0o600 });
 
   await new Promise((resolvePromise, reject) => {
     const child = spawn(binary, args, {
       env: {
-        PATH: process.env.PATH ?? '',
-        ...(process.env.AIZIGN_TIMING_JSON === '1' ? { AIZIGN_TIMING_JSON: '1' } : {}),
+        ...(process.env.PATH === undefined ? {} : { PATH: process.env.PATH }),
+        AIZIGN_TIMING_JSON: '1',
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });

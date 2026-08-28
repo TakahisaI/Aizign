@@ -454,6 +454,12 @@ test('TypeScript consumers cannot compile removed symbols or closed package path
       code: 2305,
     },
     {
+      name: 'removed-production-child-environment',
+      source:
+        "import type { OneShotCoreClientConfig } from '@aizign/adapter-dsh/experimental/transport';\nconst config: OneShotCoreClientConfig = { command: '/aizign', stateDir: '/state', timeoutMs: 1, env: { SECRET: 'x' } };\nvoid config;\n",
+      code: 2353,
+    },
+    {
       name: 'protocol-deep-path',
       source: "import type { CoreClient } from '@aizign/protocol/src/client.js';\n",
       code: 2307,

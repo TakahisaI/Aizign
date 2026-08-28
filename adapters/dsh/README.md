@@ -11,7 +11,7 @@ The DSH harness adapter: a cordis plugin that registers one **scope-bound** `sub
 | **Hard invariants** | control-plane identityをmodelに選択させない、reconciliationをmodel-visible toolにしない、DSH native IDをenvelopeへ入れない、全operationをshellなしのexact `handle --state stateDir`で起動、helloも`requestId` / `kind`を照合、signal successは`eventId`も照合、stdoutはbyte列のままbody上限・exact LF・stdout/process close・zero exitを確認しCRLFと全post-LF byteを拒否、lifecycle faultは`unknown`で再送しない、session readのpartial evidenceを採用しない、preflight失敗時はtoolを登録しない、環境変数を子processへ丸ごと渡さない（PATHのみ） |
 | **Allowed dependencies** | `@aizign/protocol`。peer: `@deepseek-ai/cordis` 4.0.1、`dsh-llm` / `dsh-tools` 0.1.1-rc.2、`schemastery` 3.18.1（exact、ADR-0010）。dev: `@aizign/adapter-testkit` |
 | **Test command** | `npm test -w @aizign/adapter-dsh`（`AIZIGN_BINARY` を与えると実binaryにも） |
-| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0010](../../docs/adr/0010-harness-sdk-dependencies-and-node-policy.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0020](../../docs/adr/0020-narrow-typescript-exports-and-own-dsh-transport.md)、[0022](../../docs/adr/0022-define-the-canonical-one-shot-process-profile.md) |
+| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0010](../../docs/adr/0010-harness-sdk-dependencies-and-node-policy.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0020](../../docs/adr/0020-narrow-typescript-exports-and-own-dsh-transport.md)、[0022](../../docs/adr/0022-define-the-canonical-one-shot-process-profile.md)、[0024](../../docs/adr/0024-require-isolated-adapter-child-environments.md) |
 
 ## Security boundary
 
@@ -19,9 +19,10 @@ Production plugin configuration is a trusted control-plane input after local
 shape validation. The internal client factory does not inherit the harness
 environment: the child receives `PATH` only. The production
 `OneShotCoreClient`, available to repository control-plane consumers only from
-the provisional `./experimental/transport` subpath, can accept explicit child
-variables for tests/integration; those values are the direct caller's
-responsibility. Closed tool arguments prevent the model from choosing
+the provisional `./experimental/transport` subpath, has no arbitrary child
+environment configuration. If the parent has no PATH the child receives an
+empty mapping. Repository tests and benchmarks place controls inside generated
+non-production executable wrappers. Closed tool arguments prevent the model from choosing
 stable identity, but neither the core nor schema can prove honest provenance
 from a malicious adapter. The ordinary model can also supply `artifactRef` and
 `shortErrorCode`; their closed shape and bounds are validated, but their text
@@ -210,8 +211,10 @@ preflightは全体の`preflight_ms`、evidence cold readは`harness_cold_read_ms
 どのmeasurementにもsession ID、signal identity、path、本文を含めません。
 `error_code`は固定された認識済みcodeのallowlistに限り、正形式でも未認識のpeer
 codeは返却outcomeのcontrol-plane診断にだけ保持してtimingから除外します。
-preflightのversion / capability不一致は、それぞれ
-`PROTOCOL_VERSION_UNSUPPORTED` / `CAPABILITY_UNSUPPORTED`へ正規化します。
+successful correlated helloで判明したversion / required submit capability
+不一致は`preflight` / `rejected`として記録し、peerが返していないProtocol
+`error_code`や`unknown_reason`は追加しません。DSH boundaryは
+`AIZIGN_INCOMPATIBLE`を返します。
 同期throwと非同期Promise rejectionを共通helperで隔離するため、sink failureはtool登録、submit、reconcile、evidence classificationを変えません。
 
 ## Harness-facing codes

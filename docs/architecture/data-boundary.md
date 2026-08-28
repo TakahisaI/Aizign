@@ -156,7 +156,7 @@ conformance evidence.
 | DSH model-facing `HarnessError` | Stable code plus a fixed safe message for argument decoding, local Protocol validation, submit rejection, or unknown outcome. Raw argument keys, Protocol messages, and unknown detail are not forwarded; local Protocol errors are not retained as causes. |
 | Adapter log | Adapter-owned metadata under its documented policy; native IDs do not cross into the core |
 | DSH-owned adapter/parent timing sink | Closed metadata-only parent transport observations when explicitly configured through the provisional DSH transport surface. DSH classification/code disclosure is exhaustively checked against the exact rows owned by `spec/classification/`. Timing remains provisional operational evidence, not Protocol or stable public compatibility. Sink failure is isolated from workflow outcomes; sink retention/access remain caller-owned. |
-| DSH child environment | `PATH` and explicitly configured client variables only; the parent harness environment is not inherited wholesale |
+| Adapter child environment | The [harness adapter contract](harness-adapter-contract.md#child-process-environment) owns the language-neutral closed-allowlist rule. DSH passes exactly parent `PATH` when present, otherwise an empty mapping; there are no caller-provided production entries. |
 
 Operational identity can itself be sensitive metadata. Log retention and sink
 access remain operator responsibilities.

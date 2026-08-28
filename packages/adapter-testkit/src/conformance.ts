@@ -23,7 +23,6 @@ import { fakeCoreExecutable } from './fake-core-path.ts';
 /** Process fixture values supplied to a production client by the test runner. */
 export interface CoreClientFixtureConfig {
   readonly command: string;
-  readonly env?: Readonly<Record<string, string>>;
   readonly stateDir: string;
   readonly timeoutMs: number;
 }
@@ -251,9 +250,16 @@ export async function runFaultScenarios(
 ): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'aizign-fault-scenarios-'));
   try {
-    const fake = { command: fakeCoreExecutable(join(root, 'fake-bin')) };
-    const make = (name: string, env: Record<string, string>, timeoutMs = 10_000) =>
-      factory({ ...fake, env, stateDir: join(root, name), timeoutMs });
+    const make = (
+      name: string,
+      controls: Parameters<typeof fakeCoreExecutable>[1],
+      timeoutMs = 10_000,
+    ) =>
+      factory({
+        command: fakeCoreExecutable(join(root, `fake-bin-${name}`), controls),
+        stateDir: join(root, name),
+        timeoutMs,
+      });
 
     const scenarios: Array<[readonly string[], string, string, string]> = [
       [['res-empty-zero'], 'no-response', 'no_response', 'process exits without a frame'],
@@ -332,9 +338,10 @@ export async function runFaultScenarios(
     ];
     for (const [caseIds, fault, reason, description] of scenarios) {
       const label = caseIds.length > 0 ? caseIds.join('/') : fault;
-      const outcome = await make(`fault-${fault}`, {
-        AIZIGN_FAKE_FAULT: fault,
-      }).submitWorkflowSignal('req-fault', samplePayload('evt-fault'));
+      const outcome = await make(`fault-${fault}`, { fault }).submitWorkflowSignal(
+        'req-fault',
+        samplePayload('evt-fault'),
+      );
       assert.equal(outcome.kind, 'unknown', `${label}: ${description}: ${JSON.stringify(outcome)}`);
       if (outcome.kind === 'unknown') {
         assert.equal(outcome.reason, reason, `${label}: ${description}`);
@@ -361,9 +368,7 @@ export async function runFaultScenarios(
       ['hello-request-id-mismatch', 'wrong-request-id'],
       ['hello-kind-mismatch', 'wrong-kind'],
     ] as const) {
-      const outcome = await make(`hello-${fault}`, {
-        AIZIGN_FAKE_FAULT: fault,
-      }).hello(`req-hello-${fault}`);
+      const outcome = await make(`hello-${fault}`, { fault }).hello(`req-hello-${fault}`);
       assert.equal(outcome.kind, 'unknown', caseId);
       if (outcome.kind === 'unknown') {
         assert.equal(outcome.reason, 'correlation_mismatch', caseId);
@@ -372,7 +377,7 @@ export async function runFaultScenarios(
     }
 
     const unsupportedSubmit = await make('operation-version-unsupported-submit', {
-      AIZIGN_FAKE_FAULT: 'operation-version-unsupported',
+      fault: 'operation-version-unsupported',
     }).submitWorkflowSignal('req-version-submit', samplePayload('evt-version-submit'));
     assert.equal(unsupportedSubmit.kind, 'rejected', 'version-submit-unsupported');
     if (unsupportedSubmit.kind === 'rejected') {
@@ -385,7 +390,7 @@ export async function runFaultScenarios(
     options.caseExecuted?.('version-submit-unsupported');
 
     const unsupportedReconcile = await make('operation-version-unsupported-reconcile', {
-      AIZIGN_FAKE_FAULT: 'operation-version-unsupported',
+      fault: 'operation-version-unsupported',
     }).reconcileWorkflowSignal('req-version-reconcile', {
       signal: samplePayload('evt-version-reconcile').signal,
     });
@@ -405,7 +410,7 @@ export async function runFaultScenarios(
     options.caseExecuted?.('version-reconcile-unsupported');
 
     const wrongOperationVersion = await make('wrong-operation-version', {
-      AIZIGN_FAKE_FAULT: 'wrong-operation-version',
+      fault: 'wrong-operation-version',
     }).submitWorkflowSignal('req-wrong-operation-version', samplePayload('evt-wrong-version'));
     assert.equal(wrongOperationVersion.kind, 'unknown', 'wrong numeric operation version');
     if (wrongOperationVersion.kind === 'unknown') {
@@ -418,8 +423,9 @@ export async function runFaultScenarios(
 
     const uncorrelatedCodeState = join(root, 'fault-unknown-code-wrong-request-id');
     const uncorrelatedCodeClient = factory({
-      ...fake,
-      env: { AIZIGN_FAKE_FAULT: 'unknown-valid-error-code-wrong-request-id' },
+      command: fakeCoreExecutable(join(root, 'fake-bin-unknown-code-wrong-request-id'), {
+        fault: 'unknown-valid-error-code-wrong-request-id',
+      }),
       stateDir: uncorrelatedCodeState,
       timeoutMs: 10_000,
     });
@@ -440,7 +446,7 @@ export async function runFaultScenarios(
 
     const hang = await make(
       'fault-hang',
-      { AIZIGN_FAKE_FAULT: 'hang' },
+      { fault: 'hang' },
       options.hangTimeoutMs ?? 500,
     ).submitWorkflowSignal('req-hang', samplePayload('evt-hang'));
     assert.equal(hang.kind, 'unknown', 'proc-parent-timeout');
@@ -449,7 +455,7 @@ export async function runFaultScenarios(
 
     const noClose = await make(
       'fault-no-close-after-frame',
-      { AIZIGN_FAKE_FAULT: 'no-close-after-frame' },
+      { fault: 'no-close-after-frame' },
       options.hangTimeoutMs ?? 500,
     ).submitWorkflowSignal('req-no-close', samplePayload('evt-no-close'));
     assert.equal(noClose.kind, 'unknown', 'res-valid-stdout-open');
@@ -459,7 +465,7 @@ export async function runFaultScenarios(
 
     const processOpen = await make(
       'fault-process-open-after-stdout-close',
-      { AIZIGN_FAKE_FAULT: 'process-open-after-stdout-close' },
+      { fault: 'process-open-after-stdout-close' },
       options.hangTimeoutMs ?? 500,
     ).submitWorkflowSignal('req-process-open', samplePayload('evt-process-open'));
     assert.equal(processOpen.kind, 'unknown', 'res-valid-process-open');
@@ -471,7 +477,7 @@ export async function runFaultScenarios(
     // cancellation: the caller's abort kills the process; the outcome is unknown.
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 100);
-    const aborted = await make('fault-abort', { AIZIGN_FAKE_FAULT: 'hang' }).submitWorkflowSignal(
+    const aborted = await make('fault-abort', { fault: 'hang' }).submitWorkflowSignal(
       'req-abort',
       samplePayload('evt-abort'),
       { signal: controller.signal },
@@ -497,8 +503,9 @@ export async function runFaultScenarios(
 
     const timeoutState = join(root, 'reconcile-handler-timeout');
     const timeoutClient = factory({
-      ...fake,
-      env: { AIZIGN_FAKE_FAULT: 'handler-timeout' },
+      command: fakeCoreExecutable(join(root, 'fake-bin-reconcile-handler-timeout'), {
+        fault: 'handler-timeout',
+      }),
       stateDir: timeoutState,
       timeoutMs: 10_000,
     });
@@ -519,8 +526,9 @@ export async function runFaultScenarios(
     );
 
     const reportedConflict = factory({
-      ...fake,
-      env: { AIZIGN_FAKE_FAULT: 'event-conflict-error' },
+      command: fakeCoreExecutable(join(root, 'fake-bin-reconcile-event-conflict-error'), {
+        fault: 'event-conflict-error',
+      }),
       stateDir: join(root, 'reconcile-event-conflict-error'),
       timeoutMs: 10_000,
     });
@@ -545,11 +553,12 @@ export async function runFaultScenarios(
     ];
     for (const [fault, reason] of reconciliationFaults) {
       const stateDir = join(root, `reconcile-fault-${fault}`);
-      const outcome = await make(`reconcile-fault-${fault}`, {
-        AIZIGN_FAKE_FAULT: fault,
-      }).reconcileWorkflowSignal(`req-reconcile-${fault}`, {
-        signal: samplePayload(`evt-reconcile-${fault}`).signal,
-      });
+      const outcome = await make(`reconcile-fault-${fault}`, { fault }).reconcileWorkflowSignal(
+        `req-reconcile-${fault}`,
+        {
+          signal: samplePayload(`evt-reconcile-${fault}`).signal,
+        },
+      );
       assert.equal(outcome.kind, 'unknown', `${fault}: ${JSON.stringify(outcome)}`);
       if (outcome.kind === 'unknown') assert.equal(outcome.reason, reason, fault);
       const requests = readFakeRequests(stateDir);
@@ -562,8 +571,9 @@ export async function runFaultScenarios(
     const oversizedState = join(root, 'oversized-request');
     const oversizedInvocationLog = join(root, 'oversized-request-invocations.log');
     const oversized = factory({
-      ...fake,
-      env: { AIZIGN_FAKE_INVOCATION_LOG: oversizedInvocationLog },
+      command: fakeCoreExecutable(join(root, 'fake-bin-oversized-request'), {
+        invocationLog: oversizedInvocationLog,
+      }),
       stateDir: oversizedState,
       timeoutMs: 10_000,
     });
@@ -587,7 +597,11 @@ export async function runFaultScenarios(
     );
 
     const absentState = join(root, 'absent-no-resubmit');
-    const absent = factory({ ...fake, stateDir: absentState, timeoutMs: 10_000 });
+    const absent = factory({
+      command: fakeCoreExecutable(join(root, 'fake-bin-absent-no-resubmit')),
+      stateDir: absentState,
+      timeoutMs: 10_000,
+    });
     assert.deepEqual(
       await absent.reconcileWorkflowSignal('req-absent-no-resubmit', {
         signal: samplePayload('evt-absent-no-resubmit').signal,
@@ -604,14 +618,19 @@ export async function runFaultScenarios(
 
     const lostAckState = join(root, 'lost-ack-reconciliation');
     const lostAck = factory({
-      ...fake,
-      env: { AIZIGN_FAKE_FAULT: 'journal-unknown' },
+      command: fakeCoreExecutable(join(root, 'fake-bin-lost-ack'), {
+        fault: 'journal-unknown',
+      }),
       stateDir: lostAckState,
       timeoutMs: 10_000,
     });
     const attempted = samplePayload('evt-lost-ack');
     assert.equal((await lostAck.submitWorkflowSignal('req-lost-ack', attempted)).kind, 'unknown');
-    const restarted = factory({ ...fake, stateDir: lostAckState, timeoutMs: 10_000 });
+    const restarted = factory({
+      command: fakeCoreExecutable(join(root, 'fake-bin-lost-ack-restarted')),
+      stateDir: lostAckState,
+      timeoutMs: 10_000,
+    });
     assert.deepEqual(
       await restarted.reconcileWorkflowSignal('req-restarted', { signal: attempted.signal }),
       { kind: 'accepted', eventId: 'evt-lost-ack' },

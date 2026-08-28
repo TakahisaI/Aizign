@@ -4,7 +4,8 @@
  */
 
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -34,8 +35,7 @@ test('local encoder failures have zero transport and parent-timing side effects'
     const stateDir = join(root, 'state');
     const measurements: ParentTimingMeasurement[] = [];
     const client = new OneShotCoreClient({
-      command: fakeCoreExecutable(join(root, 'bin')),
-      env: { AIZIGN_FAKE_INVOCATION_LOG: invocationLog },
+      command: fakeCoreExecutable(join(root, 'bin'), { invocationLog }),
       stateDir,
       timeoutMs: 5_000,
       timingSink: (measurement) => {
@@ -75,24 +75,92 @@ test('local encoder failures have zero transport and parent-timing side effects'
   }
 });
 
-test('OneShotCoreClient does not inherit synthetic parent credentials', async () => {
+function environmentCaptureExecutable(root: string, capturePath: string): string {
+  assert.doesNotMatch(process.execPath, /[\r\n]/);
+  const executable = join(root, 'capture-environment');
+  const source = `#!${process.execPath}
+import { writeFileSync } from 'node:fs';
+if (process.argv[2] === '--capture-runtime-environment') {
+  process.stdout.write(JSON.stringify(process.env));
+  process.exit(0);
+}
+let input = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => { input += chunk; });
+process.stdin.on('end', () => {
+  const request = JSON.parse(input.trim());
+  writeFileSync(${JSON.stringify(capturePath)}, JSON.stringify(process.env));
+  process.stdout.write(JSON.stringify({
+    protocol: 'aizign',
+    version: 1,
+    requestId: request.requestId,
+    kind: 'hello',
+    ok: true,
+    payload: {
+      protocolVersion: 1,
+      journalSchemaVersion: 1,
+      capabilities: ['workflow.signal.submit', 'workflow.signal.reconcile'],
+      package: { name: 'aizign', version: '0.1.0' },
+    },
+  }) + '\\n');
+});
+`;
+  writeFileSync(executable, source, { mode: 0o755 });
+  return executable;
+}
+
+test('OneShotCoreClient enforces the complete native child-environment allowlist', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aizign-dsh-env-'));
-  const credentialName = 'AIZIGN_TEST_SYNTHETIC_CREDENTIAL';
-  const previous = process.env[credentialName];
-  process.env[credentialName] = 'synthetic-non-secret-value';
+  const capturePath = join(root, 'environment.json');
+  const sensitive = {
+    AIZIGN_FAKE_FAULT: 'journal-unknown',
+    AIZIGN_PRIVATE_HOOK: 'private-hook',
+    DSH_CALL_ID: 'call-native-1',
+    DSH_SESSION_ID: 'session-native-1',
+    HOME: '/synthetic/home',
+    OPENAI_API_KEY: 'synthetic-non-secret-value',
+    OTEL_EXPORTER_OTLP_ENDPOINT: 'https://diagnostic.invalid',
+    PROVIDER_ID: 'provider-native-1',
+    XDG_CONFIG_HOME: '/synthetic/config',
+  } as const;
+  const names = ['PATH', ...Object.keys(sensitive)];
+  const previous = new Map(names.map((name) => [name, process.env[name]]));
   try {
-    const client = new OneShotCoreClient({
-      command: fakeCoreExecutable(join(root, 'bin')),
-      stateDir: '.',
-      timeoutMs: 2_000,
-      env: { AIZIGN_FAKE_ASSERT_ENV_ABSENT: credentialName },
+    Object.assign(process.env, sensitive);
+    const command = environmentCaptureExecutable(root, capturePath);
+    const baseline = spawnSync(command, ['--capture-runtime-environment'], {
+      encoding: 'utf8',
+      env: {},
     });
-    const outcome = await client.hello('environment-boundary');
-    assert.equal(outcome.kind, 'ok');
+    assert.equal(baseline.status, 0, baseline.stderr);
+    const runtimeEnvironment = JSON.parse(baseline.stdout) as Record<string, string>;
+    for (const name of Object.keys(sensitive)) {
+      assert.equal(runtimeEnvironment[name], undefined, `clean runtime baseline excludes ${name}`);
+    }
+
+    process.env.PATH = '/synthetic/bin:/usr/bin';
+    const withPath = new OneShotCoreClient({ command, stateDir: '.', timeoutMs: 2_000 });
+    assert.equal((await withPath.hello('environment-path-present')).kind, 'ok');
+    assert.deepEqual(
+      JSON.parse(readFileSync(capturePath, 'utf8')),
+      { ...runtimeEnvironment, PATH: '/synthetic/bin:/usr/bin' },
+      'adapter-env-path-present-exact / adapter-env-sensitive-parent-excluded',
+    );
+
+    delete process.env.PATH;
+    const withoutPath = new OneShotCoreClient({ command, stateDir: '.', timeoutMs: 2_000 });
+    assert.equal((await withoutPath.hello('environment-path-absent')).kind, 'ok');
+    assert.deepEqual(
+      JSON.parse(readFileSync(capturePath, 'utf8')),
+      runtimeEnvironment,
+      'adapter-env-path-absent-empty',
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
-    if (previous === undefined) delete process.env[credentialName];
-    else process.env[credentialName] = previous;
+    for (const [name, value] of previous) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
   }
 });
 
@@ -133,8 +201,7 @@ test('OneShotCoreClient reports parent timing without exposing request identity'
 
     const unknownMeasurements: ParentTimingMeasurement[] = [];
     const unknown = new OneShotCoreClient({
-      command,
-      env: { AIZIGN_FAKE_FAULT: 'journal-unknown' },
+      command: fakeCoreExecutable(join(root, 'unknown-bin'), { fault: 'journal-unknown' }),
       stateDir: join(root, 'unknown'),
       timeoutMs: 5_000,
       timingSink: (measurement) => {
@@ -156,7 +223,6 @@ test('OneShotCoreClient reports parent timing without exposing request identity'
 test('framed hello requires request id and kind correlation', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aizign-dsh-hello-correlation-'));
   try {
-    const command = fakeCoreExecutable(join(root, 'bin'));
     const cases = [
       ['hello-request-id-mismatch', 'wrong-request-id'],
       ['hello-kind-mismatch', 'wrong-kind'],
@@ -164,8 +230,7 @@ test('framed hello requires request id and kind correlation', async () => {
     ] as const;
     for (const [caseId, fault] of cases) {
       const client = new OneShotCoreClient({
-        command,
-        env: { AIZIGN_FAKE_FAULT: fault },
+        command: fakeCoreExecutable(join(root, `bin-${fault}`), { fault }),
         stateDir: join(root, `state-${fault}`),
         timeoutMs: 5_000,
       });
@@ -183,12 +248,10 @@ test('framed hello requires request id and kind correlation', async () => {
 test('every operation uses the exact canonical argv and framed stdin', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aizign-dsh-canonical-argv-'));
   try {
-    const command = fakeCoreExecutable(join(root, 'bin'));
     const argvLog = join(root, 'argv.jsonl');
     const stateDir = join(root, 'state');
     const client = new OneShotCoreClient({
-      command,
-      env: { AIZIGN_FAKE_ARGV_LOG: argvLog },
+      command: fakeCoreExecutable(join(root, 'argv-bin'), { argvLog }),
       stateDir,
       timeoutMs: 5_000,
     });
@@ -225,8 +288,9 @@ test('OneShotCoreClient discloses timing only after correlation and isolates sin
     const command = fakeCoreExecutable(join(root, 'bin'));
     const measurements: ParentTimingMeasurement[] = [];
     const uncorrelated = new OneShotCoreClient({
-      command,
-      env: { AIZIGN_FAKE_FAULT: 'unknown-valid-error-code-wrong-request-id' },
+      command: fakeCoreExecutable(join(root, 'uncorrelated-bin'), {
+        fault: 'unknown-valid-error-code-wrong-request-id',
+      }),
       stateDir: join(root, 'uncorrelated'),
       timeoutMs: 5_000,
       timingSink: (measurement) => {

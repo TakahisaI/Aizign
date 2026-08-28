@@ -10,7 +10,6 @@ import {
   checkCompatibility,
   type HelloInfo,
   PROTOCOL_VERSION,
-  codes as protocolCodes,
 } from '@aizign/protocol';
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import { adapterCodes } from '../mapping/tool.ts';
@@ -76,12 +75,7 @@ export async function preflight(
   }
   const problem = checkCompatibility(outcome.info, REQUIRED);
   if (problem !== undefined) {
-    finish(
-      'rejected',
-      problem.reason === 'protocol_version'
-        ? protocolCodes.PROTOCOL_VERSION_UNSUPPORTED
-        : protocolCodes.CAPABILITY_UNSUPPORTED,
-    );
+    finish('rejected');
     throw new HarnessError(problem.detail, adapterCodes.INCOMPATIBLE);
   }
   finish('ok');
