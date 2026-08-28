@@ -33,6 +33,14 @@ const encoder = new TextEncoder();
 const SHA256_A = 'a'.repeat(64);
 const SHA256_B = 'b'.repeat(64);
 
+test('production encoders depend on package-internal builders, not public decoders', () => {
+  const source = readFileSync(join(import.meta.dirname, 'envelope.ts'), 'utf8');
+  assert.doesNotMatch(
+    source,
+    /\bdecode(?:HelloInfo|WorkflowSignalSubmit|WorkflowSignalReconcile|SignalResult|ReconciliationResult)\b/,
+  );
+});
+
 function example(name: string): unknown {
   return JSON.parse(readFileSync(join(root, name), 'utf8'));
 }
@@ -510,7 +518,67 @@ test('outbound source validation rejects hostile descriptors and prototypes with
       };
     },
   });
-  assert.doesNotThrow(() => encodeResponse(responseFor(authenticWithToJson)));
+  const expected = encodeResponse(responseFor(new ProtocolError(codes.INTERNAL, 'x')));
+  for (const key of ['name', 'stack', 'cause', 'custom'] as const) {
+    Object.defineProperty(authenticWithToJson, key, {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        getterCalls += 1;
+        return `ignored-${key}`;
+      },
+    });
+  }
+  assert.equal(encodeResponse(responseFor(authenticWithToJson)), expected);
   assert.equal(getterCalls, 0);
   assert.equal(toJsonCalls, 0);
+});
+
+test('fresh wire graphs shadow inherited object and array toJSON hooks', () => {
+  const request = { requestId: 'req-prototype-hook', kind: 'hello' } as const;
+  const response: Response = {
+    version: { axis: 'bootstrap', version: 1 },
+    requestId: 'req-prototype-hook',
+    kind: 'hello',
+    body: {
+      type: 'hello',
+      info: {
+        protocolVersion: 1,
+        journalSchemaVersion: 1,
+        capabilities: [CAPABILITY_WORKFLOW_SIGNAL_SUBMIT],
+        package: { name: 'aizign', version: '0.1.0' },
+      },
+    },
+  };
+  const expectedRequest = encodeRequest(request);
+  const expectedResponse = encodeResponse(response);
+  const objectToJson = Object.getOwnPropertyDescriptor(Object.prototype, 'toJSON');
+  const arrayToJson = Object.getOwnPropertyDescriptor(Array.prototype, 'toJSON');
+  let objectCalls = 0;
+  let arrayCalls = 0;
+  try {
+    Object.defineProperty(Object.prototype, 'toJSON', {
+      configurable: true,
+      get: () => {
+        objectCalls += 1;
+        return () => ({ forged: true });
+      },
+    });
+    Object.defineProperty(Array.prototype, 'toJSON', {
+      configurable: true,
+      value: () => {
+        arrayCalls += 1;
+        return ['forged'];
+      },
+    });
+    assert.equal(encodeRequest(request), expectedRequest);
+    assert.equal(encodeResponse(response), expectedResponse);
+    assert.equal(objectCalls, 0);
+    assert.equal(arrayCalls, 0);
+  } finally {
+    if (objectToJson === undefined) delete (Object.prototype as { toJSON?: unknown }).toJSON;
+    else Object.defineProperty(Object.prototype, 'toJSON', objectToJson);
+    if (arrayToJson === undefined) delete (Array.prototype as { toJSON?: unknown }).toJSON;
+    else Object.defineProperty(Array.prototype, 'toJSON', arrayToJson);
+  }
 });

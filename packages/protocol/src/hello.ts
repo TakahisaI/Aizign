@@ -37,8 +37,8 @@ function isCapability(value: unknown): value is string {
   return typeof value === 'string' && value.length <= 128 && CAPABILITY.test(value);
 }
 
-/** Decodes a `hello` payload, rejecting anything outside the closed schema. */
-export function decodeHelloInfo(payload: unknown): HelloInfo {
+/** Package-internal validator and fresh-wire builder shared by decode and encode. */
+export function buildHelloInfo(payload: unknown): HelloInfo {
   const fail = (message: string) => new ProtocolError(codes.INVALID_PAYLOAD, message);
   const allowed = ['protocolVersion', 'journalSchemaVersion', 'capabilities', 'package'];
   assertClosedObject(payload, allowed, fail, 'hello payload');
@@ -78,6 +78,11 @@ export function decodeHelloInfo(payload: unknown): HelloInfo {
     capabilities: capabilities as string[],
     package: { name, version },
   };
+}
+
+/** Decodes a `hello` payload, rejecting anything outside the closed schema. */
+export function decodeHelloInfo(payload: unknown): HelloInfo {
+  return buildHelloInfo(payload);
 }
 
 /** Why a binary is not usable by this adapter. */

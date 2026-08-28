@@ -246,7 +246,7 @@ function validateWorkflowSignal(signal: WorkflowSignalShape): WorkflowSignal {
 }
 
 /** Decodes the shape, then validates values the way the core does. */
-export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubmitPayload {
+export function buildWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubmitPayload {
   if (!isPlainObject(payload)) throw invalidPayload('payload must be an object');
   assertOnlyKeys(payload, ['expected', 'signal'], invalidPayload);
   const expected = ownDataValue(payload, 'expected', invalidPayload, 'payload');
@@ -296,6 +296,11 @@ export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubm
   };
 }
 
+/** Decodes a submit payload through the package-internal fresh-wire builder. */
+export function decodeWorkflowSignalSubmit(payload: unknown): WorkflowSignalSubmitPayload {
+  return buildWorkflowSignalSubmit(payload);
+}
+
 /** The kind-specific rules shared with `aizign-core`. */
 function validateSignalRules(
   signal: {
@@ -341,7 +346,7 @@ function validateSignalRules(
 }
 
 /** Decodes the reconcile payload through the same signal rules as submit. */
-export function decodeWorkflowSignalReconcile(payload: unknown): WorkflowSignalReconcilePayload {
+export function buildWorkflowSignalReconcile(payload: unknown): WorkflowSignalReconcilePayload {
   if (!isPlainObject(payload)) throw invalidPayload('payload must be an object');
   assertOnlyKeys(payload, ['signal'], invalidPayload);
   return {
@@ -351,8 +356,13 @@ export function decodeWorkflowSignalReconcile(payload: unknown): WorkflowSignalR
   };
 }
 
+/** Decodes a reconcile payload through the package-internal fresh-wire builder. */
+export function decodeWorkflowSignalReconcile(payload: unknown): WorkflowSignalReconcilePayload {
+  return buildWorkflowSignalReconcile(payload);
+}
+
 /** Decodes the success payload of `workflow.signal.submit`. */
-export function decodeSignalResult(payload: unknown): SignalResult {
+export function buildSignalResult(payload: unknown): SignalResult {
   if (!isPlainObject(payload)) throw invalidPayload('payload must be an object');
   assertOnlyKeys(payload, ['disposition', 'eventId'], invalidPayload);
   const disposition = ownDataValue(payload, 'disposition', invalidPayload, 'payload');
@@ -364,8 +374,13 @@ export function decodeSignalResult(payload: unknown): SignalResult {
   return { disposition, eventId };
 }
 
+/** Decodes a submit success payload through the package-internal builder. */
+export function decodeSignalResult(payload: unknown): SignalResult {
+  return buildSignalResult(payload);
+}
+
 /** Decodes the success payload of `workflow.signal.reconcile`. */
-export function decodeReconciliationResult(payload: unknown): ReconciliationResult {
+export function buildReconciliationResult(payload: unknown): ReconciliationResult {
   if (!isPlainObject(payload)) throw invalidPayload('payload must be an object');
   assertOnlyKeys(payload, ['disposition', 'eventId'], invalidPayload);
   const disposition = ownDataValue(payload, 'disposition', invalidPayload, 'payload');
@@ -375,4 +390,9 @@ export function decodeReconciliationResult(payload: unknown): ReconciliationResu
   }
   if (!isIdentifier(eventId)) throw invalidPayload('eventId must be a stable identifier');
   return { disposition, eventId };
+}
+
+/** Decodes a reconcile success payload through the package-internal builder. */
+export function decodeReconciliationResult(payload: unknown): ReconciliationResult {
+  return buildReconciliationResult(payload);
 }

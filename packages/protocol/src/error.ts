@@ -50,7 +50,6 @@ export function isShortErrorCode(value: unknown): value is string {
 interface ProtocolErrorSnapshot {
   readonly code: string;
   readonly message: string;
-  readonly name: 'ProtocolError';
 }
 
 const authenticProtocolErrors = new WeakMap<object, ProtocolErrorSnapshot>();
@@ -65,11 +64,7 @@ export class ProtocolError extends Error {
     this.name = 'ProtocolError';
     this.code = code;
     if (new.target === ProtocolError) {
-      authenticProtocolErrors.set(this, {
-        code,
-        message,
-        name: 'ProtocolError',
-      });
+      authenticProtocolErrors.set(this, { code, message });
     }
   }
 }
@@ -87,16 +82,12 @@ export function isAuthenticProtocolError(value: unknown): value is ProtocolError
   if (snapshot === undefined) return false;
   const code = Object.getOwnPropertyDescriptor(value, 'code');
   const message = Object.getOwnPropertyDescriptor(value, 'message');
-  const name = Object.getOwnPropertyDescriptor(value, 'name');
   return (
     code !== undefined &&
     'value' in code &&
     code.value === snapshot.code &&
     message !== undefined &&
     'value' in message &&
-    message.value === snapshot.message &&
-    name !== undefined &&
-    'value' in name &&
-    name.value === snapshot.name
+    message.value === snapshot.message
   );
 }

@@ -48,3 +48,8 @@ test('the probe text replaces numbers without coercing them', () => {
     payload: { n: 0 },
   });
 });
+
+test('the lexical scan has no nesting cutoff', () => {
+  const frame = `${'{"next":'.repeat(180)}{"same":1,"same":2}${'}'.repeat(180)}`;
+  assert.equal(scanJsonTokens(frame).failure?.kind, 'duplicate-member');
+});

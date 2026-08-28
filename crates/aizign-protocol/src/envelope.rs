@@ -221,6 +221,7 @@ struct Recovered {
     response_version: ResponseVersion,
     typed_text: String,
     payload_integer_out_of_range: bool,
+    payload_exceeds_typed_depth: bool,
 }
 
 impl Recovered {
@@ -272,25 +273,24 @@ fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
             message,
         )));
     }
-    let probe: serde_json::Value = serde_json::from_str(&scan.probe_text).map_err(|error| {
-        unaddressed(ProtocolError::from_valid_code(
+    if !scan.top_level_object {
+        return Err(unaddressed(ProtocolError::from_valid_code(
             codes::INVALID_ENVELOPE,
-            error.to_string(),
-        ))
-    })?;
+            "frame must be a JSON object",
+        )));
+    }
     let mut recovered = Recovered {
-        request_id: probe
+        request_id: scan
+            .top_level_strings
             .get("requestId")
-            .and_then(serde_json::Value::as_str)
+            .map(String::as_str)
             .filter(|value| valid_request_id(value))
             .map(str::to_owned),
-        kind: probe
-            .get("kind")
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_owned),
+        kind: scan.top_level_strings.get("kind").cloned(),
         response_version: ResponseVersion::bootstrap(),
         typed_text: scan.typed_text.clone(),
         payload_integer_out_of_range: scan.payload_integer_out_of_range,
+        payload_exceeds_typed_depth: scan.payload_exceeds_typed_depth,
     };
 
     if let Some(failure) = scan.failure {
@@ -302,7 +302,7 @@ fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
         return Err(recovered.fail(ProtocolError::from_valid_code(code, failure.message)));
     }
 
-    if probe.get("protocol").and_then(serde_json::Value::as_str) != Some(PROTOCOL_NAME) {
+    if scan.top_level_strings.get("protocol").map(String::as_str) != Some(PROTOCOL_NAME) {
         return Err(recovered.fail(ProtocolError::from_valid_code(
             codes::INVALID_ENVELOPE,
             format!("protocol must be \"{PROTOCOL_NAME}\""),
@@ -343,6 +343,13 @@ fn probe(frame: &[u8]) -> Result<Recovered, DecodeFailure> {
 pub fn decode_request(frame: &[u8]) -> Result<Request, DecodeFailure> {
     let recovered = probe(frame)?;
     let fail = |error: ProtocolError| recovered.fail(error);
+
+    if recovered.payload_exceeds_typed_depth {
+        return Err(fail(ProtocolError::from_valid_code(
+            codes::INVALID_PAYLOAD,
+            "payload does not match the bounded Protocol v1 shape",
+        )));
+    }
 
     let envelope: RequestEnvelope =
         serde_json::from_str(&recovered.typed_text).map_err(|error| {
@@ -627,34 +634,27 @@ pub fn decode_response_for(
             message,
         )));
     }
-    let folded: serde_json::Value = serde_json::from_str(&scan.probe_text).map_err(|error| {
-        unaddressed(ProtocolError::from_valid_code(
+    if !scan.top_level_object {
+        return Err(unaddressed(ProtocolError::from_valid_code(
             codes::INVALID_ENVELOPE,
-            error.to_string(),
-        ))
-    })?;
+            "frame must be a JSON object",
+        )));
+    }
     let recovered = Recovered {
-        request_id: folded
+        request_id: scan
+            .top_level_strings
             .get("requestId")
-            .and_then(serde_json::Value::as_str)
+            .map(String::as_str)
             .filter(|value| valid_request_id(value))
             .map(str::to_owned),
-        kind: folded
-            .get("kind")
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_owned),
+        kind: scan.top_level_strings.get("kind").cloned(),
         response_version: initial_version,
         typed_text: scan.typed_text.clone(),
         payload_integer_out_of_range: scan.payload_integer_out_of_range,
+        payload_exceeds_typed_depth: scan.payload_exceeds_typed_depth,
     };
-    let ok = folded
-        .get("ok")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false);
-    let error_code = folded
-        .get("error")
-        .and_then(|error| error.get("code"))
-        .and_then(serde_json::Value::as_str);
+    let ok = scan.top_level_booleans.get("ok").copied();
+    let error_code = scan.error_code.as_deref();
     let expected =
         expected_response_version(recovered.kind.as_deref(), ok, error_code, request_stage);
     let fail = |error: ProtocolError| DecodeFailure {
@@ -671,7 +671,7 @@ pub fn decode_response_for(
         };
         return Err(fail(ProtocolError::from_valid_code(code, failure.message)));
     }
-    if folded.get("protocol").and_then(serde_json::Value::as_str) != Some(PROTOCOL_NAME) {
+    if scan.top_level_strings.get("protocol").map(String::as_str) != Some(PROTOCOL_NAME) {
         return Err(fail(ProtocolError::from_valid_code(
             codes::INVALID_ENVELOPE,
             format!("protocol must be \"{PROTOCOL_NAME}\""),
@@ -694,6 +694,12 @@ pub fn decode_response_for(
                 "{axis} response version must be {}; got {wire_version}",
                 expected.wire()
             ),
+        )));
+    }
+    if recovered.payload_exceeds_typed_depth {
+        return Err(fail(ProtocolError::from_valid_code(
+            codes::INVALID_PAYLOAD,
+            "payload does not match the bounded Protocol v1 shape",
         )));
     }
 
@@ -802,7 +808,7 @@ pub fn decode_response_for(
 
 fn expected_response_version(
     kind: Option<&str>,
-    ok: bool,
+    ok: Option<bool>,
     error_code: Option<&str>,
     request_stage: Option<ResponseVersion>,
 ) -> ResponseVersion {
@@ -811,7 +817,7 @@ fn expected_response_version(
         None if kind.is_some_and(|kind| kind != KIND_HELLO) => ResponseVersion::operation(),
         None => ResponseVersion::bootstrap(),
     };
-    if ok {
+    if ok == Some(true) {
         match kind {
             Some(KIND_HELLO) => {
                 ResponseVersion::Bootstrap(expected_bootstrap_version(request_stage))
@@ -821,7 +827,7 @@ fn expected_response_version(
             }
             None => inferred_request_stage(),
         }
-    } else if error_code.is_some_and(is_unconditionally_bootstrap_error_code) {
+    } else if ok == Some(false) && error_code.is_some_and(is_unconditionally_bootstrap_error_code) {
         ResponseVersion::Bootstrap(expected_bootstrap_version(request_stage))
     } else {
         inferred_request_stage()

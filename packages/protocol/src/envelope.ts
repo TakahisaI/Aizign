@@ -5,7 +5,7 @@
  */
 
 import { codes, isAuthenticProtocolError, isShortErrorCode, ProtocolError } from './error.ts';
-import { decodeHelloInfo, type HelloInfo } from './hello.ts';
+import { buildHelloInfo, type HelloInfo } from './hello.ts';
 import { isWellFormedUnicode, scanJsonTokens } from './json-token.ts';
 import {
   assertClosedObject,
@@ -15,10 +15,10 @@ import {
   ownDataValue,
 } from './shape.ts';
 import {
-  decodeReconciliationResult,
-  decodeSignalResult,
-  decodeWorkflowSignalReconcile,
-  decodeWorkflowSignalSubmit,
+  buildReconciliationResult,
+  buildSignalResult,
+  buildWorkflowSignalReconcile,
+  buildWorkflowSignalSubmit,
   type ReconciliationResult,
   type SignalResult,
   type WorkflowSignalReconcilePayload,
@@ -117,32 +117,15 @@ function decodeFrame(frame: Uint8Array | string): string {
   return decoder.decode(frame);
 }
 
-/**
- * Recovers correlation data the way the lenient request probe would see it
- * after folding: each field keeps its last spelling, and only a value that
- * passes its usual check is recovered.
- */
 type Recovered = { requestId: string | null; kind: string | null };
 
-function correlationFromFolded(folded: Record<string, unknown>): Recovered {
+function correlationFromScan(scan: ReturnType<typeof scanJsonTokens>): Recovered {
+  const requestIdValue = scan.topLevelStrings.get('requestId');
+  const kindValue = scan.topLevelStrings.get('kind');
   const requestId =
-    typeof folded.requestId === 'string' &&
-    isWellFormedUnicode(folded.requestId) &&
-    IDENTIFIER_PATTERN.test(folded.requestId)
-      ? folded.requestId
-      : null;
-  const kind =
-    typeof folded.kind === 'string' && isWellFormedUnicode(folded.kind) ? folded.kind : null;
+    requestIdValue !== undefined && IDENTIFIER_PATTERN.test(requestIdValue) ? requestIdValue : null;
+  const kind = kindValue ?? null;
   return { requestId, kind };
-}
-
-function foldedProbe(probeText: string): Record<string, unknown> | null {
-  try {
-    const folded: unknown = JSON.parse(probeText);
-    return isPlainObject(folded) ? folded : null;
-  } catch {
-    return null;
-  }
 }
 
 function isRequestId(value: unknown): value is string {
@@ -157,6 +140,41 @@ function parseVersionToken(token: string | undefined): number | null {
   if (token.length > MAX_VERSION_TEXT.length) return null;
   if (token.length === MAX_VERSION_TEXT.length && token > MAX_VERSION_TEXT) return null;
   return Number(token);
+}
+
+/** Serializes a fresh validated wire graph without consulting prototype hooks. */
+function stringifyWireGraph(root: Record<string, unknown>): string {
+  const pending: object[] = [root];
+  const visited = new WeakSet<object>();
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current === undefined || visited.has(current)) continue;
+    visited.add(current);
+    Object.defineProperty(current, 'toJSON', {
+      value: undefined,
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
+    for (const key of Object.keys(current)) {
+      const descriptor = Object.getOwnPropertyDescriptor(current, key);
+      if (descriptor !== undefined && 'value' in descriptor) {
+        const value = descriptor.value;
+        if (typeof value === 'object' && value !== null) pending.push(value);
+      }
+    }
+  }
+  const frame = JSON.stringify(root);
+  if (
+    !frame.startsWith('{') ||
+    !frame.endsWith('}') ||
+    frame.includes('\n') ||
+    frame.includes('\r') ||
+    frame.startsWith('\uFEFF')
+  ) {
+    throw new ProtocolError(codes.INVALID_ENVELOPE, 'encoder produced an invalid frame');
+  }
+  return frame;
 }
 
 /**
@@ -189,12 +207,11 @@ export function decodeRequest(frame: Uint8Array | string): Request {
   if (scan.syntaxError !== null) {
     throw unaddressed(codes.INVALID_ENVELOPE, scan.syntaxError.message);
   }
-  const probe = foldedProbe(scan.probeText);
-  if (probe === null) {
+  if (!scan.topLevelObject) {
     throw unaddressed(codes.INVALID_ENVELOPE, 'frame must be a JSON object');
   }
-  const requestId = isRequestId(probe.requestId) ? probe.requestId : null;
-  const kind = typeof probe.kind === 'string' ? probe.kind : null;
+  const recovered = correlationFromScan(scan);
+  const { requestId, kind } = recovered;
   const bootstrapFail = (code: string, message: string) =>
     new DecodeFailure(requestId, kind, bootstrapVersion, new ProtocolError(code, message));
 
@@ -207,7 +224,7 @@ export function decodeRequest(frame: Uint8Array | string): Request {
     );
   }
 
-  if (probe.protocol !== PROTOCOL_NAME) {
+  if (scan.topLevelStrings.get('protocol') !== PROTOCOL_NAME) {
     throw bootstrapFail(codes.INVALID_ENVELOPE, `protocol must be "${PROTOCOL_NAME}"`);
   }
   const version = parseVersionToken(scan.topLevelNumbers.get('version'));
@@ -217,7 +234,7 @@ export function decodeRequest(frame: Uint8Array | string): Request {
       `version must be an integer between 0 and ${MAX_VERSION}`,
     );
   }
-  const recoveredKind = typeof probe.kind === 'string' ? probe.kind : undefined;
+  const recoveredKind = scan.topLevelStrings.get('kind');
   const acceptedVersion =
     recoveredKind === undefined
       ? undefined
@@ -267,7 +284,7 @@ export function decodeRequest(frame: Uint8Array | string): Request {
     }
     case KIND_WORKFLOW_SIGNAL_SUBMIT: {
       try {
-        const payload = decodeWorkflowSignalSubmit(value.payload);
+        const payload = buildWorkflowSignalSubmit(value.payload);
         return {
           requestId: value.requestId,
           kind: 'workflow.signal.submit',
@@ -282,7 +299,7 @@ export function decodeRequest(frame: Uint8Array | string): Request {
     }
     case KIND_WORKFLOW_SIGNAL_RECONCILE: {
       try {
-        const payload = decodeWorkflowSignalReconcile(value.payload);
+        const payload = buildWorkflowSignalReconcile(value.payload);
         return {
           requestId: value.requestId,
           kind: 'workflow.signal.reconcile',
@@ -317,14 +334,14 @@ export function encodeRequest(request: Request): string {
     payload = {};
   } else if (kind === KIND_WORKFLOW_SIGNAL_SUBMIT) {
     const source = ownDataValue(request, 'payload', invalidEnvelope, 'request');
-    payload = { ...decodeWorkflowSignalSubmit(source) };
+    payload = { ...buildWorkflowSignalSubmit(source) };
   } else if (kind === KIND_WORKFLOW_SIGNAL_RECONCILE) {
     const source = ownDataValue(request, 'payload', invalidEnvelope, 'request');
-    payload = { ...decodeWorkflowSignalReconcile(source) };
+    payload = { ...buildWorkflowSignalReconcile(source) };
   } else {
     throw new ProtocolError(codes.UNKNOWN_KIND, `kind "${kind}" is not registered`);
   }
-  const frame = JSON.stringify({
+  const frame = stringifyWireGraph({
     protocol: PROTOCOL_NAME,
     version: kind === KIND_HELLO ? BOOTSTRAP_ENVELOPE_VERSION : PROTOCOL_VERSION,
     requestId,
@@ -393,8 +410,8 @@ export function encodeResponse(response: Response): string {
       if (axis !== 'bootstrap' || kind !== KIND_HELLO) {
         throw invalidEnvelope('hello success requires hello kind and bootstrap version');
       }
-      const info = decodeHelloInfo(ownDataValue(body, 'info', invalidEnvelope, 'response.body'));
-      frame = JSON.stringify({ ...base, ok: true, payload: info });
+      const info = buildHelloInfo(ownDataValue(body, 'info', invalidEnvelope, 'response.body'));
+      frame = stringifyWireGraph({ ...base, ok: true, payload: info });
       break;
     }
     case 'workflow.signal': {
@@ -402,10 +419,10 @@ export function encodeResponse(response: Response): string {
       if (axis !== 'accepted-operation' || kind !== KIND_WORKFLOW_SIGNAL_SUBMIT) {
         throw invalidEnvelope('submit success requires submit kind and accepted-operation version');
       }
-      const result = decodeSignalResult(
+      const result = buildSignalResult(
         ownDataValue(body, 'result', invalidEnvelope, 'response.body'),
       );
-      frame = JSON.stringify({ ...base, ok: true, payload: result });
+      frame = stringifyWireGraph({ ...base, ok: true, payload: result });
       break;
     }
     case 'workflow.signal.reconciliation': {
@@ -415,10 +432,10 @@ export function encodeResponse(response: Response): string {
           'reconcile success requires reconcile kind and accepted-operation version',
         );
       }
-      const result = decodeReconciliationResult(
+      const result = buildReconciliationResult(
         ownDataValue(body, 'result', invalidEnvelope, 'response.body'),
       );
-      frame = JSON.stringify({ ...base, ok: true, payload: result });
+      frame = stringifyWireGraph({ ...base, ok: true, payload: result });
       break;
     }
     case 'error': {
@@ -443,7 +460,7 @@ export function encodeResponse(response: Response): string {
       ) {
         throw invalidEnvelope('error.message must be an own well-formed string data property');
       }
-      frame = JSON.stringify({
+      frame = stringifyWireGraph({
         ...base,
         ok: false,
         error: { code: codeDescriptor.value, message: messageDescriptor.value },
@@ -499,13 +516,12 @@ export function decodeResponse(
   if (scan.syntaxError !== null) {
     throw unaddressed(codes.INVALID_ENVELOPE, scan.syntaxError.message);
   }
-  const probe = foldedProbe(scan.probeText);
-  if (probe === null) throw unaddressed(codes.INVALID_ENVELOPE, 'frame must be a JSON object');
-  const recovered = correlationFromFolded(probe);
-  const probedCode =
-    isPlainObject(probe.error) && isShortErrorCode(probe.error.code) ? probe.error.code : undefined;
+  if (!scan.topLevelObject)
+    throw unaddressed(codes.INVALID_ENVELOPE, 'frame must be a JSON object');
+  const recovered = correlationFromScan(scan);
+  const probedCode = isShortErrorCode(scan.errorCode) ? scan.errorCode : undefined;
   const bootstrapCode =
-    probe.ok === false &&
+    scan.topLevelBooleans.get('ok') === false &&
     probedCode !== undefined &&
     new Set<string>([
       codes.REQUEST_TOO_LARGE,
@@ -538,7 +554,7 @@ export function decodeResponse(
       scan.failure.message,
     );
   }
-  if (probe.protocol !== PROTOCOL_NAME) {
+  if (scan.topLevelStrings.get('protocol') !== PROTOCOL_NAME) {
     throw fail(codes.INVALID_ENVELOPE, `protocol must be "${PROTOCOL_NAME}"`);
   }
   const wireVersion = parseVersionToken(scan.topLevelNumbers.get('version'));
@@ -591,7 +607,7 @@ export function decodeResponse(
             version: { axis, version: wireVersion },
             requestId,
             kind,
-            body: { type: 'hello', info: decodeHelloInfo(value.payload) },
+            body: { type: 'hello', info: buildHelloInfo(value.payload) },
           };
         } catch (error) {
           if (error instanceof ProtocolError) throw fail(error.code, error.message);
@@ -608,7 +624,7 @@ export function decodeResponse(
             kind,
             body: {
               type: 'workflow.signal',
-              result: decodeSignalResult(value.payload),
+              result: buildSignalResult(value.payload),
             },
           };
         } catch (error) {
@@ -629,7 +645,7 @@ export function decodeResponse(
             kind,
             body: {
               type: 'workflow.signal.reconciliation',
-              result: decodeReconciliationResult(value.payload),
+              result: buildReconciliationResult(value.payload),
             },
           };
         } catch (error) {

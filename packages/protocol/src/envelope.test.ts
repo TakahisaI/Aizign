@@ -277,6 +277,63 @@ test('a successful operation-shaped response cannot select bootstrap from an err
   );
 });
 
+test('response version selection uses only boolean ok=false for bootstrap errors', () => {
+  const cases: ReadonlyArray<readonly [string, string, 'bootstrap' | 'accepted-operation']> = [
+    ['true', 'true', 'accepted-operation'],
+    ['false', 'false', 'bootstrap'],
+    ['missing', '', 'accepted-operation'],
+    ['null', 'null', 'accepted-operation'],
+    ['string', '"false"', 'accepted-operation'],
+  ];
+  for (const [name, token, axis] of cases) {
+    const okMember = name === 'missing' ? '' : `,"ok":${token}`;
+    const frame = `{"protocol":"aizign","version":${axis === 'bootstrap' ? 1 : 2},"requestId":"req-ok-${name}","kind":"workflow.signal.submit"${okMember},"error":{"code":"PROTOCOL_VERSION_UNSUPPORTED","message":"unsupported"}}`;
+    try {
+      const response = decodeResponse(frame, {
+        requestAxis: 'accepted-operation',
+        bootstrapVersion: 1,
+        operationVersion: 2,
+      });
+      assert.equal(name, 'false', `${name}: malformed response unexpectedly decoded`);
+      assert.deepEqual(response.version, { axis: 'bootstrap', version: 1 }, name);
+      assert.equal(response.requestId, 'req-ok-false', name);
+      assert.equal(response.kind, 'workflow.signal.submit', name);
+      assert.equal(
+        response.body.type === 'error' && response.body.error.code,
+        codes.PROTOCOL_VERSION_UNSUPPORTED,
+        name,
+      );
+    } catch (error) {
+      assert.ok(error instanceof DecodeFailure, name);
+      assert.equal(error.responseVersion.axis, axis, name);
+      assert.equal(error.responseVersion.version, 2, name);
+      assert.equal(error.error.code, codes.INVALID_ENVELOPE, name);
+      assert.equal(error.requestId, `req-ok-${name}`, name);
+      assert.equal(error.kind, 'workflow.signal.submit', name);
+      assert.notEqual(name, 'false', `${name}: valid bootstrap error was rejected`);
+    }
+  }
+});
+
+test('deep future payloads are scanned at every depth before version routing', () => {
+  const wrap = (leaf: string) => `${'{"next":'.repeat(180)}${leaf}${'}'.repeat(180)}`;
+  const valid = `{"protocol":"aizign","version":2,"requestId":"req-deep","kind":"future.operation","payload":${wrap('{}')}}`;
+  assert.throws(
+    () => decodeRequest(valid),
+    (error: unknown) =>
+      error instanceof DecodeFailure &&
+      error.error.code === codes.PROTOCOL_VERSION_UNSUPPORTED &&
+      error.requestId === 'req-deep' &&
+      error.kind === 'future.operation',
+  );
+  const duplicate = `{"protocol":"aizign","version":2,"requestId":"req-deep","kind":"future.operation","payload":${wrap('{"same":1,"same":2}')}}`;
+  assert.throws(
+    () => decodeRequest(duplicate),
+    (error: unknown) =>
+      error instanceof DecodeFailure && error.error.code === codes.INVALID_ENVELOPE,
+  );
+});
+
 test('request validation precedes the package-internal final bound guard', async () => {
   assert.throws(
     () =>

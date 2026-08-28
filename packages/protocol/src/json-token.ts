@@ -18,11 +18,18 @@ export interface JsonTokenScan {
   readonly failure: JsonTokenFailure | null;
   /** JSON text with every number token replaced by `0` for lossless probing. */
   readonly probeText: string;
+  /** Whether the complete JSON value is an object at the root. */
+  readonly topLevelObject: boolean;
+  /** Losslessly recovered, well-formed top-level string values. */
+  readonly topLevelStrings: ReadonlyMap<string, string>;
+  /** Losslessly recovered top-level boolean values. */
+  readonly topLevelBooleans: ReadonlyMap<string, boolean>;
+  /** `error.code`, when `error` is a top-level object with a string code. */
+  readonly errorCode: string | undefined;
   /** Raw top-level number spellings, before any JavaScript numeric coercion. */
   readonly topLevelNumbers: ReadonlyMap<string, string>;
 }
 
-const MAX_SCAN_DEPTH = 128;
 const JSON_NUMBER = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/;
 const CANONICAL_INTEGER = /^(?:0|-?[1-9][0-9]*)$/;
 
@@ -30,12 +37,14 @@ interface ObjectLevel {
   readonly kind: 'object';
   readonly keys: Set<string>;
   readonly inPayload: boolean;
+  readonly inError: boolean;
   pendingKey: string | undefined;
 }
 
 interface ArrayLevel {
   readonly kind: 'array';
   readonly inPayload: boolean;
+  readonly inError: boolean;
 }
 
 type Level = ObjectLevel | ArrayLevel;
@@ -94,6 +103,13 @@ function valueIsPayload(levels: readonly Level[]): boolean {
   return levels.length === 1 && parent.kind === 'object' && parent.pendingKey === 'payload';
 }
 
+function valueIsError(levels: readonly Level[]): boolean {
+  const parent = levels.at(-1);
+  if (parent === undefined) return false;
+  if (parent.inError) return true;
+  return levels.length === 1 && parent.kind === 'object' && parent.pendingKey === 'error';
+}
+
 function consumePendingKey(levels: readonly Level[]): void {
   const parent = levels.at(-1);
   if (parent?.kind === 'object') parent.pendingKey = undefined;
@@ -114,7 +130,23 @@ function numberEnd(text: string, start: number): number {
  * coerce it. Other JSON grammar remains owned by the normal parser.
  */
 export function scanJsonTokens(text: string): JsonTokenScan {
+  try {
+    JSON.parse(text);
+  } catch {
+    return {
+      syntaxError: { index: 0, message: 'frame is not valid JSON' },
+      failure: null,
+      probeText: text,
+      topLevelObject: false,
+      topLevelStrings: new Map(),
+      topLevelBooleans: new Map(),
+      errorCode: undefined,
+      topLevelNumbers: new Map(),
+    };
+  }
   const levels: Level[] = [];
+  const topLevelStrings = new Map<string, string>();
+  const topLevelBooleans = new Map<string, boolean>();
   const topLevelNumbers = new Map<string, string>();
   const replacements: Array<{
     start: number;
@@ -123,6 +155,7 @@ export function scanJsonTokens(text: string): JsonTokenScan {
   }> = [];
   let syntaxError: { index: number; message: string } | null = null;
   let failure: JsonTokenFailure | null = null;
+  let errorCode: string | undefined;
   let index = 0;
 
   const fail = (candidate: JsonTokenFailure) => {
@@ -176,6 +209,14 @@ export function scanJsonTokens(text: string): JsonTokenScan {
         parent.keys.add(decoded);
         parent.pendingKey = decoded;
       } else {
+        if (decoded !== null && isWellFormedUnicode(decoded)) {
+          if (levels.length === 1 && parent?.kind === 'object' && parent.pendingKey !== undefined) {
+            topLevelStrings.set(parent.pendingKey, decoded);
+          }
+          if (parent?.kind === 'object' && parent.inError && parent.pendingKey === 'code') {
+            errorCode = decoded;
+          }
+        }
         consumePendingKey(levels);
       }
       index = end;
@@ -184,19 +225,19 @@ export function scanJsonTokens(text: string): JsonTokenScan {
 
     if (char === '{' || char === '[') {
       const inPayload = valueIsPayload(levels);
+      const inError = valueIsError(levels);
       consumePendingKey(levels);
-      if (levels.length < MAX_SCAN_DEPTH) {
-        levels.push(
-          char === '{'
-            ? {
-                kind: 'object',
-                keys: new Set(),
-                inPayload,
-                pendingKey: undefined,
-              }
-            : { kind: 'array', inPayload },
-        );
-      }
+      levels.push(
+        char === '{'
+          ? {
+              kind: 'object',
+              keys: new Set(),
+              inPayload,
+              inError,
+              pendingKey: undefined,
+            }
+          : { kind: 'array', inPayload, inError },
+      );
       index += 1;
       continue;
     }
@@ -237,6 +278,15 @@ export function scanJsonTokens(text: string): JsonTokenScan {
     }
 
     if (char === 't' || char === 'f' || char === 'n') {
+      const parent = levels.at(-1);
+      const topLevelKey =
+        levels.length === 1 && parent?.kind === 'object' ? parent.pendingKey : undefined;
+      if (
+        topLevelKey !== undefined &&
+        (text.startsWith('true', index) || text.startsWith('false', index))
+      ) {
+        topLevelBooleans.set(topLevelKey, text.startsWith('true', index));
+      }
       consumePendingKey(levels);
     }
     index += 1;
@@ -249,5 +299,14 @@ export function scanJsonTokens(text: string): JsonTokenScan {
     copied = replacement.end;
   }
   probeText += text.slice(copied);
-  return { syntaxError, failure, probeText, topLevelNumbers };
+  return {
+    syntaxError,
+    failure,
+    probeText,
+    topLevelObject: text.trimStart().startsWith('{'),
+    topLevelStrings,
+    topLevelBooleans,
+    errorCode,
+    topLevelNumbers,
+  };
 }
