@@ -55,6 +55,25 @@ encoded content can therefore reach the protocol and journal without a
 malicious adapter. Moving both free-string paths behind trusted configuration,
 finite selectors, or equivalent authority is a separate contract change.
 
+### Accepted DSH migration target
+
+[ADR-0025](../adr/0025-move-dsh-signal-values-behind-trusted-configuration.md)
+accepts a pending DSH migration that closes both ordinary model-controlled
+paths together. Its target model-visible arguments are exactly `kind` and
+optional `findingCount`; one required closed trusted-configuration bundle owns
+the bounded `artifactRef` and blocked-signal `shortErrorCode` values. A single
+adapter-internal resolver will construct the exact Protocol payload and the
+separate full-binding/full-trusted-bundle mapping key.
+
+This target is not current runtime enforcement. Until the migration lands, the
+current DSH statements above and the `Not guaranteed` threat classification
+remain authoritative. After it lands, the supported-path guarantee still does
+not cover direct Protocol clients, malicious or compromised adapters or control
+planes, existing journal records, harness-owned copies of model input, semantic
+secret scanning, or value authenticity. The mapping key is not a Protocol,
+journal, timing, model-facing, or harness-evidence field and does not replace
+Issue #79's lifecycle key or Issue #80's evidence-removal ownership.
+
 ## Capability boundary
 
 | Layer | Boundary |
