@@ -861,7 +861,7 @@ fn validate_prepared_commit_prefix(
         .map_err(|error| outcome_unknown(format!("cannot rewind PREPARED journal: {error}")))?;
     let mut bytes = Vec::with_capacity(usize::try_from(point.committed_bytes).unwrap_or(0));
     std::io::Read::by_ref(journal)
-        .take(point.committed_bytes.saturating_add(1))
+        .take(point.committed_bytes)
         .read_to_end(&mut bytes)
         .map_err(|error| outcome_unknown(format!("cannot read PREPARED journal: {error}")))?;
     if bytes.len() as u64 != point.committed_bytes {
