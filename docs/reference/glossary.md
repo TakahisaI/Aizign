@@ -21,7 +21,7 @@ source-qualified; the same spelling does not imply the same authority.
 | **Expected assignment** | coreがsignalを照合する相手。workflow、assignment、attempt、role、candidate pairの組 |
 | **Structured evidence** | closed schemaで表現された事実。自然言語ではない |
 | **Binding** | evidenceをworkflow、assignment、attempt、candidate revision + content digestのpairへ結び付けること |
-| **Digest** | 内容の固定長hash。candidate digestはcontrol planeが計算し、coreはcarry / compareする。DSHの`bindingDigest` / `payloadDigest`はadapter-localで別authority |
+| **Digest** | 内容の固定長hash。candidate digestはcontrol planeが計算し、coreはcarry / compareする。store committed-prefix digestはJSONL writerが計算し、公開済みprefixの一致を検査する。どちらも署名や真正性証明ではない |
 | **Effect intent (future/provisional)** | A possible future request for an external effect. No current consumer, owner, Protocol kind/capability, public API, or record exists. |
 | **Effect claim (future/provisional)** | The durable pre-effect principle in invariant 2. No current claim record or effect operation exists. Promotion requires the trigger in the architecture overview. |
 | **Submit server disposition** | `accepted` or `duplicate` in a successful `workflow.signal.submit` response. A Protocol error is not a disposition. |
@@ -29,7 +29,7 @@ source-qualified; the same spelling does not imply the same authority.
 | **Reconciliation disposition** | `accepted`, `conflict`, or `absent` for the exact full signal against a decoded committed snapshot. A client may instead be unable to establish a disposition and report `unknown`. |
 | **Child runtime observation** | Provisional metadata-only operational evidence emitted by the `aizign` child about its handler path. |
 | **Parent transport observation** | Provisional metadata-only operational evidence emitted by the caller about spawn, response, correlation, and the client result. |
-| **Harness-native observation** | Adapter-specific evidence classified under that adapter's documented attribution, durability, retention, and failure contract. |
+| **Harness-native observation** | A conditional adapter-specific evidence category requiring a separately accepted attribution, durability, retention, bounds, and failure contract. No current v0.1 DSH supported path exposes session cold read. |
 | **Duplicate** | 同一identity・同一内容の再提出。受理済みとして扱い、再記録しない |
 | **Conflict** | 同一identity・異内容の提出。拒否し、error codeで説明する |
 | **Unknown** | A source-qualified client/observation result stating that the relevant fact could not be established. For current signal submission, an unknown append or acknowledgement is neither success nor failure and never authorizes blind retry. |

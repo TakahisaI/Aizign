@@ -113,6 +113,8 @@ adapters/<harness>/
 
 Do not add empty `evidence/` or `lifecycle/` layers merely to match this tree.
 The DSH event shape and lifecycle are not generic interfaces.
+The current DSH adapter has no supported harness-persistence or cold-read
+surface; the optional directory is future guidance, not a current claim.
 
 Do not copy DSH's process client into the shared testkit. Each adapter owns its
 production transport; the current repository has only the DSH production

@@ -124,29 +124,6 @@ const surfaces = [
       'TimingSink',
     ],
   },
-  {
-    specifier: '@aizign/adapter-dsh/experimental/evidence',
-    manifest: 'adapters/dsh/package.json',
-    exportKey: './experimental/evidence',
-    runtime: [
-      'DEFAULT_COLD_READ_TIMEOUT_MS',
-      'DEFAULT_MAX_EVENTS',
-      'presentationMetaFor',
-      'readSignalEvidence',
-    ],
-    types: [
-      'ColdReadOptions',
-      'ColdReadTimingMeasurement',
-      'ColdReadTimingSink',
-      'ColdReadUnknownReason',
-      'EvidenceSource',
-      'SessionEventLike',
-      'SignalBinding',
-      'SignalEvidence',
-      'SignalPresentationMeta',
-      'SignalResultMeta',
-    ],
-  },
 ];
 
 const sourceDependencySurfaces = [
@@ -335,15 +312,19 @@ test('TypeScript package manifests expose only the accepted closed subpaths', ()
   const expected = new Map([
     ['packages/protocol/package.json', ['.', './package.json']],
     ['packages/adapter-testkit/package.json', ['.', './package.json']],
-    [
-      'adapters/dsh/package.json',
-      ['.', './experimental/evidence', './experimental/transport', './package.json'],
-    ],
+    ['adapters/dsh/package.json', ['.', './experimental/transport', './package.json']],
   ]);
   for (const [path, subpaths] of expected) {
     const manifest = JSON.parse(readFileSync(join(ROOT, path), 'utf8'));
     assert.deepEqual(sorted(Object.keys(manifest.exports)), sorted(subpaths), path);
   }
+});
+
+test('removed DSH evidence subpath cannot be imported at runtime', async () => {
+  await assert.rejects(
+    import('@aizign/adapter-dsh/experimental/evidence'),
+    (error) => error?.code === 'ERR_PACKAGE_PATH_NOT_EXPORTED',
+  );
 });
 
 test('workspace source imports match the exact package dependency directions', () => {
@@ -479,6 +460,11 @@ test('TypeScript consumers cannot compile removed symbols or closed package path
     {
       name: 'undeclared-experimental-subpath',
       source: "import type { SignalEvidence } from '@aizign/adapter-dsh/experimental/missing';\n",
+      code: 2307,
+    },
+    {
+      name: 'removed-evidence-subpath',
+      source: "import type { SignalEvidence } from '@aizign/adapter-dsh/experimental/evidence';\n",
       code: 2307,
     },
   ];

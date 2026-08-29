@@ -11,7 +11,6 @@ import {
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools';
 import type { SignalBinding, TrustedSignalValues } from '../../src/config.ts';
-import { canonicalJson, payloadDigest, sha256Hex } from '../../src/evidence/digest.ts';
 import {
   adapterCodes,
   createSubmitWorkflowSignalTool,
@@ -256,7 +255,7 @@ test('outcomes map to safe harness errors without forwarding protocol detail', a
   );
 });
 
-test('the tool renders and presents only identity and digests', () => {
+test('the tool renders only its closed model-visible success value', () => {
   const tool = createSubmitWorkflowSignalTool(
     stubClient({ kind: 'accepted', eventId: 'evt-fixed' }),
     binding,
@@ -266,25 +265,7 @@ test('the tool renders and presents only identity and digests', () => {
   assert.deepEqual(tool.output.render({ kind: 'review_passed' }, value), [
     { type: 'text', text: JSON.stringify(value) },
   ]);
-  const meta = tool.output.presentationMeta?.(
-    { kind: 'review_passed', findingCount: 0 },
-    value,
-  ) as Record<string, unknown>;
-  assert.deepEqual(Object.keys(meta).sort(), [
-    'bindingDigest',
-    'disposition',
-    'eventId',
-    'payloadDigest',
-    'tool',
-  ]);
-  assert.equal(meta.tool, TOOL_NAME);
-  assert.equal(meta.eventId, 'evt-fixed');
-  assert.equal(meta.disposition, 'accepted');
-  assert.match(String(meta.bindingDigest), /^[0-9a-f]{64}$/);
-  assert.match(String(meta.payloadDigest), /^[0-9a-f]{64}$/);
-  // Total even for arguments that could never have produced a result.
-  const degraded = tool.output.presentationMeta?.('garbage', value) as Record<string, unknown>;
-  assert.equal(degraded.payloadDigest, '');
+  assert.equal(tool.output.presentationMeta, undefined);
 });
 
 test('trusted-value mapping covers every signal kind and pins the provenance key', () => {
@@ -309,21 +290,6 @@ test('trusted-value mapping covers every signal kind and pins the provenance key
   const implementationReady = resolveTrustedSignalValues(implementationBinding, trusted, {
     kind: 'implementation_ready',
   });
-  const canonicalRecord = canonicalJson({
-    schemaVersion: 1,
-    eventId: implementationBinding.eventId,
-    expected: implementationBinding.expected,
-    artifactRef: trusted.artifactRef,
-    blockedShortErrorCode: trusted.blockedShortErrorCode,
-  });
-  assert.equal(
-    canonicalRecord,
-    '{"artifactRef":"artifact:golden","blockedShortErrorCode":"BLOCKED_GOLDEN","eventId":"evt-golden","expected":{"artifactRevision":"rev-golden","assignmentId":"as-golden","attemptId":"attempt-golden","candidateDigest":{"algorithm":"sha256","hex":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"role":"implementation","workflowId":"wf-golden"},"schemaVersion":1}',
-  );
-  assert.equal(
-    implementationReady.trustedValueMappingKey,
-    sha256Hex(`aizign:dsh:trusted-signal-values:v1\n${canonicalRecord}`),
-  );
   assert.equal(
     implementationReady.trustedValueMappingKey,
     '5c26aa27d3c344bb54671eac57ca71bf50349b44de322e0dc631d81793b626fc',
@@ -399,18 +365,4 @@ test('trusted-value mapping covers every signal kind and pins the provenance key
     ).payload.signal.artifactRef,
     undefined,
   );
-});
-
-test('submitted payload and presentation metadata use the same resolved signal digest', async () => {
-  const client = stubClient({ kind: 'accepted', eventId: binding.eventId });
-  const tool = createSubmitWorkflowSignalTool(client, binding, trustedSignalValues);
-  const args = { kind: 'review_findings' as const, findingCount: 4 };
-  const value = await tool.execute(args, exec);
-  const meta = tool.output.presentationMeta?.(args, value as never) as {
-    payloadDigest: string;
-  };
-  assert.equal(client.calls.length, 1);
-  const [submitted] = client.calls;
-  assert.ok(submitted);
-  assert.equal(meta.payloadDigest, payloadDigest(submitted.signal));
 });

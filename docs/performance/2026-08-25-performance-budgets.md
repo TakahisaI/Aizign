@@ -26,7 +26,6 @@ The third run demonstrates why a fine-grained hosted-runner gate would be mislea
 - `journal_entries_before_operation` includes a seeded duplicate target. Accepted submit never starts at 10,000 entries, and duplicate never starts at zero.
 - `journal_entries_before_batch` is used for concurrency because successful same-state contenders may append before later lock acquisition.
 - `new_process_new_open` and `warm_repeated` describe process/store lifecycle only. No hosted run claims a true cold OS page cache.
-- DSH `file_backed_read` includes deterministic file read and JSON decode, but it is not the native DSH session database.
 
 The runner records the active timeout settings with each artifact: 10,000 ms core watchdog, 15,000 ms DSH adapter timeout, and 60,000 ms per-operation benchmark guard. This issue does not negotiate or change runtime timeout contracts.
 
@@ -60,9 +59,8 @@ The PR smoke compares the maximum of three recorded warm samples with the follow
 | lost-ACK submit spawn-to-exit | 315.271 ms | 5,000 ms | max of 3 |
 | reconciliation lookup spawn-to-exit | 4.521 ms | 3,000 ms | max of 3 |
 | concurrency 1 / 2 batch total | 449.382 ms | 5,000 ms | max of 3 |
-| DSH 10,000-event deterministic file-backed read | 4.110 ms | 1,000 ms manual review ceiling | p95 of 20 |
 
-The DSH ceiling is recorded for full baseline review but is not in the initial PR matrix. Hello and whole-preflight remain separate observations; preflight includes exactly one hello and is the public control-plane boundary.
+Hello and whole-preflight remain separate observations; preflight includes exactly one hello and is the public control-plane boundary.
 
 The ceilings are intentionally many times the noisiest observed p95 and remain below the relevant 10-second core watchdog where applicable. Exceeding one is a prompt to inspect stage attribution and repeat the full baseline in a stable environment; it is not permission to weaken durability, lock, timeout, or unknown-outcome behavior.
 
@@ -82,7 +80,7 @@ Load/decode grew by roughly 4–5 microseconds per additional entry over the lar
 
 ## Full baseline versus PR smoke
 
-The manual/scheduled baseline retains all semantic outcomes, Rust-direct and TypeScript transports, concurrency 1 / 2 / 4 / 8, DSH 100 / 1,000 / 10,000, maximum-payload cases, cold-boundary observations, and 20-sample p50/p95/p99 aggregates.
+The manual/scheduled baseline retains all semantic outcomes, Rust-direct and TypeScript transports, concurrency 1 / 2 / 4 / 8, maximum-payload cases, cold-boundary observations, and 20-sample p50/p95/p99 aggregates.
 
 The Linux-only PR smoke is intentionally smaller:
 

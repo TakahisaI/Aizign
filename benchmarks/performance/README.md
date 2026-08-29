@@ -2,13 +2,13 @@
 
 The performance runner uses the release-profile `aizign` binary and TypeScript clients. Baseline mode produces full manual/scheduled observations. PR-smoke mode uses a smaller matrix and generous absolute ceilings for gross-regression detection.
 
-Current runner version 7 labels the TypeScript transport
+Current runner version 8 labels the TypeScript transport
 `typescript_dsh` and exercises the production DSH `OneShotCoreClient` through
 declared package subpaths. Release verification and DSH preflight use a framed,
 correlated hello through exact canonical `handle --state stateDir`; the
 lost-ACK proxy is a benchmark-private executable wrapper that receives the
-same argv. Historical v2/v3/v5/v6 artifacts and their labels are retained
-unchanged; they are not comparable evidence for a new v7 baseline.
+same argv. Historical pre-v8 artifacts and their labels are retained
+unchanged; they are not comparable evidence for a new v8 baseline.
 
 ## 実行環境
 
@@ -57,11 +57,11 @@ schema. The child record's current `schema_version: 1` is only an internal
 producer/consumer guard. It provides no external stability or migration
 promise.
 
-The existing child and DSH-owned parent/evidence timing semantics remain
+The existing child and DSH-owned parent timing semantics remain
 unchanged by the transport-owner migration. Their observations are
 source-qualified: child
-runtime observation, returned client outcome, parent transport observation,
-and DSH evidence observation are not one universal semantic outcome. The
+runtime observation, returned client outcome, and parent transport observation
+are not one universal semantic outcome. The
 [classification corpus](../../spec/classification/README.md) is the sole
 cross-language row authority. Benchmark normalization tests apply all 78 rows
 without turning the corpus into a runtime service or timing into a
@@ -121,8 +121,7 @@ writes one response frame at once, the first byte approximates response-ready
 time rather than streaming progress. The parent `outcome` field is a
 source-qualified parent transport observation; it must not be substituted for
 the returned client outcome or the child's runtime observation. DSH preflight
-reports `preflight_ms`, while evidence cold read reports
-`harness_cold_read_ms` and `events_returned` to a separate sink.
+reports `preflight_ms`.
 
 No sink receives a request ID, event ID, path, content, or credential. Sink
 failure, including synchronous throws and asynchronous Promise rejections, and
@@ -141,7 +140,6 @@ runnerは一つの大きな直積を作らず、問いごとにfixtureを限定�
 | `transport` | 同じfixtureでbenchmark-only direct Node runnerとproduction DSH `OneShotCoreClient`のparent観測がどう違うか |
 | `max-payload` | 128-byte識別子と256-byte `artifactRef`を使う1,000 / 10,000-entryのsubmitとreconcile |
 | `concurrency` | 同じstate directoryと独立state directoryで、同時実行数1、2、4、8がどう振る舞うか |
-| `dsh` | 100、1,000、10,000 eventのin-memory evidence scanとdeterministic file-backed read |
 | `scenarios` | production DSH clientによるassignment submitと、実際のlost acknowledgement後の明示的なreconcile |
 
 accepted fixtureはjournal上限10,000の一つ手前まで、duplicate fixtureは照合対象を含む1 entry以上だけを生成します。
@@ -166,10 +164,6 @@ preflightとreconcileは実binaryへ直接接続し、submitだけをbenchmark�
 proxyは実binaryによるdurable appendとresponse生成を完了させてからsubmitのstdout frameだけを破棄します。
 runnerはclientが`unknown/no_response`を返したこと、proxy経由のsubmitが一回だけであること、direct clientから一度だけreconcileして`accepted`になることをassertします。
 scenario全体のtimerはreconcile完了時に閉じ、その後でproxy invocation counterを検証します。
-
-DSH sweepの`in_memory_scan`はsource I/Oを含まず、evidence classificationだけを測ります。
-`file_backed_read`は各sampleの計測前に生成したJSON fileを`readFrom()`内で読み取り、file readとJSON decodeを含めます。
-後者もDSH session databaseそのものではないため、実harness storageのlatencyとは区別します。
 
 `rust_direct` transportもbuilt `@aizign/protocol`のone-frame抽出、response decode、request ID、operation kind、event IDの相関検査を通します。
 responseなし、malformed response、timeout、相関不一致はtransport unknownとして扱います。
@@ -197,9 +191,9 @@ summaryとmachine-readable resultは、全warm aggregateで最も遅い`handler_
 
 `result.json`はmachine-readableなenvironment、GitHub runner image version、timeout設定、aggregate、生sampleを持ちます。PR smokeの予算根拠は[versioned native baseline manifest](native-baseline-v3.json)から読み、run ID、runner/image version、CPU、result/summary SHA-256、各budgetの最大native p95を固定します。
 `summary.md`は同じaggregateをレビュー用tableへ変換します。
-runnerはchild、parent、DSH timingごとにexact-key allowlistを検査し、未登録fieldが一つでもあればartifactを保存しません。
+runnerはchildとparent timingごとにexact-key allowlistを検査し、未登録fieldが一つでもあればartifactを保存しません。
 The runner validates the internal timing `schema_version` producer/consumer
-guard, duration values, byte counts, entry counts, and event counts by type and
+guard, duration values, byte counts, and entry counts by type and
 range. This validation does not establish a public timing-schema lifecycle.
 時間値は有限の非負数、countは非負のsafe integerだけを許可します。
 direct transportの`transport_kind`も`correlated_response`または`unknown`だけを許可します。

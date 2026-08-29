@@ -125,12 +125,7 @@ fn check_workspace_package(rendered: &str, manifest: &serde_json::Value, finding
 fn expected_subpaths(name: &str) -> Option<&'static [&'static str]> {
     match name {
         "@aizign/protocol" | "@aizign/adapter-testkit" => Some(&[".", "./package.json"]),
-        "@aizign/adapter-dsh" => Some(&[
-            ".",
-            "./experimental/evidence",
-            "./experimental/transport",
-            "./package.json",
-        ]),
+        "@aizign/adapter-dsh" => Some(&[".", "./experimental/transport", "./package.json"]),
         _ => None,
     }
 }

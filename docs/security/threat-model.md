@@ -84,13 +84,12 @@ provenance is a trusted adapter/control-plane assumption.
 
 ### Digests
 
-The three current digest roles are independent:
+The two current digest roles are independent:
 
 | Digest | Producer / authority | What comparison establishes | What it does not establish |
 |---|---|---|---|
 | Protocol `candidateDigest` | Control plane or artifact authority that can read candidate bytes | Expected, submitted, and accepted event content carry the same typed digest | Candidate authenticity when the producer or configured value is untrusted |
 | Store committed-prefix SHA-256 | JSONL writer | Commit metadata matches the exact prefix read by the store | Authentication against a same-user attacker that rewrites journal and metadata together |
-| DSH `bindingDigest` / `payloadDigest` | DSH adapter | Adapter-specific correlation or recorded payload observation as documented by that adapter | Protocol candidate identity, remote attestation, or generic harness evidence |
 
 No current digest is a MAC or signature. There is no algorithm negotiation in
 store metadata v1.
@@ -202,7 +201,6 @@ threat crosses layers, the row uses the weakest end-to-end level.
 | Symlink, special file, hard link, wrong owner or mode | Detected and fail closed | JSONL store | Reject the unsafe artifact/path before use | Store path, permission, symlink, special-file, and hard-link tests | State-path choice and the same OS account remain trusted |
 | Wrong but valid state directory | Trusted assumption | Operator/control plane | Use the configured initialized store | No runtime proof in v0.1 | No state-instance manifest exists |
 | Same-user state modification | Not guaranteed | No separate same-user security boundary | Detect only incomplete/inconsistent rewrites | Corruption and mismatch tests cover accidental/incomplete changes | No MAC, signature, privilege separation, or attestation |
-| Missing, reordered, forged, or expired harness persistence | Not guaranteed | Adapter-specific evidence reader | DSH returns unknown/throws for detected missing or unverified observations | DSH cold-read tests | Matching forged metadata, real persistence durability/retention, and source-side bounds are not established |
 | Submit timeout, abort, response loss, or uncertain append reported as `JOURNAL_OUTCOME_UNKNOWN` | Detected and fail closed | Engine and core clients | Preserve the submit/append result as `unknown` and do not retry the submission blindly | Engine lost-ack tests and core-client fault scenarios | Read-only reconciliation cannot resolve missing/corrupt/unpublished state |
 | Reconciliation returns `absent` | Runtime enforced | Core-client orchestration | Return the observation without implicit submit | Core-client absent/no-submit and store read-only tests | A later writer can make the observation stale after lock release |
 | Protocol or local-validation diagnostic detail reaches the model-facing DSH tool error | Runtime enforced | DSH input/outcome mapping | Preserve the stable code but replace local-validation, rejected, and unknown diagnostic text with fixed safe messages; do not retain the local Protocol error as a cause | DSH tool mapping tests cover synthetic private-path peer detail and invalid local input without cause-chain recovery | Direct trusted `CoreClient` consumers still receive operational Protocol messages and must apply their own presentation policy |
@@ -229,7 +227,7 @@ mechanism. Their repository locations are:
 | CLI framing, timeout, stderr, capability, and unsupported-target behavior | `crates/aizign-cli/tests/handle.rs` |
 | Provisional metadata-only timing shape, owner separation, and observer/sink-failure isolation | `crates/aizign-engine/tests/observation.rs`, JSONL store observation tests, CLI/TypeScript/DSH timing tests, and `benchmarks/performance/run.test.mjs` |
 | TypeScript one-shot faults, correlation, no-retry, no-submit-after-absent, and no-spawn-on-oversize | `packages/adapter-testkit/src/conformance.ts` applied directly by `adapters/dsh/test/conformance/core-client.test.ts` to production `OneShotCoreClient` |
-| DSH config/tool schema, native identity exclusion, environment isolation, diagnostic normalization, preflight, round trip, and cold read | `adapters/dsh/test/unit/` and `adapters/dsh/test/conformance/` |
+| DSH config/tool schema, native identity exclusion, environment isolation, diagnostic normalization, preflight, and round trip | `adapters/dsh/test/unit/` and `adapters/dsh/test/conformance/` |
 | Tracked-path policy and eligible UTF-8-text fixed-pattern scan | `xtask/src/audit/secrets.rs` through `cargo xtask public-audit` |
 | Package dependency/subpath/bypass policy, exact runtime/declaration exports, and packable-file-set enumeration | `xtask/src/audit/packages.rs`, `spec/test/package-exports.test.mjs`, `cargo package --list`, and `npm pack --dry-run` |
 

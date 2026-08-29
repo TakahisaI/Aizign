@@ -1,26 +1,17 @@
-/**
- * A minimal stand-in for the DSH tool runtime: registers tools, dispatches
- * calls the way DSH does (tool/call, execute, tool/result with presentation
- * metadata or an error), and keeps the resulting session log in memory so
- * the cold read can be exercised without a harness.
- */
+/** A minimal stand-in for DSH tool registration and dispatch. */
 
 import { fakeCoreExecutable } from '@aizign/adapter-testkit';
 import type { Context } from '@deepseek-ai/cordis';
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools';
-import type { EvidenceSource, SessionEventLike } from '../../src/evidence/cold-read.ts';
 
 export interface DispatchResult {
   readonly value?: unknown;
   readonly error?: { readonly name: string; readonly code: string };
 }
 
-export class FakeDsh implements EvidenceSource {
-  readonly sessionId = 'dsh-session-0001';
+export class FakeDsh {
   readonly registered: ToolDefinition[] = [];
-  readonly events: SessionEventLike[] = [];
   readonly context: Context;
-  #seq = 0;
   #calls = 0;
 
   constructor() {
@@ -40,56 +31,18 @@ export class FakeDsh implements EvidenceSource {
     return tool;
   }
 
-  /** Dispatches like DSH while recording an in-memory call/result pair. */
+  /** Dispatches a registered tool with a harness-owned call id. */
   async dispatch(name: string, args: unknown): Promise<DispatchResult> {
     const tool = this.tool(name);
     const callId = `call_${String(++this.#calls).padStart(4, '0')}`;
-    this.events.push({
-      type: 'tool/call',
-      seq: ++this.#seq,
-      data: { turn: 1, step: this.#calls, callId, name, arguments: JSON.stringify(args) },
-    });
     const exec = { callId, signal: new AbortController().signal } as unknown as ToolRunContext;
-    let outcome: DispatchResult;
-    let meta: unknown;
     try {
       const value = await tool.execute(args, exec);
-      meta = tool.output.presentationMeta?.(args, value as never);
-      outcome = { value };
+      return { value };
     } catch (error) {
       const named = error as { name?: string; code?: string };
-      outcome = { error: { name: named.name ?? 'Error', code: named.code ?? 'UNKNOWN_ERROR' } };
+      return { error: { name: named.name ?? 'Error', code: named.code ?? 'UNKNOWN_ERROR' } };
     }
-    this.events.push({
-      type: 'tool/result',
-      seq: ++this.#seq,
-      data: {
-        turn: 1,
-        step: this.#calls,
-        message: {
-          role: 'user',
-          content: [
-            {
-              type: 'tool-result',
-              toolCallId: callId,
-              content: [],
-              isError: outcome.error !== undefined,
-            },
-          ],
-          source: { kind: 'tool', callId },
-        },
-        ...(outcome.error ? { error: outcome.error } : {}),
-        ...(meta !== undefined ? { meta } : {}),
-      },
-    });
-    return outcome;
-  }
-
-  async readFrom(
-    _sessionId: string,
-    fromSeq: number,
-  ): Promise<{ events: readonly SessionEventLike[] }> {
-    return { events: this.events.filter((event) => event.seq >= fromSeq) };
   }
 }
 

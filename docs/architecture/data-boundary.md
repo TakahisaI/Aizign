@@ -121,6 +121,10 @@ does not reserve a field or design the store work in #81.
 | Parent transport observation | A caller may emit metadata-only timing about spawn, response, correlation, and the client outcome. It does not replace the child observation or harness evidence. |
 | Harness-native observation | Adapter-specific evidence is classified only under that adapter's documented source, attribution, durability, and retention contract. It cannot override the journal. |
 
+The harness-persistence rows above are conditional guidance for an adapter
+with a separately accepted native-evidence contract. No current v0.1 DSH
+supported path exposes session cold read or depends on harness persistence.
+
 The [classification corpus](../../spec/classification/README.md) owns the
 cross-language classification and disclosure rows. Production owners retain
 only minimal runtime projections checked exhaustively from it. These terms do not form a universal

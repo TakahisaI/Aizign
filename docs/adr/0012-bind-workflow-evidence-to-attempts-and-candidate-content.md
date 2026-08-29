@@ -4,6 +4,13 @@
 - Date: 2026-08-24
 - Related: ADR-0003, ADR-0004, ADR-0007, Issue #47, PR #50
 
+> **Partial supersession:** [ADR-0027](0027-remove-the-dsh-harness-evidence-read-surface.md)
+> supersedes only this ADR's two list items describing current DSH
+> `bindingDigest` and `payloadDigest` as harness-session-evidence digests.
+> Candidate binding, `attemptId`, `candidateDigest`, candidate content
+> authority, comparison order, duplicate/conflict behavior, and deferred
+> external artifact evidence remain Accepted.
+
 ## Context
 
 Hard invariant 5 requires workflow evidence to identify the workflow, assignment, execution attempt, and candidate revision it describes. The first `workflow.signal.submit` slice carried workflow, assignment, role, and a human/provider-facing revision identifier, but omitted `AttemptId` and candidate content identity.

@@ -60,7 +60,6 @@ import {
   createLostAckExecutable,
   createTimingExecutable,
   decodeCorrelatedResponse,
-  dshEvents,
   executeConcurrencyBatch,
   executeScenario,
   MAX_BENCHMARK_STDERR_BYTES,
@@ -95,34 +94,9 @@ const CLASSIFICATION_ROWS = JSON.parse(
   ),
 ).rows;
 
-test('runner v7 names the production TypeScript transport explicitly', () => {
-  assert.equal(RUNNER_VERSION, 7);
+test('runner v8 names the production TypeScript transport explicitly', () => {
+  assert.equal(RUNNER_VERSION, 8);
   assert.equal(TYPESCRIPT_TRANSPORT, 'typescript_dsh');
-});
-
-test('DSH evidence fixtures pass one fixed trusted-value bundle without changing event shape', () => {
-  let received;
-  const { events } = dshEvents(2, {
-    presentationMetaFor(binding, trustedSignalValues, args, value) {
-      received = { binding, trustedSignalValues, args, value };
-      return {
-        tool: 'submit_workflow_signal',
-        eventId: binding.eventId,
-        disposition: 'accepted',
-        bindingDigest: 'binding-digest',
-        payloadDigest: 'payload-digest',
-      };
-    },
-  });
-  assert.deepEqual(received.trustedSignalValues, {
-    artifactRef: 'artifact:benchmark',
-    blockedShortErrorCode: 'BLOCKED_BY_BENCHMARK',
-  });
-  assert.deepEqual(received.args, { kind: 'implementation_ready' });
-  assert.equal(events.length, 2);
-  assert.deepEqual(JSON.parse(events[0].data.arguments), { kind: 'implementation_ready' });
-  assert.equal(JSON.stringify(events).includes('artifact:benchmark'), false);
-  assert.equal(JSON.stringify(events).includes('BLOCKED_BY_BENCHMARK'), false);
 });
 
 function renderAggregates(aggregates, samples = 2) {
@@ -1112,12 +1086,12 @@ test('runner arguments keep sweeps independent', () => {
     '--samples',
     '2',
     '--sweeps',
-    'outcomes,max-payload,dsh',
+    'outcomes,max-payload,scenarios',
   ]);
   assert.equal(parsed.warmup, 0);
   assert.equal(parsed.samples, 2);
   assert.equal(parsed.profile, 'pr-smoke');
-  assert.deepEqual(parsed.sweeps, ['outcomes', 'max-payload', 'dsh']);
+  assert.deepEqual(parsed.sweeps, ['outcomes', 'max-payload', 'scenarios']);
 });
 
 test('PR smoke budgets require the exact config, matrix, IDs, and three raw metrics', () => {
@@ -1538,22 +1512,6 @@ test('artifact privacy validates timing with an exact key allowlist', () => {
         ],
       }),
     /schema_version must be integer 1/,
-  );
-  assert.throws(
-    () =>
-      assertArtifactPrivacy({
-        samples: [
-          {
-            timing: {
-              operation_kind: 'dsh.evidence.cold_read',
-              harness_cold_read_ms: 1,
-              events_returned: 1.5,
-              outcome: 'accepted',
-            },
-          },
-        ],
-      }),
-    /non-negative safe integer/,
   );
   for (const artifact of [
     { samples: [{ sessionId: 'session-sensitive' }] },

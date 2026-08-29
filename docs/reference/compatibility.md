@@ -81,12 +81,12 @@ schema. In particular, the child timing record's current `schema_version: 1`
 is only an internal producer/consumer guard. It carries no external stability
 or migration promise.
 
-The existing child timing source and DSH-owned provisional parent/evidence
+The existing child timing source and DSH-owned provisional parent transport
 timing APIs remain available, but their observations are source-qualified. A
 child runtime observation and a parent transport observation must not be
 interpreted as one universal semantic outcome. Process, preflight, and parent
 timing are not Protocol package compatibility; repository consumers reach them
-only through the closed DSH experimental subpaths. The
+only through the closed DSH `./experimental/transport` subpath. The
 [classification corpus](../../spec/classification/README.md) is the sole
 cross-language row authority. Child, parent, and benchmark projections are
 exhaustively checked against all rows without loading a shared runtime service.
@@ -159,4 +159,4 @@ artifact/bundling and a registry-free clean install.
 
 | Harness | Adapter | Supported version | Status |
 |---|---|---|---|
-| DSH | `@aizign/adapter-dsh` | `0.1.1-rc.2`（`@deepseek-ai/cordis` 4.0.1、`schemastery` 3.18.1） | stable rootはplugin entryのみ。preflight + scope-bound tool +唯一のproduction TypeScript one-shot clientを持ち、repository control-plane用transport/evidenceはclosed experimental subpath。fake harnessに加え、第三者（別harness・別model）によるDSH × Firefoxのlive smokeがpass（2026-08-23、commit `fd0e208`、[Issue #11](https://github.com/TakahisaI/Aizign/issues/11)） |
+| DSH | `@aizign/adapter-dsh` | `0.1.1-rc.2`（`@deepseek-ai/cordis` 4.0.1、`schemastery` 3.18.1） | stable rootはplugin entryのみ。preflight + scope-bound tool +唯一のproduction TypeScript one-shot clientを持ち、repository control-plane用transportはclosed `./experimental/transport` subpath。current v0.1 supportにharness persistence/cold readは含まない。fake harnessに加え、第三者（別harness・別model）によるDSH × Firefoxのlive smokeがpass（2026-08-23、commit `fd0e208`、[Issue #11](https://github.com/TakahisaI/Aizign/issues/11)） |

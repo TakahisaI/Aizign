@@ -81,3 +81,6 @@ See [Adding a harness adapter](../development/adding-adapter.md) for the
 implementation steps and TypeScript convenience layout. DSH owns the only
 current production TypeScript process transport; the shared testkit supplies
 fixtures and runners but no client implementation.
+
+No current v0.1 DSH supported path claims the optional harness-persistence or
+native-evidence boundary. Adding one requires a separately accepted contract.

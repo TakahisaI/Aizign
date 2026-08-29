@@ -262,10 +262,10 @@ the requested binding was rejected. Conversely, binding verification does not
 prove crash durability or retention. The adapter owns its native evidence
 interpretation and must document its limits.
 
-The DSH adapter is a non-normative example of optional harness integrations.
-Its current integrations, event shapes, persistence limitations, and Cordis
-lifecycle boundary are owned by the
-[DSH adapter README](../../adapters/dsh/README.md), not this contract.
+No current v0.1 DSH supported path claims harness persistence or cold read.
+The conditional rules above remain a guard for a future adapter that obtains a
+separately accepted native-evidence contract; they do not reserve an API or
+require an empty evidence layer.
 
 ## Data boundary
 

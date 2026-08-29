@@ -11,7 +11,6 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { readFile } from 'node:fs/promises';
 import { cpus, platform, release, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -23,7 +22,6 @@ import {
   CONCURRENCY_LEVELS,
   CONCURRENCY_MODES,
   CONCURRENCY_OPERATIONS,
-  DSH_EVENT_COUNTS,
   JOURNAL_SCALE_CASES,
   MAX_PAYLOAD_CASES,
   OUTCOME_CASES,
@@ -35,7 +33,7 @@ import {
   TRANSPORT_CASES,
 } from './matrix.mjs';
 
-export const RUNNER_VERSION = 7;
+export const RUNNER_VERSION = 8;
 export const TYPESCRIPT_TRANSPORT = 'typescript_dsh';
 export const CORE_WATCHDOG_MS = 10_000;
 export const DSH_ADAPTER_TIMEOUT_MS = 15_000;
@@ -76,7 +74,6 @@ const SWEEPS = [
   'transport',
   'max-payload',
   'concurrency',
-  'dsh',
   'scenarios',
 ];
 
@@ -155,7 +152,7 @@ options:
   --output-dir <dir>  write result.json and summary.md (default target/performance-baseline)
   --warmup <n>        unrecorded repetitions before warm samples (default 3)
   --samples <n>       warm samples used for p50/p95/p99 (default 20)
-  --sweeps <list>     comma-separated journal-scale,outcomes,transport,max-payload,concurrency,dsh,scenarios
+  --sweeps <list>     comma-separated journal-scale,outcomes,transport,max-payload,concurrency,scenarios
 `;
 }
 
@@ -899,114 +896,6 @@ async function runConcurrencySweep(
   }
 }
 
-export function dshEvents(count, dependencies) {
-  const args = { kind: 'implementation_ready' };
-  const binding = { eventId: TARGET_EVENT_ID, expected: FIXED_EXPECTED };
-  const trustedSignalValues = {
-    artifactRef: 'artifact:benchmark',
-    blockedShortErrorCode: 'BLOCKED_BY_BENCHMARK',
-  };
-  const meta = dependencies.presentationMetaFor(binding, trustedSignalValues, args, {
-    disposition: 'accepted',
-    eventId: TARGET_EVENT_ID,
-  });
-  const events = [];
-  for (let seq = 1; seq <= count - 2; seq += 1) {
-    events.push({ type: 'assistant/message', seq, data: {} });
-  }
-  const callSeq = count - 1;
-  events.push({
-    type: 'tool/call',
-    seq: callSeq,
-    data: {
-      turn: 1,
-      step: 1,
-      callId: 'call-benchmark',
-      name: 'submit_workflow_signal',
-      arguments: JSON.stringify(args),
-    },
-  });
-  events.push({
-    type: 'tool/result',
-    seq: count,
-    data: {
-      message: {
-        source: { kind: 'tool', callId: 'call-benchmark' },
-        content: [],
-      },
-      meta,
-    },
-  });
-  return { events, binding };
-}
-
-async function executeDshEvidenceRead(context, eventCount, sourceKind, phase, index) {
-  context.current = {
-    phase: 'dsh',
-    case_name: `dsh_evidence_${sourceKind}_${eventCount}`,
-    sample_phase: phase,
-    sample_index: index,
-  };
-  const { events, binding } = dshEvents(eventCount, context.dependencies);
-  let source;
-  if (sourceKind === 'in_memory_scan') {
-    source = { readFrom: async () => ({ events }) };
-  } else {
-    const eventsPath = context.nextState(`dsh-events-${eventCount}-${phase}-${index}.json`);
-    writeFileSync(eventsPath, JSON.stringify(events), { mode: 0o600 });
-    source = {
-      readFrom: async () => ({ events: JSON.parse(await readFile(eventsPath, 'utf8')) }),
-    };
-  }
-  const timings = [];
-  const evidence = await context.dependencies.readSignalEvidence(
-    source,
-    'session-benchmark',
-    binding,
-    {
-      maxEvents: eventCount,
-      timeoutMs: DSH_ADAPTER_TIMEOUT_MS,
-      timingSink: (measurement) => {
-        timings.push(measurement);
-      },
-    },
-  );
-  if (evidence.kind !== 'accepted') {
-    throw new Error(`dsh_${sourceKind}_${eventCount}: expected accepted, got ${evidence.kind}`);
-  }
-  const timing = timings.at(-1);
-  if (timing === undefined) throw new Error(`dsh_${sourceKind}_${eventCount}: timing missing`);
-  return {
-    sweep: 'dsh',
-    case_name: `dsh_evidence_${sourceKind}_${eventCount}`,
-    sample_phase: phase,
-    sample_index: index,
-    event_count: eventCount,
-    process_model: sourceKind,
-    outcome: evidence.kind,
-    timing,
-  };
-}
-
-async function runDshSweep(context, samples) {
-  for (const count of DSH_EVENT_COUNTS) {
-    for (const sourceKind of ['in_memory_scan', 'file_backed_read']) {
-      process.stdout.write(`  dsh: ${sourceKind} ${count} events\n`);
-      samples.push(
-        await executeDshEvidenceRead(context, count, sourceKind, 'new_process_new_open', 0),
-      );
-      for (let index = 0; index < context.config.warmup; index += 1) {
-        await executeDshEvidenceRead(context, count, sourceKind, 'warmup', index);
-      }
-      for (let index = 0; index < context.config.samples; index += 1) {
-        samples.push(
-          await executeDshEvidenceRead(context, count, sourceKind, 'warm_repeated', index),
-        );
-      }
-    }
-  }
-}
-
 export function assertLostAckInvocationCounts(counterPath) {
   const invocations = readFileSync(counterPath, 'utf8').trim().split('\n').filter(Boolean);
   if (invocations.length !== 1 || invocations[0] !== 'workflow.signal.submit') {
@@ -1215,14 +1104,12 @@ const AGGREGATE_METRICS = [
   'spawn_to_exit_ms',
   'response_first_byte_ms',
   'preflight_ms',
-  'harness_cold_read_ms',
   'aizign_end_to_end_ms',
   'batch_total_ms',
   'throughput_success_ops_per_s',
 ];
 
 function metricSource(sample, name) {
-  if (name === 'harness_cold_read_ms') return sample.timing?.harness_cold_read_ms;
   if (name === 'aizign_end_to_end_ms') return sample.aizign_end_to_end_ms;
   if (name === 'batch_total_ms') return sample.batch_total_ms;
   if (name === 'throughput_success_ops_per_s') return sample.throughput_success_ops_per_s;
@@ -1420,7 +1307,7 @@ export function renderSummary(result) {
   }
   lines.push(
     '',
-    `| Sweep | Case | Operation | Transport | Entries / events | handler ${statisticLabel} ms (n) | spawn ${statisticLabel} ms (n) | load ${statisticLabel} ms (n) | append ${statisticLabel} ms (n) | e2e / DSH / batch ${statisticLabel} ms (n) | Outcomes | Error codes |`,
+    `| Sweep | Case | Operation | Transport | Entries | handler ${statisticLabel} ms (n) | spawn ${statisticLabel} ms (n) | load ${statisticLabel} ms (n) | append ${statisticLabel} ms (n) | e2e / batch ${statisticLabel} ms (n) | Outcomes | Error codes |`,
     '|---|---|---|---|---:|---:|---:|---:|---:|---:|---|---|',
   );
   for (const aggregate of result.aggregates.filter(
@@ -1429,15 +1316,12 @@ export function renderSummary(result) {
     const size =
       aggregate.journal_entries_before_operation ??
       aggregate.journal_entries_before_batch ??
-      aggregate.event_count ??
       aggregate.concurrency ??
       '-';
     const finalMetric =
       aggregate.metrics.aizign_end_to_end_ms !== undefined
         ? 'aizign_end_to_end_ms'
-        : aggregate.metrics.harness_cold_read_ms !== undefined
-          ? 'harness_cold_read_ms'
-          : 'batch_total_ms';
+        : 'batch_total_ms';
     lines.push(
       `| ${aggregate.sweep} | ${aggregate.case_name} | ${aggregate.operation_kind ?? '-'} | ${aggregate.transport ?? '-'} | ${size} | ${metric(aggregate, 'handler_total_ms')} | ${metric(aggregate, 'spawn_to_exit_ms')} | ${metric(aggregate, 'journal_load_decode_ms')} | ${metric(aggregate, 'append_sync_ms')} | ${metric(aggregate, finalMetric)} | ${countSummary(aggregate.outcomes)} | ${countSummary(aggregate.error_codes)} |`,
     );
@@ -1496,7 +1380,6 @@ export function renderSummary(result) {
     '- `journal_entries_before_operation` includes a seeded duplicate/conflict target. Invalid zero-entry duplicate and 10,000-entry accepted fixtures are never generated.',
     '- Concurrency uses `journal_entries_before_batch` because same-state submissions can change the journal before later contenders acquire the lock.',
     '- Same-state submit allows only `accepted` or `JOURNAL_LOCKED` and requires at least one acceptance. Different-state submit requires all accepted; reconciliation requires all absent. Any other semantic result aborts the run.',
-    '- DSH in-memory scan and deterministic file-backed read are separate auxiliary series and are not mixed with journal reconciliation authority.',
     '- `assignment_unknown_reconcile` uses the production DSH client directly for preflight and reconciliation, and a second DSH client instance through the lost-ACK proxy for submit only. Counter verification runs after the scenario timer closes.',
     '- Scenario-wide `aizign_end_to_end_ms`, whole-preflight `preflight_ms`, submit transport, and reconciliation transport are separate aggregate rows.',
     '- `max-payload` uses 128-byte identifiers and a 256-byte `artifactRef`; its first observation is the requested release-binary `new_process_new_open` boundary point.',
@@ -1643,7 +1526,6 @@ async function loadDependencies() {
   try {
     const protocol = await import('@aizign/protocol');
     const transport = await import('@aizign/adapter-dsh/experimental/transport');
-    const evidence = await import('@aizign/adapter-dsh/experimental/evidence');
     return {
       protocol: {
         MAX_FRAME_BYTES: protocol.MAX_FRAME_BYTES,
@@ -1656,8 +1538,6 @@ async function loadDependencies() {
       },
       OneShotCoreClient: transport.OneShotCoreClient,
       preflight: transport.preflight,
-      readSignalEvidence: evidence.readSignalEvidence,
-      presentationMetaFor: evidence.presentationMetaFor,
     };
   } catch (error) {
     throw new Error(`TypeScript packages are not built; run npm ci and npm run build (${error})`);
@@ -1695,19 +1575,11 @@ const PARENT_TIMING_KEYS = new Set([
   'error_code',
   'unknown_reason',
 ]);
-const DSH_TIMING_KEYS = new Set([
-  'operation_kind',
-  'harness_cold_read_ms',
-  'events_returned',
-  'outcome',
-  'unknown_reason',
-]);
 const OPERATION_KINDS = new Set([
   'hello',
   'workflow.signal.submit',
   'workflow.signal.reconcile',
   'preflight',
-  'dsh.evidence.cold_read',
   'unknown',
 ]);
 const TIMING_OUTCOMES = new Set([
@@ -1775,13 +1647,8 @@ const NON_NEGATIVE_TIMING_FIELDS = new Set([
   'spawn_to_exit_ms',
   'response_first_byte_ms',
   'preflight_ms',
-  'harness_cold_read_ms',
 ]);
-const NON_NEGATIVE_INTEGER_FIELDS = new Set([
-  'journal_physical_bytes',
-  'journal_entries',
-  'events_returned',
-]);
+const NON_NEGATIVE_INTEGER_FIELDS = new Set(['journal_physical_bytes', 'journal_entries']);
 
 function assertTimingShape(measurement, allowedKeys, label) {
   if (typeof measurement !== 'object' || measurement === null || Array.isArray(measurement)) {
@@ -1866,9 +1733,6 @@ export function assertArtifactPrivacy(result, forbiddenPaths = []) {
     }
     if (sample.parent !== undefined) {
       assertTimingShape(sample.parent, PARENT_TIMING_KEYS, `samples[${sampleIndex}].parent`);
-    }
-    if (sample.timing !== undefined) {
-      assertTimingShape(sample.timing, DSH_TIMING_KEYS, `samples[${sampleIndex}].timing`);
     }
     for (const [timingIndex, timing] of (sample.parent_timings ?? []).entries()) {
       assertTimingShape(
@@ -2036,7 +1900,6 @@ export async function main(
           : undefined,
       );
     }
-    if (config.sweeps.includes('dsh')) await runDshSweep(context, samples);
     if (config.sweeps.includes('scenarios')) await runScenarioSweep(context, samples);
 
     const aggregates = aggregateSamples(samples);

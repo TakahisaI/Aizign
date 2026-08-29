@@ -234,7 +234,6 @@ try {
   for (const specifier of [
     "@aizign/adapter-dsh",
     "@aizign/adapter-dsh/experimental/transport",
-    "@aizign/adapter-dsh/experimental/evidence",
   ]) {
     profileRequire.resolve(specifier);
     profileRequire(specifier);
