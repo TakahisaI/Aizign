@@ -427,6 +427,7 @@ fn clean_generation(case: &Case) {
     assert_eq!(read_fake(&state).unwrap().len(), 1);
 }
 
+#[derive(Clone, Copy)]
 enum Tail {
     None,
     Partial,
@@ -679,6 +680,7 @@ fn profile_observation_failure(case: &Case) {
     );
 }
 
+#[derive(Clone, Copy)]
 enum Artifact {
     Journal,
     Commit,

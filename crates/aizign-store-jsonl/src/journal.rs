@@ -703,6 +703,11 @@ fn read_snapshot_observed(
     require_same_profile(&publish, state_profile, profile)?;
     let witness = read_publish_witness(&mut publish)?;
     if witness.is_initializing() {
+        if point != CommitPoint::empty() || file_len(&journal)? != 0 {
+            return Err(corrupt(
+                "initialization PREPARED requires an exact empty commit and journal",
+            ));
+        }
         return Err(unavailable("store initialization is PREPARED"));
     }
     if witness.is_prepared_successor() {

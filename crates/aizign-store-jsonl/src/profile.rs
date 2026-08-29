@@ -192,7 +192,7 @@ impl ProfileOps for ProductionProfile {
             device_major: stat.stx_dev_major,
             device_minor: stat.stx_dev_minor,
             filesystem_type: mount.filesystem_type,
-            filesystem_magic: filesystem.f_type as u64,
+            filesystem_magic: filesystem.f_type.cast_unsigned(),
             mount_read_only: mount.mount_read_only,
             superblock_read_only: mount.superblock_read_only,
         })
