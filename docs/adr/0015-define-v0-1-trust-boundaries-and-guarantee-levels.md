@@ -2,7 +2,16 @@
 
 - Status: Accepted
 - Date: 2026-08-25
-- Related: ADR-0003, ADR-0004, ADR-0007, ADR-0012, ADR-0013, ADR-0014, Issue #52, Issue #72, PR #70
+- Related: ADR-0003, ADR-0004, ADR-0007, ADR-0012, ADR-0013, ADR-0014, ADR-0028, Issue #52, Issue #72, PR #70
+
+> **Partial supersession:** [ADR-0028](0028-define-crash-monotonic-jsonl-publication.md)
+> supersedes this ADR's target-triple-only JSONL support statement and its
+> statement that complete current-layout state has no technical downgrade
+> fence. The accepted target is store metadata v2 under
+> `linux-x86_64-gnu-ext4-local-v1`; only complete v2 state is fenced, while
+> pre-marker partial initialization remains unfenced and operator-discard-only.
+> The guarantee levels, trust domains, operator assumptions, and all other
+> decisions in this ADR remain Accepted.
 
 > **Partial supersession:** [ADR-0027](0027-remove-the-dsh-harness-evidence-read-surface.md)
 > supersedes only this ADR's application of its adapter-evidence model to a

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aizign.dev/spec/store/v2/publish.schema.json",
+  "title": "Aizign JSONL store v2 publication witness",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["storeVersion", "startedGeneration", "publishedGeneration"],
+  "properties": {
+    "storeVersion": { "const": 2 },
+    "startedGeneration": { "type": "integer", "minimum": 1, "maximum": 10001 },
+    "publishedGeneration": { "type": "integer", "minimum": 0, "maximum": 10001 }
+  }
+}

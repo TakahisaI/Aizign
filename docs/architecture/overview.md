@@ -22,7 +22,7 @@ snapshot.
 ┌──────────────▼──────────────┐
 │ aizign (binary) = aizign-cli    │  composition root。process境界、引数、exit code
 │  ├─ aizign-protocol           │  envelope、version、capability、DTO <-> domain変換
-│  ├─ aizign-store-jsonl        │  append-only journal + published commit point (JournalReader / Journal)
+│  ├─ aizign-store-jsonl        │  append-only journal + store-owned publication authority (JournalReader / Journal)
 │  └─ aizign-engine             │  submitとread-only reconciliationのuse case
 │       └─ aizign-core          │  純粋な判断。State + Command -> Decision
 └─────────────────────────────┘
@@ -33,7 +33,7 @@ snapshot.
 | `aizign-core` | Workflow state, identity/binding validation, event application, duplicate/conflict decisions, and pure reconciliation disposition | I/O, clock, async, SDKs, serialization, harness-specific names, external-effect execution |
 | `aizign-engine` | Committed journal load, signal decision, accepted-event append, read-only reconciliation, bounded use-case stage observation, and journal/clock ports | Store-physical observation, harness-specific types, and external-effect dispatch/claim/result/reconciliation |
 | `aizign-protocol` | NDJSON envelope、protocol version、capability negotiation、stable error code、DTO <-> domain変換、input size制限 | domain型の直接serialize |
-| `aizign-store-jsonl` | append-only、owner-only、writer-published commit point、bounded read-only cold read、record / store metadata version、shared / exclusive lock、JSONL physical observation seam | raw conversation data、reader-side sync / repair / tail promotion |
+| `aizign-store-jsonl` | append-only、owner-only、writer-published store authority、bounded read-only cold read、record / store metadata version、shared / exclusive lock、JSONL physical observation seam | raw conversation data、reader-side sync / repair / tail promotion |
 | `aizign-cli` | composition root。`aizign handle`、`aizign hello` | business logic |
 | adapter | harness Context / Session / Tool / native event / persistence / lifecycle / harness固有error | core内部型の参照、harness IDのcore identity化 |
 
@@ -58,16 +58,18 @@ reference / convenience layerです。
    `unknown`.
 
 After restart, an adapter may query the same complete signal through
-`workflow.signal.reconcile`. The reader inspects only the exact prefix
-published by `workflow.commit.json`; the server reconciliation disposition is
+`workflow.signal.reconcile`. Under the accepted store v2 target, the reader
+inspects only the exact prefix named by `workflow.commit.json` and released by
+the matching CLEAN `workflow.publish.json`; the server reconciliation disposition is
 `accepted`, `conflict`, or `absent`. Missing or inconsistent storage, an active
 writer, corruption, an unpublished tail, and transport or correlation failure
 cannot produce those dispositions and are preserved by the client as
 `unknown`. Reconciliation creates, synchronizes, repairs, and appends nothing.
-The initial store advertises the capability only on
-`x86_64-unknown-linux-gnu`, where CI verifies its durability contract and
-open-flag ABI; unverified Linux ABIs, architectures, and libc combinations fail
-closed.
+After S1, production still implements the historical v1 store and retains its
+target-only capability gate as explicit S2 migration debt. That runtime fact
+is not the accepted support boundary. The accepted target requires the exact
+`linux-x86_64-gnu-ext4-local-v1` profile and fails path qualification as
+`JOURNAL_UNAVAILABLE`; S2 implements and proves it.
 
 Cross-language classification ownership for current operation/code
 combinations belongs to the
@@ -105,7 +107,7 @@ This trigger does not decide the diagnostics work in #83, capability work in
 | `crates/aizign-core` | `identity`, `workflow`, and pure `recovery` (classification of a complete signal as accepted/conflict/absent). Candidate lifecycle, provenance, repair causation, execution, and effects are not current. |
 | `crates/aizign-protocol`、`spec/protocol/v1/` | Protocol v1: envelope、`hello`、signal submit / reconcile、closed decoder、schemaとexample |
 | `crates/aizign-engine` | `JournalReader` / `Journal` / `Clock` / best-effort use-case stage observation port、submit / reconcile use case |
-| `crates/aizign-store-jsonl`、`spec/journal/v1/`、`spec/store/v1/` | JSONL journal: owner-only、shared / exclusive lock、writer-published committed prefix、bounded read-only cold read、closed record / metadata、store-owned physical observation |
+| `crates/aizign-store-jsonl`、`spec/journal/v1/`、`spec/store/v2/` | Accepted current/target JSONL authority: owner-only journal, v2 commit generation plus PREPARED/CLEAN witness, bounded read-only cold read, exact ext4 profile, and store-owned physical observation. Runtime remains historical v1 until Issue #81 S2; `spec/store/v1/` is retained for rejection evidence. |
 | `crates/aizign-testkit` | `MemoryJournal`（fault injection）、`FixedClock`、`TempDir`、journal contract、signal helper |
 | `crates/aizign-cli` | `aizign hello`、`aizign handle --state <dir>`: one-shot process、watchdog、stderr log |
 | `xtask` | `cargo xtask check / conformance / public-audit / performance-baseline` |

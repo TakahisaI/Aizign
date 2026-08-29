@@ -1,16 +1,27 @@
 # Aizign journal schema v1
 
+Journal record schema v1 remains current and unchanged. Its current/target
+physical publication owner is store metadata v2 under
+[`../../store/v2/`](../../store/v2/README.md). Store v1 remains historical
+compatibility-rejection material, while the production runtime continues to
+implement v1 until the ordered Issue #81 S2 migration. This document does not
+claim that S2 is already implemented.
+
 control journalのdurable format。**metadata-only、append-only**（ADR-0007）。初期実装はJSONL（`aizign-store-jsonl`）。
 
 ```text
 <state dir>/            owner-only（0700）
 ├── workflow.jsonl      1行 = 1 record。owner-only（0600）
 ├── workflow.lock       writer ownershipのadvisory lock。owner-only（0600）
-└── workflow.commit.json writerが公開したcommitted prefix。owner-only（0600）
+├── workflow.commit.json writerが公開したstore v2 committed prefix。owner-only（0600）
+└── workflow.publish.json PREPARED/CLEAN publication witness。owner-only（0600）
 ```
 
-`workflow.commit.json` はjournal recordではなく、独立したstore metadata v1である。
-closed schemaとcommit-point規則の正本は [`../../store/v1/`](../../store/v1/README.md)。
+両JSON documentはjournal recordではなく、独立したstore metadata v2である。
+closed schema、generation、publication、reader authorityの正本は
+[`../../store/v2/`](../../store/v2/README.md)。以下の読み書き節に残るv1
+commit-point説明は、S2までのruntime debtを説明するもので、target authority
+ではない。
 
 ## Record
 
@@ -57,4 +68,5 @@ closed schemaとcommit-point規則の正本は [`../../store/v1/`](../../store/v
 
 - `schemas/record.schema.json` — JSON Schema draft 2020-12
 - `examples/workflow.jsonl` — 3 recordの例
-- `../../store/v1/` — commit metadataとstore-layout version
+- `../../store/v2/` — current/target commit metadata、publication witness、store-layout version
+- `../../store/v1/` — historical unsupported compatibility-rejection format

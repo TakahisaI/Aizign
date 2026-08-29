@@ -2,27 +2,35 @@
 
 Append-only, metadata-only JSONL control journal with a writer-published committed prefix. Implements `aizign_engine::JournalReader` and `Journal`.
 
+The sole current/target layout authority is
+[`spec/store/v2/`](../../spec/store/v2/README.md), accepted by ADR-0028. This
+crate still implements historical store v1 after S1; the v2 witness,
+crash-monotonic publication, exact ext4 profile, and `rustix` dependency are
+ordered S2 work and are not claimed as current runtime behavior here.
+
 | | |
 |---|---|
-| **Responsibility** | `spec/journal/v1` のrecordをJSONL fileへdurableにappendし、`spec/store/v1` のcommit metadataで公開済みprefixを固定し、bounded read-only cold readで読み戻す。owner-only permission、shared / exclusive advisory lock、`seq` の連番、closed schema |
+| **Responsibility** | Current runtime: `spec/journal/v1` recordをhistorical `spec/store/v1` commit metadataで公開。Accepted S2 target: `spec/store/v2` PREPARED/CLEAN witnessとexact profileによるcrash-monotonic publication。owner-only permission、shared / exclusive advisory lock、bounded cold read |
 | **Non-responsibility** | 判断（duplicate / conflictは `aizign-core`）、wire format、state directoryの選択（`aizign-cli`） |
 | **Inputs** | state directory、writerでは`WorkflowEvent` + `BoundedTimestamp` |
 | **Outputs** | committed `JournalEntry` snapshot、appendした`JournalEntry`、`JournalError`（stable code付き） |
 | **Hard invariants** | attempt / candidate digestをmetadata-onlyのclosed field setへ残す（5、10。allowed opaque valueのcontent semanticsはproducer責務）、write開始後のbarrier / publish失敗は `OutcomeUnknown` で再送しない（3）、readerはwrite / sync / initialize / repair / tail promotionを一切しない（9）、published prefix以外をacceptedの根拠にしない、既存recordを書き換えない、state artifactはregular file・single link・state directoryと同一ownerに固定してsymlinkを追跡しない |
-| **Allowed dependencies** | `aizign-core`、`aizign-engine`、`serde`、`serde_json`、`sha2`（store metadata v1のcommitted-prefix SHA-256専用）。dev: `aizign-testkit` |
+| **Allowed dependencies** | Current S1/runtime rule remains `aizign-core`、`aizign-engine`、`serde`、`serde_json`、`sha2`。dev: `aizign-testkit`。[ADR-0028](../../docs/adr/0028-define-crash-monotonic-jsonl-publication.md) solely owns the accepted future S2 dependency decision; it is not yet a current dependency or allowlist entry. |
 | **Test command** | `cargo test -p aizign-store-jsonl` |
-| **Related ADR** | [0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md)、[0007](../../docs/adr/0007-use-metadata-only-control-journals.md)、[0009](../../docs/adr/0009-serialization-dependencies-for-the-protocol-crate.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0014](../../docs/adr/0014-use-rustcrypto-sha2-for-committed-prefix-hashing.md) |
+| **Related ADR** | [0004](../../docs/adr/0004-separate-domain-protocol-journal-and-adapter-schemas.md)、[0007](../../docs/adr/0007-use-metadata-only-control-journals.md)、[0009](../../docs/adr/0009-serialization-dependencies-for-the-protocol-crate.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0014](../../docs/adr/0014-use-rustcrypto-sha2-for-committed-prefix-hashing.md)、[0028](../../docs/adr/0028-define-crash-monotonic-jsonl-publication.md) |
 
 ## Security boundary
 
-The verified store enforces private modes, no-follow/path-shape checks,
+The current v1 runtime enforces private modes, no-follow/path-shape checks,
 single-link ownership, bounds, advisory locking, and a writer-published prefix
-on `x86_64-unknown-linux-gnu`. The configured path and local account remain
-trusted. Advisory locks and SHA-256 do not authenticate state against a
+on `x86_64-unknown-linux-gnu`. The accepted S2 target additionally requires
+`linux-x86_64-gnu-ext4-local-v1` fd-bound qualification and v2 publication.
+The configured path and local account remain trusted. Advisory locks and
+SHA-256 do not authenticate state against a
 malicious same-user process that can rewrite every artifact consistently. See
 the [v0.1 threat model](../../docs/security/threat-model.md).
 
-record formatの正本は [`spec/journal/v1/`](../../spec/journal/v1/README.md)、commit metadataとstore layoutの正本は [`spec/store/v1/`](../../spec/store/v1/README.md)。`decode_record` / `encode_record` は
+record formatの正本は [`spec/journal/v1/`](../../spec/journal/v1/README.md)、current/target store layoutの正本は [`spec/store/v2/`](../../spec/store/v2/README.md)。historical v1はcompatibility rejectionとS2までのruntime debtとして[`spec/store/v1/`](../../spec/store/v1/README.md)に残る。`decode_record` / `encode_record` は
 `spec/conformance/{valid,invalid}/journal` のfixtureを回すための入口で、同じfixtureを `spec/test/schema.test.mjs` が
 JSON Schemaに通すため、schemaとruntimeの受理集合はCIで突き合わされる。
 
@@ -55,7 +63,7 @@ store-owned wrappers that implement the ordinary engine `Journal` and
 `open`, `load_committed`, and `append` paths do not emit store observations and
 do not perform any observation-only I/O.
 
-## 挙動
+## Current runtime v1 behavior (S2 migration debt)
 
 - `JsonlJournal::open(state_dir)`: exclusive non-blocking lockを取り、fresh storeならowner-only directory / lock / journal / zero-entry commit pointをwriter側でdurableに初期化する。途中までのempty initializationはexclusive lock下で完了できるが、non-empty journal without commit metadataは採用しない
 - `JsonlJournalReader::open(state_dir)`: 既存artifactだけをread-onlyで開き、shared non-blocking lockを取る。missing artifactを作らず `Unavailable`、active writerは `Locked`

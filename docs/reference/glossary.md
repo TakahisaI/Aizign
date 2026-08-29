@@ -39,9 +39,11 @@ source-qualified; the same spelling does not imply the same authority.
 | **Harness-adapter capability** | An adapter-owned feature declared and tested under that adapter's documentation and harness contract. Protocol v1 has no generic field for it; defining one belongs to a separately accepted capability design. |
 | **Protocol version** | wire contractの整数version。package versionと独立 |
 | **Journal schema version** | journal recordの整数version。package versionと独立 |
-| **Store metadata version** | committed-prefix documentの整数version。protocol versionとjournal record schema versionの双方から独立 |
+| **Store metadata version** | JSONL store layout/publication documentの整数version。Protocol versionとjournal record schema versionの双方から独立。current/targetはv2、production runtimeはS2までv1 debt |
 | **Control journal** | workflowの正本となるmetadata-onlyのappend-only journal |
-| **Committed prefix** | writerがfile / metadata / directory barrier後に`workflow.commit.json`で公開したJSONL byte prefix。readerはこれを越えるtailを受理根拠にしない |
+| **Committed prefix** | `workflow.commit.json` v2がgeneration、length、count、SHA-256で固定し、CLEAN witnessがreleaseしたJSONL byte prefix。readerはこれを越えるtailを受理根拠にしない |
+| **Publication witness** | store v2の`workflow.publish.json`。`W=(G+1,G)` PREPAREDまたは`W=(G,G)` CLEANを表す。readerはPREPAREDをknownへ昇格しない |
+| **Supported storage profile** | v0.1では`linux-x86_64-gnu-ext4-local-v1`だけ。fd-bound mount ID、exact ext4、rw/device/artifact checksをruntimeが行い、backing persistence/barrier correctnessはoperator assumptionとして分離する |
 | **Bounded** | 上限のあること。request size、record数、処理時間、cold read範囲に上限を置く |
 | **Short error code** | `^[A-Z][A-Z0-9_]{0,63}$` の安定した識別子。[error-codes.md](error-codes.md) |
 | **Live smoke** | 実harness、browser、providerを使うopt-in検査。通常CIでは起動しない |

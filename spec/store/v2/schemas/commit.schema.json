@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aizign.dev/spec/store/v2/commit.schema.json",
+  "title": "Aizign JSONL store v2 commit metadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "storeVersion",
+    "generation",
+    "committedBytes",
+    "committedEntries",
+    "sha256"
+  ],
+  "properties": {
+    "storeVersion": { "const": 2 },
+    "generation": { "type": "integer", "minimum": 1, "maximum": 10001 },
+    "committedBytes": { "type": "integer", "minimum": 0, "maximum": 67108864 },
+    "committedEntries": { "type": "integer", "minimum": 0, "maximum": 10000 },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aizign.dev/spec/store/v2/cases.schema.json",
+  "title": "Aizign JSONL store v2 language-neutral cases",
+  "type": "array",
+  "minItems": 38,
+  "maxItems": 38,
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "id",
+      "stageOrCutPoint",
+      "artifactImage",
+      "profileObservation",
+      "triggeringOperationCode",
+      "laterReaderCode",
+      "laterReaderDisposition",
+      "writerMutationPermitted",
+      "unchangedArtifactAssertion"
+    ],
+    "properties": {
+      "id": {
+        "enum": [
+          "init-fresh-clean",
+          "init-pre-marker-partial",
+          "init-commit-marker-no-witness",
+          "init-prepared-rebarrier-success",
+          "init-prepared-file-sync-dir-sync-failure-same-boot",
+          "init-prepared-rebarrier-inode-replaced",
+          "init-clean-final-sync-failure-visible",
+          "init-clean-missing-commit",
+          "init-prepared-nonempty-journal",
+          "init-v1-commit",
+          "init-unknown-version",
+          "init-malformed-witness",
+          "append-clean-generation",
+          "append-prepared-old-commit-old-journal",
+          "append-prepared-old-commit-partial-journal",
+          "append-prepared-old-commit-new-journal",
+          "append-prepared-new-commit-new-journal",
+          "append-clean-tail",
+          "append-clean-digest-mismatch",
+          "append-generation-gap",
+          "append-reverse-witness",
+          "append-bound-generation-10001",
+          "append-visible-clean-final-sync-failure",
+          "profile-ext4-rw-pass",
+          "profile-shared-magic-non-ext4-fail",
+          "profile-mount-id-missing-fail",
+          "profile-mountinfo-ambiguous-fail",
+          "profile-per-mount-ro-fail",
+          "profile-superblock-ro-fail",
+          "profile-parent-child-mount-mismatch-fail",
+          "profile-artifact-device-mismatch-fail",
+          "profile-artifact-identity-replacement-fail",
+          "profile-reader-unsupported-never-known",
+          "profile-statx-nosys-fail",
+          "revalidate-journal-byte-mutation",
+          "revalidate-commit-mutation",
+          "revalidate-witness-mutation",
+          "revalidate-artifact-replacement"
+        ]
+      },
+      "stageOrCutPoint": { "type": "string", "minLength": 1, "maxLength": 160 },
+      "artifactImage": { "type": "string", "minLength": 1, "maxLength": 800 },
+      "profileObservation": {
+        "oneOf": [
+          { "type": "null" },
+          { "type": "string", "minLength": 1, "maxLength": 400 }
+        ]
+      },
+      "triggeringOperationCode": {
+        "enum": [
+          null,
+          "JOURNAL_UNAVAILABLE",
+          "JOURNAL_OUTCOME_UNKNOWN",
+          "JOURNAL_CORRUPT",
+          "JOURNAL_SCHEMA_UNSUPPORTED",
+          "JOURNAL_BOUND_EXCEEDED"
+        ]
+      },
+      "laterReaderCode": {
+        "enum": [
+          null,
+          "JOURNAL_UNAVAILABLE",
+          "JOURNAL_OUTCOME_UNKNOWN",
+          "JOURNAL_CORRUPT",
+          "JOURNAL_SCHEMA_UNSUPPORTED",
+          "JOURNAL_BOUND_EXCEEDED"
+        ]
+      },
+      "laterReaderDisposition": {
+        "enum": [
+          "known_absent",
+          "known_from_exact_prefix",
+          "unknown",
+          "unavailable",
+          "corrupt",
+          "schema_unsupported",
+          "not_applicable"
+        ]
+      },
+      "writerMutationPermitted": { "type": "boolean" },
+      "unchangedArtifactAssertion": { "type": "string", "minLength": 1, "maxLength": 400 }
+    }
+  }
+}

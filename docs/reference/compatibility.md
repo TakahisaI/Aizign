@@ -9,7 +9,7 @@
 | Bootstrap envelope version | `1`（framed `hello` とpre-operation errorのstable subset） | `spec/protocol/v1/`。bootstrap axisとしてenvelopeの `version` を読む |
 | Operation Protocol version | `1`（`aizign-protocol` が実装。`workflow.signal.submit`、`workflow.signal.reconcile`） | `spec/protocol/v1/`。operation axisとしてenvelopeの `version` を読む |
 | Journal schema version | `1`（`aizign-store-jsonl` が実装） | `spec/journal/v1/`。recordの `schemaVersion` |
-| Store metadata version | `1`（`aizign-store-jsonl` が実装） | `spec/store/v1/`。commit documentの `storeVersion` |
+| Store metadata version | target `2`（S1 authority）、runtime `1`（S2までのimplementation debt） | current/targetは`spec/store/v2/`、historical rejection formatは`spec/store/v1/` |
 
 adapterはpackage versionの完全一致ではなく、canonical process profileでframed
 `hello`を実行し、得られたoperation Protocol versionとcapabilityで互換性を判定します
@@ -69,9 +69,19 @@ Issue #77 S2 implements these claims in both codecs and closes the affected
 public surfaces. Shared lexical fixtures, encoder matrices, and package export
 audits keep ADR-0023 conformance executable.
 
-初期のcommitted-prefix JSONL storeは `x86_64-unknown-linux-gnu` だけが検証済みで、x32を含む別ABIや別architecture / libcのLinuxなど、その他のbuildはsubmit / reconcile capabilityをadvertiseしません。
-x32は、64-bit targetと誤認しないことをCIでcross-compileするnegative boundaryに限定し、runtime support、release artifact、support claimは提供しません。
-同じstate directoryを旧binaryで開くdowngradeはunsupportedであり、技術的には防止していません。旧binaryがcommit metadataを無視できるため、operatorは別のstate directoryを使用する必要があります。
+Accepted store v2 support is the exact
+`linux-x86_64-gnu-ext4-local-v1` profile: exact target/word size plus fd-bound
+mount identity, one exact ext4 mountinfo record, read-write/device checks, and
+corroborative ext-family magic. A target triple or filesystem magic alone is
+insufficient. x32 remains only a compile-time negative boundary.
+
+S1 establishes this authority but does not migrate the runtime. Until Issue
+#81 S2, production still implements store v1 and is not profile-qualified. A
+complete v2 store is fenced from the current v1 binary because the retained
+commit path carries `storeVersion: 2`, which v1 rejects before append. State
+interrupted before that marker is durably published is not fenced and is
+unsupported/operator-discard-only. There is no silent adoption, automatic
+migration, dual reader, or repair path.
 
 ## Provisional timing evidence
 
