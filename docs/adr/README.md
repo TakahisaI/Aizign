@@ -36,6 +36,7 @@
 | [0024](0024-require-isolated-adapter-child-environments.md) | Require isolated adapter child environments | Accepted |
 | [0025](0025-move-dsh-signal-values-behind-trusted-configuration.md) | Move DSH signal values behind trusted configuration | Accepted |
 | [0026](0026-pin-the-dsh-startup-error-wrapper-boundary.md) | Pin the DSH startup error wrapper boundary | Accepted |
+| [0027](0027-remove-the-dsh-harness-evidence-read-surface.md) | Remove the DSH harness-evidence read surface | Accepted |
 
 ADR-0016 partially supersedes ADR-0005's earlier `AGENTS.md` editing-constraint
 statement only; ADR-0005's other accepted decisions remain in force.
@@ -74,3 +75,10 @@ ADR-0026 fixes the diagnostic wrapper chain produced by the exact DSH and
 Cordis loader pins while applying ADR-0025. It does not transfer ownership of
 the adapter's inner error or change Protocol, classification, retry, or
 workflow authority.
+
+ADR-0027 partially supersedes only ADR-0012's current DSH evidence-digest
+items, ADR-0015's application of its generic adapter-evidence model to a
+current DSH cold-read surface, and ADR-0020's `./experimental/evidence`
+surface and consumers. Candidate binding, the generic guarantee/authority
+model, the stable DSH plugin root, the sole production TypeScript transport,
+and `./experimental/transport` remain Accepted.

@@ -70,8 +70,7 @@ contractの正本は[`harness-adapter-contract.md`](harness-adapter-contract.md)
 - `exports` mapはclosed。`./*` のようなwildcardを許さない
 - package rootと明示subpathはexact allowlist。`src/` / generated `lib/` deep
   importでexport mapを迂回しない。Protocol/testkitは`.`と`./package.json`のみ、
-  DSHはそれらに加えて`./experimental/transport`と
-  `./experimental/evidence`のみ
+  DSHはそれらに加えて`./experimental/transport`のみ
 - `@aizign/protocol`はNode/process/preflight/parent-timing policyを持たない。
   DSHが唯一のproduction TypeScript one-shot transport ownerで、
   `@aizign/adapter-testkit`はsupplied clientへ適用するfixture/runnerだけを持つ

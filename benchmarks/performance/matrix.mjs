@@ -175,7 +175,6 @@ export const MAX_PAYLOAD_CASES = [
 export const CONCURRENCY_LEVELS = [1, 2, 4, 8];
 export const CONCURRENCY_MODES = ['same_state_dir', 'different_state_dir'];
 export const CONCURRENCY_OPERATIONS = ['workflow.signal.submit', 'workflow.signal.reconcile'];
-export const DSH_EVENT_COUNTS = [100, 1_000, 10_000];
 export const CANONICAL_SCENARIOS = ['assignment_submit', 'assignment_unknown_reconcile'];
 
 export function validateCase(benchmarkCase) {

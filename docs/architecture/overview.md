@@ -44,7 +44,7 @@ reference / convenience layerです。
 
 ## Current signal-submission flow
 
-1. adapterがharnessのnative event（例: tool call）を受け取り、structured evidenceへ変換する。
+1. adapterがharnessのnative input（例: tool call）を受け取り、closed workflow signalへ変換する。
 2. adapterが `aizign handle --state <dir>` を起動し、stdinへ一つのrequest envelopeを書く。
 3. `aizign-protocol` がenvelopeをclosed schemaでdecodeし、domain commandへ変換する。
 4. `aizign-engine` がjournalをbounded cold readし、`aizign-core` にstateとcommandを渡す。
@@ -114,7 +114,7 @@ This trigger does not decide the diagnostics work in #83, capability work in
 | `packages/protocol` | `@aizign/protocol`: Node-free TypeScript codec（同じfixtureを通す）、bounded framing、`checkCompatibility`、correlation、submit / reconcileを含むabstract `CoreClient` contract |
 | `packages/adapter-testkit` | `@aizign/adapter-testkit`: TypeScript向けfake core、scripted fault support、supplied production clientへ適用するsubmit / reconcile runner。production transportを持たない |
 | `experiments/dsh-live-smoke` | opt-in live smokeのpatch生成とjournal要約（手順はoperator側） |
-| `adapters/dsh` | `@aizign/adapter-dsh`: DSH pluginと唯一のproduction TypeScript one-shot transport（preflight、scope-bound `submit_workflow_signal`、control-plane reconciliation client、provisional evidence cold read）。stable rootはplugin entryのみ。fake DSH runtime + fake core / 実binaryの往復で検証 |
+| `adapters/dsh` | `@aizign/adapter-dsh`: DSH pluginと唯一のproduction TypeScript one-shot transport（preflight、scope-bound `submit_workflow_signal`、control-plane reconciliation client）。stable rootはplugin entryのみ。fake DSH runtime + fake core / 実binaryの往復で検証し、harness persistenceやsession cold readには依存しない |
 
 ## 関連
 

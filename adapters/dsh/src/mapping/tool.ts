@@ -18,7 +18,6 @@ import {
 import { HarnessError } from '@deepseek-ai/dsh-llm';
 import type { JsonSchemaNode, ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools';
 import type { SignalBinding, TrustedSignalValues } from '../config.ts';
-import { bindingDigest, payloadDigest } from '../evidence/digest.ts';
 import { resolveTrustedSignalValues } from './trusted-values.ts';
 
 export const TOOL_NAME = 'submit_workflow_signal';
@@ -137,51 +136,6 @@ export function toToolResult(outcome: SubmitOutcome): {
   }
 }
 
-/**
- * Presentation metadata written to the harness `tool/result`: identity and
- * digests only. A later session read verifies the event and binding metadata
- * and reports the recorded payload digest (see `evidence/cold-read.ts`). This
- * type makes no durability or retention claim. Must be total and pure.
- */
-export interface SignalPresentationMeta {
-  tool: string;
-  eventId: string;
-  disposition: 'accepted' | 'duplicate' | null;
-  bindingDigest: string;
-  payloadDigest: string;
-}
-
-export function presentationMetaFor(
-  binding: SignalBinding,
-  trustedSignalValues: TrustedSignalValues,
-  args: unknown,
-  value: unknown,
-): SignalPresentationMeta {
-  const disposition =
-    isPlainObject(value) && (value.disposition === 'accepted' || value.disposition === 'duplicate')
-      ? value.disposition
-      : null;
-  let digest = '';
-  try {
-    digest = payloadDigest(
-      resolveTrustedSignalValues(
-        binding,
-        trustedSignalValues,
-        decodeArgs(args, binding.expected.role),
-      ).payload.signal,
-    );
-  } catch {
-    // Unreachable for a successful result; keep the callback total.
-  }
-  return {
-    tool: TOOL_NAME,
-    eventId: binding.eventId,
-    disposition,
-    bindingDigest: bindingDigest(binding),
-    payloadDigest: digest,
-  };
-}
-
 /** Builds the registered tool. */
 export function createSubmitWorkflowSignalTool(
   client: CoreClient,
@@ -197,9 +151,6 @@ export function createSubmitWorkflowSignalTool(
     output: {
       schema: TOOL_OUTPUT,
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
-      presentationMeta: (args, value) => ({
-        ...presentationMetaFor(binding, trustedSignalValues, args, value),
-      }),
     },
     async execute(args: unknown, exec: ToolRunContext) {
       const { payload } = resolveTrustedSignalValues(

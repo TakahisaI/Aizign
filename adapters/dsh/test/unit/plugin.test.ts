@@ -273,7 +273,7 @@ test('preflight accepts a compatible core and rejects an incompatible or unreach
   rmSync(root, { recursive: true, force: true });
 });
 
-test('apply runs without optional native evidence and registers one scope-bound tool', async () => {
+test('apply registers one scope-bound tool', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aizign-dsh-plugin-'));
   try {
     const ctx = fakeContext();

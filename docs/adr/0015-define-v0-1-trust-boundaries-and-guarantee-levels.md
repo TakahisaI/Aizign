@@ -4,6 +4,13 @@
 - Date: 2026-08-25
 - Related: ADR-0003, ADR-0004, ADR-0007, ADR-0012, ADR-0013, ADR-0014, Issue #52, Issue #72, PR #70
 
+> **Partial supersession:** [ADR-0027](0027-remove-the-dsh-harness-evidence-read-surface.md)
+> supersedes only this ADR's application of its adapter-evidence model to a
+> current v0.1 DSH harness-persistence/cold-read surface and current DSH
+> binding/payload digest authority. The five guarantee levels, control-journal
+> authority, generic conditional limits for any future separately accepted
+> adapter evidence, trust domains, and core reconciliation remain Accepted.
+
 > **Partial supersession:** [ADR-0025](0025-move-dsh-signal-values-behind-trusted-configuration.md)
 > supersedes only this ADR's accepted direction that leaves the two ordinary
 > DSH `artifactRef` and `shortErrorCode` producer authorities model-controlled.

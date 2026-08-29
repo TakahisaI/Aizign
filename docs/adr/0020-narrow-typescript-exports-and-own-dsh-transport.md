@@ -7,6 +7,15 @@
 - Implementation checkpoint: [`I89-A8A3FD0-A`](https://github.com/TakahisaI/Aizign/issues/89#issuecomment-5426502135), amended by [`I89-A8A3FD0-A1`](https://github.com/TakahisaI/Aizign/issues/89#issuecomment-5426909643)
 - Readiness: [Maintainer decision for slice `S1`](https://github.com/TakahisaI/Aizign/issues/89#issuecomment-5426990095)
 
+## Partial supersession — ADR-0027
+
+[ADR-0027](0027-remove-the-dsh-harness-evidence-read-surface.md) supersedes
+only this decision's `./experimental/evidence` export, presentation
+metadata/digest exports, DSH cold-read support, and repository consumers of
+that subpath. The stable plugin root, sole production TypeScript transport
+owner, `./experimental/transport`, package dependency direction, exact export
+auditing, and removal of the duplicate reference transport remain Accepted.
+
 ## Partial supersession — ADR-0024
 
 [ADR-0024](0024-require-isolated-adapter-child-environments.md) supersedes only

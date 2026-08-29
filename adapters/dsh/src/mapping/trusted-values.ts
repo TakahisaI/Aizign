@@ -1,11 +1,27 @@
+import { createHash } from 'node:crypto';
 import type { WorkflowSignalSubmitPayload } from '@aizign/protocol';
 import type { SignalBinding, TrustedSignalValues } from '../config.ts';
-import { canonicalJson, sha256Hex } from '../evidence/digest.ts';
 import type { SignalArgs } from './tool.ts';
 
 export interface TrustedValueResolution {
   readonly payload: WorkflowSignalSubmitPayload;
   readonly trustedValueMappingKey: string;
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (typeof value === 'object' && value !== null) {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`);
+    return `{${entries.join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function sha256Hex(text: string): string {
+  return createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
 /**
