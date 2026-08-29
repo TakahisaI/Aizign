@@ -217,16 +217,10 @@ impl JsonlJournal {
             ));
         }
 
-        if !lock_exists {
-            durability_note(durability, DurabilityPoint::LockFileCreate, false)?;
-        }
         let lock_file = open_private_update_file(&lock_path, !lock_exists)?;
         require_same_profile(&lock_file, &state_profile, profile)?;
         let lock = JournalLock::acquire_exclusive(lock_file)?;
 
-        if !journal_exists {
-            durability_note(durability, DurabilityPoint::JournalFileCreate, false)?;
-        }
         let journal = open_private_append_file(&journal_path, !journal_exists)?;
         require_same_profile(&journal, &state_profile, profile)?;
 
@@ -304,6 +298,15 @@ impl JsonlJournal {
         let next_generation = snapshot.point.generation + 1;
         let prepared = PublishWitness::prepared(next_generation);
 
+        let seq = snapshot.entries.len() as u64 + 1;
+        let entry = JournalEntry {
+            seq,
+            at,
+            event: event.clone(),
+        };
+        let mut line = record::encode_entry(&entry)?.into_bytes();
+        line.push(b'\n');
+
         rewrite_witness(
             &mut witness_file,
             prepared,
@@ -315,14 +318,6 @@ impl JsonlJournal {
         verify_opened_witness(&mut witness_file, prepared)
             .map_err(|error| outcome_unknown(format!("PREPARED verification failed: {error}")))?;
 
-        let seq = snapshot.entries.len() as u64 + 1;
-        let entry = JournalEntry {
-            seq,
-            at,
-            event: event.clone(),
-        };
-        let mut line = record::encode_entry(&entry)?.into_bytes();
-        line.push(b'\n');
         durability
             .append_file(
                 &mut journal_file,
@@ -339,7 +334,7 @@ impl JsonlJournal {
             CommitPoint::for_prefix(&snapshot.bytes, seq)
         });
         publish_commit(
-            &self.state_dir,
+            &state_directory,
             &state_profile,
             &commit_path,
             &next_point,
@@ -538,19 +533,15 @@ fn initialize_fresh_store(
     let commit_path = state_dir.join(COMMIT_FILE_NAME);
     let publish_path = state_dir.join(PUBLISH_FILE_NAME);
     durability
-        .barrier_file(&lock.file, DurabilityPoint::LockFileBarrier)
+        .barrier_file_untracked(&lock.file)
         .map_err(|error| unavailable(format!("cannot synchronize lock file: {error}")))?;
     durability
-        .barrier_file(journal, DurabilityPoint::JournalFileBarrier)
+        .barrier_file_untracked(journal)
         .map_err(|error| unavailable(format!("cannot synchronize journal file: {error}")))?;
-    barrier_directory(
-        state_dir,
-        durability,
-        DurabilityPoint::ArtifactDirectoryBarrier,
-        false,
-    )?;
+    barrier_directory_untracked(state_dir, durability, false)?;
+    let state_directory = open_directory_no_follow(state_dir)?;
     publish_commit(
-        state_dir,
+        &state_directory,
         state_profile,
         &commit_path,
         &CommitPoint::empty(),
@@ -586,7 +577,6 @@ fn initialize_witness(
     durability: &mut dyn DurabilityOps,
     profile: &mut dyn ProfileOps,
 ) -> Result<(), JournalError> {
-    durability_note(durability, DurabilityPoint::WitnessCreate, false)?;
     let mut witness = open_private_update_file(publish_path, true)?;
     require_same_profile(&witness, state_profile, profile)?;
     let identity = opened_identity(&witness)?;
@@ -599,12 +589,7 @@ fn initialize_witness(
         false,
     )?;
     verify_opened_witness(&mut witness, PublishWitness::initializing())?;
-    barrier_directory(
-        state_dir,
-        durability,
-        DurabilityPoint::WitnessDirectoryBarrierComplete,
-        false,
-    )?;
+    barrier_directory_untracked(state_dir, durability, false)?;
     let mut reopened = open_private_update_file(publish_path, false)?;
     require_same_profile(&reopened, state_profile, profile)?;
     if opened_identity(&reopened)? != identity {
@@ -650,12 +635,7 @@ fn resume_or_validate_existing(
             .barrier_file(&witness_file, DurabilityPoint::PreparedBarrierComplete)
             .map_err(|error| unavailable(format!("cannot rebarrier PREPARED witness: {error}")))?;
         verify_opened_witness(&mut witness_file, PublishWitness::initializing())?;
-        barrier_directory(
-            state_dir,
-            durability,
-            DurabilityPoint::WitnessDirectoryBarrierComplete,
-            false,
-        )?;
+        barrier_directory_untracked(state_dir, durability, false)?;
         let mut reopened = open_private_update_file(&publish_path, false)?;
         require_same_profile(&reopened, state_profile, profile)?;
         if opened_identity(&reopened)? != identity {
@@ -675,6 +655,13 @@ fn resume_or_validate_existing(
         return verify_opened_witness(&mut reopened, PublishWitness::clean(1));
     }
     if witness.is_prepared_successor() {
+        require_prepared_commit_relation(witness, &point)?;
+        let mut journal_file = open_private_read_file(&journal_path)
+            .map_err(|error| outcome_unknown(format!("cannot reopen PREPARED journal: {error}")))?;
+        require_same_profile(&journal_file, state_profile, profile).map_err(|error| {
+            outcome_unknown(format!("PREPARED journal profile failed: {error}"))
+        })?;
+        validate_prepared_commit_prefix(&mut journal_file, &point, witness)?;
         return Err(outcome_unknown(
             "store is left at a PREPARED publication generation",
         ));
@@ -718,6 +705,8 @@ fn read_snapshot_observed(
         return Err(unavailable("store initialization is PREPARED"));
     }
     if witness.is_prepared_successor() {
+        require_prepared_commit_relation(witness, &point)?;
+        validate_prepared_commit_prefix(&mut journal, &point, witness)?;
         return Err(outcome_unknown(
             "store publication is PREPARED and has no known result",
         ));
@@ -780,7 +769,7 @@ fn read_snapshot_observed(
 }
 
 fn publish_commit(
-    state_dir: &Path,
+    state_directory: &File,
     state_profile: &QualifiedProfile,
     commit_path: &Path,
     point: &CommitPoint,
@@ -795,10 +784,7 @@ fn publish_commit(
             unavailable(detail)
         }
     };
-    let temp_path = state_dir.join(COMMIT_TEMP_FILE_NAME);
-    durability
-        .note(DurabilityPoint::CommitTemporaryCreate)
-        .map_err(|error| map(format!("cannot begin commit temporary file: {error}")))?;
+    let temp_path = commit_path.with_file_name(COMMIT_TEMP_FILE_NAME);
     let mut temp = open_private_replace_file(&temp_path)
         .map_err(|error| map(format!("cannot create commit temporary file: {error}")))?;
     require_same_profile(&temp, state_profile, profile)
@@ -820,12 +806,12 @@ fn publish_commit(
             DurabilityPoint::CommitRenameComplete,
         )
         .map_err(|error| map(format!("cannot publish commit metadata: {error}")))?;
-    barrier_directory(
-        state_dir,
-        durability,
-        DurabilityPoint::CommitDirectoryBarrierComplete,
-        outcome_may_be_unknown,
-    )?;
+    durability
+        .barrier_directory(
+            state_directory,
+            DurabilityPoint::CommitDirectoryBarrierComplete,
+        )
+        .map_err(|error| map(format!("cannot synchronize commit directory: {error}")))?;
     let mut published = open_private_read_file(commit_path)
         .map_err(|error| map(format!("cannot reopen commit metadata: {error}")))?;
     require_same_profile(&published, state_profile, profile)
@@ -834,6 +820,66 @@ fn publish_commit(
         .map_err(|error| map(format!("cannot verify published commit metadata: {error}")))?;
     if decoded != *point {
         return Err(map("published commit metadata changed".to_owned()));
+    }
+    Ok(())
+}
+
+fn require_prepared_commit_relation(
+    witness: PublishWitness,
+    point: &CommitPoint,
+) -> Result<(), JournalError> {
+    if point.generation != witness.published_generation
+        && point.generation != witness.started_generation
+    {
+        return Err(corrupt(
+            "PREPARED witness and commit generations cannot come from one append",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_prepared_commit_prefix(
+    journal: &mut File,
+    point: &CommitPoint,
+    witness: PublishWitness,
+) -> Result<(), JournalError> {
+    let physical_len = file_len(journal).map_err(|error| {
+        outcome_unknown(format!("cannot inspect PREPARED journal length: {error}"))
+    })?;
+    if physical_len < point.committed_bytes {
+        return Err(corrupt(
+            "PREPARED journal is shorter than its visible commit prefix",
+        ));
+    }
+    if point.generation == witness.started_generation && physical_len != point.committed_bytes {
+        return Err(corrupt(
+            "new PREPARED commit does not name the complete journal image",
+        ));
+    }
+    journal
+        .seek(SeekFrom::Start(0))
+        .map_err(|error| outcome_unknown(format!("cannot rewind PREPARED journal: {error}")))?;
+    let mut bytes = Vec::with_capacity(usize::try_from(point.committed_bytes).unwrap_or(0));
+    std::io::Read::by_ref(journal)
+        .take(point.committed_bytes.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|error| outcome_unknown(format!("cannot read PREPARED journal: {error}")))?;
+    if bytes.len() as u64 != point.committed_bytes {
+        return Err(corrupt(
+            "PREPARED journal changed while reading its commit prefix",
+        ));
+    }
+    if hash_bytes(&bytes) != point.digest {
+        return Err(corrupt(
+            "PREPARED journal prefix does not match its commit digest",
+        ));
+    }
+    let contents =
+        core::str::from_utf8(&bytes).map_err(|_| corrupt("PREPARED journal is not UTF-8"))?;
+    if decode_contents(contents)?.len() as u64 != point.committed_entries {
+        return Err(corrupt(
+            "PREPARED journal entry count does not match its commit",
+        ));
     }
     Ok(())
 }
@@ -861,38 +907,26 @@ fn rewrite_witness(
         .map_err(|error| classify(format!("cannot synchronize publication witness: {error}")))
 }
 
-fn barrier_directory(
+fn barrier_directory_untracked(
     path: &Path,
     durability: &mut dyn DurabilityOps,
-    point: DurabilityPoint,
     outcome_may_be_unknown: bool,
 ) -> Result<(), JournalError> {
-    let directory = open_directory_no_follow(path)?;
-    durability
-        .barrier_directory(&directory, point)
-        .map_err(|error| {
-            let detail = format!("cannot synchronize directory: {error}");
-            if outcome_may_be_unknown {
-                outcome_unknown(detail)
-            } else {
-                unavailable(detail)
-            }
-        })
-}
-
-fn durability_note(
-    durability: &mut dyn DurabilityOps,
-    point: DurabilityPoint,
-    outcome_may_be_unknown: bool,
-) -> Result<(), JournalError> {
-    durability.note(point).map_err(|error| {
-        let detail = format!("store operation failed: {error}");
+    let classify = |detail: String| {
         if outcome_may_be_unknown {
             outcome_unknown(detail)
         } else {
             unavailable(detail)
         }
-    })
+    };
+    let directory = open_directory_no_follow(path).map_err(|error| {
+        classify(format!(
+            "cannot open directory for synchronization: {error}"
+        ))
+    })?;
+    durability
+        .barrier_directory_untracked(&directory)
+        .map_err(|error| classify(format!("cannot synchronize directory: {error}")))
 }
 
 fn read_commit_point(file: &mut File) -> Result<CommitPoint, JournalError> {
@@ -1002,7 +1036,6 @@ fn ensure_state_directory(
     let parent = nearest_existing_parent(dir)?;
     let parent_directory = open_directory_no_follow(&parent)?;
     let parent_profile = qualify_directory(&parent_directory, profile)?;
-    durability_note(durability, DurabilityPoint::StateDirectoryCreate, false)?;
     fs::DirBuilder::new()
         .mode(0o700)
         .create(dir)
@@ -1013,10 +1046,10 @@ fn ensure_state_directory(
     let state_profile = qualify_directory(&state_directory, profile)?;
     require_same_profile(&state_directory, &parent_profile, profile)?;
     durability
-        .barrier_directory(&state_directory, DurabilityPoint::StateDirectoryBarrier)
+        .barrier_directory_untracked(&state_directory)
         .map_err(|error| unavailable(format!("cannot synchronize state directory: {error}")))?;
     durability
-        .barrier_directory(&parent_directory, DurabilityPoint::ParentDirectoryBarrier)
+        .barrier_directory_untracked(&parent_directory)
         .map_err(|error| unavailable(format!("cannot synchronize parent directory: {error}")))?;
     Ok(state_profile)
 }
@@ -1044,6 +1077,7 @@ fn ensure_state_directory(
 fn nearest_existing_parent(path: &Path) -> Result<PathBuf, JournalError> {
     let mut candidate = path
         .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."))
         .to_path_buf();
     loop {
@@ -1088,6 +1122,25 @@ const O_DIRECTORY: i32 = 0o200_000;
     target_pointer_width = "64"
 ))]
 const O_NOFOLLOW: i32 = 0o400_000;
+
+#[cfg(all(
+    test,
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bare_relative_state_path_uses_the_current_directory_as_its_parent() {
+        assert_eq!(
+            nearest_existing_parent(Path::new("state")).unwrap(),
+            PathBuf::from(".")
+        );
+    }
+}
 #[cfg(all(
     target_os = "linux",
     target_arch = "x86_64",

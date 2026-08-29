@@ -5,44 +5,17 @@ use std::io::{Seek as _, SeekFrom, Write as _};
 use std::path::Path;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// The accepted checkpoint fixes these eleven complete-event names verbatim.
+#[allow(clippy::enum_variant_names)]
 pub(crate) enum DurabilityPoint {
-    #[cfg(all(
-        target_os = "linux",
-        target_arch = "x86_64",
-        target_env = "gnu",
-        target_pointer_width = "64"
-    ))]
-    StateDirectoryCreate,
-    #[cfg(all(
-        target_os = "linux",
-        target_arch = "x86_64",
-        target_env = "gnu",
-        target_pointer_width = "64"
-    ))]
-    StateDirectoryBarrier,
-    #[cfg(all(
-        target_os = "linux",
-        target_arch = "x86_64",
-        target_env = "gnu",
-        target_pointer_width = "64"
-    ))]
-    ParentDirectoryBarrier,
-    LockFileCreate,
-    LockFileBarrier,
-    JournalFileCreate,
-    JournalFileBarrier,
-    ArtifactDirectoryBarrier,
-    CommitTemporaryCreate,
+    PreparedWriteComplete,
+    PreparedBarrierComplete,
+    JournalRecordWriteComplete,
+    JournalBarrierComplete,
     CommitTemporaryWriteComplete,
     CommitTemporaryBarrierComplete,
     CommitRenameComplete,
     CommitDirectoryBarrierComplete,
-    WitnessCreate,
-    PreparedWriteComplete,
-    PreparedBarrierComplete,
-    WitnessDirectoryBarrierComplete,
-    JournalRecordWriteComplete,
-    JournalBarrierComplete,
     CleanWriteComplete,
     CleanBarrierComplete,
     DurableAppendComplete,
@@ -112,6 +85,14 @@ pub(crate) trait DurabilityOps {
         self.before(point)?;
         directory.sync_all()?;
         self.after(point)
+    }
+
+    fn barrier_file_untracked(&mut self, file: &File) -> std::io::Result<()> {
+        file.sync_all()
+    }
+
+    fn barrier_directory_untracked(&mut self, directory: &File) -> std::io::Result<()> {
+        directory.sync_all()
     }
 
     fn note(&mut self, point: DurabilityPoint) -> std::io::Result<()> {

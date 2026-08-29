@@ -7,12 +7,14 @@
     target_pointer_width = "64"
 ))]
 
+use std::cell::Cell;
+use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use aizign_core::workflow::WorkflowEvent;
-use aizign_engine::{JournalError, MAX_JOURNAL_ENTRIES};
+use aizign_engine::{Journal, JournalError, JournalReader, MAX_JOURNAL_ENTRIES};
 use aizign_testkit::{TempDir, signals};
 use serde::Deserialize;
 
@@ -23,15 +25,25 @@ use crate::journal::{
     PUBLISH_FILE_NAME,
 };
 use crate::mountinfo::find_exact_mount;
-use crate::profile::{ProfileObservation, ProfileOps};
+use crate::profile::{ProfileObservation, ProfileOps, missing_statx_mount_id_for_test};
 use crate::publish::PublishWitness;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Case {
     id: String,
+    stage_or_cut_point: String,
+    artifact_image: String,
+    profile_observation: String,
     triggering_operation_code: Option<String>,
     later_reader_code: Option<String>,
+    later_reader_disposition: String,
+    writer_mutation_permitted: bool,
+    unchanged_artifact_assertion: String,
+    #[serde(skip)]
+    triggering_consumed: Cell<bool>,
+    #[serde(skip)]
+    later_reader_consumed: Cell<bool>,
 }
 
 const CASES: &str = include_str!("../../../spec/store/v2/fixtures/cases.json");
@@ -43,9 +55,140 @@ fn every_store_v2_case_executes_against_its_owner() {
     let mut executed = std::collections::BTreeSet::new();
     for case in &cases {
         assert!(executed.insert(case.id.as_str()), "duplicate case ID");
+        case.validate_normative_row();
         execute(case);
+        assert!(
+            case.triggering_consumed.get(),
+            "{} did not execute its triggering expectation",
+            case.id
+        );
+        assert!(
+            case.later_reader_consumed.get(),
+            "{} did not execute its later-reader expectation",
+            case.id
+        );
     }
     assert_eq!(executed.len(), 38, "all authority rows executed once");
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ArtifactState {
+    bytes: Vec<u8>,
+    mode: u32,
+    device: u64,
+    inode: u64,
+    links: u64,
+}
+
+fn artifact_snapshot(state: &Path) -> BTreeMap<&'static str, Option<ArtifactState>> {
+    use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+
+    [
+        LOCK_FILE_NAME,
+        JOURNAL_FILE_NAME,
+        COMMIT_FILE_NAME,
+        PUBLISH_FILE_NAME,
+        "workflow.commit.tmp",
+    ]
+    .into_iter()
+    .map(|name| {
+        let path = state.join(name);
+        let value = fs::symlink_metadata(&path)
+            .ok()
+            .map(|metadata| ArtifactState {
+                bytes: fs::read(&path).unwrap_or_default(),
+                mode: metadata.permissions().mode(),
+                device: metadata.dev(),
+                inode: metadata.ino(),
+                links: metadata.nlink(),
+            });
+        (name, value)
+    })
+    .collect()
+}
+
+impl Case {
+    fn validate_normative_row(&self) {
+        assert!(!self.stage_or_cut_point.is_empty(), "{} stage", self.id);
+        assert!(!self.artifact_image.is_empty(), "{} image", self.id);
+        assert!(!self.profile_observation.is_empty(), "{} profile", self.id);
+        assert!(
+            !self.unchanged_artifact_assertion.is_empty(),
+            "{} artifact assertion",
+            self.id
+        );
+        assert!(
+            matches!(
+                self.later_reader_disposition.as_str(),
+                "known_absent"
+                    | "known_from_exact_prefix"
+                    | "unavailable"
+                    | "corrupt"
+                    | "schema_unsupported"
+                    | "unknown"
+            ),
+            "{} disposition",
+            self.id
+        );
+    }
+
+    fn expect_trigger<T>(&self, state: &Path, operation: impl FnOnce() -> Result<T, JournalError>) {
+        assert!(!self.triggering_consumed.replace(true), "duplicate trigger");
+        let before = (!self.writer_mutation_permitted).then(|| artifact_snapshot(state));
+        expect_code(operation(), self.triggering_operation_code.as_deref());
+        if let Some(before) = before {
+            assert_eq!(
+                artifact_snapshot(state),
+                before,
+                "{} violated: {}",
+                self.id,
+                self.unchanged_artifact_assertion
+            );
+        }
+    }
+
+    fn expect_trigger_external_mutation<T>(
+        &self,
+        _state: &Path,
+        operation: impl FnOnce() -> Result<T, JournalError>,
+    ) {
+        assert!(!self.triggering_consumed.replace(true), "duplicate trigger");
+        expect_code(operation(), self.triggering_operation_code.as_deref());
+    }
+
+    fn expect_later(
+        &self,
+        state: &Path,
+        operation: impl FnOnce() -> Result<Vec<aizign_engine::JournalEntry>, JournalError>,
+    ) {
+        assert!(
+            !self.later_reader_consumed.replace(true),
+            "duplicate reader"
+        );
+        let before = artifact_snapshot(state);
+        let result = operation();
+        match (&result, self.later_reader_disposition.as_str()) {
+            (Ok(entries), "known_absent") => assert!(entries.is_empty(), "{} absent", self.id),
+            (Ok(_), "known_from_exact_prefix") => {}
+            (Err(error), "unavailable") => assert_eq!(error.code(), "JOURNAL_UNAVAILABLE"),
+            (Err(error), "corrupt") => assert_eq!(error.code(), "JOURNAL_CORRUPT"),
+            (Err(error), "schema_unsupported") => {
+                assert_eq!(error.code(), "JOURNAL_SCHEMA_UNSUPPORTED");
+            }
+            (Err(error), "unknown") => assert_eq!(error.code(), "JOURNAL_OUTCOME_UNKNOWN"),
+            _ => panic!(
+                "{} later-reader disposition {} did not match result",
+                self.id, self.later_reader_disposition
+            ),
+        }
+        expect_code(result, self.later_reader_code.as_deref());
+        assert_eq!(
+            artifact_snapshot(state),
+            before,
+            "{} reader mutated store artifacts",
+            self.id
+        );
+    }
 }
 
 fn execute(case: &Case) {
@@ -77,7 +220,7 @@ fn execute(case: &Case) {
         "profile-shared-magic-non-ext4-fail" => profile_failure(case, |value| {
             value.filesystem_type = "fuseblk".to_owned();
         }),
-        "profile-mount-id-missing-fail" => profile_failure(case, |value| value.mount_id = 0),
+        "profile-mount-id-missing-fail" => missing_mount_id(case),
         "profile-mountinfo-ambiguous-fail" => ambiguous_mountinfo(case),
         "profile-per-mount-ro-fail" => profile_failure(case, |value| {
             value.mount_read_only = true;
@@ -146,6 +289,8 @@ impl ProfileOps for FailingProfile {
 struct InjectedDurability {
     fail_before: Option<DurabilityPoint>,
     replace_before: Option<(DurabilityPoint, PathBuf, Vec<u8>)>,
+    fail_untracked_directory_barrier: bool,
+    replace_before_untracked_directory_barrier: Option<(PathBuf, Vec<u8>)>,
 }
 
 impl DurabilityOps for InjectedDurability {
@@ -164,6 +309,18 @@ impl DurabilityOps for InjectedDurability {
             return Err(std::io::Error::other("injected durability failure"));
         }
         Ok(())
+    }
+
+    fn barrier_directory_untracked(&mut self, directory: &File) -> std::io::Result<()> {
+        if let Some((path, bytes)) = self.replace_before_untracked_directory_barrier.take() {
+            let replacement = path.with_extension("replacement");
+            write_private(&replacement, &bytes);
+            fs::rename(replacement, path)?;
+        }
+        if self.fail_untracked_directory_barrier {
+            return Err(std::io::Error::other("injected directory barrier failure"));
+        }
+        directory.sync_all()
     }
 }
 
@@ -228,10 +385,21 @@ fn open_fake(state: &Path) -> Result<JsonlJournal, JournalError> {
     )
 }
 
-fn read_fake(state: &Path) -> Result<Vec<aizign_engine::JournalEntry>, JournalError> {
-    let mut profile = FixedProfile::default();
-    let mut reader = JsonlJournalReader::open_with_profile(state, &mut profile)?;
-    reader.load_committed_with_profile(&mut profile)
+fn open_production(state: &Path) -> Result<JsonlJournal, JournalError> {
+    JsonlJournal::open(state)
+}
+
+fn read_with_profile(
+    state: &Path,
+    profile: &mut dyn ProfileOps,
+) -> Result<Vec<aizign_engine::JournalEntry>, JournalError> {
+    let mut reader = JsonlJournalReader::open_with_profile(state, profile)?;
+    reader.load_committed_with_profile(profile)
+}
+
+fn read_production(state: &Path) -> Result<Vec<aizign_engine::JournalEntry>, JournalError> {
+    let mut reader = JsonlJournalReader::open(state)?;
+    reader.load_committed()
 }
 
 fn append_fake(
@@ -246,6 +414,13 @@ fn append_fake(
         &mut FixedProfile::default(),
         None,
     )
+}
+
+fn append_production(
+    journal: &mut JsonlJournal,
+    id: &str,
+) -> Result<aizign_engine::JournalEntry, JournalError> {
+    journal.append(&event(id), signals::at(0))
 }
 
 fn expect_code(result: Result<impl Sized, JournalError>, expected: Option<&str>) {
@@ -278,8 +453,8 @@ fn write_witness(state: &Path, witness: PublishWitness) {
 
 fn fresh_clean(case: &Case) {
     let (_temporary, state) = state();
-    expect_code(open_fake(&state), case.triggering_operation_code.as_deref());
-    expect_code(read_fake(&state), case.later_reader_code.as_deref());
+    case.expect_trigger(&state, || open_production(&state));
+    case.expect_later(&state, || read_production(&state));
     assert_eq!(
         fs::read(state.join(COMMIT_FILE_NAME)).unwrap(),
         CommitPoint::empty().encode()
@@ -298,17 +473,18 @@ fn pre_marker_partial(case: &Case) {
     fs::set_permissions(&state, fs::Permissions::from_mode(0o700)).unwrap();
     write_private(&state.join(LOCK_FILE_NAME), b"");
     let before = fs::read_dir(&state).unwrap().count();
-    expect_code(open_fake(&state), case.triggering_operation_code.as_deref());
-    expect_code(read_fake(&state), case.later_reader_code.as_deref());
+    case.expect_trigger(&state, || open_production(&state));
+    case.expect_later(&state, || read_production(&state));
     assert_eq!(fs::read_dir(&state).unwrap().count(), before);
 }
 
 fn commit_without_witness(case: &Case) {
     let (_temporary, state) = state();
-    drop(open_fake(&state).unwrap());
+    drop(open_production(&state).unwrap());
     fs::remove_file(state.join(PUBLISH_FILE_NAME)).unwrap();
-    expect_code(read_fake(&state), case.triggering_operation_code.as_deref());
-    open_fake(&state).expect("exclusive writer completes exact generation-1 witness");
+    case.expect_trigger(&state, || read_production(&state));
+    case.expect_later(&state, || read_production(&state));
+    open_production(&state).expect("exclusive writer completes exact generation-1 witness");
     assert_eq!(
         PublishWitness::decode(&fs::read(state.join(PUBLISH_FILE_NAME)).unwrap()).unwrap(),
         PublishWitness::clean(1)
@@ -317,50 +493,61 @@ fn commit_without_witness(case: &Case) {
 
 fn prepared_initialization_resumes(case: &Case) {
     let (_temporary, state) = state();
-    drop(open_fake(&state).unwrap());
+    drop(open_production(&state).unwrap());
     let commit = fs::read(state.join(COMMIT_FILE_NAME)).unwrap();
     write_witness(&state, PublishWitness::initializing());
-    expect_code(open_fake(&state), case.triggering_operation_code.as_deref());
+    case.expect_trigger(&state, || open_production(&state));
     assert_eq!(fs::read(state.join(COMMIT_FILE_NAME)).unwrap(), commit);
-    expect_code(read_fake(&state), case.later_reader_code.as_deref());
+    case.expect_later(&state, || read_production(&state));
 }
 
 fn prepared_rebarrier_failure(case: &Case) {
     let (_temporary, state) = state();
-    drop(open_fake(&state).unwrap());
+    drop(open_production(&state).unwrap());
     write_witness(&state, PublishWitness::initializing());
     let mut durability = InjectedDurability {
-        fail_before: Some(DurabilityPoint::WitnessDirectoryBarrierComplete),
+        fail_untracked_directory_barrier: true,
         ..InjectedDurability::default()
     };
-    expect_code(
-        JsonlJournal::open_with_ops(&state, &mut durability, &mut FixedProfile::default()),
-        case.triggering_operation_code.as_deref(),
-    );
+    case.expect_trigger(&state, || {
+        JsonlJournal::open_with_ops(&state, &mut durability, &mut FixedProfile::default())
+    });
     assert_eq!(
         PublishWitness::decode(&fs::read(state.join(PUBLISH_FILE_NAME)).unwrap()).unwrap(),
         PublishWitness::initializing()
     );
-    expect_code(read_fake(&state), case.later_reader_code.as_deref());
+    case.expect_later(&state, || read_production(&state));
 }
 
 fn prepared_identity_replacement(case: &Case) {
     let (_temporary, state) = state();
-    drop(open_fake(&state).unwrap());
+    drop(open_production(&state).unwrap());
     write_witness(&state, PublishWitness::initializing());
+    let commit_before = fs::read(state.join(COMMIT_FILE_NAME)).unwrap();
+    let journal_before = fs::read(state.join(JOURNAL_FILE_NAME)).unwrap();
     let mut durability = InjectedDurability {
-        replace_before: Some((
-            DurabilityPoint::WitnessDirectoryBarrierComplete,
+        replace_before_untracked_directory_barrier: Some((
             state.join(PUBLISH_FILE_NAME),
             PublishWitness::initializing().encode(),
         )),
         ..InjectedDurability::default()
     };
-    expect_code(
-        JsonlJournal::open_with_ops(&state, &mut durability, &mut FixedProfile::default()),
-        case.triggering_operation_code.as_deref(),
+    case.expect_trigger_external_mutation(&state, || {
+        JsonlJournal::open_with_ops(&state, &mut durability, &mut FixedProfile::default())
+    });
+    assert_eq!(
+        fs::read(state.join(PUBLISH_FILE_NAME)).unwrap(),
+        PublishWitness::initializing().encode()
     );
-    expect_code(read_fake(&state), case.later_reader_code.as_deref());
+    assert_eq!(
+        fs::read(state.join(COMMIT_FILE_NAME)).unwrap(),
+        commit_before
+    );
+    assert_eq!(
+        fs::read(state.join(JOURNAL_FILE_NAME)).unwrap(),
+        journal_before
+    );
+    case.expect_later(&state, || read_production(&state));
 }
 
 fn visible_clean_initialization_failure(case: &Case) {
@@ -369,33 +556,36 @@ fn visible_clean_initialization_failure(case: &Case) {
         fail_before: Some(DurabilityPoint::CleanBarrierComplete),
         ..InjectedDurability::default()
     };
-    expect_code(
-        JsonlJournal::open_with_ops(&state, &mut durability, &mut FixedProfile::default()),
-        case.triggering_operation_code.as_deref(),
+    case.expect_trigger_external_mutation(&state, || {
+        JsonlJournal::open_with_ops(&state, &mut durability, &mut FixedProfile::default())
+    });
+    assert_eq!(
+        fs::read(state.join(PUBLISH_FILE_NAME)).unwrap(),
+        PublishWitness::clean(1).encode()
     );
-    expect_code(read_fake(&state), case.later_reader_code.as_deref());
+    case.expect_later(&state, || read_production(&state));
 }
 
 fn clean_missing_commit(case: &Case) {
     let (_temporary, state) = state();
-    drop(open_fake(&state).unwrap());
+    drop(open_production(&state).unwrap());
     fs::remove_file(state.join(COMMIT_FILE_NAME)).unwrap();
-    expect_code(open_fake(&state), case.triggering_operation_code.as_deref());
-    expect_code(read_fake(&state), case.later_reader_code.as_deref());
+    case.expect_trigger(&state, || open_production(&state));
+    case.expect_later(&state, || read_production(&state));
 }
 
 fn prepared_nonempty_journal(case: &Case) {
     let (_temporary, state) = state();
-    drop(open_fake(&state).unwrap());
+    drop(open_production(&state).unwrap());
     write_private(&state.join(JOURNAL_FILE_NAME), b"partial");
     write_witness(&state, PublishWitness::initializing());
-    expect_code(open_fake(&state), case.triggering_operation_code.as_deref());
-    expect_code(read_fake(&state), case.later_reader_code.as_deref());
+    case.expect_trigger(&state, || open_production(&state));
+    case.expect_later(&state, || read_production(&state));
 }
 
 fn unsupported_commit(case: &Case, version: u64) {
     let (_temporary, state) = state();
-    drop(open_fake(&state).unwrap());
+    drop(open_production(&state).unwrap());
     write_private(
         &state.join(COMMIT_FILE_NAME),
         format!(
@@ -404,27 +594,24 @@ fn unsupported_commit(case: &Case, version: u64) {
         )
         .as_bytes(),
     );
-    expect_code(open_fake(&state), case.triggering_operation_code.as_deref());
-    expect_code(read_fake(&state), case.later_reader_code.as_deref());
+    case.expect_trigger(&state, || open_production(&state));
+    case.expect_later(&state, || read_production(&state));
 }
 
 fn malformed_witness(case: &Case) {
     let (_temporary, state) = state();
-    drop(open_fake(&state).unwrap());
+    drop(open_production(&state).unwrap());
     write_private(&state.join(PUBLISH_FILE_NAME), b"{}");
-    expect_code(open_fake(&state), case.triggering_operation_code.as_deref());
-    expect_code(read_fake(&state), case.later_reader_code.as_deref());
+    case.expect_trigger(&state, || open_production(&state));
+    case.expect_later(&state, || read_production(&state));
 }
 
 fn clean_generation(case: &Case) {
     let (_temporary, state) = state();
-    let mut journal = open_fake(&state).unwrap();
-    expect_code(
-        append_fake(&mut journal, "evt-clean", &mut ProductionDurability),
-        case.triggering_operation_code.as_deref(),
-    );
+    let mut journal = open_production(&state).unwrap();
+    case.expect_trigger(&state, || append_production(&mut journal, "evt-clean"));
     drop(journal);
-    assert_eq!(read_fake(&state).unwrap().len(), 1);
+    case.expect_later(&state, || read_production(&state));
 }
 
 #[derive(Clone, Copy)]
@@ -436,7 +623,7 @@ enum Tail {
 
 fn prepared_image(case: &Case, tail: Tail) {
     let (_temporary, state) = state();
-    drop(open_fake(&state).unwrap());
+    drop(open_production(&state).unwrap());
     if matches!(tail, Tail::Partial | Tail::Complete) {
         let bytes: &[u8] = if matches!(tail, Tail::Partial) {
             b"{\"partial\""
@@ -451,65 +638,85 @@ fn prepared_image(case: &Case, tail: Tail) {
             .unwrap();
     }
     write_witness(&state, PublishWitness::prepared(2));
-    expect_code(open_fake(&state), case.triggering_operation_code.as_deref());
-    expect_code(read_fake(&state), case.later_reader_code.as_deref());
+    case.expect_trigger(&state, || open_production(&state));
+    case.expect_later(&state, || read_production(&state));
 }
 
 fn prepared_after_commit_rename(case: &Case) {
     let (_temporary, state) = state();
-    let mut journal = open_fake(&state).unwrap();
+    let mut journal = open_production(&state).unwrap();
     let mut durability = InjectedDurability {
         fail_before: Some(DurabilityPoint::CommitDirectoryBarrierComplete),
         ..InjectedDurability::default()
     };
-    expect_code(
-        append_fake(&mut journal, "evt-renamed", &mut durability),
-        case.triggering_operation_code.as_deref(),
-    );
+    case.expect_trigger_external_mutation(&state, || {
+        append_fake(&mut journal, "evt-renamed", &mut durability)
+    });
     drop(journal);
-    expect_code(read_fake(&state), case.later_reader_code.as_deref());
+    assert_eq!(
+        PublishWitness::decode(&fs::read(state.join(PUBLISH_FILE_NAME)).unwrap()).unwrap(),
+        PublishWitness::prepared(2)
+    );
+    case.expect_later(&state, || read_production(&state));
 }
 
 fn clean_tail(case: &Case) {
     let (_temporary, state) = state();
-    drop(open_fake(&state).unwrap());
+    drop(open_production(&state).unwrap());
     fs::OpenOptions::new()
         .append(true)
         .open(state.join(JOURNAL_FILE_NAME))
         .unwrap()
         .write_all(b"tail")
         .unwrap();
-    expect_code(open_fake(&state), case.triggering_operation_code.as_deref());
-    expect_code(read_fake(&state), case.later_reader_code.as_deref());
+    case.expect_trigger(&state, || open_production(&state));
+    case.expect_later(&state, || read_production(&state));
 }
 
 fn digest_mismatch(case: &Case) {
     let (_temporary, state) = state();
-    let mut journal = open_fake(&state).unwrap();
-    append_fake(&mut journal, "evt-digest", &mut ProductionDurability).unwrap();
+    let mut journal = open_production(&state).unwrap();
+    append_production(&mut journal, "evt-digest").unwrap();
     drop(journal);
     let path = state.join(JOURNAL_FILE_NAME);
     let mut bytes = fs::read(&path).unwrap();
     bytes[0] ^= 1;
     write_private(&path, &bytes);
-    expect_code(open_fake(&state), case.triggering_operation_code.as_deref());
-    expect_code(read_fake(&state), case.later_reader_code.as_deref());
+    case.expect_trigger(&state, || open_production(&state));
+    case.expect_later(&state, || read_production(&state));
 }
 
 fn contradictory_witness(case: &Case, started: u64, published: u64) {
     let (_temporary, state) = state();
-    drop(open_fake(&state).unwrap());
+    drop(open_production(&state).unwrap());
     let document = format!(
         "{{\"storeVersion\":2,\"startedGeneration\":{started},\"publishedGeneration\":{published}}}"
     );
     write_private(&state.join(PUBLISH_FILE_NAME), document.as_bytes());
-    expect_code(open_fake(&state), case.triggering_operation_code.as_deref());
-    expect_code(read_fake(&state), case.later_reader_code.as_deref());
+    case.expect_trigger(&state, || open_production(&state));
+    case.expect_later(&state, || read_production(&state));
+
+    if case.id == "append-generation-gap" {
+        let (_temporary_gap, gap_state) = crate::store_v2_cases::state();
+        let mut journal = open_production(&gap_state).unwrap();
+        append_production(&mut journal, "evt-gap-1").unwrap();
+        append_production(&mut journal, "evt-gap-2").unwrap();
+        drop(journal);
+        write_witness(&gap_state, PublishWitness::prepared(2));
+        expect_code(
+            open_production(&gap_state),
+            case.triggering_operation_code.as_deref(),
+        );
+        expect_code(
+            read_production(&gap_state),
+            case.later_reader_code.as_deref(),
+        );
+    }
 }
 
 fn maximum_generation(case: &Case) {
     let (_temporary, state) = state();
-    drop(open_fake(&state).unwrap());
+    drop(open_production(&state).unwrap());
     let template = event("evt-bound");
     let mut journal_bytes = Vec::new();
     for seq in 1..=MAX_JOURNAL_ENTRIES as u64 {
@@ -533,13 +740,10 @@ fn maximum_generation(case: &Case) {
         fs::read(state.join(COMMIT_FILE_NAME)).unwrap(),
         fs::read(state.join(PUBLISH_FILE_NAME)).unwrap(),
     ];
-    let mut journal = open_fake(&state).unwrap();
-    expect_code(
-        append_fake(&mut journal, "evt-over-bound", &mut ProductionDurability),
-        case.triggering_operation_code.as_deref(),
-    );
+    let mut journal = open_production(&state).unwrap();
+    case.expect_trigger(&state, || append_production(&mut journal, "evt-over-bound"));
     drop(journal);
-    expect_code(read_fake(&state), case.later_reader_code.as_deref());
+    case.expect_later(&state, || read_production(&state));
     assert_eq!(
         before,
         [
@@ -552,58 +756,65 @@ fn maximum_generation(case: &Case) {
 
 fn visible_clean_append_failure(case: &Case) {
     let (_temporary, state) = state();
-    let mut journal = open_fake(&state).unwrap();
+    let mut journal = open_production(&state).unwrap();
     let mut durability = InjectedDurability {
         fail_before: Some(DurabilityPoint::CleanBarrierComplete),
         ..InjectedDurability::default()
     };
-    expect_code(
-        append_fake(&mut journal, "evt-visible", &mut durability),
-        case.triggering_operation_code.as_deref(),
-    );
+    case.expect_trigger_external_mutation(&state, || {
+        append_fake(&mut journal, "evt-visible", &mut durability)
+    });
     drop(journal);
-    assert_eq!(read_fake(&state).unwrap().len(), 1);
+    assert_eq!(
+        PublishWitness::decode(&fs::read(state.join(PUBLISH_FILE_NAME)).unwrap()).unwrap(),
+        PublishWitness::clean(2)
+    );
+    case.expect_later(&state, || read_production(&state));
 }
 
 fn profile_pass(case: &Case) {
     let (_temporary, state) = state();
-    drop(open_fake(&state).unwrap());
-    expect_code(open_fake(&state), case.triggering_operation_code.as_deref());
-    expect_code(read_fake(&state), case.later_reader_code.as_deref());
+    drop(open_production(&state).unwrap());
+    case.expect_trigger(&state, || open_production(&state));
+    case.expect_later(&state, || read_production(&state));
 }
 
 fn profile_failure(case: &Case, mutate: impl FnOnce(&mut ProfileObservation)) {
     let (_temporary, state) = state();
-    drop(open_fake(&state).unwrap());
+    drop(open_production(&state).unwrap());
     let mut observation = valid_observation();
     mutate(&mut observation);
     let mut writer_profile = FixedProfile(observation.clone());
-    expect_code(
-        JsonlJournal::open_with_ops(&state, &mut ProductionDurability, &mut writer_profile),
-        case.triggering_operation_code.as_deref(),
-    );
+    case.expect_trigger(&state, || {
+        JsonlJournal::open_with_ops(&state, &mut ProductionDurability, &mut writer_profile)
+    });
     let mut reader_profile = FixedProfile(observation);
-    expect_code(
-        JsonlJournalReader::open_with_profile(&state, &mut reader_profile),
-        case.later_reader_code.as_deref(),
-    );
+    case.expect_later(&state, || read_with_profile(&state, &mut reader_profile));
+}
+
+fn missing_mount_id(case: &Case) {
+    let (_temporary, state) = state();
+    drop(open_production(&state).unwrap());
+    case.expect_trigger(&state, missing_statx_mount_id_for_test);
+    case.expect_later(&state, || {
+        missing_statx_mount_id_for_test()?;
+        unreachable!("missing mount ID must fail before a reader becomes known")
+    });
 }
 
 fn ambiguous_mountinfo(case: &Case) {
     let (_temporary, state) = state();
-    drop(open_fake(&state).unwrap());
-    expect_code(
+    drop(open_production(&state).unwrap());
+    case.expect_trigger(&state, || {
         JsonlJournal::open_with_ops(
             &state,
             &mut ProductionDurability,
             &mut AmbiguousMountProfile,
-        ),
-        case.triggering_operation_code.as_deref(),
-    );
-    expect_code(
-        JsonlJournalReader::open_with_profile(&state, &mut AmbiguousMountProfile),
-        case.later_reader_code.as_deref(),
-    );
+        )
+    });
+    case.expect_later(&state, || {
+        read_with_profile(&state, &mut AmbiguousMountProfile)
+    });
 }
 
 fn parent_child_profile_mismatch(case: &Case) {
@@ -611,73 +822,72 @@ fn parent_child_profile_mismatch(case: &Case) {
     let mut child = valid_observation();
     child.mount_id += 1;
     let mut profile = SequenceProfile::new([valid_observation(), child.clone(), child]);
-    expect_code(
-        JsonlJournal::open_with_ops(&state, &mut ProductionDurability, &mut profile),
-        case.triggering_operation_code.as_deref(),
-    );
+    case.expect_trigger(&state, || {
+        JsonlJournal::open_with_ops(&state, &mut ProductionDurability, &mut profile)
+    });
     assert!(state.is_dir());
     assert_eq!(fs::read_dir(&state).unwrap().count(), 0);
-    expect_code(read_fake(&state), case.later_reader_code.as_deref());
+    case.expect_later(&state, || read_production(&state));
 }
 
 fn profile_identity_mismatch(case: &Case, mutate: impl FnOnce(&mut ProfileObservation)) {
     let (_temporary, state) = state();
-    drop(open_fake(&state).unwrap());
+    drop(open_production(&state).unwrap());
     let mut actual = valid_observation();
     mutate(&mut actual);
     let mut writer_profile = SequenceProfile::new([valid_observation(), actual.clone()]);
-    expect_code(
-        JsonlJournal::open_with_ops(&state, &mut ProductionDurability, &mut writer_profile),
-        case.triggering_operation_code.as_deref(),
-    );
+    case.expect_trigger(&state, || {
+        JsonlJournal::open_with_ops(&state, &mut ProductionDurability, &mut writer_profile)
+    });
     let mut reader_profile = SequenceProfile::new([valid_observation(), actual]);
-    expect_code(
-        JsonlJournalReader::open_with_profile(&state, &mut reader_profile),
-        case.later_reader_code.as_deref(),
-    );
+    case.expect_later(&state, || read_with_profile(&state, &mut reader_profile));
 }
 
 fn lock_identity_replacement(case: &Case) {
+    use std::os::unix::fs::PermissionsExt as _;
+
     let (_temporary, state) = state();
-    let mut journal = open_fake(&state).unwrap();
+    let mut journal = open_production(&state).unwrap();
     fs::remove_file(state.join(LOCK_FILE_NAME)).unwrap();
     write_private(&state.join(LOCK_FILE_NAME), b"");
-    expect_code(
-        append_fake(&mut journal, "evt-lock-replaced", &mut ProductionDurability),
-        case.triggering_operation_code.as_deref(),
-    );
+    let before = artifact_snapshot(&state);
+    case.expect_trigger_external_mutation(&state, || {
+        append_production(&mut journal, "evt-lock-replaced")
+    });
+    assert_eq!(artifact_snapshot(&state), before);
+    fs::set_permissions(
+        state.join(LOCK_FILE_NAME),
+        fs::Permissions::from_mode(0o640),
+    )
+    .unwrap();
+    drop(journal);
+    case.expect_later(&state, || read_production(&state));
 }
 
 fn unsupported_reader(case: &Case) {
     let (_temporary, state) = state();
-    drop(open_fake(&state).unwrap());
+    drop(open_production(&state).unwrap());
     let mut unsupported = valid_observation();
     unsupported.filesystem_type = "tmpfs".to_owned();
-    expect_code(
+    case.expect_trigger(&state, || {
         JsonlJournal::open_with_ops(
             &state,
             &mut ProductionDurability,
             &mut FixedProfile(unsupported.clone()),
-        ),
-        case.triggering_operation_code.as_deref(),
-    );
-    expect_code(
-        JsonlJournalReader::open_with_profile(&state, &mut FixedProfile(unsupported)),
-        case.later_reader_code.as_deref(),
-    );
+        )
+    });
+    case.expect_later(&state, || {
+        read_with_profile(&state, &mut FixedProfile(unsupported))
+    });
 }
 
 fn profile_observation_failure(case: &Case) {
     let (_temporary, state) = state();
-    drop(open_fake(&state).unwrap());
-    expect_code(
-        JsonlJournal::open_with_ops(&state, &mut ProductionDurability, &mut FailingProfile),
-        case.triggering_operation_code.as_deref(),
-    );
-    expect_code(
-        JsonlJournalReader::open_with_profile(&state, &mut FailingProfile),
-        case.later_reader_code.as_deref(),
-    );
+    drop(open_production(&state).unwrap());
+    case.expect_trigger(&state, || {
+        JsonlJournal::open_with_ops(&state, &mut ProductionDurability, &mut FailingProfile)
+    });
+    case.expect_later(&state, || read_with_profile(&state, &mut FailingProfile));
 }
 
 #[derive(Clone, Copy)]
@@ -690,13 +900,8 @@ enum Artifact {
 
 fn revalidation_mutation(case: &Case, artifact: Artifact) {
     let (_temporary, state) = state();
-    let mut journal = open_fake(&state).unwrap();
-    append_fake(
-        &mut journal,
-        "evt-before-mutation",
-        &mut ProductionDurability,
-    )
-    .unwrap();
+    let mut journal = open_production(&state).unwrap();
+    append_production(&mut journal, "evt-before-mutation").unwrap();
     match artifact {
         Artifact::Journal => {
             let path = state.join(JOURNAL_FILE_NAME);
@@ -718,10 +923,9 @@ fn revalidation_mutation(case: &Case, artifact: Artifact) {
             .unwrap();
         }
     }
-    let result = append_fake(&mut journal, "evt-revalidate", &mut ProductionDurability);
-    expect_code(result, case.triggering_operation_code.as_deref());
+    case.expect_trigger(&state, || append_production(&mut journal, "evt-revalidate"));
     drop(journal);
-    expect_code(read_fake(&state), case.later_reader_code.as_deref());
+    case.expect_later(&state, || read_production(&state));
 }
 
 #[test]
@@ -733,23 +937,12 @@ fn initialization_and_append_use_the_exact_durability_order() {
     assert_eq!(
         durability.points,
         [
-            DurabilityPoint::StateDirectoryCreate,
-            DurabilityPoint::StateDirectoryBarrier,
-            DurabilityPoint::ParentDirectoryBarrier,
-            DurabilityPoint::LockFileCreate,
-            DurabilityPoint::JournalFileCreate,
-            DurabilityPoint::LockFileBarrier,
-            DurabilityPoint::JournalFileBarrier,
-            DurabilityPoint::ArtifactDirectoryBarrier,
-            DurabilityPoint::CommitTemporaryCreate,
             DurabilityPoint::CommitTemporaryWriteComplete,
             DurabilityPoint::CommitTemporaryBarrierComplete,
             DurabilityPoint::CommitRenameComplete,
             DurabilityPoint::CommitDirectoryBarrierComplete,
-            DurabilityPoint::WitnessCreate,
             DurabilityPoint::PreparedWriteComplete,
             DurabilityPoint::PreparedBarrierComplete,
-            DurabilityPoint::WitnessDirectoryBarrierComplete,
             DurabilityPoint::CleanWriteComplete,
             DurabilityPoint::CleanBarrierComplete,
         ]
@@ -764,7 +957,6 @@ fn initialization_and_append_use_the_exact_durability_order() {
             DurabilityPoint::PreparedBarrierComplete,
             DurabilityPoint::JournalRecordWriteComplete,
             DurabilityPoint::JournalBarrierComplete,
-            DurabilityPoint::CommitTemporaryCreate,
             DurabilityPoint::CommitTemporaryWriteComplete,
             DurabilityPoint::CommitTemporaryBarrierComplete,
             DurabilityPoint::CommitRenameComplete,

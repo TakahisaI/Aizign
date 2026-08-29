@@ -162,6 +162,35 @@ fn validate_observation(observation: &ProfileObservation) -> Result<(), JournalE
     target_env = "gnu",
     target_pointer_width = "64"
 ))]
+fn require_statx_mount_id(mask: u32) -> Result<(), JournalError> {
+    use rustix::fs::StatxFlags;
+
+    let returned = StatxFlags::from_bits_retain(mask);
+    if !returned.contains(StatxFlags::MNT_ID) {
+        return Err(unavailable(
+            "opened store directory did not return STATX_MNT_ID",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(all(
+    test,
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
+pub(crate) fn missing_statx_mount_id_for_test() -> Result<(), JournalError> {
+    require_statx_mount_id(0)
+}
+
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 impl ProfileOps for ProductionProfile {
     fn observe(&mut self, opened: &File) -> Result<ProfileObservation, JournalError> {
         use rustix::fs::{AtFlags, StatxFlags};
@@ -173,12 +202,7 @@ impl ProfileOps for ProductionProfile {
             StatxFlags::BASIC_STATS | StatxFlags::MNT_ID,
         )
         .map_err(|error| unavailable(format!("cannot qualify opened store directory: {error}")))?;
-        let returned = StatxFlags::from_bits_retain(stat.stx_mask);
-        if !returned.contains(StatxFlags::MNT_ID) {
-            return Err(unavailable(
-                "opened store directory did not return STATX_MNT_ID",
-            ));
-        }
+        require_statx_mount_id(stat.stx_mask)?;
         let mount = mountinfo::read_exact_mount(stat.stx_mnt_id)?;
         if stat.stx_dev_major != mount.device_major || stat.stx_dev_minor != mount.device_minor {
             return Err(unavailable(
