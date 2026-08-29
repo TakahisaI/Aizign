@@ -1,11 +1,9 @@
 # Aizign journal schema v1
 
 Journal record schema v1 remains current and unchanged. Its current/target
-physical publication owner is store metadata v2 under
+physical publication owner and implementation is store metadata v2 under
 [`../../store/v2/`](../../store/v2/README.md). Store v1 remains historical
-compatibility-rejection material, while the production runtime continues to
-implement v1 until the ordered Issue #81 S2 migration. This document does not
-claim that S2 is already implemented.
+compatibility-rejection material; production does not adopt or dual-read it.
 
 control journalのdurable format。**metadata-only、append-only**（ADR-0007）。初期実装はJSONL（`aizign-store-jsonl`）。
 
@@ -19,9 +17,8 @@ control journalのdurable format。**metadata-only、append-only**（ADR-0007）
 
 両JSON documentはjournal recordではなく、独立したstore metadata v2である。
 closed schema、generation、publication、reader authorityの正本は
-[`../../store/v2/`](../../store/v2/README.md)。以下の読み書き節に残るv1
-commit-point説明は、S2までのruntime debtを説明するもので、target authority
-ではない。
+[`../../store/v2/`](../../store/v2/README.md)。以下の読み書き規則はv2の
+commit generationとPREPARED/CLEAN witnessを通して実装される。
 
 ## Record
 

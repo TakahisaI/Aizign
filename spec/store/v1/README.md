@@ -2,9 +2,8 @@
 
 > **Historical unsupported format.** Store metadata v1 is retained only for
 > compatibility-rejection evidence. The sole current/target store-layout and
-> publication authority is [`../v2/`](../v2/README.md). The ordered S2
-> migration has not yet landed, so the production store still implements this
-> historical layout as explicit implementation debt after S1. A v2 binary
+> publication authority is [`../v2/`](../v2/README.md). Production implements
+> v2 atomically and treats this directory only as historical evidence. A v2 binary
 > rejects v1 with `JOURNAL_SCHEMA_UNSUPPORTED`; it does not adopt or migrate
 > it. The schema and example in this directory remain unchanged.
 

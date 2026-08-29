@@ -43,6 +43,7 @@ source-qualified; the same spelling does not imply the same authority.
 | **Control journal** | workflowの正本となるmetadata-onlyのappend-only journal |
 | **Committed prefix** | `workflow.commit.json` v2がgeneration、length、count、SHA-256で固定し、CLEAN witnessがreleaseしたJSONL byte prefix。readerはこれを越えるtailを受理根拠にしない |
 | **Publication witness** | store v2の`workflow.publish.json`。`W=(G+1,G)` PREPAREDまたは`W=(G,G)` CLEANを表す。readerはPREPAREDをknownへ昇格しない |
+| **Store support profile** | production storeがopened fdから毎回qualifyするexact `linux-x86_64-gnu-ext4-local-v1`。target tripleだけ、path文字列、filesystem magicだけでは成立しない |
 | **Supported storage profile** | v0.1では`linux-x86_64-gnu-ext4-local-v1`だけ。fd-bound mount ID、exact ext4、rw/device/artifact checksをruntimeが行い、backing persistence/barrier correctnessはoperator assumptionとして分離する |
 | **Bounded** | 上限のあること。request size、record数、処理時間、cold read範囲に上限を置く |
 | **Short error code** | `^[A-Z][A-Z0-9_]{0,63}$` の安定した識別子。[error-codes.md](error-codes.md) |

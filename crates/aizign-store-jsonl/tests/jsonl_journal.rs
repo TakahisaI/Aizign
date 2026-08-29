@@ -16,8 +16,8 @@ use aizign_core::workflow::{Command, Decision, WorkflowEvent, WorkflowState, dec
 use aizign_engine::{Journal, JournalEntry, JournalError, JournalReader, MAX_JOURNAL_ENTRIES};
 use aizign_store_jsonl::{
     COMMIT_FILE_NAME, JOURNAL_FILE_NAME, JOURNAL_SCHEMA_VERSION, JsonlJournal, JsonlJournalReader,
-    LOCK_FILE_NAME, STORE_METADATA_VERSION, StoreObservation, StoreObserver, StoreStage,
-    encode_record,
+    LOCK_FILE_NAME, PUBLISH_FILE_NAME, STORE_METADATA_VERSION, StoreObservation, StoreObserver,
+    StoreStage, encode_record,
 };
 use aizign_testkit::{TempDir, journal_contract, signals};
 use sha2::{Digest as _, Sha256};
@@ -53,6 +53,10 @@ fn journal_file(state: &Path) -> PathBuf {
 
 fn commit_file(state: &Path) -> PathBuf {
     state.join(COMMIT_FILE_NAME)
+}
+
+fn publish_file(state: &Path) -> PathBuf {
+    state.join(PUBLISH_FILE_NAME)
 }
 
 fn event(id: &str) -> WorkflowEvent {
@@ -224,6 +228,10 @@ fn raw_and_observed_paths_have_equivalent_results_and_mutations() {
         fs::read(commit_file(&raw_state)).unwrap(),
         fs::read(commit_file(&observed_state)).unwrap()
     );
+    assert_eq!(
+        fs::read(publish_file(&raw_state)).unwrap(),
+        fs::read(publish_file(&observed_state)).unwrap()
+    );
 
     fs::write(journal_file(&raw_state), b"unpublished tail\n").unwrap();
     fs::write(journal_file(&observed_state), b"unpublished tail\n").unwrap();
@@ -266,6 +274,10 @@ fn store_observer_panic_cannot_change_the_durable_result() {
         fs::read(commit_file(&raw_state)).unwrap(),
         fs::read(commit_file(&observed_state)).unwrap()
     );
+    assert_eq!(
+        fs::read(publish_file(&raw_state)).unwrap(),
+        fs::read(publish_file(&observed_state)).unwrap()
+    );
 }
 
 #[test]
@@ -296,6 +308,7 @@ fn replace_snapshot(state: &Path, contents: &str, entries: u64) {
     fs::write(journal_file(state), contents).expect("write test journal");
     let metadata = serde_json::json!({
         "storeVersion": STORE_METADATA_VERSION,
+        "generation": entries + 1,
         "committedBytes": contents.len(),
         "committedEntries": entries,
         "sha256": digest_hex(contents.as_bytes()),
@@ -305,6 +318,16 @@ fn replace_snapshot(state: &Path, contents: &str, entries: u64) {
         serde_json::to_vec(&metadata).expect("encode metadata"),
     )
     .expect("write test metadata");
+    fs::write(
+        publish_file(state),
+        serde_json::to_vec(&serde_json::json!({
+            "storeVersion": STORE_METADATA_VERSION,
+            "startedGeneration": entries + 1,
+            "publishedGeneration": entries + 1,
+        }))
+        .expect("encode witness"),
+    )
+    .expect("write test witness");
 }
 
 fn read_snapshot(state: &Path) -> Result<Vec<JournalEntry>, JournalError> {
@@ -323,7 +346,12 @@ fn creates_owner_only_durable_layout_files() {
     let dir = TempDir::new();
     let state = dir.state();
     initialize(&state);
-    for name in [LOCK_FILE_NAME, JOURNAL_FILE_NAME, COMMIT_FILE_NAME] {
+    for name in [
+        LOCK_FILE_NAME,
+        JOURNAL_FILE_NAME,
+        COMMIT_FILE_NAME,
+        PUBLISH_FILE_NAME,
+    ] {
         assert!(state.join(name).is_file(), "{name}");
     }
     #[cfg(unix)]
@@ -333,7 +361,12 @@ fn creates_owner_only_durable_layout_files() {
             fs::metadata(&state).unwrap().permissions().mode() & 0o7777,
             0o700
         );
-        for name in [LOCK_FILE_NAME, JOURNAL_FILE_NAME, COMMIT_FILE_NAME] {
+        for name in [
+            LOCK_FILE_NAME,
+            JOURNAL_FILE_NAME,
+            COMMIT_FILE_NAME,
+            PUBLISH_FILE_NAME,
+        ] {
             assert_eq!(
                 fs::metadata(state.join(name)).unwrap().permissions().mode() & 0o7777,
                 0o600,
@@ -344,6 +377,7 @@ fn creates_owner_only_durable_layout_files() {
     let metadata: serde_json::Value =
         serde_json::from_slice(&fs::read(commit_file(&state)).unwrap()).unwrap();
     assert_eq!(metadata["storeVersion"], STORE_METADATA_VERSION);
+    assert_eq!(metadata["generation"], 1);
     assert_eq!(metadata["committedBytes"], 0);
     assert_eq!(metadata["committedEntries"], 0);
     assert_eq!(
@@ -393,7 +427,12 @@ fn reader_is_observational_and_requires_every_existing_artifact() {
         "reader must not initialize a state directory"
     );
 
-    for missing_name in [LOCK_FILE_NAME, JOURNAL_FILE_NAME, COMMIT_FILE_NAME] {
+    for missing_name in [
+        LOCK_FILE_NAME,
+        JOURNAL_FILE_NAME,
+        COMMIT_FILE_NAME,
+        PUBLISH_FILE_NAME,
+    ] {
         let dir = TempDir::new();
         let state = dir.state();
         initialize(&state);
@@ -433,7 +472,12 @@ fn reader_is_observational_and_requires_every_existing_artifact() {
 
 #[test]
 fn missing_snapshot_artifact_is_unavailable_before_lock_contention() {
-    for missing_name in [LOCK_FILE_NAME, JOURNAL_FILE_NAME, COMMIT_FILE_NAME] {
+    for missing_name in [
+        LOCK_FILE_NAME,
+        JOURNAL_FILE_NAME,
+        COMMIT_FILE_NAME,
+        PUBLISH_FILE_NAME,
+    ] {
         let dir = TempDir::new();
         let state = dir.state();
         let writer = JsonlJournal::open(&state).unwrap();
@@ -450,8 +494,12 @@ fn missing_snapshot_artifact_is_unavailable_before_lock_contention() {
 
 #[test]
 fn writer_completes_only_safe_empty_initialization_states() {
+    let dir = TempDir::new();
+    let state = dir.state();
+    initialize(&state);
+    assert!(read_snapshot(&state).unwrap().is_empty());
+
     for artifacts in [
-        &[][..],
         &[LOCK_FILE_NAME][..],
         &[LOCK_FILE_NAME, JOURNAL_FILE_NAME][..],
     ] {
@@ -461,8 +509,10 @@ fn writer_completes_only_safe_empty_initialization_states() {
         for name in artifacts {
             create_private_file(&state.join(name), b"");
         }
-        initialize(&state);
-        assert!(read_snapshot(&state).unwrap().is_empty());
+        assert!(matches!(
+            JsonlJournal::open(&state),
+            Err(JournalError::Unavailable { .. })
+        ));
     }
 
     let dir = TempDir::new();
@@ -556,7 +606,12 @@ fn refuses_directories_and_files_without_exact_private_modes() {
 fn rejects_symlink_artifacts_without_reading_or_mutating_their_targets() {
     use std::os::unix::fs::symlink;
 
-    for name in [LOCK_FILE_NAME, JOURNAL_FILE_NAME, COMMIT_FILE_NAME] {
+    for name in [
+        LOCK_FILE_NAME,
+        JOURNAL_FILE_NAME,
+        COMMIT_FILE_NAME,
+        PUBLISH_FILE_NAME,
+    ] {
         let dir = TempDir::new();
         let state = dir.state();
         initialize(&state);
@@ -603,7 +658,12 @@ fn rejects_symlink_artifacts_without_reading_or_mutating_their_targets() {
 
 #[test]
 fn rejects_special_file_artifacts_before_opening_them() {
-    for name in [LOCK_FILE_NAME, JOURNAL_FILE_NAME, COMMIT_FILE_NAME] {
+    for name in [
+        LOCK_FILE_NAME,
+        JOURNAL_FILE_NAME,
+        COMMIT_FILE_NAME,
+        PUBLISH_FILE_NAME,
+    ] {
         let dir = TempDir::new();
         let state = dir.state();
         initialize(&state);
@@ -631,7 +691,12 @@ fn rejects_special_file_artifacts_before_opening_them() {
 
 #[test]
 fn rejects_hard_linked_artifacts_without_mutating_the_other_link() {
-    for name in [LOCK_FILE_NAME, JOURNAL_FILE_NAME, COMMIT_FILE_NAME] {
+    for name in [
+        LOCK_FILE_NAME,
+        JOURNAL_FILE_NAME,
+        COMMIT_FILE_NAME,
+        PUBLISH_FILE_NAME,
+    ] {
         let dir = TempDir::new();
         let state = dir.state();
         initialize(&state);
@@ -753,13 +818,13 @@ fn malformed_and_unsupported_commit_metadata_are_classified() {
     let state = dir.state();
     replace_snapshot(&state, "", 0);
     let document = format!(
-        r#"{{"storeVersion":2,"committedBytes":0,"committedEntries":0,"sha256":"{}"}}"#,
+        r#"{{"storeVersion":3,"generation":1,"committedBytes":0,"committedEntries":0,"sha256":"{}"}}"#,
         digest_hex(b"")
     );
     fs::write(commit_file(&state), document).unwrap();
     assert_eq!(
         read_snapshot(&state).unwrap_err(),
-        JournalError::SchemaUnsupported { found: 2 }
+        JournalError::SchemaUnsupported { found: 3 }
     );
 }
 

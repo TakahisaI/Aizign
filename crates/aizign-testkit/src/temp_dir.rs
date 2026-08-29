@@ -35,7 +35,10 @@ impl TempDir {
         &self.path
     }
 
-    /// A not-yet-created child path, suitable as an `aizign` state directory.
+    /// A not-yet-created candidate `aizign` state path.
+    ///
+    /// This helper establishes no production storage-profile support. The
+    /// store's fd-bound qualifier remains authoritative for the returned path.
     #[must_use]
     pub fn state(&self) -> PathBuf {
         self.path.join("state")

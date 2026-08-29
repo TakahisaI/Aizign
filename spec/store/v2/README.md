@@ -1,6 +1,6 @@
 # JSONL store metadata v2
 
-This directory is the sole current/target authority for Aizign's JSONL store
+This directory is the sole current authority for Aizign's JSONL store
 layout and crash-monotonic publication contract. The README, the two closed
 schemas, the examples, and the closed language-neutral case corpus form one
 versioned authority package. Implementations may project this authority into
@@ -11,9 +11,11 @@ v1, process profile v1, and package versions. The journal remains the single
 append-only `workflow.jsonl` stream defined by
 [`../../journal/v1/`](../../journal/v1/README.md).
 
-S1 publishes this target contract. Until the ordered S2 migration is merged,
-the production store still implements the historical v1 layout and is not
-profile-qualified under this document.
+The production `aizign-store-jsonl` state machine implements this authority.
+Its crate-internal executor applies all 38 case IDs exactly once to that
+implementation and its single private durability/profile seam. Real
+child-process crash and partial-write campaigns remain separately owned by
+Issue #82 and are not implied by this implementation status.
 
 ## Artifact set and physical rules
 

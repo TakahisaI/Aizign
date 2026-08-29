@@ -96,6 +96,10 @@ authority, `workflow.commit.json` contains only store version, generation,
 committed byte length, entry count, and SHA-256 of the published prefix;
 `workflow.publish.json` contains only store version and the started/published
 generation pair. Neither carries request content, a state path, mount source,
+or device name. The production qualifier retains only the bounded mount ID,
+major/minor device numbers, filesystem type/magic, and read-only facts needed
+to decide the exact support profile; its CI evidence emits the closed
+metadata-only projection and never the path or mount source.
 or private host data. The prefix digest detects mismatch; it is not candidate
 identity, a MAC, a signature, or authentication against a same-user process
 that can rewrite journal and metadata consistently. Production remains on the

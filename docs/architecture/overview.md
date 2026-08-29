@@ -65,11 +65,10 @@ the matching CLEAN `workflow.publish.json`; the server reconciliation dispositio
 writer, corruption, an unpublished tail, and transport or correlation failure
 cannot produce those dispositions and are preserved by the client as
 `unknown`. Reconciliation creates, synchronizes, repairs, and appends nothing.
-After S1, production still implements the historical v1 store and retains its
-target-only capability gate as explicit S2 migration debt. That runtime fact
-is not the accepted support boundary. The accepted target requires the exact
-`linux-x86_64-gnu-ext4-local-v1` profile and fails path qualification as
-`JOURNAL_UNAVAILABLE`; S2 implements and proves it.
+Production implements store v2 and qualifies the exact
+`linux-x86_64-gnu-ext4-local-v1` profile before use. Path qualification failure
+is `JOURNAL_UNAVAILABLE`; unsupported targets advertise no store capability.
+Store v1 remains an unsupported historical format.
 
 Cross-language classification ownership for current operation/code
 combinations belongs to the
@@ -107,7 +106,7 @@ This trigger does not decide the diagnostics work in #83, capability work in
 | `crates/aizign-core` | `identity`, `workflow`, and pure `recovery` (classification of a complete signal as accepted/conflict/absent). Candidate lifecycle, provenance, repair causation, execution, and effects are not current. |
 | `crates/aizign-protocol`、`spec/protocol/v1/` | Protocol v1: envelope、`hello`、signal submit / reconcile、closed decoder、schemaとexample |
 | `crates/aizign-engine` | `JournalReader` / `Journal` / `Clock` / best-effort use-case stage observation port、submit / reconcile use case |
-| `crates/aizign-store-jsonl`、`spec/journal/v1/`、`spec/store/v2/` | Accepted current/target JSONL authority: owner-only journal, v2 commit generation plus PREPARED/CLEAN witness, bounded read-only cold read, exact ext4 profile, and store-owned physical observation. Runtime remains historical v1 until Issue #81 S2; `spec/store/v1/` is retained for rejection evidence. |
+| `crates/aizign-store-jsonl`、`spec/journal/v1/`、`spec/store/v2/` | Current JSONL authority and implementation: owner-only journal, v2 commit generation plus PREPARED/CLEAN witness, bounded read-only cold read, exact ext4 profile, and store-owned physical observation. `spec/store/v1/` is retained only for rejection evidence. |
 | `crates/aizign-testkit` | `MemoryJournal`（fault injection）、`FixedClock`、`TempDir`、journal contract、signal helper |
 | `crates/aizign-cli` | `aizign hello`、`aizign handle --state <dir>`: one-shot process、watchdog、stderr log |
 | `xtask` | `cargo xtask check / conformance / public-audit / performance-baseline` |

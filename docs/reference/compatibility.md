@@ -9,7 +9,7 @@
 | Bootstrap envelope version | `1`（framed `hello` とpre-operation errorのstable subset） | `spec/protocol/v1/`。bootstrap axisとしてenvelopeの `version` を読む |
 | Operation Protocol version | `1`（`aizign-protocol` が実装。`workflow.signal.submit`、`workflow.signal.reconcile`） | `spec/protocol/v1/`。operation axisとしてenvelopeの `version` を読む |
 | Journal schema version | `1`（`aizign-store-jsonl` が実装） | `spec/journal/v1/`。recordの `schemaVersion` |
-| Store metadata version | target `2`（S1 authority）、runtime `1`（S2までのimplementation debt） | current/targetは`spec/store/v2/`、historical rejection formatは`spec/store/v1/` |
+| Store metadata version | `2`（current implementation） | `spec/store/v2/`。historical rejection formatは`spec/store/v1/` |
 
 adapterはpackage versionの完全一致ではなく、canonical process profileでframed
 `hello`を実行し、得られたoperation Protocol versionとcapabilityで互換性を判定します
@@ -75,10 +75,10 @@ mount identity, one exact ext4 mountinfo record, read-write/device checks, and
 corroborative ext-family magic. A target triple or filesystem magic alone is
 insufficient. x32 remains only a compile-time negative boundary.
 
-S1 establishes this authority but does not migrate the runtime. Until Issue
-#81 S2, production still implements store v1 and is not profile-qualified. A
-complete v2 store is fenced from the current v1 binary because the retained
-commit path carries `storeVersion: 2`, which v1 rejects before append. State
+Production implements this authority and qualifies every opened state/artifact
+before it can establish a known result or mutate state. A complete v2 store is
+fenced from a historical v1 binary because the retained commit path carries
+`storeVersion: 2`, which v1 rejects before append. State
 interrupted before that marker is durably published is not fenced and is
 unsupported/operator-discard-only. There is no silent adoption, automatic
 migration, dual reader, or repair path.

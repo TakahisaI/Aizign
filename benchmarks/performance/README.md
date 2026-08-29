@@ -144,7 +144,10 @@ runnerは一つの大きな直積を作らず、問いごとにfixtureを限定�
 
 accepted fixtureはjournal上限10,000の一つ手前まで、duplicate fixtureは照合対象を含む1 entry以上だけを生成します。
 bound exceededは10,000 entryから新規submitし、lookupはread-onlyのまま0から10,000 entryを走査します。
-fixture生成時間は計測に含みません。
+各fixtureはexact CLEAN store v2として生成し、commit generationを
+`committedEntries + 1`、witnessのstarted/published generationを同値にします。
+これはproduction readerへのbenchmark input準備であり、別のpublication state
+machineではありません。fixture生成時間は計測に含みません。
 
 `max-payload`は`repair_submitted` signalを使い、識別子の上限128 bytesと`artifactRef`の上限256 bytesを満たす有効なrequestを生成します。
 1,000-entryのsubmitはaccepted、10,000-entryのsubmitは`JOURNAL_BOUND_EXCEEDED`、1,000 / 10,000-entryのreconcileはseed済みtargetに対するacceptedです。

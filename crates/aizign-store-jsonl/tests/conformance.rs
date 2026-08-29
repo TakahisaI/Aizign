@@ -1,8 +1,9 @@
-//! The journal record and store metadata decoders against every
+//! The journal-record and current store-v2 commit decoders against every
 //! language-neutral durable-format fixture.
 //!
 //! The fixtures are the same files the schema gate validates against
-//! `spec/journal/v1/schemas/record.schema.json`, so schema and runtime
+//! `spec/journal/v1/schemas/record.schema.json` and
+//! `spec/store/v2/schemas/commit.schema.json`, so schema and runtime
 //! cannot drift apart unnoticed: a record this decoder accepts must be
 //! schema-valid, and one it rejects must be schema-invalid unless the
 //! expectation says the rule is outside what a JSON Schema can express.
@@ -20,7 +21,7 @@ use aizign_engine::JournalReader as _;
     target_env = "gnu",
     target_pointer_width = "64"
 ))]
-use aizign_store_jsonl::{COMMIT_FILE_NAME, JsonlJournal, JsonlJournalReader};
+use aizign_store_jsonl::{COMMIT_FILE_NAME, JsonlJournal, JsonlJournalReader, PUBLISH_FILE_NAME};
 use aizign_store_jsonl::{decode_record, encode_record};
 #[cfg(all(
     target_os = "linux",
@@ -78,6 +79,7 @@ fn install_commit_fixture(frame: &[u8]) -> (TempDir, std::path::PathBuf) {
     let state = dir.state();
     drop(JsonlJournal::open(&state).expect("initialize store"));
     std::fs::write(state.join(COMMIT_FILE_NAME), frame).expect("install commit fixture");
+    assert!(state.join(PUBLISH_FILE_NAME).is_file());
     (dir, state)
 }
 

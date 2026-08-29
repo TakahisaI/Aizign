@@ -314,16 +314,29 @@ test('fixture writer publishes an exact metadata-only committed prefix', () => {
     seedFixture(state, 10, 'exact');
     const journal = readFileSync(join(state, 'workflow.jsonl'));
     const commit = JSON.parse(readFileSync(join(state, 'workflow.commit.json'), 'utf8'));
+    const publish = JSON.parse(readFileSync(join(state, 'workflow.publish.json'), 'utf8'));
+    assert.equal(commit.storeVersion, 2);
+    assert.equal(commit.generation, 11);
     assert.equal(commit.committedBytes, journal.length);
     assert.equal(commit.committedEntries, 10);
     assert.equal(commit.sha256, createHash('sha256').update(journal).digest('hex'));
+    assert.deepEqual(publish, {
+      storeVersion: 2,
+      startedGeneration: 11,
+      publishedGeneration: 11,
+    });
     assert.equal(journal.toString('utf8').trimEnd().split('\n').length, 10);
     assert.equal(
       JSON.parse(journal.toString('utf8').trimEnd().split('\n').at(-1)).signal.eventId,
       'evt-benchmark-target',
     );
     assert.equal(statSync(state).mode & 0o777, 0o700);
-    for (const name of ['workflow.lock', 'workflow.jsonl', 'workflow.commit.json']) {
+    for (const name of [
+      'workflow.lock',
+      'workflow.jsonl',
+      'workflow.commit.json',
+      'workflow.publish.json',
+    ]) {
       assert.equal(statSync(join(state, name)).mode & 0o777, 0o600);
     }
     for (const forbidden of ['prompt', 'reasoning', 'credential', 'sessionId']) {

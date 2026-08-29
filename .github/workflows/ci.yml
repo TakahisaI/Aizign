@@ -59,6 +59,12 @@ jobs:
       - name: Format, lint, test, doc, deny
         run: cargo xtask rust-check
 
+      - name: Qualify the supported store profile on the actual test state directory
+        run: >-
+          cargo test -p aizign-store-jsonl
+          profile::tests::supported_profile_evidence_uses_the_production_qualified_state_directory
+          -- --exact --nocapture
+
       - name: Verify x32 remains an unsupported compile-time boundary
         run: cargo check --workspace --all-targets --all-features --target x86_64-unknown-linux-gnux32
 
