@@ -735,7 +735,6 @@ fn complete_unpublished_tail_remains_unknown_and_is_never_promoted() {
     let state = dir.state();
     let mut writer = JsonlJournal::open(&state).unwrap();
     writer.append(&event("evt-1"), signals::at(0)).unwrap();
-    drop(writer);
     let committed = fs::read(commit_file(&state)).unwrap();
 
     let mut file = OpenOptions::new()
@@ -747,11 +746,6 @@ fn complete_unpublished_tail_remains_unknown_and_is_never_promoted() {
     let tailed = fs::read(journal_file(&state)).unwrap();
 
     assert!(matches!(
-        read_snapshot(&state),
-        Err(JournalError::OutcomeUnknown { .. })
-    ));
-    let mut writer = JsonlJournal::open(&state).unwrap();
-    assert!(matches!(
         writer.load_committed(),
         Err(JournalError::OutcomeUnknown { .. })
     ));
@@ -760,6 +754,14 @@ fn complete_unpublished_tail_remains_unknown_and_is_never_promoted() {
         Err(JournalError::OutcomeUnknown { .. })
     ));
     drop(writer);
+    assert!(matches!(
+        read_snapshot(&state),
+        Err(JournalError::OutcomeUnknown { .. })
+    ));
+    assert!(matches!(
+        JsonlJournal::open(&state),
+        Err(JournalError::OutcomeUnknown { .. })
+    ));
     assert_eq!(fs::read(journal_file(&state)).unwrap(), tailed);
     assert_eq!(fs::read(commit_file(&state)).unwrap(), committed);
 }

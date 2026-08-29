@@ -398,17 +398,24 @@ impl JsonlJournalReader {
         let lock_path = state_dir.join(LOCK_FILE_NAME);
         let journal_path = state_dir.join(JOURNAL_FILE_NAME);
         let commit_path = state_dir.join(COMMIT_FILE_NAME);
+        let publish_path = state_dir.join(PUBLISH_FILE_NAME);
         require_existing_path(&lock_path, "ownership lock")?;
         require_existing_path(&journal_path, "journal")?;
         require_existing_path(&commit_path, "commit metadata")?;
+
         let lock_file = open_private_read_file(&lock_path)?;
         require_same_profile(&lock_file, &state_profile, profile)?;
-        let lock = JournalLock::acquire_shared(lock_file)?;
+        let journal = open_private_read_file(&journal_path)?;
+        require_same_profile(&journal, &state_profile, profile)?;
 
         let mut commit = open_private_read_file(&commit_path)?;
         require_same_profile(&commit, &state_profile, profile)?;
         let _ = read_commit_point(&mut commit)?;
-        require_existing_path(&state_dir.join(PUBLISH_FILE_NAME), "publication witness")?;
+        require_existing_path(&publish_path, "publication witness")?;
+        let publish = open_private_read_file(&publish_path)?;
+        require_same_profile(&publish, &state_profile, profile)?;
+
+        let lock = JournalLock::acquire_shared(lock_file)?;
         Ok(Self {
             state_dir: state_dir.to_path_buf(),
             path: journal_path,
