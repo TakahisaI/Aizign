@@ -180,4 +180,3 @@ v0.1 has no state-instance manifest or downgrade fence.
 - **Describe every tested behavior as guaranteed.** Rejected because tests are
   regression evidence and cannot replace runtime enforcement or an explicit
   trust assumption.
--

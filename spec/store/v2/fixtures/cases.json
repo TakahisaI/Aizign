@@ -177,14 +177,14 @@
   },
   {
     "id": "append-prepared-new-commit-new-journal",
-    "stageOrCutPoint": "new commit namespace is durable but CLEAN has not been released",
-    "artifactImage": "W=(G+1,G), C=G+1, exact journal generation G+1",
+    "stageOrCutPoint": "commit rename is visible but the state-directory barrier has not completed",
+    "artifactImage": "durable W=(G+1,G), durable exact journal generation G+1, durable commit temporary file, visible renamed C=G+1, directory barrier pending or failed",
     "profileObservation": "supported profile",
     "triggeringOperationCode": "JOURNAL_OUTCOME_UNKNOWN",
     "laterReaderCode": "JOURNAL_OUTCOME_UNKNOWN",
     "laterReaderDisposition": "unknown",
     "writerMutationPermitted": false,
-    "unchangedArtifactAssertion": "A reader never completes the release transition."
+    "unchangedArtifactAssertion": "Directory-barrier failure forbids CLEAN, and a reader never returns a known result from this image."
   },
   {
     "id": "append-clean-tail",
@@ -255,7 +255,7 @@
   {
     "id": "profile-ext4-rw-pass",
     "stageOrCutPoint": "opened-directory profile qualification",
-    "artifactImage": "clean or fresh supported state",
+    "artifactImage": "otherwise valid clean generation",
     "profileObservation": "x86_64 GNU/Linux, returned MNT_ID, one ext4 mountinfo row, rw, matching device, ext magic",
     "triggeringOperationCode": null,
     "laterReaderCode": null,
@@ -387,7 +387,7 @@
   {
     "id": "revalidate-commit-mutation",
     "stageOrCutPoint": "commit document changes between two appends on one writer instance",
-    "artifactImage": "externally changed commit bytes or generation",
+    "artifactImage": "well-formed v2 commit whose generation, length, count, or digest no longer matches the clean witness and exact journal, or malformed v2 metadata; semantic-equivalent reserialization alone is excluded",
     "profileObservation": "supported profile",
     "triggeringOperationCode": "JOURNAL_CORRUPT",
     "laterReaderCode": "JOURNAL_CORRUPT",
@@ -398,7 +398,7 @@
   {
     "id": "revalidate-witness-mutation",
     "stageOrCutPoint": "publication witness changes between two appends on one writer instance",
-    "artifactImage": "externally changed witness bytes or generation relation",
+    "artifactImage": "malformed, reverse, gapped, or otherwise contradictory witness; well-formed PREPARED is owned by the existing append-PREPARED cases",
     "profileObservation": "supported profile",
     "triggeringOperationCode": "JOURNAL_CORRUPT",
     "laterReaderCode": "JOURNAL_CORRUPT",

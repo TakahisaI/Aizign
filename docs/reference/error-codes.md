@@ -87,7 +87,7 @@ Rust の `aizign-protocol::CURRENT_FIXED_ERROR_CODES` と TypeScript の
 | `JOURNAL_SCHEMA_UNSUPPORTED` | journal record schema versionまたはstore metadata versionをこのbinaryが扱えない | implemented（同上） |
 | `JOURNAL_LOCKED` | incompatibleなwriter / reader lockが既に取得されている | implemented（同上） |
 | `JOURNAL_OUTCOME_UNKNOWN` | append PREPARED開始後のbarrier/publicationが確定しない、PREPARED image、またはclean boundaryを越えるtailがある。自動再送・reader側のrelease / promote / repairをしない | implemented code；v2 stagesはS2 target |
-| `JOURNAL_BOUND_EXCEEDED` | cold readのboundを超えた | implemented（同上） |
+| `JOURNAL_BOUND_EXCEEDED` | cold readのboundを超えた、またはcleanな最大10,000-record storeへのappend要求。appendでは全artifactを変更しない | implemented（同上） |
 
 ## Harness-facing（adapterが投げる）
 

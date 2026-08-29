@@ -131,19 +131,42 @@ or coordinated same-user mutation remain explicit operator assumptions.
 S2 must use exactly:
 
 ```toml
-rustix = { version = "=1.1.4", default-features = false, features = ["std", "fs"] }
+[workspace.dependencies]
+rustix = {
+  version = "=1.1.4",
+  default-features = false,
+  features = ["std", "fs"],
+}
 ```
 
-Only `aizign-store-jsonl` may own this direct runtime dependency. The supported
-target uses the Linux raw backend with reachable normal graph
-`rustix -> {bitflags, linux-raw-sys}`. `libc 0.2.189` is already present in the
-accepted base lockfile and is not a new S2 package. `rustix_use_libc` and
-`rustix_no_linux_raw` overrides are forbidden.
+Only `aizign-store-jsonl` may own this direct runtime dependency. It is the
+Bytecode Alliance `rustix` crate from crates.io, version 1.1.4, with minimum
+supported Rust version 1.63 and license expression
+`Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT`. The exact expected lock
+resolution is:
+
+```text
+rustix 1.1.4
+bitflags 2.13.1
+linux-raw-sys 0.12.1
+errno 0.3.14
+libc 0.2.189
+windows-sys 0.61.2
+windows-link 0.2.1
+```
+
+On the supported target, the reachable normal graph is exactly
+`rustix -> {bitflags, linux-raw-sys}`. `libc 0.2.189` already exists in the
+accepted base lockfile and is not a new S2 package. The supported build must
+contain neither `rustix_use_libc` nor `rustix_no_linux_raw`. Pinned
+`cargo-deny 0.20.2` must pass licenses, advisories, bans, and sources for the
+resolved graph.
 
 Aizign-owned unsafe code remains forbidden. No repository-local FFI, syscall
 wrapper, alternative binding, external utility, subprocess, or silent backend
-substitution is authorized. Dependency version, features, source, license,
-backend, or supported-target graph drift requires a renewed decision.
+substitution is authorized. Any dependency version, feature, source, license,
+minimum-Rust-version, resolution, backend cfg, or supported-target reachable
+graph drift is a stop condition and requires a renewed decision.
 
 S1 records this accepted future dependency but does not change manifests,
 `Cargo.lock`, the current dependency table, or its machine-readable audit.

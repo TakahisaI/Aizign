@@ -259,19 +259,11 @@ Path qualification failure is `JOURNAL_UNAVAILABLE`, never
 
 ## Dependency decision for S2
 
-ADR-0028 owns this exact future runtime dependency:
-
-```toml
-rustix = { version = "=1.1.4", default-features = false, features = ["std", "fs"] }
-```
-
-Only `aizign-store-jsonl` may depend on it directly. Aizign-owned unsafe code
-remains forbidden. The supported-target reachable normal graph is
-`rustix -> {bitflags, linux-raw-sys}`. `libc 0.2.189` already exists in the S1
-base lockfile and is not a new S2 package. `rustix_use_libc` and
-`rustix_no_linux_raw` overrides are forbidden. S1 records this accepted target
-decision but does not change a manifest, lockfile, current dependency allowlist,
-or machine audit; those changes are atomic S2 work.
+[ADR-0028](../../../docs/adr/0028-define-crash-monotonic-jsonl-publication.md)
+solely owns the accepted future dependency decision. S1 records that decision
+but does not change a manifest, lockfile, current dependency allowlist, or
+machine audit; the dependency is not current runtime state, and those changes
+are atomic S2 work.
 
 ## Compatibility and non-goals
 

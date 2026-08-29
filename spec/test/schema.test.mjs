@@ -176,6 +176,8 @@ test('store v2 examples and cross-field relations are valid', () => {
   assert.ok(commitValidate(commit), ajv.errorsText(commitValidate.errors));
   assert.equal(commit.generation, commit.committedEntries + 1);
   assert.ok(publishValidate(publish), ajv.errorsText(publishValidate.errors));
+  assert.equal(publish.startedGeneration, commit.generation);
+  assert.equal(publish.publishedGeneration, commit.generation);
   assert.ok(
     (publish.startedGeneration === 1 && publish.publishedGeneration === 0) ||
       publish.startedGeneration === publish.publishedGeneration ||
