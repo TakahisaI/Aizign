@@ -91,11 +91,16 @@ cross the protocol boundary, and it does not permit `unknown` to be reclassified
 | Digest and bounded opaque handle | Harness/provider/session/call/thread/delivery identity |
 | Bounded timestamp and append sequence | Browser profile or credential location |
 
-Journal records use a closed schema. `workflow.commit.json` contains only store
-metadata version, committed byte length, entry count, and SHA-256 of the
-published prefix. That digest detects a mismatch; it is not candidate identity,
-a MAC, a signature, or authentication against a same-user process that can
-rewrite both journal and commit metadata.
+Journal records use a closed schema. Under the current/target store v2
+authority, `workflow.commit.json` contains only store version, generation,
+committed byte length, entry count, and SHA-256 of the published prefix;
+`workflow.publish.json` contains only store version and the started/published
+generation pair. Neither carries request content, a state path, mount source,
+or private host data. The prefix digest detects mismatch; it is not candidate
+identity, a MAC, a signature, or authentication against a same-user process
+that can rewrite journal and metadata consistently. Production remains on the
+historical v1 layout until Issue #81 S2; S1 changes authority documentation,
+not runtime data flow.
 
 The prohibited column is a field/shape guarantee. It does not mean the runtime
 can recognize credential or raw-content semantics inside every structurally

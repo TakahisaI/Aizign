@@ -1,9 +1,10 @@
 /**
  * The published JSON Schemas against every example and conformance fixture.
  *
- * The schemas under `spec/protocol/v1`, `spec/journal/v1`, and `spec/store/v1` are the
- * contract; the Rust and TypeScript decoders and the JSONL store implement
- * it. This gate keeps the acceptance sets identical: every valid fixture and
+ * The schemas under `spec/protocol/v1`, `spec/journal/v1`, and the historical
+ * `spec/store/v1` plus current/target `spec/store/v2` authority packages are
+ * the contract; the Rust and TypeScript decoders and the JSONL store implement
+ * the applicable runtime version. This gate keeps the acceptance sets identical: every valid fixture and
  * example must validate, and every invalid fixture states in its expectation
  * whether the schema rejects it too. `schema: true` on an invalid fixture
  * marks a rule a JSON Schema cannot express — the frame size bound, the
@@ -32,6 +33,8 @@ for (const dir of [
   'spec/protocol/v1/schemas',
   'spec/journal/v1/schemas',
   'spec/store/v1/schemas',
+  'spec/store/v2/schemas',
+  'spec/store/v2/fixtures',
   'spec/classification',
 ]) {
   for (const file of readdirSync(join(root, dir))
@@ -117,6 +120,77 @@ test('every store metadata example validates against the commit schema', () => {
     const value = JSON.parse(readFileSync(join(dir, file), 'utf8'));
     assert.ok(validate(value), `${file}: ${ajv.errorsText(validate.errors)}`);
   }
+});
+
+const storeV2CaseIds = [
+  'init-fresh-clean',
+  'init-pre-marker-partial',
+  'init-commit-marker-no-witness',
+  'init-prepared-rebarrier-success',
+  'init-prepared-file-sync-dir-sync-failure-same-boot',
+  'init-prepared-rebarrier-inode-replaced',
+  'init-clean-final-sync-failure-visible',
+  'init-clean-missing-commit',
+  'init-prepared-nonempty-journal',
+  'init-v1-commit',
+  'init-unknown-version',
+  'init-malformed-witness',
+  'append-clean-generation',
+  'append-prepared-old-commit-old-journal',
+  'append-prepared-old-commit-partial-journal',
+  'append-prepared-old-commit-new-journal',
+  'append-prepared-new-commit-new-journal',
+  'append-clean-tail',
+  'append-clean-digest-mismatch',
+  'append-generation-gap',
+  'append-reverse-witness',
+  'append-bound-generation-10001',
+  'append-visible-clean-final-sync-failure',
+  'profile-ext4-rw-pass',
+  'profile-shared-magic-non-ext4-fail',
+  'profile-mount-id-missing-fail',
+  'profile-mountinfo-ambiguous-fail',
+  'profile-per-mount-ro-fail',
+  'profile-superblock-ro-fail',
+  'profile-parent-child-mount-mismatch-fail',
+  'profile-artifact-device-mismatch-fail',
+  'profile-artifact-identity-replacement-fail',
+  'profile-reader-unsupported-never-known',
+  'profile-statx-nosys-fail',
+  'revalidate-journal-byte-mutation',
+  'revalidate-commit-mutation',
+  'revalidate-witness-mutation',
+  'revalidate-artifact-replacement',
+].sort();
+
+test('store v2 examples and cross-field relations are valid', () => {
+  const commitValidate = validator('store/v2/commit.schema.json');
+  const publishValidate = validator('store/v2/publish.schema.json');
+  const commit = JSON.parse(
+    readFileSync(join(root, 'spec/store/v2/examples/workflow.commit.json'), 'utf8'),
+  );
+  const publish = JSON.parse(
+    readFileSync(join(root, 'spec/store/v2/examples/workflow.publish.json'), 'utf8'),
+  );
+
+  assert.ok(commitValidate(commit), ajv.errorsText(commitValidate.errors));
+  assert.equal(commit.generation, commit.committedEntries + 1);
+  assert.ok(publishValidate(publish), ajv.errorsText(publishValidate.errors));
+  assert.ok(
+    (publish.startedGeneration === 1 && publish.publishedGeneration === 0) ||
+      publish.startedGeneration === publish.publishedGeneration ||
+      publish.startedGeneration === publish.publishedGeneration + 1,
+  );
+});
+
+test('store v2 case corpus is closed, complete, and unique', () => {
+  const validate = validator('store/v2/cases.schema.json');
+  const cases = JSON.parse(readFileSync(join(root, 'spec/store/v2/fixtures/cases.json'), 'utf8'));
+
+  assert.ok(validate(cases), ajv.errorsText(validate.errors));
+  const actualIds = cases.map(({ id }) => id);
+  assert.equal(new Set(actualIds).size, actualIds.length, 'store v2 case IDs must be unique');
+  assert.deepEqual([...actualIds].sort(), storeV2CaseIds);
 });
 
 test('every valid fixture validates against its schema', () => {

@@ -78,15 +78,15 @@ Rust の `aizign-protocol::CURRENT_FIXED_ERROR_CODES` と TypeScript の
 
 ## Journal
 
-`aizign-engine` の `JournalError::code()`。record formatの意味は [spec/journal/v1](../../spec/journal/v1/README.md)、writer-published commit pointの意味は [spec/store/v1](../../spec/store/v1/README.md)。
+`aizign-engine` の `JournalError::code()`。record formatの意味は [spec/journal/v1](../../spec/journal/v1/README.md)、current/target publication authorityは [spec/store/v2](../../spec/store/v2/README.md)。historical v1 runtime semanticsはS2 migrationまで実装上残るが、code集合は増やさない。
 
 | Code | 意味 | Status |
 |---|---|---|
-| `JOURNAL_UNAVAILABLE` | 必要なstate directory / lock / journal / commit metadataを開けない、または権限・platform contractを満たさない。reconciliationではmissingを`absent`へ縮約しない | implemented（`aizign-engine`、`aizign-store-jsonl`） |
-| `JOURNAL_CORRUPT` | journal recordまたはcommit metadataをclosed schemaで読めない、もしくはpublished byte length / entry count / digestと実fileが一致しない | implemented（同上） |
+| `JOURNAL_UNAVAILABLE` | 必要artifactを開けない、initializationが未完了、またはstorage profile / identity / permissionを満たさない。reconciliationではmissingや`W=(1,0)`を`absent`へ縮約しない | implemented code；v2 image/profile semanticsはS2 target |
+| `JOURNAL_CORRUPT` | journalまたはstore metadataをclosed contractで読めない、generation/orderが不可能、またはclean prefixのlength / count / digestと実fileが一致しない | implemented code；v2 matrixはS2 target |
 | `JOURNAL_SCHEMA_UNSUPPORTED` | journal record schema versionまたはstore metadata versionをこのbinaryが扱えない | implemented（同上） |
 | `JOURNAL_LOCKED` | incompatibleなwriter / reader lockが既に取得されている | implemented（同上） |
-| `JOURNAL_OUTCOME_UNKNOWN` | appendのfile / metadata / directory barrierが確定しない、またはpublished boundaryを越えるtailがある。自動再送・reader側のpromote / repairをしない | implemented（同上） |
+| `JOURNAL_OUTCOME_UNKNOWN` | append PREPARED開始後のbarrier/publicationが確定しない、PREPARED image、またはclean boundaryを越えるtailがある。自動再送・reader側のrelease / promote / repairをしない | implemented code；v2 stagesはS2 target |
 | `JOURNAL_BOUND_EXCEEDED` | cold readのboundを超えた | implemented（同上） |
 
 ## Harness-facing（adapterが投げる）

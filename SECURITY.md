@@ -23,11 +23,18 @@ ready.
 During `0.x`, only the latest minor release is supported. Backports to older
 minor releases are not provided.
 
-The committed-prefix JSONL store is supported only on
-`x86_64-unknown-linux-gnu`. Other targets fail closed and do not advertise
-submit or reconciliation. x32 is intentionally unsupported and is present only
-as a compile-time negative boundary. Opening a current state directory with an
-older binary is unsupported and not technically prevented.
+The accepted target contract for the committed-prefix JSONL store is store
+metadata v2 under the sole profile `linux-x86_64-gnu-ext4-local-v1`; a target
+triple alone is not sufficient. Other targets and storage profiles fail
+closed. x32 remains only a compile-time negative boundary.
+
+After the Issue #81 S1 specification change, the production runtime still
+implements historical store metadata v1 and is not yet profile-qualified.
+Runtime support moves to the accepted v2/profile contract only in the ordered
+S2 implementation. A complete v2 store is fenced from the current v1 binary
+by its `storeVersion: 2` commit marker. Initialization interrupted before that
+marker is durable is not fenced, remains unsupported, and is
+operator-discard-only. S1 does not claim those runtime changes are complete.
 
 See [`docs/reference/compatibility.md`](docs/reference/compatibility.md) for the
 complete compatibility contract.

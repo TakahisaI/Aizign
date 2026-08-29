@@ -1,5 +1,13 @@
 # JSONL store metadata v1
 
+> **Historical unsupported format.** Store metadata v1 is retained only for
+> compatibility-rejection evidence. The sole current/target store-layout and
+> publication authority is [`../v2/`](../v2/README.md). The ordered S2
+> migration has not yet landed, so the production store still implements this
+> historical layout as explicit implementation debt after S1. A v2 binary
+> rejects v1 with `JOURNAL_SCHEMA_UNSUPPORTED`; it does not adopt or migrate
+> it. The schema and example in this directory remain unchanged.
+
 `workflow.commit.json` is the writer-published commit point for
 `workflow.jsonl`. It is store metadata, not a journal record and not a
 Protocol v1 message.
@@ -44,7 +52,7 @@ to match, and the decoded count to equal `committedEntries`.
   commit metadata is created exclusively rather than truncating an existing
   path.
 
-The initial implementation advertises this store only on
+The historical implementation advertises this store only on
 `x86_64-unknown-linux-gnu`, where the
 barrier, atomic-replace, locking, permission, and artifact-type contract runs
 in CI and the numeric Linux open-flag ABI is fixed. Other Linux ABIs,
@@ -60,7 +68,7 @@ that can rewrite both journal and commit metadata. See ADR-0013 and ADR-0014.
 The broader filesystem and same-user assumptions are normative in the
 [v0.1 threat model](../../../docs/security/threat-model.md).
 
-This layout version is independent of Protocol v1 and journal record schema
+This historical layout version is independent of Protocol v1 and journal record schema
 v1. A non-empty legacy state directory without this document is not adopted
 automatically. Binary downgrade against the same state directory is unsupported
 and is not technically prevented: an old binary may ignore this document and

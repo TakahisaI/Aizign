@@ -37,6 +37,7 @@
 | [0025](0025-move-dsh-signal-values-behind-trusted-configuration.md) | Move DSH signal values behind trusted configuration | Accepted |
 | [0026](0026-pin-the-dsh-startup-error-wrapper-boundary.md) | Pin the DSH startup error wrapper boundary | Accepted |
 | [0027](0027-remove-the-dsh-harness-evidence-read-surface.md) | Remove the DSH harness-evidence read surface | Accepted |
+| [0028](0028-define-crash-monotonic-jsonl-publication.md) | Define crash-monotonic JSONL publication | Accepted |
 
 ADR-0016 partially supersedes ADR-0005's earlier `AGENTS.md` editing-constraint
 statement only; ADR-0005's other accepted decisions remain in force.
@@ -82,3 +83,13 @@ current DSH cold-read surface, and ADR-0020's `./experimental/evidence`
 surface and consumers. Candidate binding, the generic guarantee/authority
 model, the stable DSH plugin root, the sole production TypeScript transport,
 and `./experimental/transport` remain Accepted.
+
+ADR-0028 supersedes ADR-0013's physical store metadata/layout,
+initialization/publication, physical reader-known conditions, physical
+failure-stage classification, support profile, and v1/v2 compatibility
+clauses. ADR-0013's exact-signal reconciliation, dispositions, unknown
+non-collapse, no-retry, read-only, and no-repair decisions remain Accepted.
+ADR-0028 also partially supersedes only ADR-0015's target-triple-only store
+support and complete-store no-downgrade-fence statements. ADR-0015's guarantee
+levels and other trust boundaries, ADR-0014's SHA-256 ownership, and ADR-0019's
+physical-observation ownership remain Accepted.

@@ -92,7 +92,7 @@ The two current digest roles are independent:
 | Store committed-prefix SHA-256 | JSONL writer | Commit metadata matches the exact prefix read by the store | Authentication against a same-user attacker that rewrites journal and metadata together |
 
 No current digest is a MAC or signature. There is no algorithm negotiation in
-store metadata v1.
+historical store metadata v1 or accepted store metadata v2.
 
 ### Reconciliation
 
@@ -196,7 +196,7 @@ threat crosses layers, the row uses the weakest end-to-end level.
 | Parent harness credential environment leaks to `aizign` | Runtime enforced | Each adapter's native process launcher; current DSH owner is `OneShotCoreClient` | Build from empty plus the adapter's closed allowlist; DSH permits only parent PATH when present | Native complete-environment equality plus sensitive-parent exclusion scenarios | No credential manager exists; a future production variable needs a separate accepted contract |
 | Expected and signal binding disagree | Runtime enforced | Deterministic core | Compare workflow, assignment, attempt, role, revision, then candidate digest before duplicate/conflict | Core mismatch-order, protocol, and replay tests | This compares the two submitted values; it does not establish which external assignment or candidate is current |
 | Control plane supplies a stale but internally consistent assignment/candidate binding | Trusted assumption | Operator/control plane | The core accepts a well-formed pair when `expected` and `signal` agree | Conformance scenarios demonstrate that an internally consistent alternative candidate can be accepted | No current-assignment registry or artifact-authority lookup exists in v0.1 |
-| Partial write, barrier failure, corrupt or unpublished tail | Detected and fail closed | JSONL store | Publish only after barriers; keep uncertain writes as `OutcomeUnknown`; read only the exact committed prefix | Store fault-injection, tail, corruption, digest, count, and reopen tests | A same-user attacker can forge all mutually consistent files |
+| Partial write, barrier failure, PREPARED generation, corrupt state, or unpublished tail | Detected and fail closed | JSONL store | Store v2 orders durable PREPARED, journal barrier, durable commit namespace, then CLEAN; uncertain append images remain `OutcomeUnknown`; readers use only a fully revalidated CLEAN prefix | Store v2 case corpus in S1 and focused runtime/fault evidence in S2 | A same-user attacker can forge all mutually consistent files; S1 records the target while runtime remains v1 until S2 |
 | Lock failure or concurrent writer | Detected and fail closed | JSONL store | Reject lock contention rather than observe or write concurrently | Store lock tests | A malicious same-user process can ignore advisory locks |
 | Symlink, special file, hard link, wrong owner or mode | Detected and fail closed | JSONL store | Reject the unsafe artifact/path before use | Store path, permission, symlink, special-file, and hard-link tests | State-path choice and the same OS account remain trusted |
 | Wrong but valid state directory | Trusted assumption | Operator/control plane | Use the configured initialized store | No runtime proof in v0.1 | No state-instance manifest exists |
@@ -208,8 +208,8 @@ threat crosses layers, the row uses the weakest end-to-end level.
 | Provisional opt-in timing leaks request/event identity or content, or an observer/sink changes the workflow result | Runtime enforced | CLI composition, engine use-case observation, JSONL physical observation, and TypeScript/DSH timing helpers | Emit only allowlisted operation/timing/count/source-qualified observation fields and exact fixed error codes; omit unrecognized peer codes; isolate synchronous/asynchronous observer and sink failure; keep filesystem paths inside the store | CLI timing tests, engine and store observation tests, TypeScript/DSH timing tests, unknown-code fault scenarios, and benchmark artifact allowlist tests | Durations, counts, operation kind, recognized code, and source-qualified observations remain operational metadata; raw unrecognized code stays on the returned control-plane outcome; timing has no stable public schema or compatibility promise; external sink retention/access are caller-owned |
 | Tracked path violates the forbidden name/component policy, or an eligible text file contains a fixed known secret/private-path pattern | Regression evidence | `cargo xtask public-audit` | Check every tracked path; content-scan tracked UTF-8 text without NUL except the rule-definition source | `xtask` audit unit tests and the repository gate | Binary, NUL-containing, non-UTF-8, exempt-source, runtime, untracked/generated, package-artifact, opaque-value, and full-history content is not scanned |
 | Package manifest violates the checked policy, or a package manager cannot enumerate a packable file set | Regression evidence | Manifest audit, `cargo package --list`, and `npm pack --dry-run` gates | Reject checked manifest rules or a failed package enumeration command | Package/public-audit gates | The enumerated file list is not evaluated against a repository safety policy and package artifact contents are not secret-scanned |
-| Old binary opens current state directory | Not guaranteed | Operator procedure | Documentation requires a separate state directory | Compatibility and store contract documentation | No downgrade fence; an old binary may ignore commit metadata |
-| Unsupported platform receives a weaker durability contract | Runtime enforced | Store target gate and CLI capability handling | Omit store capabilities and reject direct requests | Supported-target and x32 compile-time negative tests | Only `x86_64-unknown-linux-gnu` is currently supported for the store |
+| Old v1 binary opens complete v2 state | Detected and fail closed | Store-version probe in the v1 binary plus operator procedure | The retained commit path carries `storeVersion: 2`, which v1 rejects; pre-marker partial initialization is discarded by the operator | Compatibility/store specification and S2 downgrade tests | The complete-v2 fence is accepted target behavior pending S2; pre-marker partial initialization is not technically fenced |
+| Unsupported storage profile receives a weaker durability contract | Runtime enforced | Store profile gate and CLI capability handling | Require exact `linux-x86_64-gnu-ext4-local-v1`; path failure is `JOURNAL_UNAVAILABLE` and never known | S1 profile corpus, then S2 exact-profile/runtime evidence and x32 negative boundary | Enforcement is accepted target behavior pending S2; runtime remains historical target-only v1 debt and backing persistence/barrier correctness remains operator-trusted |
 
 ### Regression evidence index
 
@@ -253,12 +253,18 @@ general provider, network, or persistence guarantees.
 
 ## Platform and release limits
 
-- The committed-prefix store is supported only on
-  `x86_64-unknown-linux-gnu`. x32 is intentionally unsupported and exists only
-  as a compile-time negative boundary.
+- The accepted target is store metadata v2 under
+  `linux-x86_64-gnu-ext4-local-v1`. Runtime qualification binds the opened fd
+  to one exact ext4 read-write mount and device; target triple and shared
+  filesystem magic alone are insufficient. Backing persistence and honest
+  barrier behavior remain operator assumptions.
+- After S1, production still implements store v1 and is not profile-qualified
+  until the ordered S2 migration. x32 remains only a compile-time negative
+  boundary.
 - `0.x` supports only the latest minor release.
-- Opening the same state directory with an older binary is unsupported and not
-  technically prevented.
+- Complete v2 state is fenced from the current v1 binary by the v2 commit
+  marker. Pre-marker partial initialization is not fenced and remains
+  unsupported/operator-discard-only.
 - Normal CI uses fakes and the local binary. A separately reported live smoke
   can demonstrate one harness/provider integration, but it does not establish
   general provider availability, confidentiality, retention, or security.

@@ -2,7 +2,19 @@
 
 - Status: Accepted
 - Date: 2026-08-24
-- Related: ADR-0003, ADR-0004, ADR-0007, ADR-0012, Issue #51, PR #61
+- Related: ADR-0003, ADR-0004, ADR-0007, ADR-0012, ADR-0028, Issue #51, PR #61
+
+## Partial supersession
+
+[ADR-0028](0028-define-crash-monotonic-jsonl-publication.md) supersedes this
+ADR's physical-store metadata version/layout, zero-entry initialization,
+append-publication sequence and crash cut points, reader-known physical
+conditions, physical-store failure-stage classification, supported
+target/storage profile, and v1/v2 compatibility and downgrade clauses.
+
+This ADR remains Accepted and controlling for exact-signal reconciliation,
+`accepted`/`conflict`/`absent`, unknown non-collapse, no automatic retry,
+read-only reconciliation, and no repair, truncation, or tail promotion.
 
 ## Context
 
