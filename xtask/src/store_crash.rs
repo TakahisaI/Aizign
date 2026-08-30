@@ -488,7 +488,7 @@ fn apply_mutation(source: &str, mutation: MutationSpec) -> Result<String, String
             source,
             "append_with_ops",
             "durability\n            .barrier_file(&journal_file, DurabilityPoint::JournalBarrierComplete)",
-            "std::io::Result::<()>::Ok(())",
+            "{\n            let _ = DurabilityPoint::JournalBarrierComplete;\n            std::io::Result::<()>::Ok(())\n        }",
             mutation.id,
         ),
         MutationKind::BarrierDirectory => mutate_function_once(
