@@ -44,6 +44,7 @@ src/
 ├── profile.rs   fd-bound exact profile qualification
 ├── mountinfo.rs bounded mountinfo facts parser
 ├── durability.rs single production OS-operation adapter/cut points
+├── crash_harness.rs test-only abrupt-process controller, scenario ledger, and evidence assertions
 ├── json_member.rs member重複の事前検査（内部実装）
 └── record.rs    record DTO（private）、encode_entry / decode_line、JOURNAL_SCHEMA_VERSION
 tests/
@@ -76,3 +77,21 @@ do not perform any observation-only I/O.
 - x32は64-bit targetとの誤認を防ぐcompile-only negative boundaryであり、durability実装、runtime test、release artifact、support claimは追加しない
 - lock / journal / commit / temporary commitは検証済みtargetの`O_NOFOLLOW`で開き、open前後のdevice / inode、regular file、link count 1、state directoryと同じowner、exact `0600` modeを検査する。新規fileは作成fdから`0600`へ正規化する。temporary commitは検査済みのstale regular fileだけを除去し、`create_new`で作る。state directoryも`0700`へ正規化する
 - durableなstore v2 commit markerが存在するcomplete initializationはhistorical store v1 binaryから技術的にfenceされ、旧binaryはappend前に拒否する。commit markerがdurableになる前に中断したpre-marker partial initializationだけは技術的にfenceされないunsupported imageであり、operator-discard-onlyとする
+
+## Crash-stage evidence
+
+On the supported Linux profile, `cargo xtask store-crash-check` runs the
+private process harness against the same `ProductionDurability` selected by
+the public writer. The campaign covers the closed 61-scenario crash,
+partial-write, response, and two-process ledger plus nine mutation sentinels.
+Every child has a ten-second deadline, is killed and reaped on timeout, and
+uses bounded artifacts with at most two journal records. The launcher validates
+one closed, non-sensitive final evidence record and audits that no public test
+hook or adapter-external normal-writer mutation path was added.
+
+The harness is compiled only inside this crate's tests. It is not an exported
+API, feature, helper binary, alternate store path, repair path, or retry
+authority. The evidence demonstrates observed process-crash behavior on the
+qualified `linux-x86_64-gnu-ext4-local-v1` profile. It does not claim power-loss
+survival or weaken the operator-trusted storage assumptions in
+[`spec/store/v2/`](../../spec/store/v2/README.md).

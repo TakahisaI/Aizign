@@ -13,7 +13,26 @@ Repository tooling, invoked as `cargo xtask <command>` (alias in `.cargo/config.
 | `public-audit` | 依存境界（`src/audit/dependencies.rs`）、secretとprivate path（`src/audit/secrets.rs`）、package manifest（`src/audit/packages.rs`）、entry document（`src/audit/entry_docs.rs`）、文書link（`src/audit/links.rs`） |
 | `performance-baseline` | release binaryとTypeScript clientをbuildし、目的別のmanual / scheduled performance sweepを実行。PR gateではない |
 | `performance-smoke` | Builds the release binary and TypeScript clients, then runs the fixed small Linux PR matrix against generous informational ceilings; accepts no runner options. |
+| `store-crash-check` | On the supported Linux profile, run the private store-v2 crash/partial-write/two-process matrix, validate its single closed evidence record, and audit the production mutation and CLI acknowledgement boundaries. |
 | `whitespace` | tracked tree全体に対する `git diff --check` |
+
+`store-crash-check` is the sole supported launcher for the production
+crash-stage campaign. It runs the exact ignored parent test, gives the whole
+command four minutes and each harness child ten seconds, and rejects missing,
+duplicate, malformed, or non-closed final evidence. The command also checks
+that the crash controller remains crate-private, normal writer mutations stay
+behind the store's production durability adapter, and the unchanged CLI
+cannot write an accepted response before request execution returns. It emits
+no state path, mount source, device name, journal content, payload, or host
+environment and uploads no state artifact. Success is process-crash evidence
+for the observed `linux-x86_64-gnu-ext4-local-v1` profile, not power-loss
+evidence.
+
+The launcher copies the exact candidate's tracked and non-ignored files to a
+temporary directory for the nine mutation checks. For each closed mutation it
+requires the exact focused test to pass before mutation, fail through an
+executed assertion after the one mechanically verified edit, and pass again
+after byte-exact restoration. The candidate working tree is never mutated.
 
 ## Quick profiles
 

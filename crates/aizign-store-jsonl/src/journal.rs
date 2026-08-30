@@ -16,7 +16,7 @@ use aizign_core::workflow::WorkflowEvent;
 use aizign_engine::{Journal, JournalEntry, JournalError, JournalReader, MAX_JOURNAL_ENTRIES};
 
 use crate::commit::{CommitPoint, MAX_COMMIT_METADATA_BYTES, hash_bytes};
-use crate::durability::{DurabilityOps, DurabilityPoint, ProductionDurability};
+use crate::durability::{DurabilityOps, DurabilityPoint, PrimitiveEvent, ProductionDurability};
 use crate::observation::{BestEffortStoreObserver, StoreObservation, StoreObserver, StoreStage};
 use crate::profile::{
     ProductionProfile, ProfileOps, QualifiedProfile, qualify_directory, require_same_profile,
@@ -217,11 +217,17 @@ impl JsonlJournal {
             ));
         }
 
-        let lock_file = open_private_update_file(&lock_path, !lock_exists)?;
+        let lock_file = open_private_update_file(&lock_path, !lock_exists, durability, "lock")?;
         require_same_profile(&lock_file, &state_profile, profile)?;
         let lock = JournalLock::acquire_exclusive(lock_file)?;
+        durability
+            .primitive_complete(PrimitiveEvent::evidence("lock-acquired", "lock"))
+            .map_err(|error| {
+                unavailable(format!("cannot record writer lock acquisition: {error}"))
+            })?;
 
-        let journal = open_private_append_file(&journal_path, !journal_exists)?;
+        let journal =
+            open_private_append_file(&journal_path, !journal_exists, durability, "journal")?;
         require_same_profile(&journal, &state_profile, profile)?;
 
         if any_exists {
@@ -284,7 +290,8 @@ impl JsonlJournal {
         let publish_path = self.state_dir.join(PUBLISH_FILE_NAME);
         let journal_path = self.state_dir.join(JOURNAL_FILE_NAME);
         let commit_path = self.state_dir.join(COMMIT_FILE_NAME);
-        let mut witness_file = open_private_update_file(&publish_path, false)?;
+        let mut witness_file =
+            open_private_update_file(&publish_path, false, durability, "publish-witness")?;
         require_same_profile(&witness_file, &state_profile, profile)?;
         let current_witness = read_publish_witness(&mut witness_file)?;
         if current_witness != PublishWitness::clean(snapshot.point.generation) {
@@ -293,7 +300,8 @@ impl JsonlJournal {
             ));
         }
 
-        let mut journal_file = open_private_append_file(&journal_path, false)?;
+        let mut journal_file =
+            open_private_append_file(&journal_path, false, durability, "journal")?;
         require_same_profile(&journal_file, &state_profile, profile)?;
         let next_generation = snapshot.point.generation + 1;
         let prepared = PublishWitness::prepared(next_generation);
@@ -533,12 +541,12 @@ fn initialize_fresh_store(
     let commit_path = state_dir.join(COMMIT_FILE_NAME);
     let publish_path = state_dir.join(PUBLISH_FILE_NAME);
     durability
-        .barrier_file_untracked(&lock.file)
+        .barrier_file_evidence(&lock.file, "lock")
         .map_err(|error| unavailable(format!("cannot synchronize lock file: {error}")))?;
     durability
-        .barrier_file_untracked(journal)
+        .barrier_file_evidence(journal, "journal")
         .map_err(|error| unavailable(format!("cannot synchronize journal file: {error}")))?;
-    barrier_directory_untracked(state_dir, durability, false)?;
+    barrier_directory_untracked(state_dir, durability, false, "state-directory")?;
     let state_directory = open_directory_no_follow(state_dir)?;
     publish_commit(
         &state_directory,
@@ -577,7 +585,7 @@ fn initialize_witness(
     durability: &mut dyn DurabilityOps,
     profile: &mut dyn ProfileOps,
 ) -> Result<(), JournalError> {
-    let mut witness = open_private_update_file(publish_path, true)?;
+    let mut witness = open_private_update_file(publish_path, true, durability, "publish-witness")?;
     require_same_profile(&witness, state_profile, profile)?;
     let identity = opened_identity(&witness)?;
     rewrite_witness(
@@ -589,8 +597,9 @@ fn initialize_witness(
         false,
     )?;
     verify_opened_witness(&mut witness, PublishWitness::initializing())?;
-    barrier_directory_untracked(state_dir, durability, false)?;
-    let mut reopened = open_private_update_file(publish_path, false)?;
+    barrier_directory_untracked(state_dir, durability, false, "state-directory")?;
+    let mut reopened =
+        open_private_update_file(publish_path, false, durability, "publish-witness")?;
     require_same_profile(&reopened, state_profile, profile)?;
     if opened_identity(&reopened)? != identity {
         return Err(unavailable(
@@ -621,7 +630,8 @@ fn resume_or_validate_existing(
     let mut commit_file = open_private_read_file(&commit_path)?;
     require_same_profile(&commit_file, state_profile, profile)?;
     let point = read_commit_point(&mut commit_file)?;
-    let mut witness_file = open_private_update_file(&publish_path, false)?;
+    let mut witness_file =
+        open_private_update_file(&publish_path, false, durability, "publish-witness")?;
     require_same_profile(&witness_file, state_profile, profile)?;
     let witness = read_publish_witness(&mut witness_file)?;
     if witness.is_initializing() {
@@ -635,8 +645,9 @@ fn resume_or_validate_existing(
             .barrier_file(&witness_file, DurabilityPoint::PreparedBarrierComplete)
             .map_err(|error| unavailable(format!("cannot rebarrier PREPARED witness: {error}")))?;
         verify_opened_witness(&mut witness_file, PublishWitness::initializing())?;
-        barrier_directory_untracked(state_dir, durability, false)?;
-        let mut reopened = open_private_update_file(&publish_path, false)?;
+        barrier_directory_untracked(state_dir, durability, false, "state-directory")?;
+        let mut reopened =
+            open_private_update_file(&publish_path, false, durability, "publish-witness")?;
         require_same_profile(&reopened, state_profile, profile)?;
         if opened_identity(&reopened)? != identity {
             return Err(unavailable(
@@ -785,7 +796,7 @@ fn publish_commit(
         }
     };
     let temp_path = commit_path.with_file_name(COMMIT_TEMP_FILE_NAME);
-    let mut temp = open_private_replace_file(&temp_path)
+    let mut temp = open_private_replace_file(&temp_path, durability)
         .map_err(|error| map(format!("cannot create commit temporary file: {error}")))?;
     require_same_profile(&temp, state_profile, profile)
         .map_err(|error| map(format!("commit temporary profile failed: {error}")))?;
@@ -911,6 +922,7 @@ fn barrier_directory_untracked(
     path: &Path,
     durability: &mut dyn DurabilityOps,
     outcome_may_be_unknown: bool,
+    artifact: &'static str,
 ) -> Result<(), JournalError> {
     let classify = |detail: String| {
         if outcome_may_be_unknown {
@@ -925,7 +937,7 @@ fn barrier_directory_untracked(
         ))
     })?;
     durability
-        .barrier_directory_untracked(&directory)
+        .barrier_directory_evidence(&directory, artifact)
         .map_err(|error| classify(format!("cannot synchronize directory: {error}")))
 }
 
@@ -1026,8 +1038,6 @@ fn ensure_state_directory(
     durability: &mut dyn DurabilityOps,
     profile: &mut dyn ProfileOps,
 ) -> Result<QualifiedProfile, JournalError> {
-    use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _};
-
     if path_entry_exists(dir)? {
         let opened = open_existing_private_dir(dir)?;
         return qualify_directory(&opened, profile);
@@ -1036,20 +1046,20 @@ fn ensure_state_directory(
     let parent = nearest_existing_parent(dir)?;
     let parent_directory = open_directory_no_follow(&parent)?;
     let parent_profile = qualify_directory(&parent_directory, profile)?;
-    fs::DirBuilder::new()
-        .mode(0o700)
-        .create(dir)
+    durability
+        .create_state_directory(dir)
         .map_err(|error| unavailable(format!("cannot create state directory: {error}")))?;
-    fs::set_permissions(dir, fs::Permissions::from_mode(0o700))
+    durability
+        .normalize_state_directory(dir)
         .map_err(|error| unavailable(format!("cannot normalize state directory: {error}")))?;
     let state_directory = open_existing_private_dir(dir)?;
     let state_profile = qualify_directory(&state_directory, profile)?;
     require_same_profile(&state_directory, &parent_profile, profile)?;
     durability
-        .barrier_directory_untracked(&state_directory)
+        .barrier_directory_evidence(&state_directory, "state-directory")
         .map_err(|error| unavailable(format!("cannot synchronize state directory: {error}")))?;
     durability
-        .barrier_directory_untracked(&parent_directory)
+        .barrier_directory_evidence(&parent_directory, "parent-directory")
         .map_err(|error| unavailable(format!("cannot synchronize parent directory: {error}")))?;
     Ok(state_profile)
 }
@@ -1385,8 +1395,13 @@ fn open_private_read_file(_path: &Path) -> Result<File, JournalError> {
     target_env = "gnu",
     target_pointer_width = "64"
 ))]
-fn open_private_update_file(path: &Path, create_new: bool) -> Result<File, JournalError> {
-    open_private_writable_file(path, create_new, false)
+fn open_private_update_file(
+    path: &Path,
+    create_new: bool,
+    durability: &mut dyn DurabilityOps,
+    artifact: &'static str,
+) -> Result<File, JournalError> {
+    open_private_writable_file(path, create_new, false, durability, artifact)
 }
 
 #[cfg(not(all(
@@ -1395,7 +1410,12 @@ fn open_private_update_file(path: &Path, create_new: bool) -> Result<File, Journ
     target_env = "gnu",
     target_pointer_width = "64"
 )))]
-fn open_private_update_file(_path: &Path, _create_new: bool) -> Result<File, JournalError> {
+fn open_private_update_file(
+    _path: &Path,
+    _create_new: bool,
+    _durability: &mut dyn DurabilityOps,
+    _artifact: &'static str,
+) -> Result<File, JournalError> {
     Err(unsupported_platform())
 }
 
@@ -1405,8 +1425,13 @@ fn open_private_update_file(_path: &Path, _create_new: bool) -> Result<File, Jou
     target_env = "gnu",
     target_pointer_width = "64"
 ))]
-fn open_private_append_file(path: &Path, create_new: bool) -> Result<File, JournalError> {
-    open_private_writable_file(path, create_new, true)
+fn open_private_append_file(
+    path: &Path,
+    create_new: bool,
+    durability: &mut dyn DurabilityOps,
+    artifact: &'static str,
+) -> Result<File, JournalError> {
+    open_private_writable_file(path, create_new, true, durability, artifact)
 }
 
 #[cfg(not(all(
@@ -1415,7 +1440,12 @@ fn open_private_append_file(path: &Path, create_new: bool) -> Result<File, Journ
     target_env = "gnu",
     target_pointer_width = "64"
 )))]
-fn open_private_append_file(_path: &Path, _create_new: bool) -> Result<File, JournalError> {
+fn open_private_append_file(
+    _path: &Path,
+    _create_new: bool,
+    _durability: &mut dyn DurabilityOps,
+    _artifact: &'static str,
+) -> Result<File, JournalError> {
     Err(unsupported_platform())
 }
 
@@ -1429,6 +1459,8 @@ fn open_private_writable_file(
     path: &Path,
     create_new: bool,
     append: bool,
+    durability: &mut dyn DurabilityOps,
+    artifact: &'static str,
 ) -> Result<File, JournalError> {
     let owner = private_parent_owner(path)?;
     let expected = if create_new {
@@ -1439,18 +1471,16 @@ fn open_private_writable_file(
     } else {
         Some(inspect_private_file(path, owner)?)
     };
-    let mut options = OpenOptions::new();
-    options
-        .read(true)
-        .write(!append)
-        .append(append)
-        .create_new(create_new);
-    configure_secure_file(&mut options);
-    let file = options
-        .open(path)
+    let file = durability
+        .open_private_writable(path, create_new, append)
         .map_err(|error| unavailable(format!("cannot open artifact: {error}")))?;
     if create_new {
-        normalize_private_file(&file)?;
+        durability
+            .primitive_complete(PrimitiveEvent::evidence("open-complete", artifact))
+            .map_err(|error| unavailable(format!("cannot record artifact open: {error}")))?;
+        durability
+            .normalize_private_file(&file, artifact)
+            .map_err(|error| unavailable(format!("cannot normalize artifact mode: {error}")))?;
     }
     check_opened_private_file(&file, owner, expected)?;
     Ok(file)
@@ -1462,9 +1492,13 @@ fn open_private_writable_file(
     target_env = "gnu",
     target_pointer_width = "64"
 ))]
-fn open_private_replace_file(path: &Path) -> Result<File, JournalError> {
+fn open_private_replace_file(
+    path: &Path,
+    durability: &mut dyn DurabilityOps,
+) -> Result<File, JournalError> {
     let owner = private_parent_owner(path)?;
-    if path_entry_exists(path)? {
+    let remove_stale = path_entry_exists(path)?;
+    if remove_stale {
         let expected = inspect_private_file(path, owner)?;
         let mut options = OpenOptions::new();
         options.read(true);
@@ -1473,16 +1507,10 @@ fn open_private_replace_file(path: &Path) -> Result<File, JournalError> {
             .open(path)
             .map_err(|error| unavailable(format!("cannot open stale temporary file: {error}")))?;
         check_opened_private_file(&stale, owner, Some(expected))?;
-        fs::remove_file(path)
-            .map_err(|error| unavailable(format!("cannot remove stale temporary file: {error}")))?;
     }
-    let mut options = OpenOptions::new();
-    options.write(true).create_new(true);
-    configure_secure_file(&mut options);
-    let file = options
-        .open(path)
-        .map_err(|error| unavailable(format!("cannot create temporary file: {error}")))?;
-    normalize_private_file(&file)?;
+    let file = durability
+        .replace_private_writable(path, remove_stale, "commit-temporary")
+        .map_err(|error| unavailable(format!("cannot replace temporary file: {error}")))?;
     check_opened_private_file(&file, owner, None)?;
     Ok(file)
 }
@@ -1493,21 +1521,11 @@ fn open_private_replace_file(path: &Path) -> Result<File, JournalError> {
     target_env = "gnu",
     target_pointer_width = "64"
 )))]
-fn open_private_replace_file(_path: &Path) -> Result<File, JournalError> {
+fn open_private_replace_file(
+    _path: &Path,
+    _durability: &mut dyn DurabilityOps,
+) -> Result<File, JournalError> {
     Err(unsupported_platform())
-}
-
-#[cfg(all(
-    target_os = "linux",
-    target_arch = "x86_64",
-    target_env = "gnu",
-    target_pointer_width = "64"
-))]
-fn normalize_private_file(file: &File) -> Result<(), JournalError> {
-    use std::os::unix::fs::PermissionsExt as _;
-
-    file.set_permissions(fs::Permissions::from_mode(0o600))
-        .map_err(|error| unavailable(format!("cannot normalize artifact mode: {error}")))
 }
 
 #[cfg(all(
