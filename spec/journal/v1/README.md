@@ -1,7 +1,7 @@
 # Aizign journal schema v1
 
-Journal record schema v1 remains current and unchanged. Its current/target
-physical publication owner and implementation is store metadata v2 under
+Journal record schema v1 remains current and unchanged. Its current
+physical publication owner and production implementation is store metadata v2 under
 [`../../store/v2/`](../../store/v2/README.md). Store v1 remains historical
 compatibility-rejection material; production does not adopt or dual-read it.
 
@@ -42,8 +42,9 @@ commit generationとPREPARED/CLEAN witnessを通して実装される。
 
 ## 読み取りの規則（bounded committed cold read）
 
-- readerは既存のstate directory、lock、journal、commit metadataだけをread-onlyで開き、shared non-blocking lockを取得する。欠落はempty stateではなく `JOURNAL_UNAVAILABLE`
-- commit metadataが示すbyte prefixだけがauthoritative。physical fileがprefixより長ければ、完全なrecordに見えても未公開tailなので `JOURNAL_OUTCOME_UNKNOWN`。readerはsync、promote、truncate、repairしない
+- readerは既存のstate directory、lock、journal、commit metadata、publication witnessだけをread-onlyで開き、shared non-blocking lockを取得する。欠落はempty stateではなく `JOURNAL_UNAVAILABLE`
+- readerはopened fdからexact `linux-x86_64-gnu-ext4-local-v1` profileを毎回qualifyし、publication witnessがCLEAN `W=(G,G)`、commit metadataが同じgeneration `G`、physical journalがexact prefixである場合だけauthorityを認める。target tripleだけではqualificationにならない
+- commit metadataが示すbyte prefixだけがauthoritative。append PREPARED witnessまたはphysical fileがprefixより長い状態は、完全なrecordに見えても未公開なので `JOURNAL_OUTCOME_UNKNOWN`。initialization PREPAREDは `JOURNAL_UNAVAILABLE`、不正なgeneration relationは `JOURNAL_CORRUPT`。readerはsync、promote、truncate、repairしない
 - committed prefixは改行で終わる。最後のrecordが途中で切れていれば `JOURNAL_CORRUPT`（黙って捨てない）
 - committed byte length、entry count、SHA-256 digestが実fileと一致しなければ `JOURNAL_CORRUPT`
 - `schemaVersion` が違えば `JOURNAL_SCHEMA_UNSUPPORTED`
@@ -56,9 +57,10 @@ commit generationとPREPARED/CLEAN witnessを通して実装される。
 
 - `seq` は直前のrecord + 1。**10000件に達した後のappendは書き込まず `JOURNAL_BOUND_EXCEEDED`**。fileを変えず、acceptedにもしない（成功を返した直後に次回cold readが読めないjournalを作らないため）。encoder（`encode_record`）もrange外の `seq` を生成できない
 - writerはexclusive non-blocking lockを取得し、既存のpublished prefixとphysical fileが完全一致する場合だけappendする。未公開tailを見つけたらappendもpromoteもせず `JOURNAL_OUTCOME_UNKNOWN`
-- 1行を `write_all` し、journal fileの `sync_all` が成功した後にだけ、新しいcommit metadataをowner-only temporary file → `sync_all` → atomic replace → state directory barrierの順で公開する
-- journal write開始後のfile barrier、metadata publish、directory barrierの失敗は `JOURNAL_OUTCOME_UNKNOWN`。再送しない。旧commit pointが残れば追加bytesはunpublished tailとして扱う
+- appendはPREPARED witnessのwrite → witness barrierとreread → 1行の`write_all` → journal barrier → owner-only temporary commit metadataのwriteとbarrier → atomic replace → state directory barrier → CLEAN witnessのwriteとbarrierとreread、の順で公開する
+- PREPARED witnessの最初のbyteを書こうとした後のI/Oまたはprofile failureは `JOURNAL_OUTCOME_UNKNOWN`。再送しない。旧commit pointが残っても追加bytesはunpublished tailとして扱う
 - fresh storeはstate directory、lock、journal、初期commit metadataと必要なdirectory entryをwriter側でdurableに初期化してからempty snapshotを公開する。readerは初期化を完了しない
+- durableなstore v2 commit markerが存在するcomplete initializationはhistorical store v1 binaryから技術的にfenceされる。markerがdurableになる前に中断したpre-marker partial initializationだけはfenceされないunsupported imageで、operator-discard-onlyとする
 - incompatible lockを取れなければ `JOURNAL_LOCKED`
 
 ## Files

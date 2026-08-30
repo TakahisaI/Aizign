@@ -91,20 +91,29 @@ cross the protocol boundary, and it does not permit `unknown` to be reclassified
 | Digest and bounded opaque handle | Harness/provider/session/call/thread/delivery identity |
 | Bounded timestamp and append sequence | Browser profile or credential location |
 
-Journal records use a closed schema. Under the current/target store v2
+Journal records use a closed schema. Under the current store v2
 authority, `workflow.commit.json` contains only store version, generation,
 committed byte length, entry count, and SHA-256 of the published prefix;
 `workflow.publish.json` contains only store version and the started/published
 generation pair. Neither carries request content, a state path, mount source,
 or device name. The production qualifier retains only the bounded mount ID,
 major/minor device numbers, filesystem type/magic, and read-only facts needed
-to decide the exact support profile; its CI evidence emits the closed
+to decide the exact `linux-x86_64-gnu-ext4-local-v1` support profile; a target
+triple alone is insufficient. Its CI evidence emits the closed
 metadata-only projection and never the path or mount source.
-or private host data. The prefix digest detects mismatch; it is not candidate
+The prefix digest detects mismatch; it is not candidate
 identity, a MAC, a signature, or authentication against a same-user process
-that can rewrite journal and metadata consistently. Production remains on the
-historical v1 layout until Issue #81 S2; S1 changes authority documentation,
-not runtime data flow.
+that can rewrite journal and metadata consistently.
+
+Production publication order is PREPARED witness, journal record and barrier,
+commit temporary and barrier, atomic commit replacement and directory barrier,
+then CLEAN witness and barrier. The uncertainty boundary begins when the first
+PREPARED byte is attempted. A reader obtains authority only from a CLEAN
+witness whose generation matches the commit document, an exact validated
+journal prefix, and a freshly qualified exact support profile. A durable v2
+commit marker fences historical v1 binaries; only interruption before that
+marker becomes durable can leave an unsupported pre-marker partial
+initialization that is not technically fenced.
 
 The prohibited column is a field/shape guarantee. It does not mean the runtime
 can recognize credential or raw-content semantics inside every structurally
