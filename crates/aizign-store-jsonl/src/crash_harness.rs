@@ -357,7 +357,7 @@ pub(crate) const SCENARIOS: &[Scenario] = &[
         "reopen-submit",
         "file-barrier-complete",
         "publish-witness",
-        1,
+        2,
         Some(DurabilityPoint::CleanBarrierComplete),
         "holder",
         "I5",
