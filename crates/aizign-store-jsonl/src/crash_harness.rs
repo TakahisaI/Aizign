@@ -34,11 +34,12 @@ use aizign_testkit::{FixedClock, TempDir, signals};
 use serde::{Deserialize, Serialize};
 
 use crate::commit::{CommitPoint, hash_bytes};
-use crate::durability::{DurabilityPoint, PrimitiveEvent};
+use crate::durability::{DurabilityOps, DurabilityPoint, PrimitiveEvent};
 use crate::journal::{
     COMMIT_FILE_NAME, JOURNAL_FILE_NAME, JsonlJournal, JsonlJournalReader, LOCK_FILE_NAME,
     PUBLISH_FILE_NAME,
 };
+use crate::profile::ProductionProfile;
 use crate::publish::PublishWitness;
 
 const MODE_ENV: &str = "AIZIGN_STORE_CRASH_MODE";
@@ -3390,6 +3391,49 @@ fn run_append_revalidation_fixture() {
     );
 }
 
+#[derive(Default)]
+struct RecordingDurability {
+    events: Vec<PrimitiveEvent>,
+}
+
+impl DurabilityOps for RecordingDurability {
+    fn primitive_complete(&mut self, event: PrimitiveEvent) -> io::Result<()> {
+        self.events.push(event);
+        Ok(())
+    }
+}
+
+fn run_commit_order_fixture() {
+    let temporary = TempDir::new();
+    let state = temporary.state();
+    let mut durability = RecordingDurability::default();
+    let mut profile = ProductionProfile;
+    let mut journal = JsonlJournal::open_with_ops(&state, &mut durability, &mut profile)
+        .expect("commit-order fixture writer");
+    durability.events.clear();
+    journal
+        .append_with_ops(
+            &event("evt-same"),
+            signals::at(0),
+            &mut durability,
+            &mut profile,
+            None,
+        )
+        .expect("commit-order fixture append");
+    let position = |point| {
+        durability
+            .events
+            .iter()
+            .position(|event| event.durability_point == Some(point))
+            .unwrap_or_else(|| panic!("commit-order fixture omitted {point:?}"))
+    };
+    assert!(
+        position(DurabilityPoint::JournalBarrierComplete)
+            < position(DurabilityPoint::CommitTemporaryWriteComplete),
+        "journal barrier must complete before commit publication starts"
+    );
+}
+
 /// Exercise the public reader against a clean image with an unpublished
 /// journal tail. The reader must report an indeterminate image and leave
 /// every artifact byte and metadata field untouched. This deliberately uses a
@@ -3441,6 +3485,10 @@ fn run_sentinel(name: &str) {
     }
     if name == "mutation-tail-repair-or-promotion" {
         run_tail_rejection_fixture();
+        return;
+    }
+    if name == "mutation-commit-before-journal-barrier" {
+        run_commit_order_fixture();
         return;
     }
     let relevant_ids: &[&str] = match name {
