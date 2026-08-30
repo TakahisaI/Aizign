@@ -259,13 +259,22 @@ implements the operation; it does not attest to a particular `--state` path.
 Path qualification failure is `JOURNAL_UNAVAILABLE`, never
 `CAPABILITY_UNSUPPORTED`, known `absent`, or retry authorization.
 
-## Dependency decision for S2
+## Current dependency implementation
 
 [ADR-0028](../../../docs/adr/0028-define-crash-monotonic-jsonl-publication.md)
-solely owns the accepted future dependency decision. S1 records that decision
-but does not change a manifest, lockfile, current dependency allowlist, or
-machine audit; the dependency is not current runtime state, and those changes
-are atomic S2 work.
+solely owns the exact `rustix` dependency decision. S1 recorded that decision
+without changing runtime dependencies. The current S2 implementation applies
+it atomically across the workspace declaration, lock resolution, dependency
+documentation, and machine audit:
+
+```toml
+rustix = { version = "=1.1.4", default-features = false, features = ["std", "fs"] }
+```
+
+`aizign-store-jsonl` is the sole direct runtime owner; no other workspace
+crate may depend on `rustix` directly. Any version, feature, source, license,
+minimum-Rust-version, resolution, backend cfg, or supported-target reachable
+graph drift remains a stop condition requiring a renewed decision.
 
 ## Compatibility and non-goals
 
