@@ -11,7 +11,7 @@ The DSH harness adapter: a cordis plugin that registers one **scope-bound** `sub
 | **Hard invariants** | control-plane identityをmodelに選択させない、reconciliationをmodel-visible toolにしない、DSH native IDをenvelopeへ入れない、全operationをshellなしのexact `handle --state stateDir`で起動、helloも`requestId` / `kind`を照合、signal successは`eventId`も照合、stdoutはbyte列のままbody上限・exact LF・stdout/process close・zero exitを確認しCRLFと全post-LF byteを拒否、lifecycle faultは`unknown`で再送しない、preflight失敗時はtoolを登録しない、環境変数を子processへ丸ごと渡さない（PATHのみ） |
 | **Allowed dependencies** | `@aizign/protocol`。peer: `@deepseek-ai/cordis` 4.0.1、`dsh-llm` / `dsh-tools` 0.1.1-rc.2、`schemastery` 3.18.1（exact、ADR-0010）。dev: `@aizign/adapter-testkit` |
 | **Test command** | `npm test -w @aizign/adapter-dsh`（`AIZIGN_BINARY` を与えると実binaryにも） |
-| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0010](../../docs/adr/0010-harness-sdk-dependencies-and-node-policy.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0020](../../docs/adr/0020-narrow-typescript-exports-and-own-dsh-transport.md)、[0022](../../docs/adr/0022-define-the-canonical-one-shot-process-profile.md)、[0024](../../docs/adr/0024-require-isolated-adapter-child-environments.md)、[0025](../../docs/adr/0025-move-dsh-signal-values-behind-trusted-configuration.md)、[0026](../../docs/adr/0026-pin-the-dsh-startup-error-wrapper-boundary.md)、[0027](../../docs/adr/0027-remove-the-dsh-harness-evidence-read-surface.md) |
+| **Related ADR** | [0003](../../docs/adr/0003-use-a-versioned-ndjson-process-boundary.md)、[0010](../../docs/adr/0010-harness-sdk-dependencies-and-node-policy.md)、[0013](../../docs/adr/0013-add-bounded-read-only-workflow-signal-reconciliation.md)、[0020](../../docs/adr/0020-narrow-typescript-exports-and-own-dsh-transport.md)、[0022](../../docs/adr/0022-define-the-canonical-one-shot-process-profile.md)、[0024](../../docs/adr/0024-require-isolated-adapter-child-environments.md)、[0025](../../docs/adr/0025-move-dsh-signal-values-behind-trusted-configuration.md)、[0026](../../docs/adr/0026-pin-the-dsh-startup-error-wrapper-boundary.md)、[0027](../../docs/adr/0027-remove-the-dsh-harness-evidence-read-surface.md)、[0029](../../docs/adr/0029-define-dsh-reconciliation-gated-submission-lifecycle.md) |
 
 ## Security boundary
 
@@ -142,6 +142,21 @@ credential remains operator evidence under
 temporary `DSH_HOME` after verification.
 
 ## Capability classification
+
+### Accepted lifecycle target (not yet implemented)
+
+ADR-0029 and [`spec/dsh/lifecycle/v1/`](../../spec/dsh/lifecycle/v1/README.md)
+define a planned breaking configuration and runtime migration. The target adds
+explicit lifecycle-root initialization, a durable per-event attempt fence, a
+process-local controller lease and shared submit/reconcile gate, a control-
+plane-only lifecycle service, and the closed `./experimental/lifecycle`
+subpath. It retains the exact ADR-0025 resolved pair before child spawn and
+never republishes submit after reconciliation `absent`.
+
+None of those facilities exists in this current package. Current `PluginConfig`,
+tool registration, public exports, and direct submit path remain as documented
+below until the atomic S2 migration lands. There is no in-memory fallback,
+automatic initialization, reset, compatibility alias, or present support claim.
 
 This adapter satisfies the current minimum signal-submission behavior through
 protocol preflight, trusted config-bound identity and opaque-value injection, full response

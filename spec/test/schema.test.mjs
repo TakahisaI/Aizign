@@ -2,9 +2,10 @@
  * The published JSON Schemas against every example and conformance fixture.
  *
  * The schemas under `spec/protocol/v1`, `spec/journal/v1`, and the historical
- * `spec/store/v1` plus current/target `spec/store/v2` authority packages are
- * the contract; the Rust and TypeScript decoders and the JSONL store implement
- * the applicable runtime version. This gate keeps the acceptance sets identical: every valid fixture and
+ * `spec/store/v1` plus current/target `spec/store/v2` authority packages and
+ * the accepted-not-yet-implemented `spec/dsh/lifecycle/v1` authority package
+ * are the contract; the Rust and TypeScript decoders and the JSONL store
+ * implement the applicable current runtime version. This gate keeps the acceptance sets identical: every valid fixture and
  * example must validate, and every invalid fixture states in its expectation
  * whether the schema rejects it too. `schema: true` on an invalid fixture
  * marks a rule a JSON Schema cannot express — the frame size bound, the
@@ -36,6 +37,7 @@ for (const dir of [
   'spec/store/v2/schemas',
   'spec/store/v2/fixtures',
   'spec/classification',
+  'spec/dsh/lifecycle/v1/schemas',
 ]) {
   for (const file of readdirSync(join(root, dir))
     .filter((file) => file.endsWith('.schema.json'))
@@ -193,6 +195,295 @@ test('store v2 case corpus is closed, complete, and unique', () => {
   const actualIds = cases.map(({ id }) => id);
   assert.equal(new Set(actualIds).size, actualIds.length, 'store v2 case IDs must be unique');
   assert.deepEqual([...actualIds].sort(), storeV2CaseIds);
+});
+
+const dshLifecycleCaseIds = [
+  'init-first-root-ready',
+  'init-first-root-nonempty',
+  'init-first-root-partial-discard-only',
+  'init-first-marker-file-sync-failure',
+  'init-first-root-dir-sync-failure',
+  'init-first-events-dir-sync-failure',
+  'init-event-file-sync-failure',
+  'init-event-rename-failure',
+  'init-event-events-dir-sync-failure',
+  'init-later-event-ready',
+  'init-later-event-preserves-existing',
+  'init-existing-event-rejected',
+  'init-root-marker-mismatch',
+  'init-unexpected-artifact',
+  'init-missing-state-before-preflight',
+  'init-malformed-state-before-preflight',
+  'init-binding-mismatch-before-preflight',
+  'init-trusted-bundle-mismatch-before-preflight',
+  'init-core-state-path-key-mismatch-before-preflight',
+  'init-core-state-valid-replacement-trusted-limitation',
+  'profile-supported',
+  'profile-realpath-statfs-only-rejected',
+  'profile-root-core-mount-mismatch',
+  'profile-symlink-component-rejected',
+  'profile-bind-subtree-rejected',
+  'profile-root-replacement-rejected',
+  'profile-lexical-alias-rejected',
+  'profile-different-root-restart-reset-rejected',
+  'profile-mountinfo-missing-rejected',
+  'profile-mountinfo-ambiguous-rejected',
+  'profile-mountinfo-malformed-escape-rejected',
+  'profile-readonly-rejected',
+  'profile-non-ext4-rejected',
+  'profile-device-disagreement-rejected',
+  'profile-descriptor-identity-revalidation',
+  'profile-unsupported-platform',
+  'lease-duplicate-context-rejected',
+  'lease-duplicate-opened-identity-rejected',
+  'lease-dispose-reapply-stale-handles',
+  'lease-tool-disposer-failure-stale-tool',
+  'submit-ready-accepted',
+  'submit-ready-duplicate',
+  'submit-ready-known-rejected',
+  'submit-known-rejected-next-sequence',
+  'submit-max-sequence-rejected',
+  'submit-retained-pair-byte-identical',
+  'submit-fence-before-spawn',
+  'submit-concurrent-n-single-child',
+  'submit-reconcile-race-single-child',
+  'submit-fence-file-create-failure',
+  'submit-fence-file-write-failure',
+  'submit-fence-file-sync-failure',
+  'submit-fence-rename-failure',
+  'submit-fence-events-dir-sync-failure',
+  'submit-crash-after-fence-before-spawn',
+  'submit-crash-during-child',
+  'submit-crash-after-core-append',
+  'submit-crash-after-response-before-lifecycle',
+  'submit-no-response-needs-reconciliation',
+  'submit-undecodable-response-needs-reconciliation',
+  'submit-oversized-response-needs-reconciliation',
+  'submit-correlation-mismatch-needs-reconciliation',
+  'submit-timeout-needs-reconciliation',
+  'submit-spawn-failed-needs-reconciliation',
+  'submit-reported-unknown-needs-reconciliation',
+  'submit-aborted-needs-reconciliation',
+  'submit-known-result-publication-failure',
+  'submit-same-arguments-after-unknown-zero-child',
+  'submit-changed-arguments-after-unknown-zero-child',
+  'submit-lost-ack-real-binary-reconciled',
+  'submit-retained-payload-recompute-mutant',
+  'submit-lifecycle-loss-no-inmemory-ready-mutant',
+  'restart-ready',
+  'restart-in-flight-to-needs-reconciliation',
+  'restart-known-accepted',
+  'restart-known-duplicate',
+  'restart-known-rejected',
+  'restart-needs-reconciliation',
+  'restart-reconciled-accepted',
+  'restart-reconciled-conflict',
+  'restart-reconciled-absent',
+  'restart-still-unknown',
+  'restart-missing-malformed-unsafe-fail-closed',
+  'reconcile-accepted',
+  'reconcile-conflict',
+  'reconcile-absent-no-submit',
+  'reconcile-unknown-still-unknown',
+  'reconcile-concurrent-n-single-child',
+  'reconcile-publication-file-write-failure',
+  'reconcile-publication-file-sync-failure',
+  'reconcile-publication-rename-failure',
+  'reconcile-publication-events-dir-sync-failure',
+  'reconcile-journal-byte-identical',
+  'reconcile-never-calls-submit-mutant',
+  'reconcile-absent-never-republishes-tool-mutant',
+  'projection-ready-idle',
+  'projection-known-rejected-idle',
+  'projection-submit-admissible-busy',
+  'projection-runtime-in-flight-busy',
+  'projection-terminal-known',
+  'projection-reconciliation-required-idle',
+  'projection-reconciliation-required-busy',
+  'projection-reconciled-terminal',
+  'projection-controller-closed-unavailable',
+  'export-lifecycle-runtime-type-allowlist',
+  'export-lifecycle-negative-root',
+  'export-lifecycle-negative-deep',
+  'export-lifecycle-negative-undeclared',
+  'disclosure-status-error-closed-canaries',
+  'disclosure-retained-record-prohibited-fields',
+  'preflight-transport-api-preserved',
+  'preflight-lifecycle-requires-submit-reconcile',
+].sort();
+
+test('DSH lifecycle schemas and exact case corpus are closed and complete', () => {
+  const rootMarkerValidate = validator('dsh/lifecycle/v1/root-marker.schema.json');
+  const eventValidate = validator('dsh/lifecycle/v1/event-record.schema.json');
+  const casesValidate = validator('dsh/lifecycle/v1/cases.schema.json');
+  const cases = JSON.parse(
+    readFileSync(join(root, 'spec/dsh/lifecycle/v1/fixtures/cases.json'), 'utf8'),
+  );
+
+  assert.ok(casesValidate(cases), ajv.errorsText(casesValidate.errors));
+  const actualIds = cases.map(({ id }) => id);
+  assert.equal(new Set(actualIds).size, 112, 'lifecycle case IDs must be unique');
+  assert.deepEqual([...actualIds].sort(), dshLifecycleCaseIds);
+
+  const rootMarker = {
+    schemaVersion: 1,
+    profile: 'dsh-lifecycle-linux-x86_64-gnu-ext4-local-v1',
+    lifecycleRootId: 'root:example-01',
+    rootPathDigest: 'a'.repeat(64),
+    eventRecordSchemaVersion: 1,
+  };
+  assert.ok(rootMarkerValidate(rootMarker), ajv.errorsText(rootMarkerValidate.errors));
+  assert.equal(rootMarkerValidate({ ...rootMarker, extra: true }), false);
+
+  const request = JSON.parse(
+    readFileSync(
+      join(root, 'spec/protocol/v1/examples/workflow-signal-submit.request.json'),
+      'utf8',
+    ),
+  );
+  const ready = {
+    schemaVersion: 1,
+    lifecycleRootId: 'root:example-01',
+    eventId: 'evt:example-01',
+    configIdentity: 'b'.repeat(64),
+    coreStatePathKey: 'c'.repeat(64),
+    state: 'ready',
+    attemptSequence: 0,
+  };
+  assert.ok(eventValidate(ready), ajv.errorsText(eventValidate.errors));
+  assert.equal(eventValidate({ ...ready, attemptSequence: 1 }), false);
+  assert.equal(eventValidate({ ...ready, state: 'unknown-state' }), false);
+  assert.equal(
+    eventValidate({
+      ...ready,
+      state: 'in_flight',
+      attemptSequence: 1,
+      requestId: 'req:example-01',
+      payload: request.payload,
+      trustedValueMappingKey: 'd'.repeat(64),
+    }),
+    true,
+  );
+  assert.equal(eventValidate({ ...ready, state: 'in_flight', attemptSequence: 1 }), false);
+  assert.equal(
+    eventValidate({
+      ...ready,
+      state: 'in_flight',
+      attemptSequence: 9007199254740992,
+      requestId: 'req:example-01',
+      payload: request.payload,
+      trustedValueMappingKey: 'd'.repeat(64),
+    }),
+    false,
+  );
+});
+
+test('DSH lifecycle case categories preserve the closed projection and evidence rules', () => {
+  const validate = validator('dsh/lifecycle/v1/cases.schema.json');
+  const cases = JSON.parse(
+    readFileSync(join(root, 'spec/dsh/lifecycle/v1/fixtures/cases.json'), 'utf8'),
+  );
+  const byId = new Map(cases.map((entry) => [entry.id, entry]));
+  const mutationCaseIds = new Set([
+    'init-first-root-dir-sync-failure',
+    'init-first-events-dir-sync-failure',
+    'init-event-events-dir-sync-failure',
+    'profile-realpath-statfs-only-rejected',
+    'submit-fence-before-spawn',
+    'submit-concurrent-n-single-child',
+    'submit-reconcile-race-single-child',
+    'submit-fence-events-dir-sync-failure',
+    'submit-retained-payload-recompute-mutant',
+    'submit-lifecycle-loss-no-inmemory-ready-mutant',
+    'restart-in-flight-to-needs-reconciliation',
+    'reconcile-concurrent-n-single-child',
+    'reconcile-publication-events-dir-sync-failure',
+    'reconcile-never-calls-submit-mutant',
+    'reconcile-absent-never-republishes-tool-mutant',
+  ]);
+  const allowedProjectionByState = {
+    ready: new Set(['submit_available', 'controller_unavailable']),
+    in_flight: new Set(['no_publication', 'submit_busy']),
+    known_accepted: new Set(['terminal_unavailable']),
+    known_duplicate: new Set(['terminal_unavailable']),
+    known_rejected: new Set(['submit_available', 'controller_unavailable']),
+    needs_reconciliation: new Set(['reconciliation_required', 'reconciliation_busy']),
+    reconciled_accepted: new Set(['terminal_unavailable']),
+    reconciled_conflict: new Set(['terminal_unavailable']),
+    reconciled_absent: new Set(['terminal_unavailable']),
+    still_unknown: new Set(['reconciliation_required', 'reconciliation_busy']),
+  };
+
+  for (const entry of cases) {
+    const contractOnly =
+      entry.stage === 'exports' || entry.stage === 'disclosure' || entry.stage === 'preflight';
+    assert.equal(entry.evidenceClass, entry.stage, `${entry.id}: evidence owner`);
+    assert.equal(entry.mutationAllowed, mutationCaseIds.has(entry.id), `${entry.id}: mutation`);
+    if (entry.expectedPersistedState !== null) {
+      assert.ok(
+        allowedProjectionByState[entry.expectedPersistedState].has(
+          entry.expectedProjectionCategory,
+        ),
+        `${entry.id}: state/projection combination`,
+      );
+    }
+    if (contractOnly) {
+      assert.equal(entry.expectedPersistedState, null, `${entry.id}: no persisted state`);
+      assert.equal(entry.expectedSubmitChildren, null, `${entry.id}: submit child n/a`);
+      assert.equal(entry.expectedReconcileChildren, null, `${entry.id}: reconcile child n/a`);
+      assert.equal(
+        entry.expectedProjectionCategory,
+        'not_applicable',
+        `${entry.id}: projection n/a`,
+      );
+    } else {
+      assert.notEqual(entry.expectedSubmitChildren, null, `${entry.id}: submit child count`);
+      assert.notEqual(entry.expectedReconcileChildren, null, `${entry.id}: reconcile child count`);
+      if (entry.stage !== 'submit') assert.equal(entry.expectedSubmitChildren, 0, entry.id);
+      if (entry.stage === 'reconciliation') {
+        assert.equal(entry.expectedReconcileChildren, 1, entry.id);
+      } else if (entry.id === 'submit-lost-ack-real-binary-reconciled') {
+        assert.equal(entry.expectedReconcileChildren, 1, entry.id);
+      } else {
+        assert.equal(entry.expectedReconcileChildren, 0, entry.id);
+      }
+    }
+  }
+  for (const id of [
+    'submit-no-response-needs-reconciliation',
+    'submit-undecodable-response-needs-reconciliation',
+    'submit-oversized-response-needs-reconciliation',
+    'submit-correlation-mismatch-needs-reconciliation',
+    'submit-timeout-needs-reconciliation',
+    'submit-spawn-failed-needs-reconciliation',
+    'submit-reported-unknown-needs-reconciliation',
+    'submit-aborted-needs-reconciliation',
+  ]) {
+    assert.equal(byId.get(id).expectedPersistedState, 'needs_reconciliation', id);
+    assert.equal(byId.get(id).expectedRuntimeCategory, 'outcome_unknown', id);
+  }
+  const restartStates = new Map([
+    ['restart-ready', 'ready'],
+    ['restart-in-flight-to-needs-reconciliation', 'needs_reconciliation'],
+    ['restart-known-accepted', 'known_accepted'],
+    ['restart-known-duplicate', 'known_duplicate'],
+    ['restart-known-rejected', 'known_rejected'],
+    ['restart-needs-reconciliation', 'needs_reconciliation'],
+    ['restart-reconciled-accepted', 'reconciled_accepted'],
+    ['restart-reconciled-conflict', 'reconciled_conflict'],
+    ['restart-reconciled-absent', 'reconciled_absent'],
+    ['restart-still-unknown', 'still_unknown'],
+  ]);
+  for (const [id, state] of restartStates) {
+    assert.equal(byId.get(id).expectedPersistedState, state, id);
+  }
+  assert.equal(validate([{ ...cases[0], id: 'not-an-authorized-case' }, ...cases.slice(1)]), false);
+  assert.equal(
+    validate([{ ...cases[0], expectedPersistedState: 'not-a-lifecycle-state' }, ...cases.slice(1)]),
+    false,
+  );
+  assert.equal(validate([{ ...cases[0] }, ...cases.slice(0, -1)]), false, 'duplicate ID');
+  assert.equal(validate([{ ...cases[0], extra: true }, ...cases.slice(1)]), false);
 });
 
 test('every valid fixture validates against its schema', () => {

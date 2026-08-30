@@ -244,6 +244,21 @@ Submission must not become unavailable merely because reconciliation is
 unavailable. Any retry policy after `absent` requires a separately defined
 decision and authorization boundary.
 
+### Accepted DSH lifecycle target (not yet implemented)
+
+ADR-0029 accepts a future DSH-owned logical-submission lifecycle whose sole
+normative authority is [`spec/dsh/lifecycle/v1/`](../../spec/dsh/lifecycle/v1/README.md).
+It will durably fence a submit before child spawn, retain the exact trusted
+signal, recover uncertain attempts as reconciliation-required, and expose a
+control-plane-only reconciliation service. Submit and reconcile will share one
+non-waiting process-local gate; `absent` will never authorize resubmission.
+
+This target does not change the current Protocol operations, classification
+rows, process profile, core journal, or store. The current DSH adapter has no
+lifecycle root, initializer, owner lease, durable event record, lifecycle
+service, or `./experimental/lifecycle` subpath. Those remain an atomic S2
+migration debt and must not be inferred from this accepted contract.
+
 ## Completion authority and harness evidence
 
 The Aizign control journal is authoritative for workflow signal acceptance.

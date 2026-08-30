@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aizign.dev/spec/dsh/lifecycle/v1/root-marker.schema.json",
+  "title": "DSH lifecycle root marker v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "profile",
+    "lifecycleRootId",
+    "rootPathDigest",
+    "eventRecordSchemaVersion"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "profile": { "const": "dsh-lifecycle-linux-x86_64-gnu-ext4-local-v1" },
+    "lifecycleRootId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "rootPathDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "eventRecordSchemaVersion": { "const": 1 }
+  }
+}
