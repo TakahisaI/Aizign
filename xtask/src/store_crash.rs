@@ -436,7 +436,7 @@ fn require_detected_mutant(output: &CapturedOutput, mutation: MutationSpec) -> R
         || !combined.contains("test result: FAILED")
         || !combined.contains("1 failed")
         || !combined.contains("panicked at")
-        || !combined.contains("assert")
+        || !combined.contains("assertion failure: mutation sentinel")
     {
         return Err(format!(
             "{} was not detected by an executed assertion failure: {}",

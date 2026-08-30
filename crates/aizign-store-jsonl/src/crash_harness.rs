@@ -3267,6 +3267,14 @@ fn run_sentinel(name: &str) {
     });
 }
 
+fn assert_sentinel(name: &str) {
+    let result = std::panic::catch_unwind(|| run_sentinel(name));
+    assert!(
+        result.is_ok(),
+        "assertion failure: mutation sentinel {name} detected"
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3300,46 +3308,46 @@ mod tests {
 
     #[test]
     fn sentinel_prepared_barrier_required() {
-        run_sentinel("mutation-prepared-barrier-noop");
+        assert_sentinel("mutation-prepared-barrier-noop");
     }
 
     #[test]
     fn sentinel_journal_barrier_required() {
-        run_sentinel("mutation-journal-barrier-noop");
+        assert_sentinel("mutation-journal-barrier-noop");
     }
 
     #[test]
     fn sentinel_commit_temporary_barrier_required() {
-        run_sentinel("mutation-commit-temporary-barrier-noop");
+        assert_sentinel("mutation-commit-temporary-barrier-noop");
     }
 
     #[test]
     fn sentinel_commit_directory_barrier_required() {
-        run_sentinel("mutation-commit-directory-barrier-noop");
+        assert_sentinel("mutation-commit-directory-barrier-noop");
     }
 
     #[test]
     fn sentinel_clean_barrier_required() {
-        run_sentinel("mutation-clean-barrier-noop");
+        assert_sentinel("mutation-clean-barrier-noop");
     }
 
     #[test]
     fn sentinel_commit_follows_journal_barrier() {
-        run_sentinel("mutation-commit-before-journal-barrier");
+        assert_sentinel("mutation-commit-before-journal-barrier");
     }
 
     #[test]
     fn sentinel_reader_rejects_initialization_prepared() {
-        run_sentinel("mutation-reader-accepts-incomplete-generation");
+        assert_sentinel("mutation-reader-accepts-incomplete-generation");
     }
 
     #[test]
     fn sentinel_reader_never_promotes_extra_tail() {
-        run_sentinel("mutation-tail-repair-or-promotion");
+        assert_sentinel("mutation-tail-repair-or-promotion");
     }
 
     #[test]
     fn sentinel_append_revalidates_committed_prefix() {
-        run_sentinel("mutation-append-revalidation-bypass");
+        assert_sentinel("mutation-append-revalidation-bypass");
     }
 }
