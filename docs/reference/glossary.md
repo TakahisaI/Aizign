@@ -30,6 +30,9 @@ source-qualified; the same spelling does not imply the same authority.
 | **Child runtime observation** | Provisional metadata-only operational evidence emitted by the `aizign` child about its handler path. |
 | **Parent transport observation** | Provisional metadata-only operational evidence emitted by the caller about spawn, response, correlation, and the client result. |
 | **Harness-native observation** | A conditional adapter-specific evidence category requiring a separately accepted attribution, durability, retention, bounds, and failure contract. No current v0.1 DSH supported path exposes session cold read. |
+| **DSH lifecycle root** | ADR-0029's accepted but not-yet-implemented adapter-owned root for multiple logical submission event records. It is independent of the core store-v2 root. |
+| **Logical submission** | In DSH lifecycle v1, exactly `(lifecycleRootId, eventId)`. Request IDs, paths, attempt sequence, model/session identity, and trusted mapping keys are not identity. |
+| **Reconciliation-required** | A planned DSH lifecycle projection for an uncertain retained submit. It permits only read-only reconciliation and never implies retry or resubmission. |
 | **Duplicate** | 同一identity・同一内容の再提出。受理済みとして扱い、再記録しない |
 | **Conflict** | 同一identity・異内容の提出。拒否し、error codeで説明する |
 | **Unknown** | A source-qualified client/observation result stating that the relevant fact could not be established. For current signal submission, an unknown append or acknowledgement is neither success nor failure and never authorizes blind retry. |

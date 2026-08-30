@@ -10,6 +10,7 @@ This tree owns Aizign's machine-readable contracts. Documentation under
 | `journal/vN/` | Durable journal-record schemas | `crates/aizign-store-jsonl` |
 | `store/vN/` | JSONL store layout, committed-prefix metadata, and publication witness | `crates/aizign-store-jsonl` |
 | `process/vN/` | Adapter/core process argv, framing, lifecycle, bootstrap selection, and process faults | CLI, adapters, fake cores, and benchmark process consumers |
+| `dsh/lifecycle/vN/` | Planned DSH-owned logical-submission lifecycle, storage profile, closed record shapes, and evidence inventory | Future DSH lifecycle S2 implementation and tests |
 | `classification/` | Unversioned current-operation classification corpus and its closed sibling schema | Rust, TypeScript, CLI, timing, and benchmark tests |
 | `conformance/` | Fixtures whose decoder decisions must agree (`.frame` + `.expect.json`) | `cargo xtask conformance` for structure, Rust protocol tests, and TypeScript protocol tests |
 
@@ -28,3 +29,8 @@ versioned authority package. `store/v1/` is retained unchanged as a historical
 unsupported format for compatibility-rejection evidence. Production implements
 v2 atomically; specification acceptance by itself remains distinct from a
 support claim for any additional profile.
+
+`dsh/lifecycle/v1/` is the accepted target authority introduced by ADR-0029.
+It is not implemented by the current runtime. Its lifecycle storage profile is
+independent of store v2, and acceptance of the specification is not a current
+compatibility or support claim.

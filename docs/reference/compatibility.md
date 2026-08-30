@@ -170,3 +170,13 @@ artifact/bundling and a registry-free clean install.
 | Harness | Adapter | Supported version | Status |
 |---|---|---|---|
 | DSH | `@aizign/adapter-dsh` | `0.1.1-rc.2`（`@deepseek-ai/cordis` 4.0.1、`schemastery` 3.18.1） | stable rootはplugin entryのみ。preflight + scope-bound tool +唯一のproduction TypeScript one-shot clientを持ち、repository control-plane用transportはclosed `./experimental/transport` subpath。current v0.1 supportにharness persistence/cold readは含まない。fake harnessに加え、第三者（別harness・別model）によるDSH × Firefoxのlive smokeがpass（2026-08-23、commit `fd0e208`、[Issue #11](https://github.com/TakahisaI/Aizign/issues/11)） |
+
+### Accepted DSH lifecycle target
+
+ADR-0029 accepts a future, breaking DSH lifecycle-v1 target with explicit
+`lifecycleRoot`/`lifecycleRootId`, a separate Linux x86_64 glibc/ext4-local
+storage profile, and `./experimental/lifecycle`. The current package does not
+implement or support that profile, configuration, record format, service, or
+subpath. There is no compatibility alias, fallback, automatic initialization,
+reset, or migration; the target becomes a support claim only after its atomic
+S2 runtime/config/export/test migration is independently reviewed and merged.

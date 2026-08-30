@@ -1,0 +1,3161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aizign.dev/spec/dsh/lifecycle/v1/cases.schema.json",
+  "title": "DSH lifecycle v1 executable evidence inventory",
+  "type": "array",
+  "minItems": 134,
+  "maxItems": 134,
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "id",
+      "stage",
+      "trigger",
+      "expectedPersistedState",
+      "expectedRuntimeCategory",
+      "mutationAllowed",
+      "expectedSubmitChildren",
+      "expectedReconcileChildren",
+      "expectedProjectionCategory",
+      "evidenceClass",
+      "restartExpectation",
+      "parameterizedVariants"
+    ],
+    "properties": {
+      "id": {
+        "enum": [
+          "init-first-root-ready",
+          "init-first-root-nonempty",
+          "init-first-root-partial-discard-only",
+          "init-first-marker-file-sync-failure",
+          "init-first-root-dir-sync-failure",
+          "init-first-events-dir-sync-failure",
+          "init-event-file-sync-failure",
+          "init-event-rename-failure",
+          "init-event-events-dir-sync-failure",
+          "init-later-event-ready",
+          "init-later-event-preserves-existing",
+          "init-existing-event-rejected",
+          "init-root-marker-mismatch",
+          "init-unexpected-artifact",
+          "init-missing-state-before-preflight",
+          "init-malformed-state-before-preflight",
+          "init-binding-mismatch-before-preflight",
+          "init-trusted-bundle-mismatch-before-preflight",
+          "init-core-state-path-key-mismatch-before-preflight",
+          "init-core-state-valid-replacement-trusted-limitation",
+          "profile-supported",
+          "profile-realpath-statfs-only-rejected",
+          "profile-root-core-mount-mismatch",
+          "profile-symlink-component-rejected",
+          "profile-bind-subtree-rejected",
+          "profile-root-replacement-rejected",
+          "profile-lexical-alias-rejected",
+          "profile-different-root-restart-reset-rejected",
+          "profile-mountinfo-missing-rejected",
+          "profile-mountinfo-ambiguous-rejected",
+          "profile-mountinfo-malformed-escape-rejected",
+          "profile-readonly-rejected",
+          "profile-non-ext4-rejected",
+          "profile-device-disagreement-rejected",
+          "profile-descriptor-identity-revalidation",
+          "profile-unsupported-platform",
+          "lease-duplicate-context-rejected",
+          "lease-duplicate-opened-identity-rejected",
+          "lease-dispose-reapply-stale-handles",
+          "lease-tool-disposer-failure-stale-tool",
+          "submit-ready-accepted",
+          "submit-ready-duplicate",
+          "submit-ready-known-rejected",
+          "submit-known-rejected-next-sequence",
+          "submit-max-sequence-rejected",
+          "submit-retained-pair-byte-identical",
+          "submit-fence-before-spawn",
+          "submit-concurrent-n-single-child",
+          "submit-reconcile-race-single-child",
+          "submit-fence-file-create-failure",
+          "submit-fence-file-write-failure",
+          "submit-fence-file-sync-failure",
+          "submit-fence-rename-failure",
+          "submit-fence-events-dir-sync-failure",
+          "submit-crash-after-fence-before-spawn",
+          "submit-crash-during-child",
+          "submit-crash-after-core-append",
+          "submit-crash-after-response-before-lifecycle",
+          "submit-no-response-needs-reconciliation",
+          "submit-undecodable-response-needs-reconciliation",
+          "submit-oversized-response-needs-reconciliation",
+          "submit-correlation-mismatch-needs-reconciliation",
+          "submit-timeout-needs-reconciliation",
+          "submit-spawn-failed-needs-reconciliation",
+          "submit-reported-unknown-needs-reconciliation",
+          "submit-aborted-needs-reconciliation",
+          "submit-known-result-publication-failure",
+          "submit-same-arguments-after-unknown-zero-child",
+          "submit-changed-arguments-after-unknown-zero-child",
+          "submit-lost-ack-real-binary-reconciled",
+          "submit-retained-payload-recompute-mutant",
+          "submit-lifecycle-loss-no-inmemory-ready-mutant",
+          "restart-ready",
+          "restart-in-flight-to-needs-reconciliation",
+          "restart-known-accepted",
+          "restart-known-duplicate",
+          "restart-known-rejected",
+          "restart-needs-reconciliation",
+          "restart-reconciled-accepted",
+          "restart-reconciled-conflict",
+          "restart-reconciled-absent",
+          "restart-still-unknown",
+          "restart-missing-malformed-unsafe-fail-closed",
+          "reconcile-accepted",
+          "reconcile-conflict",
+          "reconcile-absent-no-submit",
+          "reconcile-unknown-still-unknown",
+          "reconcile-concurrent-n-single-child",
+          "reconcile-publication-file-write-failure",
+          "reconcile-publication-file-sync-failure",
+          "reconcile-publication-rename-failure",
+          "reconcile-publication-events-dir-sync-failure",
+          "reconcile-journal-byte-identical",
+          "reconcile-never-calls-submit-mutant",
+          "reconcile-absent-never-republishes-tool-mutant",
+          "projection-ready-idle",
+          "projection-known-rejected-idle",
+          "projection-submit-admissible-busy",
+          "projection-runtime-in-flight-busy",
+          "projection-terminal-known",
+          "projection-reconciliation-required-idle",
+          "projection-reconciliation-required-busy",
+          "projection-reconciled-terminal",
+          "projection-controller-closed-unavailable",
+          "export-lifecycle-runtime-type-allowlist",
+          "export-lifecycle-negative-root",
+          "export-lifecycle-negative-deep",
+          "export-lifecycle-negative-undeclared",
+          "disclosure-status-error-closed-canaries",
+          "disclosure-retained-record-prohibited-fields",
+          "preflight-transport-api-preserved",
+          "preflight-lifecycle-requires-submit-reconcile",
+          "profile-lifecycle-root-equals-core-state-dir-rejected",
+          "profile-lifecycle-root-ancestor-of-core-state-dir-rejected",
+          "profile-core-state-dir-ancestor-of-lifecycle-root-rejected",
+          "profile-mountinfo-unique-deepest-selected",
+          "profile-lifecycle-root-lone-surrogate-rejected",
+          "profile-core-state-dir-lone-surrogate-rejected",
+          "identity-config-canonical-vector",
+          "identity-core-state-path-key-vector",
+          "identity-root-path-digest-vector",
+          "init-rename-error-prior-or-absent",
+          "init-rename-error-complete-target",
+          "submit-fence-rename-error-prior-submit-admissible",
+          "submit-fence-rename-error-target-in-flight",
+          "submit-known-result-rename-error-prior-in-flight",
+          "submit-known-result-rename-error-target-known",
+          "reconcile-rename-error-prior-reconciliation-required",
+          "reconcile-rename-error-target-reconciled",
+          "publication-rename-error-ambiguous-image-fail-closed",
+          "submit-known-result-dir-sync-prior-visible",
+          "submit-known-result-dir-sync-target-visible",
+          "reconcile-dir-sync-prior-visible",
+          "reconcile-dir-sync-target-visible"
+        ]
+      },
+      "stage": {
+        "enum": [
+          "initialization",
+          "profile",
+          "ownership",
+          "submit",
+          "restart",
+          "reconciliation",
+          "projection",
+          "exports",
+          "disclosure",
+          "preflight"
+        ]
+      },
+      "trigger": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 240
+      },
+      "expectedPersistedState": {
+        "anyOf": [
+          {
+            "enum": [
+              "ready",
+              "in_flight",
+              "known_accepted",
+              "known_duplicate",
+              "known_rejected",
+              "needs_reconciliation",
+              "reconciled_accepted",
+              "reconciled_conflict",
+              "reconciled_absent",
+              "still_unknown"
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "expectedRuntimeCategory": {
+        "enum": [
+          "success",
+          "accepted",
+          "duplicate",
+          "conflict",
+          "absent",
+          "rejected",
+          "busy",
+          "unavailable",
+          "outcome_unknown",
+          "reconciliation_required",
+          "not_required",
+          "terminal",
+          "fail_closed",
+          "trusted_limitation",
+          "contract_only"
+        ]
+      },
+      "mutationAllowed": {
+        "type": "boolean"
+      },
+      "expectedSubmitChildren": {
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "expectedReconcileChildren": {
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "expectedProjectionCategory": {
+        "enum": [
+          "submit_available",
+          "submit_busy",
+          "reconciliation_required",
+          "reconciliation_busy",
+          "terminal_unavailable",
+          "controller_unavailable",
+          "no_publication",
+          "not_applicable"
+        ]
+      },
+      "evidenceClass": {
+        "enum": [
+          "initialization",
+          "profile",
+          "ownership",
+          "submit",
+          "restart",
+          "reconciliation",
+          "projection",
+          "exports",
+          "disclosure",
+          "preflight"
+        ]
+      },
+      "restartExpectation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "prior",
+          "target",
+          "invalidOrAmbiguousImage"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "not_applicable",
+              "deterministic",
+              "acknowledgement_uncertain",
+              "invalid_image"
+            ]
+          },
+          "prior": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "permitted",
+              "lifecycleStates",
+              "absenceKinds"
+            ],
+            "properties": {
+              "permitted": {
+                "type": "boolean"
+              },
+              "lifecycleStates": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "ready",
+                    "in_flight",
+                    "known_accepted",
+                    "known_duplicate",
+                    "known_rejected",
+                    "needs_reconciliation",
+                    "reconciled_accepted",
+                    "reconciled_conflict",
+                    "reconciled_absent",
+                    "still_unknown"
+                  ]
+                }
+              },
+              "absenceKinds": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "uninitialized_root",
+                    "target_event_absent"
+                  ]
+                }
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "permitted": {
+                      "const": false
+                    }
+                  },
+                  "required": [
+                    "permitted"
+                  ],
+                  "type": "object"
+                },
+                "then": {
+                  "properties": {
+                    "lifecycleStates": {
+                      "maxItems": 0,
+                      "type": "array"
+                    },
+                    "absenceKinds": {
+                      "maxItems": 0,
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "permitted": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "permitted"
+                  ],
+                  "type": "object"
+                },
+                "then": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "lifecycleStates": {
+                          "minItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "properties": {
+                        "absenceKinds": {
+                          "minItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "target": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "permitted",
+              "lifecycleStates",
+              "absenceKinds"
+            ],
+            "properties": {
+              "permitted": {
+                "type": "boolean"
+              },
+              "lifecycleStates": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "ready",
+                    "in_flight",
+                    "known_accepted",
+                    "known_duplicate",
+                    "known_rejected",
+                    "needs_reconciliation",
+                    "reconciled_accepted",
+                    "reconciled_conflict",
+                    "reconciled_absent",
+                    "still_unknown"
+                  ]
+                }
+              },
+              "absenceKinds": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "uninitialized_root",
+                    "target_event_absent"
+                  ]
+                }
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "permitted": {
+                      "const": false
+                    }
+                  },
+                  "required": [
+                    "permitted"
+                  ],
+                  "type": "object"
+                },
+                "then": {
+                  "properties": {
+                    "lifecycleStates": {
+                      "maxItems": 0,
+                      "type": "array"
+                    },
+                    "absenceKinds": {
+                      "maxItems": 0,
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "permitted": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "permitted"
+                  ],
+                  "type": "object"
+                },
+                "then": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "lifecycleStates": {
+                          "minItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "properties": {
+                        "absenceKinds": {
+                          "minItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "invalidOrAmbiguousImage": {
+            "enum": [
+              "not_applicable",
+              "fail_closed"
+            ]
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "not_applicable"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            "then": {
+              "properties": {
+                "prior": {
+                  "properties": {
+                    "permitted": {
+                      "const": false
+                    }
+                  },
+                  "type": "object"
+                },
+                "target": {
+                  "properties": {
+                    "permitted": {
+                      "const": false
+                    }
+                  },
+                  "type": "object"
+                },
+                "invalidOrAmbiguousImage": {
+                  "const": "not_applicable"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "invalid_image"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            "then": {
+              "properties": {
+                "prior": {
+                  "properties": {
+                    "permitted": {
+                      "const": false
+                    }
+                  },
+                  "type": "object"
+                },
+                "target": {
+                  "properties": {
+                    "permitted": {
+                      "const": false
+                    }
+                  },
+                  "type": "object"
+                },
+                "invalidOrAmbiguousImage": {
+                  "const": "fail_closed"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "deterministic"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            "then": {
+              "oneOf": [
+                {
+                  "properties": {
+                    "prior": {
+                      "properties": {
+                        "permitted": {
+                          "const": true
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "target": {
+                      "properties": {
+                        "permitted": {
+                          "const": false
+                        }
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "prior": {
+                      "properties": {
+                        "permitted": {
+                          "const": false
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "target": {
+                      "properties": {
+                        "permitted": {
+                          "const": true
+                        }
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              ],
+              "properties": {
+                "invalidOrAmbiguousImage": {
+                  "const": "fail_closed"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "acknowledgement_uncertain"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            "then": {
+              "anyOf": [
+                {
+                  "properties": {
+                    "prior": {
+                      "properties": {
+                        "permitted": {
+                          "const": true
+                        }
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "target": {
+                      "properties": {
+                        "permitted": {
+                          "const": true
+                        }
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              ],
+              "properties": {
+                "invalidOrAmbiguousImage": {
+                  "const": "fail_closed"
+                }
+              },
+              "type": "object"
+            }
+          }
+        ]
+      },
+      "parameterizedVariants": {
+        "type": "array",
+        "uniqueItems": true,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "restartExpectation"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "restartExpectation": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "prior",
+                "target",
+                "invalidOrAmbiguousImage"
+              ],
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "not_applicable",
+                    "deterministic",
+                    "acknowledgement_uncertain",
+                    "invalid_image"
+                  ]
+                },
+                "prior": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "permitted",
+                    "lifecycleStates",
+                    "absenceKinds"
+                  ],
+                  "properties": {
+                    "permitted": {
+                      "type": "boolean"
+                    },
+                    "lifecycleStates": {
+                      "type": "array",
+                      "uniqueItems": true,
+                      "items": {
+                        "enum": [
+                          "ready",
+                          "in_flight",
+                          "known_accepted",
+                          "known_duplicate",
+                          "known_rejected",
+                          "needs_reconciliation",
+                          "reconciled_accepted",
+                          "reconciled_conflict",
+                          "reconciled_absent",
+                          "still_unknown"
+                        ]
+                      }
+                    },
+                    "absenceKinds": {
+                      "type": "array",
+                      "uniqueItems": true,
+                      "items": {
+                        "enum": [
+                          "uninitialized_root",
+                          "target_event_absent"
+                        ]
+                      }
+                    }
+                  },
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "permitted": {
+                            "const": false
+                          }
+                        },
+                        "required": [
+                          "permitted"
+                        ],
+                        "type": "object"
+                      },
+                      "then": {
+                        "properties": {
+                          "lifecycleStates": {
+                            "maxItems": 0,
+                            "type": "array"
+                          },
+                          "absenceKinds": {
+                            "maxItems": 0,
+                            "type": "array"
+                          }
+                        },
+                        "type": "object"
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "permitted": {
+                            "const": true
+                          }
+                        },
+                        "required": [
+                          "permitted"
+                        ],
+                        "type": "object"
+                      },
+                      "then": {
+                        "anyOf": [
+                          {
+                            "properties": {
+                              "lifecycleStates": {
+                                "minItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "type": "object"
+                          },
+                          {
+                            "properties": {
+                              "absenceKinds": {
+                                "minItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "type": "object"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "target": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "permitted",
+                    "lifecycleStates",
+                    "absenceKinds"
+                  ],
+                  "properties": {
+                    "permitted": {
+                      "type": "boolean"
+                    },
+                    "lifecycleStates": {
+                      "type": "array",
+                      "uniqueItems": true,
+                      "items": {
+                        "enum": [
+                          "ready",
+                          "in_flight",
+                          "known_accepted",
+                          "known_duplicate",
+                          "known_rejected",
+                          "needs_reconciliation",
+                          "reconciled_accepted",
+                          "reconciled_conflict",
+                          "reconciled_absent",
+                          "still_unknown"
+                        ]
+                      }
+                    },
+                    "absenceKinds": {
+                      "type": "array",
+                      "uniqueItems": true,
+                      "items": {
+                        "enum": [
+                          "uninitialized_root",
+                          "target_event_absent"
+                        ]
+                      }
+                    }
+                  },
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "permitted": {
+                            "const": false
+                          }
+                        },
+                        "required": [
+                          "permitted"
+                        ],
+                        "type": "object"
+                      },
+                      "then": {
+                        "properties": {
+                          "lifecycleStates": {
+                            "maxItems": 0,
+                            "type": "array"
+                          },
+                          "absenceKinds": {
+                            "maxItems": 0,
+                            "type": "array"
+                          }
+                        },
+                        "type": "object"
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "permitted": {
+                            "const": true
+                          }
+                        },
+                        "required": [
+                          "permitted"
+                        ],
+                        "type": "object"
+                      },
+                      "then": {
+                        "anyOf": [
+                          {
+                            "properties": {
+                              "lifecycleStates": {
+                                "minItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "type": "object"
+                          },
+                          {
+                            "properties": {
+                              "absenceKinds": {
+                                "minItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "type": "object"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "invalidOrAmbiguousImage": {
+                  "enum": [
+                    "not_applicable",
+                    "fail_closed"
+                  ]
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "kind": {
+                        "const": "not_applicable"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  "then": {
+                    "properties": {
+                      "prior": {
+                        "properties": {
+                          "permitted": {
+                            "const": false
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "target": {
+                        "properties": {
+                          "permitted": {
+                            "const": false
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "invalidOrAmbiguousImage": {
+                        "const": "not_applicable"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "kind": {
+                        "const": "invalid_image"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  "then": {
+                    "properties": {
+                      "prior": {
+                        "properties": {
+                          "permitted": {
+                            "const": false
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "target": {
+                        "properties": {
+                          "permitted": {
+                            "const": false
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "invalidOrAmbiguousImage": {
+                        "const": "fail_closed"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "kind": {
+                        "const": "deterministic"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  "then": {
+                    "oneOf": [
+                      {
+                        "properties": {
+                          "prior": {
+                            "properties": {
+                              "permitted": {
+                                "const": true
+                              }
+                            },
+                            "type": "object"
+                          },
+                          "target": {
+                            "properties": {
+                              "permitted": {
+                                "const": false
+                              }
+                            },
+                            "type": "object"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      {
+                        "properties": {
+                          "prior": {
+                            "properties": {
+                              "permitted": {
+                                "const": false
+                              }
+                            },
+                            "type": "object"
+                          },
+                          "target": {
+                            "properties": {
+                              "permitted": {
+                                "const": true
+                              }
+                            },
+                            "type": "object"
+                          }
+                        },
+                        "type": "object"
+                      }
+                    ],
+                    "properties": {
+                      "invalidOrAmbiguousImage": {
+                        "const": "fail_closed"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "kind": {
+                        "const": "acknowledgement_uncertain"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  "then": {
+                    "anyOf": [
+                      {
+                        "properties": {
+                          "prior": {
+                            "properties": {
+                              "permitted": {
+                                "const": true
+                              }
+                            },
+                            "type": "object"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      {
+                        "properties": {
+                          "target": {
+                            "properties": {
+                              "permitted": {
+                                "const": true
+                              }
+                            },
+                            "type": "object"
+                          }
+                        },
+                        "type": "object"
+                      }
+                    ],
+                    "properties": {
+                      "invalidOrAmbiguousImage": {
+                        "const": "fail_closed"
+                      }
+                    },
+                    "type": "object"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-first-root-ready"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-first-root-nonempty"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-first-root-partial-discard-only"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-first-marker-file-sync-failure"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-first-root-dir-sync-failure"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-first-events-dir-sync-failure"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-event-file-sync-failure"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-event-rename-failure"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-event-events-dir-sync-failure"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-later-event-ready"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-later-event-preserves-existing"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-existing-event-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-root-marker-mismatch"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-unexpected-artifact"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-missing-state-before-preflight"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-malformed-state-before-preflight"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-binding-mismatch-before-preflight"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-trusted-bundle-mismatch-before-preflight"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-core-state-path-key-mismatch-before-preflight"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-core-state-valid-replacement-trusted-limitation"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-supported"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-realpath-statfs-only-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-root-core-mount-mismatch"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-symlink-component-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-bind-subtree-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-root-replacement-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-lexical-alias-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-different-root-restart-reset-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-mountinfo-missing-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-mountinfo-ambiguous-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-mountinfo-malformed-escape-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-readonly-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-non-ext4-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-device-disagreement-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-descriptor-identity-revalidation"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-unsupported-platform"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "lease-duplicate-context-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "lease-duplicate-opened-identity-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "lease-dispose-reapply-stale-handles"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "lease-tool-disposer-failure-stale-tool"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-ready-accepted"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-ready-duplicate"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-ready-known-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-known-rejected-next-sequence"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-max-sequence-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-retained-pair-byte-identical"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-fence-before-spawn"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-concurrent-n-single-child"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-reconcile-race-single-child"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-fence-file-create-failure"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-fence-file-write-failure"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-fence-file-sync-failure"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-fence-rename-failure"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-fence-events-dir-sync-failure"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-crash-after-fence-before-spawn"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-crash-during-child"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-crash-after-core-append"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-crash-after-response-before-lifecycle"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-no-response-needs-reconciliation"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-undecodable-response-needs-reconciliation"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-oversized-response-needs-reconciliation"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-correlation-mismatch-needs-reconciliation"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-timeout-needs-reconciliation"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-spawn-failed-needs-reconciliation"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-reported-unknown-needs-reconciliation"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-aborted-needs-reconciliation"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-known-result-publication-failure"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-same-arguments-after-unknown-zero-child"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-changed-arguments-after-unknown-zero-child"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-lost-ack-real-binary-reconciled"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-retained-payload-recompute-mutant"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-lifecycle-loss-no-inmemory-ready-mutant"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "restart-ready"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "restart-in-flight-to-needs-reconciliation"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "restart-known-accepted"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "restart-known-duplicate"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "restart-known-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "restart-needs-reconciliation"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "restart-reconciled-accepted"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "restart-reconciled-conflict"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "restart-reconciled-absent"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "restart-still-unknown"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "restart-missing-malformed-unsafe-fail-closed"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "reconcile-accepted"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "reconcile-conflict"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "reconcile-absent-no-submit"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "reconcile-unknown-still-unknown"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "reconcile-concurrent-n-single-child"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "reconcile-publication-file-write-failure"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "reconcile-publication-file-sync-failure"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "reconcile-publication-rename-failure"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "reconcile-publication-events-dir-sync-failure"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "reconcile-journal-byte-identical"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "reconcile-never-calls-submit-mutant"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "reconcile-absent-never-republishes-tool-mutant"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "projection-ready-idle"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "projection-known-rejected-idle"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "projection-submit-admissible-busy"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "projection-runtime-in-flight-busy"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "projection-terminal-known"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "projection-reconciliation-required-idle"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "projection-reconciliation-required-busy"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "projection-reconciled-terminal"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "projection-controller-closed-unavailable"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "export-lifecycle-runtime-type-allowlist"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "export-lifecycle-negative-root"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "export-lifecycle-negative-deep"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "export-lifecycle-negative-undeclared"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "disclosure-status-error-closed-canaries"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "disclosure-retained-record-prohibited-fields"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "preflight-transport-api-preserved"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "preflight-lifecycle-requires-submit-reconcile"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-lifecycle-root-equals-core-state-dir-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-lifecycle-root-ancestor-of-core-state-dir-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-core-state-dir-ancestor-of-lifecycle-root-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-mountinfo-unique-deepest-selected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-lifecycle-root-lone-surrogate-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-core-state-dir-lone-surrogate-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "identity-config-canonical-vector"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "identity-core-state-path-key-vector"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "identity-root-path-digest-vector"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-rename-error-prior-or-absent"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-rename-error-complete-target"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-fence-rename-error-prior-submit-admissible"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-fence-rename-error-target-in-flight"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-known-result-rename-error-prior-in-flight"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-known-result-rename-error-target-known"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "reconcile-rename-error-prior-reconciliation-required"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "reconcile-rename-error-target-reconciled"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "publication-rename-error-ambiguous-image-fail-closed"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-known-result-dir-sync-prior-visible"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-known-result-dir-sync-target-visible"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "reconcile-dir-sync-prior-visible"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "reconcile-dir-sync-target-visible"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    }
+  ]
+}

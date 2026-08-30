@@ -38,6 +38,7 @@
 | [0026](0026-pin-the-dsh-startup-error-wrapper-boundary.md) | Pin the DSH startup error wrapper boundary | Accepted |
 | [0027](0027-remove-the-dsh-harness-evidence-read-surface.md) | Remove the DSH harness-evidence read surface | Accepted |
 | [0028](0028-define-crash-monotonic-jsonl-publication.md) | Define crash-monotonic JSONL publication | Accepted |
+| [0029](0029-define-dsh-reconciliation-gated-submission-lifecycle.md) | Define the DSH reconciliation-gated submission lifecycle | Accepted |
 
 ADR-0016 partially supersedes ADR-0005's earlier `AGENTS.md` editing-constraint
 statement only; ADR-0005's other accepted decisions remain in force.
@@ -93,3 +94,8 @@ ADR-0028 also partially supersedes only ADR-0015's target-triple-only store
 support and complete-store no-downgrade-fence statements. ADR-0015's guarantee
 levels and other trust boundaries, ADR-0014's SHA-256 ownership, and ADR-0019's
 physical-observation ownership remain Accepted.
+
+ADR-0029 adds a DSH-owned logical-submission lifecycle above the unchanged
+Protocol, classification, core journal, and store authorities. It does not
+supersede ADR-0013's read-only reconciliation or no-resubmission decisions,
+ADR-0025's trusted-value ownership, or ADR-0028's physical store contract.

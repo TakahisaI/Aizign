@@ -36,3 +36,11 @@ every domain named by it is implemented.
   [architecture overview](overview.md#futureprovisional-inventory) is met.
 - Invariant 9 applies today to `workflow.signal.reconcile`, which is bounded
   and read-only. It does not imply a future effect-reconciliation design.
+
+ADR-0029 accepts, but the current runtime does not yet implement, a DSH-owned
+logical-submission fence for invariants 3 and 9. The target publishes the exact
+attempt before child spawn, keeps unknown outcomes reconciliation-required
+across restart, and never treats reconciliation `absent` as permission to
+submit again. Its sole authority is
+[`spec/dsh/lifecycle/v1/`](../../spec/dsh/lifecycle/v1/README.md); conformance
+begins only when the ordered S2 migration lands.

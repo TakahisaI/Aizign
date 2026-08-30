@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aizign.dev/spec/dsh/lifecycle/v1/event-record.schema.json",
+  "title": "DSH lifecycle event record v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "lifecycleRootId",
+    "eventId",
+    "configIdentity",
+    "coreStatePathKey",
+    "state",
+    "attemptSequence"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "lifecycleRootId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "eventId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "configIdentity": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "coreStatePathKey": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "state": {
+      "enum": [
+        "ready",
+        "in_flight",
+        "known_accepted",
+        "known_duplicate",
+        "known_rejected",
+        "needs_reconciliation",
+        "reconciled_accepted",
+        "reconciled_conflict",
+        "reconciled_absent",
+        "still_unknown"
+      ]
+    },
+    "attemptSequence": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "requestId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "payload": {
+      "$ref": "https://aizign.dev/spec/protocol/v1/workflow-signal-submit.request.schema.json"
+    },
+    "trustedValueMappingKey": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "ready" } }, "required": ["state"] },
+      "then": {
+        "properties": { "attemptSequence": { "type": "integer", "const": 0 } },
+        "not": {
+          "anyOf": [
+            { "required": ["requestId"] },
+            { "required": ["payload"] },
+            { "required": ["trustedValueMappingKey"] }
+          ]
+        }
+      },
+      "else": {
+        "required": ["requestId", "payload", "trustedValueMappingKey"],
+        "properties": { "attemptSequence": { "type": "integer", "minimum": 1 } }
+      }
+    }
+  ]
+}

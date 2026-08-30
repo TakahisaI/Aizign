@@ -70,6 +70,21 @@ secret scanning, or value authenticity. The mapping key is not a Protocol,
 journal, timing, model-facing, or harness-evidence field and does not replace
 Issue #79's lifecycle key or Issue #80's evidence-removal ownership.
 
+### Accepted DSH lifecycle target (not yet implemented)
+
+ADR-0029's planned DSH lifecycle record retains only the exact submitted
+Protocol payload, request ID, trusted-value mapping key, closed state, bounded
+attempt sequence, original event/root identifiers, and domain-separated
+configuration/core-path bindings. It prohibits raw paths, model/provider IDs,
+prompts, output, reasoning, credentials, environment, peer messages, stderr,
+clock, and timing data. Status and lifecycle errors are fresh closed
+projections and never disclose retained payloads or bindings.
+
+The sole authority for that target is
+[`spec/dsh/lifecycle/v1/`](../../spec/dsh/lifecycle/v1/README.md). No current
+runtime or public API implements or exposes the retained record; this section
+does not make a present-tense durability, lifecycle, or compatibility claim.
+
 ## Capability boundary
 
 | Layer | Boundary |
