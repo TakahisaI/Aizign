@@ -49,7 +49,7 @@ const MODE: &str = "helper-v1";
 /// writer.  They are a separate stderr stream from the stdout control line.
 pub(crate) const ACK: &[u8; 26] = b"AIZIGN_STORE_CRASH_ACK_V1\n";
 const CHILD_TIMEOUT: Duration = Duration::from_secs(10);
-const MATRIX_TIMEOUT: Duration = Duration::from_secs(240);
+const MATRIX_TIMEOUT: Duration = Duration::from_mins(4);
 const MAX_ARTIFACT_BYTES: u64 = 1024 * 1024;
 const STORE_AUTHORITY: &str = include_str!("../../../spec/store/v2/README.md");
 const CLASSIFICATION_AUTHORITY: &str =
@@ -639,6 +639,7 @@ pub(crate) struct Scenario {
 }
 
 impl Scenario {
+    #[allow(clippy::too_many_arguments)]
     const fn new(
         id: &'static str,
         phase: &'static str,
@@ -1086,6 +1087,18 @@ struct ParsedReadyRecord {
     byte_count: Option<usize>,
 }
 
+const READY_RECORD_KEYS: &[&str] = &[
+    "recordType",
+    "harnessVersion",
+    "caseId",
+    "phase",
+    "operation",
+    "artifact",
+    "occurrence",
+    "durabilityPoint",
+    "byteCount",
+];
+
 #[derive(Default)]
 struct Controller {
     config: Option<HelperConfig>,
@@ -1370,11 +1383,11 @@ fn prepare_resume_state(state: &Path) -> Result<(), JournalError> {
 fn run_primary(config: &HelperConfig) -> Result<(), JournalError> {
     let scenario = config.scenario;
     if scenario.phase == "initialize" {
-        let _journal = JsonlJournal::open(&config.state)?;
+        let journal = JsonlJournal::open(&config.state)?;
         if scenario.normal_exit {
             return Ok(());
         }
-        drop(_journal);
+        drop(journal);
         return Err(JournalError::OutcomeUnknown {
             detail: "selected initialization event was not observed".to_owned(),
         });
@@ -1384,11 +1397,11 @@ fn run_primary(config: &HelperConfig) -> Result<(), JournalError> {
         reset_phase().map_err(|error| JournalError::Unavailable {
             detail: error.to_string(),
         })?;
-        let _journal = JsonlJournal::open(&config.state)?;
+        let journal = JsonlJournal::open(&config.state)?;
         if scenario.normal_exit {
             return Ok(());
         }
-        drop(_journal);
+        drop(journal);
         return Err(JournalError::OutcomeUnknown {
             detail: "selected resume event was not observed".to_owned(),
         });
@@ -1855,6 +1868,7 @@ struct ArtifactSnapshot {
     files: BTreeMap<String, Option<ArtifactState>>,
 }
 
+#[allow(clippy::too_many_lines)]
 fn artifact_snapshot(state: &Path) -> io::Result<ArtifactSnapshot> {
     #[cfg(unix)]
     use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
@@ -2021,18 +2035,11 @@ fn parse_ready(line: &str, scenario: &Scenario) -> io::Result<ParsedReadyRecord>
     let object = value.as_object().ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidData, "ready record is not an object")
     })?;
-    const KEYS: &[&str] = &[
-        "recordType",
-        "harnessVersion",
-        "caseId",
-        "phase",
-        "operation",
-        "artifact",
-        "occurrence",
-        "durabilityPoint",
-        "byteCount",
-    ];
-    if object.len() != KEYS.len() || KEYS.iter().any(|key| !object.contains_key(*key)) {
+    if object.len() != READY_RECORD_KEYS.len()
+        || READY_RECORD_KEYS
+            .iter()
+            .any(|key| !object.contains_key(*key))
+    {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "ready record has an unexpected field set",
@@ -2288,7 +2295,7 @@ fn assert_output_closed(output: &ChildOutput, timeout: Duration) -> io::Result<(
                     ));
                 }
             }
-            Ok(Ok(None)) => return Ok(()),
+            Ok(Ok(None)) | Err(RecvTimeoutError::Disconnected) => return Ok(()),
             Ok(Err(error)) => return Err(error),
             Err(RecvTimeoutError::Timeout) => {
                 return Err(io::Error::new(
@@ -2296,7 +2303,6 @@ fn assert_output_closed(output: &ChildOutput, timeout: Duration) -> io::Result<(
                     "helper stdout did not reach EOF",
                 ));
             }
-            Err(RecvTimeoutError::Disconnected) => return Ok(()),
         }
     }
 }
@@ -2322,7 +2328,7 @@ fn collect_stderr(output: &ChildOutput, timeout: Duration) -> io::Result<Vec<u8>
                     ));
                 }
             }
-            Ok(Ok(None)) => return Ok(bytes),
+            Ok(Ok(None)) | Err(RecvTimeoutError::Disconnected) => return Ok(bytes),
             Ok(Err(error)) => return Err(error),
             Err(RecvTimeoutError::Timeout) => {
                 return Err(io::Error::new(
@@ -2330,7 +2336,6 @@ fn collect_stderr(output: &ChildOutput, timeout: Duration) -> io::Result<Vec<u8>
                     "helper stderr did not reach EOF",
                 ));
             }
-            Err(RecvTimeoutError::Disconnected) => return Ok(bytes),
         }
     }
 }
@@ -2387,7 +2392,7 @@ fn assert_sigkill(status: std::process::ExitStatus, context: &str) -> io::Result
                 status.signal()
             )));
         }
-        return Ok(());
+        Ok(())
     }
     #[cfg(not(unix))]
     {
@@ -2452,10 +2457,8 @@ fn execute_scenario(scenario: &'static Scenario) -> io::Result<()> {
         }
     };
     validate_ready_measurement(&ready, scenario, &config.state)?;
-    if scenario.partial_kind.is_some() {
-        if ready.byte_count.unwrap_or(0) == 0 {
-            return Err(io::Error::other("partial case omitted bounded byte count"));
-        }
+    if scenario.partial_kind.is_some() && ready.byte_count.unwrap_or(0) == 0 {
+        return Err(io::Error::other("partial case omitted bounded byte count"));
     }
     if scenario.is_concurrency() && scenario.id != "concurrency-writer-after-partial-tail" {
         let contender_config = HelperConfig {
@@ -2533,6 +2536,7 @@ fn run_inspection_after_exit(scenario: &'static Scenario, state: &Path) -> io::R
 /// names directly.  In particular, lock contention is classified by looking
 /// up the operation-qualified row in the repository corpus, rather than by
 /// copying that row into this test-only module.
+#[allow(clippy::too_many_lines)]
 fn validate_authorities() -> io::Result<()> {
     const REQUIRED_HEADINGS: &[&str] = &[
         "# JSONL store metadata v2",
@@ -2867,29 +2871,26 @@ fn production_function<'a>(source: &'a str, name: &str) -> &'a str {
     let start = source
         .find(&marker)
         .unwrap_or_else(|| panic!("production source marker is missing: {marker}"));
-    let open = source[start..]
-        .find('{')
-        .map(|offset| start + offset)
-        .unwrap_or_else(|| panic!("production function body is missing: {name}"));
+    let open = source[start..].find('{').map_or_else(
+        || panic!("production function body is missing: {name}"),
+        |offset| start + offset,
+    );
     let close = matching_brace(source, open)
         .unwrap_or_else(|| panic!("production function body is unbalanced: {name}"));
     &source[start..=close]
 }
 
-fn production_impl<'a>(source: &'a str, name: &str) -> &'a str {
-    let marker = format!("impl {name}");
+fn source_between<'a>(source: &'a str, start_marker: &str, end_marker: &str) -> &'a str {
     let start = source
-        .find(&marker)
-        .unwrap_or_else(|| panic!("production impl marker is missing: {marker}"));
-    let open = source[start..]
-        .find('{')
-        .map(|offset| start + offset)
-        .unwrap_or_else(|| panic!("production impl body is missing: {name}"));
-    let close = matching_brace(source, open)
-        .unwrap_or_else(|| panic!("production impl body is unbalanced: {name}"));
-    &source[start..=close]
+        .find(start_marker)
+        .unwrap_or_else(|| panic!("production source marker is missing: {start_marker}"));
+    let relative_end = source[start..]
+        .find(end_marker)
+        .unwrap_or_else(|| panic!("production source marker is missing: {end_marker}"));
+    &source[start..start + relative_end]
 }
 
+#[allow(clippy::too_many_lines)]
 fn matching_brace(source: &str, open: usize) -> Option<usize> {
     #[derive(Clone, Copy)]
     enum State {
@@ -3022,6 +3023,7 @@ fn assert_source_order(source: &str, markers: &[&str], context: &str) {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn assert_sentinel_source(name: &str) {
     match name {
         "mutation-prepared-barrier-noop"
@@ -3097,7 +3099,11 @@ fn assert_sentinel_source(name: &str) {
             );
         }
         "mutation-reader-accepts-incomplete-generation" => {
-            let reader = production_impl(JOURNAL_SOURCE, "JsonlJournalReader");
+            let reader = source_between(
+                JOURNAL_SOURCE,
+                "impl JsonlJournalReader {",
+                "impl JournalReader for JsonlJournalReader",
+            );
             assert_source_order(
                 reader,
                 &[
@@ -3119,7 +3125,11 @@ fn assert_sentinel_source(name: &str) {
                     && snapshot.contains("journal contains bytes beyond the clean commit point"),
                 "{name}: tail must be rejected by production validation"
             );
-            let reader = production_impl(JOURNAL_SOURCE, "JsonlJournalReader");
+            let reader = source_between(
+                JOURNAL_SOURCE,
+                "impl JsonlJournalReader {",
+                "impl JournalReader for JsonlJournalReader",
+            );
             assert!(
                 !reader.contains("set_len(0)") && !reader.contains("truncate"),
                 "{name}: reader must not repair or promote a tail"
@@ -3237,15 +3247,15 @@ fn run_sentinel(name: &str) {
         return;
     }
     let relevant_id = match name {
-        "mutation-prepared-barrier-noop" => "init-prepared-barrier",
-        "mutation-journal-barrier-noop" => "append-journal-barrier",
+        "mutation-prepared-barrier-noop" | "mutation-reader-accepts-incomplete-generation" => {
+            "init-prepared-barrier"
+        }
+        "mutation-journal-barrier-noop" | "mutation-commit-before-journal-barrier" => {
+            "append-journal-barrier"
+        }
         "mutation-commit-temporary-barrier-noop" => "append-commit-temporary-barrier",
         "mutation-commit-directory-barrier-noop" => "append-commit-directory-barrier",
         "mutation-clean-barrier-noop" => "append-clean-barrier",
-        "mutation-commit-before-journal-barrier" => "append-journal-barrier",
-        "mutation-reader-accepts-incomplete-generation" => "init-prepared-barrier",
-        "mutation-tail-repair-or-promotion" => unreachable!(),
-        "mutation-append-revalidation-bypass" => unreachable!(),
         _ => unreachable!(),
     };
     let relevant = SCENARIOS
@@ -3263,7 +3273,7 @@ mod tests {
 
     /// Exact ignored helper selector used by the parent matrix.
     #[test]
-    #[ignore]
+    #[ignore = "invoked only as a bounded child by the crash-matrix parent"]
     fn child_process_entry() {
         let config = HelperConfig::from_environment().expect("valid crash helper environment");
         let result = match config.role {
@@ -3278,7 +3288,7 @@ mod tests {
 
     /// Exact required parent selector used by `cargo xtask store-crash-check`.
     #[test]
-    #[ignore]
+    #[ignore = "requires the qualified x86_64 GNU/Linux crash-test profile"]
     fn supported_linux_crash_matrix() {
         run_required_matrix().expect("supported Linux store crash matrix");
     }
