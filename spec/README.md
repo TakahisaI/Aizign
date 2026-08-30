@@ -22,9 +22,9 @@ This tree owns Aizign's machine-readable contracts. Documentation under
   kind or record kind; a breaking change increments the applicable version.
 - Examples contain only fictional, non-confidential values.
 
-`store/v2/` is the sole current/target store-layout authority. Its README,
+`store/v2/` is the sole current store-layout authority. Its README,
 closed commit/witness schemas, examples, and exact 38-case corpus are one
 versioned authority package. `store/v1/` is retained unchanged as a historical
-unsupported format for compatibility-rejection evidence. After the S1
-specification lands, production remains runtime v1 debt until the ordered S2
-migration; specification acceptance is not an implementation-support claim.
+unsupported format for compatibility-rejection evidence. Production implements
+v2 atomically; specification acceptance by itself remains distinct from a
+support claim for any additional profile.

@@ -1,1 +1,4 @@
-{"code":"JOURNAL_CORRUPT","schema":true}
+{
+  "code": "JOURNAL_CORRUPT",
+  "schema": true
+}

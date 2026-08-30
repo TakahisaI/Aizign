@@ -113,3 +113,11 @@ encode結果、schema、frame bound、local pre-transport failureを検査しま
 - `packages/protocol`: TypeScript decoderで全件（後続）
 
 fixtureは架空のnon-confidentialな値だけを使い、実際のpath、ID、本文を含めません。
+
+## Store commit conformance
+
+`valid/store`と`invalid/store`は現在の`spec/store/v2` commit documentだけを
+検査します。PREPARED/CLEAN witnessとpublication順序は第二のframe familyを作らず、
+`spec/store/v2/fixtures/cases.json`のexact 38 IDをproduction crate内部のexecutorが
+実行します。historical v1 schema/examplesは`spec/test/schema.test.mjs`だけが明示的に
+historical evidenceとして検査します。

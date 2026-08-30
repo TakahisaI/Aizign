@@ -55,7 +55,7 @@ engineはuse caseとportを持ちます。contextの切り方はcoreと揃えま
 |---|---|
 | Record | schema version付きのclosed record。metadata-only。`workflow.signal.accepted` |
 | Store | `JsonlJournal` writer（exclusive lock、durable append / commit publish）、`JsonlJournalReader`（shared lock、strictly read-only committed cold read）、`aizign-testkit::MemoryJournal` |
-| Store publication | Current/target store v2 uses `workflow.commit.json` for generation / committed byte length / entry count / SHA-256 and `workflow.publish.json` for PREPARED/CLEAN release. Extra tail or PREPARED remains unknown and is never promoted. Production remains runtime v1 debt until Issue #81 S2. |
+| Store publication | Current store v2 uses `workflow.commit.json` for generation / committed byte length / entry count / SHA-256 and `workflow.publish.json` for PREPARED/CLEAN release. Extra tail or PREPARED remains unknown and is never promoted. Production requalifies the exact ext4 profile and rereads all authority on every append/read. |
 | Observation | `StoreObserver` and observed JSONL wrappers own open, physical-byte, committed-prefix read/hash/decode, and publication-hash observation. Pathless engine journals do not implement this seam. |
 | 正本 | recordは`spec/journal/v1/`、current/target store layoutは`spec/store/v2/`。`spec/store/v1/`はhistorical rejection format |
 

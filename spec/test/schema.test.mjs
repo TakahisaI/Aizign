@@ -55,7 +55,7 @@ const validates = {
   request: validator('protocol/v1/request-envelope.schema.json'),
   response: validator('protocol/v1/response-envelope.schema.json'),
   journal: validator('journal/v1/record.schema.json'),
-  store: validator('store/v1/commit.schema.json'),
+  store: validator('store/v2/commit.schema.json'),
 };
 const directions = Object.keys(validates);
 

@@ -80,4 +80,4 @@ observer, run stage clocks, or perform the additional physical-length stat.
 See the [performance runner documentation](../../benchmarks/performance/README.md#measurement-intervals)
 for field-level measurement intervals and the provisional lifecycle.
 
-`hello` responseの `journalSchemaVersion` は `aizign-store-jsonl` の定数から、`package.version` はこのcrateのversionから取ります。検証済みの `x86_64-unknown-linux-gnu` buildだけがsubmitとreconcileをadvertiseします。x32を含む別ABIや別architecture / libcのLinux、macOS、BSD、Windowsなどの未検証storage targetでは両capabilityをadvertiseせず、直接送られたrequestはstateへ触れず `CAPABILITY_UNSUPPORTED` を返します。
+`hello` responseの `journalSchemaVersion` は `aizign-store-jsonl` の定数から、`package.version` はこのcrateのversionから取ります。検証済みの `x86_64-unknown-linux-gnu` buildだけがsubmitとreconcileをadvertiseします。各state pathはstoreがさらにexact `linux-x86_64-gnu-ext4-local-v1` profileへfd-boundでqualifyし、不一致はstate mutation前に`JOURNAL_UNAVAILABLE`へ閉じます。x32を含む別ABIや別architecture / libcのLinux、macOS、BSD、Windowsなどの未検証storage targetでは両capabilityをadvertiseせず、直接送られたrequestはstateへ触れず `CAPABILITY_UNSUPPORTED` を返します。

@@ -1,1 +1,4 @@
-{"code":"JOURNAL_SCHEMA_UNSUPPORTED","schema":false}
+{
+  "code": "JOURNAL_SCHEMA_UNSUPPORTED",
+  "schema": false
+}

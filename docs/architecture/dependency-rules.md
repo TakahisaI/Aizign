@@ -24,7 +24,7 @@ aizign-cli ─────┬──────────────┬──
 | `aizign-core` | なし | なし | **なし**（dev-dependenciesも含む） | `#![no_std]`、`#![forbid(unsafe_code)]`。追加にはADR |
 | `aizign-engine` | `aizign-core` | `aizign-testkit` | なし | portを定義する側 |
 | `aizign-protocol` | `aizign-core` | `aizign-testkit` | `serde`、`serde_json` | DTOはここで定義。domain型をderiveしない（ADR-0009） |
-| `aizign-store-jsonl` | `aizign-core`、`aizign-engine` | `aizign-testkit` | `serde`、`serde_json`、`sha2`（ADR-0014） | engineの `JournalReader` / `Journal` portを実装。SHA-256はcommitted-prefix metadata専用 |
+| `aizign-store-jsonl` | `aizign-core`、`aizign-engine` | `aizign-testkit` | `serde`、`serde_json`、`sha2`（ADR-0014）、`rustix`（ADR-0028、exact `1.1.4`、`std`/`fs`のみ） | engineの `JournalReader` / `Journal` portを実装。SHA-256はcommitted-prefix metadata専用。safe fd-bound profile qualificationだけを`rustix`が所有 |
 | `aizign-testkit` | `aizign-core`、`aizign-engine`、`aizign-protocol` | なし | `serde_json` | memory journal、journal contract、signal helper、fixture loader |
 | `aizign-cli` | 上記すべて | `aizign-testkit` | `serde_json`（引数parseは標準libraryで十分な範囲に留める） | composition root。ここ以外でworkspace全体を束ねない |
 | `xtask` | なし（workspace crateに依存しない） | なし | `serde_json` | repository tooling。公開artifactではない |

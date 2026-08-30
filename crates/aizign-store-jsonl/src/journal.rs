@@ -1,4 +1,4 @@
-//! The durable JSONL journal and its strictly read-only committed reader.
+//! The store-v2 durable JSONL journal and its strictly observational reader.
 
 #[cfg(all(
     target_os = "linux",
@@ -8,7 +8,7 @@
 ))]
 use std::fs::OpenOptions;
 use std::fs::{self, File};
-use std::io::{Read as _, Seek as _, SeekFrom, Write as _};
+use std::io::{Read as _, Seek as _, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use aizign_core::BoundedTimestamp;
@@ -16,7 +16,12 @@ use aizign_core::workflow::WorkflowEvent;
 use aizign_engine::{Journal, JournalEntry, JournalError, JournalReader, MAX_JOURNAL_ENTRIES};
 
 use crate::commit::{CommitPoint, MAX_COMMIT_METADATA_BYTES, hash_bytes};
+use crate::durability::{DurabilityOps, DurabilityPoint, ProductionDurability};
 use crate::observation::{BestEffortStoreObserver, StoreObservation, StoreObserver, StoreStage};
+use crate::profile::{
+    ProductionProfile, ProfileOps, QualifiedProfile, qualify_directory, require_same_profile,
+};
+use crate::publish::{MAX_PUBLISH_METADATA_BYTES, PublishWitness};
 use crate::record;
 
 /// File name of the journal inside the state directory.
@@ -25,13 +30,11 @@ pub const JOURNAL_FILE_NAME: &str = "workflow.jsonl";
 pub const LOCK_FILE_NAME: &str = "workflow.lock";
 /// File name of the writer-published committed-prefix metadata.
 pub const COMMIT_FILE_NAME: &str = "workflow.commit.json";
+/// File name of the store-v2 PREPARED/CLEAN publication witness.
+pub const PUBLISH_FILE_NAME: &str = "workflow.publish.json";
 const COMMIT_TEMP_FILE_NAME: &str = "workflow.commit.tmp";
 
-/// Whether this build target has the verified durability implementation.
-///
-/// `x86_64-unknown-linux-gnu` is the only target covered by the initial
-/// contract tests in ADR-0013. Other targets fail closed until equivalent
-/// barriers and artifact handling have their own CI coverage.
+/// Whether this build target has the verified store-profile implementation.
 pub const STORE_PLATFORM_SUPPORTED: bool = cfg!(all(
     target_os = "linux",
     target_arch = "x86_64",
@@ -39,8 +42,6 @@ pub const STORE_PLATFORM_SUPPORTED: bool = cfg!(all(
     target_pointer_width = "64"
 ));
 
-// The x32 ABI shares Linux, x86_64, and GNU cfg values with the verified
-// target. Keep the public capability gate fail-closed there.
 #[cfg(all(
     target_os = "linux",
     target_arch = "x86_64",
@@ -49,25 +50,20 @@ pub const STORE_PLATFORM_SUPPORTED: bool = cfg!(all(
 ))]
 const _: () = assert!(!STORE_PLATFORM_SUPPORTED);
 
-/// Upper bound on the journal file size a cold read will attempt.
 const MAX_JOURNAL_BYTES: u64 = 64 * 1024 * 1024;
 
 /// Append-capable journal. Dropping it releases exclusive ownership.
 pub struct JsonlJournal {
     state_dir: PathBuf,
     path: PathBuf,
-    commit_path: PathBuf,
-    file: File,
-    _lock: JournalLock,
-    snapshot: Option<Snapshot>,
+    lock: JournalLock,
 }
 
-/// Strictly observational reader of one committed journal snapshot.
+/// Strictly observational reader. Dropping it releases the shared lock.
 pub struct JsonlJournalReader {
+    state_dir: PathBuf,
     path: PathBuf,
-    file: File,
-    commit_file: File,
-    _lock: JournalLock,
+    lock: JournalLock,
 }
 
 struct JournalLock {
@@ -75,50 +71,21 @@ struct JournalLock {
 }
 
 /// Append-capable JSONL journal with store-owned physical observations.
-///
-/// The wrapper keeps the observer alive for every ordinary load/append call;
-/// callers still use the regular engine [`Journal`] and [`JournalReader`]
-/// ports.  Dropping it releases the underlying writer lock with the inner
-/// journal.
 pub struct ObservedJsonlJournal<'a> {
     inner: JsonlJournal,
     observer: BestEffortStoreObserver<'a>,
 }
 
-/// Read-only JSONL snapshot reader with store-owned physical observations.
+/// Read-only JSONL reader with store-owned physical observations.
 pub struct ObservedJsonlJournalReader<'a> {
     inner: JsonlJournalReader,
     observer: BestEffortStoreObserver<'a>,
 }
 
 struct Snapshot {
+    point: CommitPoint,
     bytes: Vec<u8>,
     entries: Vec<JournalEntry>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(
-    not(all(
-        target_os = "linux",
-        target_arch = "x86_64",
-        target_env = "gnu",
-        target_pointer_width = "64"
-    )),
-    allow(dead_code)
-)]
-enum DurabilityStep {
-    StateDirectoryCreate,
-    StateDirectorySync,
-    ParentDirectorySync,
-    LockFileCreate,
-    LockFileSync,
-    JournalFileCreate,
-    JournalFileSync,
-    ArtifactDirectorySync,
-    CommitTempCreate,
-    CommitTempSync,
-    CommitRename,
-    CommitDirectorySync,
 }
 
 impl JournalLock {
@@ -141,29 +108,10 @@ impl JournalLock {
             ))),
         }
     }
-
-    fn sync_all(&self) -> std::io::Result<()> {
-        self.file.sync_all()
-    }
-
-    #[cfg(all(
-        test,
-        target_os = "linux",
-        target_arch = "x86_64",
-        target_env = "gnu",
-        target_pointer_width = "64"
-    ))]
-    fn try_clone(&self) -> std::io::Result<File> {
-        self.file.try_clone()
-    }
 }
 
 impl Drop for JournalLock {
     fn drop(&mut self) {
-        // `O_CLOEXEC` closes inherited descriptors only after exec, while a
-        // fork or `File::try_clone` can temporarily retain the same open file
-        // description. Unlock at the guard boundary so owner construction
-        // failures and normal owner drop do not wait for every duplicate.
         let _ = self.file.unlock();
     }
 }
@@ -212,20 +160,21 @@ fn corrupt(detail: impl Into<String>) -> JournalError {
     }
 }
 
+fn outcome_unknown(detail: impl Into<String>) -> JournalError {
+    JournalError::OutcomeUnknown {
+        detail: detail.into(),
+    }
+}
+
 impl JsonlJournal {
-    /// Opens the writer, completing only a safe empty initialization when
-    /// necessary, and takes the exclusive state lock.
+    /// Opens the writer and completes only an authorized empty initialization.
     pub fn open(state_dir: &Path) -> Result<Self, JournalError> {
-        Self::open_with_initialization_hook(state_dir, &mut |_| Ok(()))
+        let mut durability = ProductionDurability;
+        let mut profile = ProductionProfile;
+        Self::open_with_ops(state_dir, &mut durability, &mut profile)
     }
 
     /// Opens the writer while exposing store-owned physical observations.
-    ///
-    /// The `JournalOpen` interval surrounds exactly the existing raw open
-    /// operation, including an error.  A successful open then performs one
-    /// best-effort journal-length metadata read and emits
-    /// [`StoreObservation::JournalPhysicalBytes`]; a metadata error is simply
-    /// omitted from the observation stream.
     pub fn open_observed<'a>(
         state_dir: &Path,
         observer: &'a mut dyn StoreObserver,
@@ -235,121 +184,120 @@ impl JsonlJournal {
         let opened = Self::open(state_dir);
         observer.observe(StoreObservation::StageFinished(StoreStage::JournalOpen));
         let inner = opened?;
-
-        if let Ok(bytes) = inner.file.metadata().map(|metadata| metadata.len()) {
+        if let Ok(bytes) = fs::metadata(&inner.path).map(|metadata| metadata.len()) {
             observer.observe(StoreObservation::JournalPhysicalBytes(bytes));
         }
-
         Ok(ObservedJsonlJournal { inner, observer })
     }
 
-    fn open_with_initialization_hook<H>(
+    pub(crate) fn open_with_ops(
         state_dir: &Path,
-        hook: &mut H,
-    ) -> Result<Self, JournalError>
-    where
-        H: FnMut(DurabilityStep) -> Result<(), JournalError>,
-    {
+        durability: &mut dyn DurabilityOps,
+        profile: &mut dyn ProfileOps,
+    ) -> Result<Self, JournalError> {
         if !STORE_PLATFORM_SUPPORTED {
             return Err(unsupported_platform());
         }
-        ensure_durable_state_dir(state_dir, hook)?;
 
+        let state_profile = ensure_state_directory(state_dir, durability, profile)?;
         let lock_path = state_dir.join(LOCK_FILE_NAME);
-        let path = state_dir.join(JOURNAL_FILE_NAME);
+        let journal_path = state_dir.join(JOURNAL_FILE_NAME);
         let commit_path = state_dir.join(COMMIT_FILE_NAME);
-        let lock_existed = path_entry_exists(&lock_path)?;
-        let journal_existed = path_entry_exists(&path)?;
-        let commit_existed = path_entry_exists(&commit_path)?;
+        let publish_path = state_dir.join(PUBLISH_FILE_NAME);
 
-        if journal_existed && !lock_existed {
-            return Err(unavailable("journal exists without its ownership lock"));
-        }
-        if commit_existed && !journal_existed {
-            return Err(unavailable("commit metadata exists without its journal"));
-        }
+        let lock_exists = path_entry_exists(&lock_path)?;
+        let journal_exists = path_entry_exists(&journal_path)?;
+        let commit_exists = path_entry_exists(&commit_path)?;
+        let publish_exists = path_entry_exists(&publish_path)?;
+        let any_exists = lock_exists || journal_exists || commit_exists || publish_exists;
 
-        if !lock_existed {
-            hook(DurabilityStep::LockFileCreate)?;
-        }
-        let lock =
-            JournalLock::acquire_exclusive(open_private_update_file(&lock_path, !lock_existed)?)?;
-
-        if !journal_existed {
-            hook(DurabilityStep::JournalFileCreate)?;
-        }
-        let file = open_private_append_file(&path, !journal_existed)?;
-        let journal_len = file
-            .metadata()
-            .map_err(|error| unavailable(format!("cannot stat journal: {error}")))?
-            .len();
-        if !commit_existed && journal_len != 0 {
+        if any_exists && !(lock_exists && journal_exists && commit_exists) {
             return Err(unavailable(
-                "non-empty journal has no committed-prefix metadata; explicit migration or recovery is required",
+                "partial pre-marker store state is unsupported and must be discarded",
             ));
         }
 
-        if commit_existed {
-            let mut commit_file = open_private_read_file(&commit_path)?;
-            let point = read_commit_point(&mut commit_file)?;
-            // Opening the writer must reject malformed or impossible commit
-            // metadata, but an unpublished tail remains OutcomeUnknown on
-            // the first load/append rather than being promoted here.
-            if point.committed_bytes > journal_len {
-                return Err(corrupt("journal is shorter than committedBytes"));
+        let lock_file = open_private_update_file(&lock_path, !lock_exists)?;
+        require_same_profile(&lock_file, &state_profile, profile)?;
+        let lock = JournalLock::acquire_exclusive(lock_file)?;
+
+        let journal = open_private_append_file(&journal_path, !journal_exists)?;
+        require_same_profile(&journal, &state_profile, profile)?;
+
+        if any_exists {
+            let mut commit = open_private_read_file(&commit_path)?;
+            require_same_profile(&commit, &state_profile, profile)?;
+            let point = read_commit_point(&mut commit)?;
+            if publish_exists {
+                resume_or_validate_existing(state_dir, &state_profile, durability, profile)?;
+            } else {
+                if point != CommitPoint::empty() || file_len(&journal)? != 0 {
+                    return Err(unavailable(
+                        "v2 commit metadata exists without its publication witness",
+                    ));
+                }
+                initialize_witness(
+                    state_dir,
+                    &state_profile,
+                    &publish_path,
+                    durability,
+                    profile,
+                )?;
             }
         } else {
-            // File creation and naming become durable before initialization
-            // is published. This path may also finish an interrupted empty
-            // initialization. A valid existing commit point already proves
-            // initialization, so ordinary writer open never synchronizes an
-            // unresolved journal tail.
-            hook(DurabilityStep::LockFileSync)?;
-            lock.sync_all()
-                .map_err(|error| unavailable(format!("cannot synchronize lock file: {error}")))?;
-            hook(DurabilityStep::JournalFileSync)?;
-            file.sync_all().map_err(|error| {
-                unavailable(format!("cannot synchronize journal file: {error}"))
-            })?;
-            hook(DurabilityStep::ArtifactDirectorySync)?;
-            sync_directory(state_dir)?;
-            publish_commit_with_hook(state_dir, &commit_path, &CommitPoint::empty(), hook)?;
+            initialize_fresh_store(
+                state_dir,
+                &state_profile,
+                &lock,
+                &journal,
+                durability,
+                profile,
+            )?;
         }
 
         Ok(Self {
             state_dir: state_dir.to_path_buf(),
-            path,
-            commit_path,
-            file,
-            _lock: lock,
-            snapshot: None,
+            path: journal_path,
+            lock,
         })
     }
 
-    fn append_with<F, P>(
+    pub(crate) fn append_with_ops(
         &mut self,
         event: &WorkflowEvent,
         at: BoundedTimestamp,
-        journal_barrier: F,
-        publish: P,
+        durability: &mut dyn DurabilityOps,
+        profile: &mut dyn ProfileOps,
         mut observer: Option<&mut dyn StoreObserver>,
-    ) -> Result<JournalEntry, JournalError>
-    where
-        F: FnOnce(&File) -> std::io::Result<()>,
-        P: FnOnce(&Path, &Path, &CommitPoint) -> Result<(), JournalError>,
-    {
-        let mut snapshot = if let Some(snapshot) = self.snapshot.take() {
-            snapshot
-        } else {
-            let mut commit_file = open_private_read_file(&self.commit_path)?;
-            read_snapshot_observed(&mut self.file, &mut commit_file, &mut observer)?
-        };
-        if snapshot.entries.len() >= MAX_JOURNAL_ENTRIES {
-            self.snapshot = Some(snapshot);
+    ) -> Result<JournalEntry, JournalError> {
+        let state_directory = open_existing_private_dir(&self.state_dir)?;
+        let state_profile = qualify_directory(&state_directory, profile)?;
+        revalidate_lock(&self.state_dir, &self.lock, &state_profile, profile)?;
+        let mut snapshot =
+            read_snapshot_observed(&self.state_dir, &state_profile, profile, &mut observer)?;
+        if snapshot.point.generation == MAX_JOURNAL_ENTRIES as u64 + 1 {
             return Err(JournalError::BoundExceeded {
                 max: MAX_JOURNAL_ENTRIES,
             });
         }
+
+        let publish_path = self.state_dir.join(PUBLISH_FILE_NAME);
+        let journal_path = self.state_dir.join(JOURNAL_FILE_NAME);
+        let commit_path = self.state_dir.join(COMMIT_FILE_NAME);
+        let mut witness_file = open_private_update_file(&publish_path, false)?;
+        require_same_profile(&witness_file, &state_profile, profile)?;
+        let current_witness = read_publish_witness(&mut witness_file)?;
+        if current_witness != PublishWitness::clean(snapshot.point.generation) {
+            return Err(corrupt(
+                "publication witness changed after append revalidation",
+            ));
+        }
+
+        let mut journal_file = open_private_append_file(&journal_path, false)?;
+        require_same_profile(&journal_file, &state_profile, profile)?;
+        let next_generation = snapshot.point.generation + 1;
+        let prepared = PublishWitness::prepared(next_generation);
+
         let seq = snapshot.entries.len() as u64 + 1;
         let entry = JournalEntry {
             seq,
@@ -359,29 +307,56 @@ impl JsonlJournal {
         let mut line = record::encode_entry(&entry)?.into_bytes();
         line.push(b'\n');
 
-        // From the first byte onward, a failure cannot be represented as a
-        // rejection. The old commit point remains authoritative, and any
-        // extra tail is left for explicit recovery.
-        self.file
-            .write_all(&line)
-            .map_err(|error| JournalError::OutcomeUnknown {
-                detail: format!("write failed: {error}"),
-            })?;
-        journal_barrier(&self.file).map_err(|error| JournalError::OutcomeUnknown {
-            detail: format!("journal barrier failed: {error}"),
-        })?;
+        rewrite_witness(
+            &mut witness_file,
+            prepared,
+            DurabilityPoint::PreparedWriteComplete,
+            DurabilityPoint::PreparedBarrierComplete,
+            durability,
+            true,
+        )?;
+        verify_opened_witness(&mut witness_file, prepared)
+            .map_err(|error| outcome_unknown(format!("PREPARED verification failed: {error}")))?;
+
+        durability
+            .append_file(
+                &mut journal_file,
+                &line,
+                DurabilityPoint::JournalRecordWriteComplete,
+            )
+            .map_err(|error| outcome_unknown(format!("journal write failed: {error}")))?;
+        durability
+            .barrier_file(&journal_file, DurabilityPoint::JournalBarrierComplete)
+            .map_err(|error| outcome_unknown(format!("journal barrier failed: {error}")))?;
 
         snapshot.bytes.extend_from_slice(&line);
-        let point = observe_stage(&mut observer, StoreStage::PublishPrefixHash, || {
+        let next_point = observe_stage(&mut observer, StoreStage::PublishPrefixHash, || {
             CommitPoint::for_prefix(&snapshot.bytes, seq)
         });
-        publish(&self.state_dir, &self.commit_path, &point).map_err(|error| {
-            JournalError::OutcomeUnknown {
-                detail: format!("commit publication failed: {error}"),
-            }
-        })?;
-        snapshot.entries.push(entry.clone());
-        self.snapshot = Some(snapshot);
+        publish_commit(
+            &state_directory,
+            &state_profile,
+            &commit_path,
+            &next_point,
+            durability,
+            profile,
+            true,
+        )?;
+
+        let clean = PublishWitness::clean(next_generation);
+        rewrite_witness(
+            &mut witness_file,
+            clean,
+            DurabilityPoint::CleanWriteComplete,
+            DurabilityPoint::CleanBarrierComplete,
+            durability,
+            true,
+        )?;
+        verify_opened_witness(&mut witness_file, clean)
+            .map_err(|error| outcome_unknown(format!("CLEAN verification failed: {error}")))?;
+        durability
+            .note(DurabilityPoint::DurableAppendComplete)
+            .map_err(|error| outcome_unknown(format!("append completion failed: {error}")))?;
         Ok(entry)
     }
 
@@ -389,52 +364,61 @@ impl JsonlJournal {
         &mut self,
         observer: &mut dyn StoreObserver,
     ) -> Result<Vec<JournalEntry>, JournalError> {
-        if let Some(snapshot) = &self.snapshot {
-            return Ok(snapshot.entries.clone());
-        }
-        let mut commit_file = open_private_read_file(&self.commit_path)?;
-        let mut observer = Some(observer as &mut dyn StoreObserver);
-        let snapshot = read_snapshot_observed(&mut self.file, &mut commit_file, &mut observer)?;
-        let entries = snapshot.entries.clone();
-        self.snapshot = Some(snapshot);
-        Ok(entries)
+        let mut profile = ProductionProfile;
+        let directory = open_existing_private_dir(&self.state_dir)?;
+        let state_profile = qualify_directory(&directory, &mut profile)?;
+        revalidate_lock(&self.state_dir, &self.lock, &state_profile, &mut profile)?;
+        let mut observer = Some(observer);
+        read_snapshot_observed(&self.state_dir, &state_profile, &mut profile, &mut observer)
+            .map(|snapshot| snapshot.entries)
     }
 }
 
 impl JsonlJournalReader {
-    /// Opens an existing initialized store without creating, synchronizing,
-    /// repairing, or otherwise changing any state.
+    /// Opens an existing store without creating, synchronizing, or repairing it.
     pub fn open(state_dir: &Path) -> Result<Self, JournalError> {
+        let mut profile = ProductionProfile;
+        Self::open_with_profile(state_dir, &mut profile)
+    }
+
+    pub(crate) fn open_with_profile(
+        state_dir: &Path,
+        profile: &mut dyn ProfileOps,
+    ) -> Result<Self, JournalError> {
         if !STORE_PLATFORM_SUPPORTED {
             return Err(unsupported_platform());
         }
-        ensure_existing_private_dir(state_dir)?;
+        let directory = open_existing_private_dir(state_dir)?;
+        let state_profile = qualify_directory(&directory, profile)?;
         let lock_path = state_dir.join(LOCK_FILE_NAME);
-        let path = state_dir.join(JOURNAL_FILE_NAME);
+        let journal_path = state_dir.join(JOURNAL_FILE_NAME);
         let commit_path = state_dir.join(COMMIT_FILE_NAME);
+        let publish_path = state_dir.join(PUBLISH_FILE_NAME);
+        require_existing_path(&lock_path, "ownership lock")?;
+        require_existing_path(&journal_path, "journal")?;
+        require_existing_path(&commit_path, "commit metadata")?;
 
-        // Missing or structurally unsafe snapshot artifacts are unavailable
-        // even if another process holds the lock. The secure opens below
-        // repeat every check after the lock to close the preflight race.
-        require_snapshot_artifacts(&lock_path, &path, &commit_path)?;
-        let lock = JournalLock::acquire_shared(open_private_read_file(&lock_path)?)?;
-        let file = open_private_read_file(&path)?;
-        let commit_file = open_private_read_file(&commit_path)?;
+        let lock_file = open_private_read_file(&lock_path)?;
+        require_same_profile(&lock_file, &state_profile, profile)?;
+        let journal = open_private_read_file(&journal_path)?;
+        require_same_profile(&journal, &state_profile, profile)?;
+
+        let mut commit = open_private_read_file(&commit_path)?;
+        require_same_profile(&commit, &state_profile, profile)?;
+        let _ = read_commit_point(&mut commit)?;
+        require_existing_path(&publish_path, "publication witness")?;
+        let publish = open_private_read_file(&publish_path)?;
+        require_same_profile(&publish, &state_profile, profile)?;
+
+        let lock = JournalLock::acquire_shared(lock_file)?;
         Ok(Self {
-            path,
-            file,
-            commit_file,
-            _lock: lock,
+            state_dir: state_dir.to_path_buf(),
+            path: journal_path,
+            lock,
         })
     }
 
-    /// Opens a read-only committed snapshot while exposing store-owned
-    /// physical observations.
-    ///
-    /// `JournalOpen` surrounds exactly the existing raw reader open,
-    /// including an error.  On success one best-effort metadata read reports
-    /// the physical journal length; a stat error omits that event and leaves
-    /// the reader result unchanged.
+    /// Opens a strictly observational reader with store-owned observations.
     pub fn open_observed<'a>(
         state_dir: &Path,
         observer: &'a mut dyn StoreObserver,
@@ -444,11 +428,9 @@ impl JsonlJournalReader {
         let opened = Self::open(state_dir);
         observer.observe(StoreObservation::StageFinished(StoreStage::JournalOpen));
         let inner = opened?;
-
-        if let Ok(bytes) = inner.file.metadata().map(|metadata| metadata.len()) {
+        if let Ok(bytes) = fs::metadata(&inner.path).map(|metadata| metadata.len()) {
             observer.observe(StoreObservation::JournalPhysicalBytes(bytes));
         }
-
         Ok(ObservedJsonlJournalReader { inner, observer })
     }
 
@@ -456,28 +438,43 @@ impl JsonlJournalReader {
         &mut self,
         observer: &mut dyn StoreObserver,
     ) -> Result<Vec<JournalEntry>, JournalError> {
-        let mut observer = Some(observer as &mut dyn StoreObserver);
-        read_snapshot_observed(&mut self.file, &mut self.commit_file, &mut observer)
+        let directory = open_existing_private_dir(&self.state_dir)?;
+        let mut profile = ProductionProfile;
+        let state_profile = qualify_directory(&directory, &mut profile)?;
+        revalidate_lock(&self.state_dir, &self.lock, &state_profile, &mut profile)?;
+        let mut observer = Some(observer);
+        read_snapshot_observed(&self.state_dir, &state_profile, &mut profile, &mut observer)
             .map(|snapshot| snapshot.entries)
     }
 }
 
 impl JournalReader for JsonlJournalReader {
     fn load_committed(&mut self) -> Result<Vec<JournalEntry>, JournalError> {
-        read_snapshot(&mut self.file, &mut self.commit_file).map(|snapshot| snapshot.entries)
+        let mut profile = ProductionProfile;
+        self.load_committed_with_profile(&mut profile)
+    }
+}
+
+impl JsonlJournalReader {
+    pub(crate) fn load_committed_with_profile(
+        &mut self,
+        profile: &mut dyn ProfileOps,
+    ) -> Result<Vec<JournalEntry>, JournalError> {
+        let directory = open_existing_private_dir(&self.state_dir)?;
+        let state_profile = qualify_directory(&directory, profile)?;
+        revalidate_lock(&self.state_dir, &self.lock, &state_profile, profile)?;
+        read_snapshot(&self.state_dir, &state_profile, profile).map(|snapshot| snapshot.entries)
     }
 }
 
 impl JournalReader for JsonlJournal {
     fn load_committed(&mut self) -> Result<Vec<JournalEntry>, JournalError> {
-        if let Some(snapshot) = &self.snapshot {
-            return Ok(snapshot.entries.clone());
-        }
-        let mut commit_file = open_private_read_file(&self.commit_path)?;
-        let snapshot = read_snapshot(&mut self.file, &mut commit_file)?;
-        let entries = snapshot.entries.clone();
-        self.snapshot = Some(snapshot);
-        Ok(entries)
+        let directory = open_existing_private_dir(&self.state_dir)?;
+        let mut profile = ProductionProfile;
+        let state_profile = qualify_directory(&directory, &mut profile)?;
+        revalidate_lock(&self.state_dir, &self.lock, &state_profile, &mut profile)?;
+        read_snapshot(&self.state_dir, &state_profile, &mut profile)
+            .map(|snapshot| snapshot.entries)
     }
 }
 
@@ -487,7 +484,9 @@ impl Journal for JsonlJournal {
         event: &WorkflowEvent,
         at: BoundedTimestamp,
     ) -> Result<JournalEntry, JournalError> {
-        self.append_with(event, at, File::sync_all, publish_commit, None)
+        let mut durability = ProductionDurability;
+        let mut profile = ProductionProfile;
+        self.append_with_ops(event, at, &mut durability, &mut profile, None)
     }
 }
 
@@ -504,11 +503,13 @@ impl Journal for ObservedJsonlJournal<'_> {
         event: &WorkflowEvent,
         at: BoundedTimestamp,
     ) -> Result<JournalEntry, JournalError> {
-        self.inner.append_with(
+        let mut durability = ProductionDurability;
+        let mut profile = ProductionProfile;
+        self.inner.append_with_ops(
             event,
             at,
-            File::sync_all,
-            publish_commit,
+            &mut durability,
+            &mut profile,
             Some(&mut self.observer),
         )
     }
@@ -521,48 +522,225 @@ impl JournalReader for ObservedJsonlJournal<'_> {
     }
 }
 
-fn read_snapshot(file: &mut File, commit_file: &mut File) -> Result<Snapshot, JournalError> {
-    read_snapshot_observed(file, commit_file, &mut None)
+fn initialize_fresh_store(
+    state_dir: &Path,
+    state_profile: &QualifiedProfile,
+    lock: &JournalLock,
+    journal: &File,
+    durability: &mut dyn DurabilityOps,
+    profile: &mut dyn ProfileOps,
+) -> Result<(), JournalError> {
+    let commit_path = state_dir.join(COMMIT_FILE_NAME);
+    let publish_path = state_dir.join(PUBLISH_FILE_NAME);
+    durability
+        .barrier_file_untracked(&lock.file)
+        .map_err(|error| unavailable(format!("cannot synchronize lock file: {error}")))?;
+    durability
+        .barrier_file_untracked(journal)
+        .map_err(|error| unavailable(format!("cannot synchronize journal file: {error}")))?;
+    barrier_directory_untracked(state_dir, durability, false)?;
+    let state_directory = open_directory_no_follow(state_dir)?;
+    publish_commit(
+        &state_directory,
+        state_profile,
+        &commit_path,
+        &CommitPoint::empty(),
+        durability,
+        profile,
+        false,
+    )?;
+    initialize_witness(state_dir, state_profile, &publish_path, durability, profile)
+}
+
+fn revalidate_lock(
+    state_dir: &Path,
+    lock: &JournalLock,
+    state_profile: &QualifiedProfile,
+    profile: &mut dyn ProfileOps,
+) -> Result<(), JournalError> {
+    let lock_path = state_dir.join(LOCK_FILE_NAME);
+    let reopened = open_private_read_file(&lock_path)?;
+    require_same_profile(&lock.file, state_profile, profile)?;
+    require_same_profile(&reopened, state_profile, profile)?;
+    if opened_identity(&lock.file)? != opened_identity(&reopened)? {
+        return Err(unavailable(
+            "ownership lock path no longer names the held lock artifact",
+        ));
+    }
+    Ok(())
+}
+
+fn initialize_witness(
+    state_dir: &Path,
+    state_profile: &QualifiedProfile,
+    publish_path: &Path,
+    durability: &mut dyn DurabilityOps,
+    profile: &mut dyn ProfileOps,
+) -> Result<(), JournalError> {
+    let mut witness = open_private_update_file(publish_path, true)?;
+    require_same_profile(&witness, state_profile, profile)?;
+    let identity = opened_identity(&witness)?;
+    rewrite_witness(
+        &mut witness,
+        PublishWitness::initializing(),
+        DurabilityPoint::PreparedWriteComplete,
+        DurabilityPoint::PreparedBarrierComplete,
+        durability,
+        false,
+    )?;
+    verify_opened_witness(&mut witness, PublishWitness::initializing())?;
+    barrier_directory_untracked(state_dir, durability, false)?;
+    let mut reopened = open_private_update_file(publish_path, false)?;
+    require_same_profile(&reopened, state_profile, profile)?;
+    if opened_identity(&reopened)? != identity {
+        return Err(unavailable(
+            "publication witness changed during initialization revalidation",
+        ));
+    }
+    verify_opened_witness(&mut reopened, PublishWitness::initializing())?;
+    rewrite_witness(
+        &mut reopened,
+        PublishWitness::clean(1),
+        DurabilityPoint::CleanWriteComplete,
+        DurabilityPoint::CleanBarrierComplete,
+        durability,
+        false,
+    )?;
+    verify_opened_witness(&mut reopened, PublishWitness::clean(1))
+}
+
+fn resume_or_validate_existing(
+    state_dir: &Path,
+    state_profile: &QualifiedProfile,
+    durability: &mut dyn DurabilityOps,
+    profile: &mut dyn ProfileOps,
+) -> Result<(), JournalError> {
+    let commit_path = state_dir.join(COMMIT_FILE_NAME);
+    let publish_path = state_dir.join(PUBLISH_FILE_NAME);
+    let journal_path = state_dir.join(JOURNAL_FILE_NAME);
+    let mut commit_file = open_private_read_file(&commit_path)?;
+    require_same_profile(&commit_file, state_profile, profile)?;
+    let point = read_commit_point(&mut commit_file)?;
+    let mut witness_file = open_private_update_file(&publish_path, false)?;
+    require_same_profile(&witness_file, state_profile, profile)?;
+    let witness = read_publish_witness(&mut witness_file)?;
+    if witness.is_initializing() {
+        if point != CommitPoint::empty() || file_len_path(&journal_path)? != 0 {
+            return Err(corrupt(
+                "initialization PREPARED requires an exact empty commit and journal",
+            ));
+        }
+        let identity = opened_identity(&witness_file)?;
+        durability
+            .barrier_file(&witness_file, DurabilityPoint::PreparedBarrierComplete)
+            .map_err(|error| unavailable(format!("cannot rebarrier PREPARED witness: {error}")))?;
+        verify_opened_witness(&mut witness_file, PublishWitness::initializing())?;
+        barrier_directory_untracked(state_dir, durability, false)?;
+        let mut reopened = open_private_update_file(&publish_path, false)?;
+        require_same_profile(&reopened, state_profile, profile)?;
+        if opened_identity(&reopened)? != identity {
+            return Err(unavailable(
+                "publication witness changed during PREPARED revalidation",
+            ));
+        }
+        verify_opened_witness(&mut reopened, PublishWitness::initializing())?;
+        rewrite_witness(
+            &mut reopened,
+            PublishWitness::clean(1),
+            DurabilityPoint::CleanWriteComplete,
+            DurabilityPoint::CleanBarrierComplete,
+            durability,
+            false,
+        )?;
+        return verify_opened_witness(&mut reopened, PublishWitness::clean(1));
+    }
+    if witness.is_prepared_successor() {
+        require_prepared_commit_relation(witness, &point)?;
+        let mut journal_file = open_private_read_file(&journal_path)
+            .map_err(|error| outcome_unknown(format!("cannot reopen PREPARED journal: {error}")))?;
+        require_same_profile(&journal_file, state_profile, profile).map_err(|error| {
+            outcome_unknown(format!("PREPARED journal profile failed: {error}"))
+        })?;
+        validate_prepared_commit_prefix(&mut journal_file, &point, witness)?;
+        return Err(outcome_unknown(
+            "store is left at a PREPARED publication generation",
+        ));
+    }
+    let _ = read_snapshot(state_dir, state_profile, profile)?;
+    Ok(())
+}
+
+fn read_snapshot(
+    state_dir: &Path,
+    state_profile: &QualifiedProfile,
+    profile: &mut dyn ProfileOps,
+) -> Result<Snapshot, JournalError> {
+    read_snapshot_observed(state_dir, state_profile, profile, &mut None)
 }
 
 fn read_snapshot_observed(
-    file: &mut File,
-    commit_file: &mut File,
+    state_dir: &Path,
+    state_profile: &QualifiedProfile,
+    profile: &mut dyn ProfileOps,
     observer: &mut Option<&mut dyn StoreObserver>,
 ) -> Result<Snapshot, JournalError> {
-    let (point, bytes) = observe_stage(observer, StoreStage::CommittedPrefixRead, || {
-        let point = read_commit_point(commit_file)?;
-        let physical_len = file
-            .metadata()
-            .map_err(|error| unavailable(format!("cannot stat journal: {error}")))?
-            .len();
+    let journal_path = state_dir.join(JOURNAL_FILE_NAME);
+    let commit_path = state_dir.join(COMMIT_FILE_NAME);
+    let publish_path = state_dir.join(PUBLISH_FILE_NAME);
+
+    let mut journal = open_private_read_file(&journal_path)?;
+    require_same_profile(&journal, state_profile, profile)?;
+    let mut commit = open_private_read_file(&commit_path)?;
+    require_same_profile(&commit, state_profile, profile)?;
+    let point = read_commit_point(&mut commit)?;
+    let mut publish = open_private_read_file(&publish_path)?;
+    require_same_profile(&publish, state_profile, profile)?;
+    let witness = read_publish_witness(&mut publish)?;
+    if witness.is_initializing() {
+        if point != CommitPoint::empty() || file_len(&journal)? != 0 {
+            return Err(corrupt(
+                "initialization PREPARED requires an exact empty commit and journal",
+            ));
+        }
+        return Err(unavailable("store initialization is PREPARED"));
+    }
+    if witness.is_prepared_successor() {
+        require_prepared_commit_relation(witness, &point)?;
+        validate_prepared_commit_prefix(&mut journal, &point, witness)?;
+        return Err(outcome_unknown(
+            "store publication is PREPARED and has no known result",
+        ));
+    }
+    if witness != PublishWitness::clean(point.generation) {
+        return Err(corrupt(
+            "clean witness generation does not match commit generation",
+        ));
+    }
+
+    let bytes = observe_stage(observer, StoreStage::CommittedPrefixRead, || {
+        let physical_len = file_len(&journal)?;
         if physical_len > point.committed_bytes {
-            return Err(JournalError::OutcomeUnknown {
-                detail: "journal contains bytes beyond the published commit point".to_owned(),
-            });
+            return Err(outcome_unknown(
+                "journal contains bytes beyond the clean commit point",
+            ));
         }
         if physical_len < point.committed_bytes {
             return Err(corrupt("journal is shorter than committedBytes"));
         }
-
-        file.seek(SeekFrom::Start(0))
+        journal
+            .seek(SeekFrom::Start(0))
             .map_err(|error| unavailable(format!("cannot rewind journal: {error}")))?;
         let mut bytes = Vec::with_capacity(usize::try_from(physical_len).unwrap_or(0));
-        std::io::Read::by_ref(file)
+        std::io::Read::by_ref(&mut journal)
             .take(point.committed_bytes.saturating_add(1))
             .read_to_end(&mut bytes)
             .map_err(|error| unavailable(format!("cannot read journal: {error}")))?;
-        if bytes.len() as u64 > point.committed_bytes {
-            return Err(JournalError::OutcomeUnknown {
-                detail: "journal grew beyond the published commit point while reading".to_owned(),
-            });
-        }
-        if (bytes.len() as u64) < point.committed_bytes {
+        if bytes.len() as u64 != point.committed_bytes {
             return Err(corrupt(
-                "journal became shorter than committedBytes while reading",
+                "journal length changed while reading its committed prefix",
             ));
         }
-        Ok((point, bytes))
+        Ok(bytes)
     })?;
     let digest = observe_stage(observer, StoreStage::CommittedPrefixHash, || {
         hash_bytes(&bytes)
@@ -583,79 +761,213 @@ fn read_snapshot_observed(
         }
         Ok(entries)
     })?;
-    Ok(Snapshot { bytes, entries })
-}
-
-fn observe_stage<T>(
-    observer: &mut Option<&mut dyn StoreObserver>,
-    stage: StoreStage,
-    operation: impl FnOnce() -> T,
-) -> T {
-    if let Some(observer) = observer.as_deref_mut() {
-        observer.observe(StoreObservation::StageStarted(stage));
-    }
-    let result = operation();
-    if let Some(observer) = observer.as_deref_mut() {
-        observer.observe(StoreObservation::StageFinished(stage));
-    }
-    result
-}
-
-fn read_commit_point(file: &mut File) -> Result<CommitPoint, JournalError> {
-    let len = file
-        .metadata()
-        .map_err(|error| unavailable(format!("cannot stat commit metadata: {error}")))?
-        .len();
-    if len > MAX_COMMIT_METADATA_BYTES {
-        return Err(corrupt("commit metadata exceeds its byte bound"));
-    }
-    file.seek(SeekFrom::Start(0))
-        .map_err(|error| unavailable(format!("cannot rewind commit metadata: {error}")))?;
-    let mut bytes = Vec::with_capacity(usize::try_from(len).unwrap_or(0));
-    std::io::Read::by_ref(file)
-        .take(MAX_COMMIT_METADATA_BYTES.saturating_add(1))
-        .read_to_end(&mut bytes)
-        .map_err(|error| unavailable(format!("cannot read commit metadata: {error}")))?;
-    if bytes.len() as u64 > MAX_COMMIT_METADATA_BYTES {
-        return Err(corrupt("commit metadata exceeds its byte bound"));
-    }
-    CommitPoint::decode(&bytes, MAX_JOURNAL_BYTES)
+    Ok(Snapshot {
+        point,
+        bytes,
+        entries,
+    })
 }
 
 fn publish_commit(
-    state_dir: &Path,
+    state_directory: &File,
+    state_profile: &QualifiedProfile,
     commit_path: &Path,
+    point: &CommitPoint,
+    durability: &mut dyn DurabilityOps,
+    profile: &mut dyn ProfileOps,
+    outcome_may_be_unknown: bool,
+) -> Result<(), JournalError> {
+    let map = |detail: String| {
+        if outcome_may_be_unknown {
+            outcome_unknown(detail)
+        } else {
+            unavailable(detail)
+        }
+    };
+    let temp_path = commit_path.with_file_name(COMMIT_TEMP_FILE_NAME);
+    let mut temp = open_private_replace_file(&temp_path)
+        .map_err(|error| map(format!("cannot create commit temporary file: {error}")))?;
+    require_same_profile(&temp, state_profile, profile)
+        .map_err(|error| map(format!("commit temporary profile failed: {error}")))?;
+    durability
+        .write_file(
+            &mut temp,
+            &point.encode(),
+            DurabilityPoint::CommitTemporaryWriteComplete,
+        )
+        .map_err(|error| map(format!("cannot write commit metadata: {error}")))?;
+    durability
+        .barrier_file(&temp, DurabilityPoint::CommitTemporaryBarrierComplete)
+        .map_err(|error| map(format!("cannot synchronize commit metadata: {error}")))?;
+    durability
+        .rename(
+            &temp_path,
+            commit_path,
+            DurabilityPoint::CommitRenameComplete,
+        )
+        .map_err(|error| map(format!("cannot publish commit metadata: {error}")))?;
+    durability
+        .barrier_directory(
+            state_directory,
+            DurabilityPoint::CommitDirectoryBarrierComplete,
+        )
+        .map_err(|error| map(format!("cannot synchronize commit directory: {error}")))?;
+    let mut published = open_private_read_file(commit_path)
+        .map_err(|error| map(format!("cannot reopen commit metadata: {error}")))?;
+    require_same_profile(&published, state_profile, profile)
+        .map_err(|error| map(format!("published commit profile failed: {error}")))?;
+    let decoded = read_commit_point(&mut published)
+        .map_err(|error| map(format!("cannot verify published commit metadata: {error}")))?;
+    if decoded != *point {
+        return Err(map("published commit metadata changed".to_owned()));
+    }
+    Ok(())
+}
+
+fn require_prepared_commit_relation(
+    witness: PublishWitness,
     point: &CommitPoint,
 ) -> Result<(), JournalError> {
-    publish_commit_with_hook(state_dir, commit_path, point, &mut |_| Ok(()))
+    if point.generation != witness.published_generation
+        && point.generation != witness.started_generation
+    {
+        return Err(corrupt(
+            "PREPARED witness and commit generations cannot come from one append",
+        ));
+    }
+    Ok(())
 }
 
-fn publish_commit_with_hook<H>(
-    state_dir: &Path,
-    commit_path: &Path,
+fn validate_prepared_commit_prefix(
+    journal: &mut File,
     point: &CommitPoint,
-    hook: &mut H,
-) -> Result<(), JournalError>
-where
-    H: FnMut(DurabilityStep) -> Result<(), JournalError>,
-{
-    let temp_path = state_dir.join(COMMIT_TEMP_FILE_NAME);
-    hook(DurabilityStep::CommitTempCreate)?;
-    let mut temp = open_private_replace_file(&temp_path)?;
-    temp.write_all(&point.encode())
-        .map_err(|error| unavailable(format!("cannot write commit metadata: {error}")))?;
-    hook(DurabilityStep::CommitTempSync)?;
-    temp.sync_all()
-        .map_err(|error| unavailable(format!("cannot synchronize commit metadata: {error}")))?;
-    hook(DurabilityStep::CommitRename)?;
-    fs::rename(&temp_path, commit_path)
-        .map_err(|error| unavailable(format!("cannot publish commit metadata: {error}")))?;
-    hook(DurabilityStep::CommitDirectorySync)?;
-    sync_directory(state_dir)
+    witness: PublishWitness,
+) -> Result<(), JournalError> {
+    let physical_len = file_len(journal).map_err(|error| {
+        outcome_unknown(format!("cannot inspect PREPARED journal length: {error}"))
+    })?;
+    if physical_len < point.committed_bytes {
+        return Err(corrupt(
+            "PREPARED journal is shorter than its visible commit prefix",
+        ));
+    }
+    if point.generation == witness.started_generation && physical_len != point.committed_bytes {
+        return Err(corrupt(
+            "new PREPARED commit does not name the complete journal image",
+        ));
+    }
+    journal
+        .seek(SeekFrom::Start(0))
+        .map_err(|error| outcome_unknown(format!("cannot rewind PREPARED journal: {error}")))?;
+    let mut bytes = Vec::with_capacity(usize::try_from(point.committed_bytes).unwrap_or(0));
+    std::io::Read::by_ref(journal)
+        .take(point.committed_bytes)
+        .read_to_end(&mut bytes)
+        .map_err(|error| outcome_unknown(format!("cannot read PREPARED journal: {error}")))?;
+    if bytes.len() as u64 != point.committed_bytes {
+        return Err(corrupt(
+            "PREPARED journal changed while reading its commit prefix",
+        ));
+    }
+    if hash_bytes(&bytes) != point.digest {
+        return Err(corrupt(
+            "PREPARED journal prefix does not match its commit digest",
+        ));
+    }
+    let contents =
+        core::str::from_utf8(&bytes).map_err(|_| corrupt("PREPARED journal is not UTF-8"))?;
+    if decode_contents(contents)?.len() as u64 != point.committed_entries {
+        return Err(corrupt(
+            "PREPARED journal entry count does not match its commit",
+        ));
+    }
+    Ok(())
 }
 
-/// Decodes a whole committed journal. Every line is a record, the file ends
-/// with a newline, and sequence numbers are contiguous from 1.
+fn rewrite_witness(
+    file: &mut File,
+    witness: PublishWitness,
+    write_point: DurabilityPoint,
+    barrier_point: DurabilityPoint,
+    durability: &mut dyn DurabilityOps,
+    outcome_may_be_unknown: bool,
+) -> Result<(), JournalError> {
+    let classify = |detail: String| {
+        if outcome_may_be_unknown {
+            outcome_unknown(detail)
+        } else {
+            unavailable(detail)
+        }
+    };
+    durability
+        .rewrite_file(file, &witness.encode(), write_point)
+        .map_err(|error| classify(format!("cannot rewrite publication witness: {error}")))?;
+    durability
+        .barrier_file(file, barrier_point)
+        .map_err(|error| classify(format!("cannot synchronize publication witness: {error}")))
+}
+
+fn barrier_directory_untracked(
+    path: &Path,
+    durability: &mut dyn DurabilityOps,
+    outcome_may_be_unknown: bool,
+) -> Result<(), JournalError> {
+    let classify = |detail: String| {
+        if outcome_may_be_unknown {
+            outcome_unknown(detail)
+        } else {
+            unavailable(detail)
+        }
+    };
+    let directory = open_directory_no_follow(path).map_err(|error| {
+        classify(format!(
+            "cannot open directory for synchronization: {error}"
+        ))
+    })?;
+    durability
+        .barrier_directory_untracked(&directory)
+        .map_err(|error| classify(format!("cannot synchronize directory: {error}")))
+}
+
+fn read_commit_point(file: &mut File) -> Result<CommitPoint, JournalError> {
+    let bytes = read_bounded_file(file, MAX_COMMIT_METADATA_BYTES, "commit metadata")?;
+    CommitPoint::decode(&bytes, MAX_JOURNAL_BYTES)
+}
+
+fn read_publish_witness(file: &mut File) -> Result<PublishWitness, JournalError> {
+    let bytes = read_bounded_file(file, MAX_PUBLISH_METADATA_BYTES, "publication witness")?;
+    PublishWitness::decode(&bytes)
+}
+
+fn verify_opened_witness(file: &mut File, expected: PublishWitness) -> Result<(), JournalError> {
+    let actual = read_publish_witness(file)?;
+    if actual != expected {
+        return Err(corrupt("publication witness changed during verification"));
+    }
+    Ok(())
+}
+
+fn read_bounded_file(file: &mut File, maximum: u64, label: &str) -> Result<Vec<u8>, JournalError> {
+    let length = file
+        .metadata()
+        .map_err(|error| unavailable(format!("cannot stat {label}: {error}")))?
+        .len();
+    if length > maximum {
+        return Err(corrupt(format!("{label} exceeds its byte bound")));
+    }
+    file.seek(SeekFrom::Start(0))
+        .map_err(|error| unavailable(format!("cannot rewind {label}: {error}")))?;
+    let mut bytes = Vec::with_capacity(usize::try_from(length).unwrap_or(0));
+    std::io::Read::by_ref(file)
+        .take(maximum.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|error| unavailable(format!("cannot read {label}: {error}")))?;
+    if bytes.len() as u64 > maximum {
+        return Err(corrupt(format!("{label} exceeds its byte bound")));
+    }
+    Ok(bytes)
+}
+
 fn decode_contents(contents: &str) -> Result<Vec<JournalEntry>, JournalError> {
     if contents.is_empty() {
         return Ok(Vec::new());
@@ -684,8 +996,23 @@ fn decode_contents(contents: &str) -> Result<Vec<JournalEntry>, JournalError> {
     Ok(entries)
 }
 
+fn observe_stage<T>(
+    observer: &mut Option<&mut dyn StoreObserver>,
+    stage: StoreStage,
+    operation: impl FnOnce() -> T,
+) -> T {
+    if let Some(observer) = observer.as_deref_mut() {
+        observer.observe(StoreObservation::StageStarted(stage));
+    }
+    let result = operation();
+    if let Some(observer) = observer.as_deref_mut() {
+        observer.observe(StoreObservation::StageFinished(stage));
+    }
+    result
+}
+
 fn unsupported_platform() -> JournalError {
-    unavailable("this platform has no verified committed-prefix durability implementation")
+    unavailable("this platform has no verified store-profile implementation")
 }
 
 #[cfg(all(
@@ -694,55 +1021,84 @@ fn unsupported_platform() -> JournalError {
     target_env = "gnu",
     target_pointer_width = "64"
 ))]
-fn ensure_durable_state_dir<H>(dir: &Path, hook: &mut H) -> Result<(), JournalError>
-where
-    H: FnMut(DurabilityStep) -> Result<(), JournalError>,
-{
+fn ensure_state_directory(
+    dir: &Path,
+    durability: &mut dyn DurabilityOps,
+    profile: &mut dyn ProfileOps,
+) -> Result<QualifiedProfile, JournalError> {
     use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _};
 
     if path_entry_exists(dir)? {
-        ensure_existing_private_dir(dir)?;
-    } else {
-        hook(DurabilityStep::StateDirectoryCreate)?;
-        fs::DirBuilder::new()
-            .mode(0o700)
-            .create(dir)
-            .map_err(|error| unavailable(format!("cannot create state directory: {error}")))?;
-        fs::set_permissions(dir, fs::Permissions::from_mode(0o700)).map_err(|error| {
-            unavailable(format!(
-                "cannot normalize state directory to mode 0700: {error}"
-            ))
-        })?;
-        let mode = fs::symlink_metadata(dir)
-            .map_err(|error| unavailable(format!("cannot stat state directory: {error}")))?
-            .permissions()
-            .mode()
-            & 0o7777;
-        if mode != 0o700 {
-            return Err(unavailable("state directory must have exact mode 0700"));
-        }
+        let opened = open_existing_private_dir(dir)?;
+        return qualify_directory(&opened, profile);
     }
-    hook(DurabilityStep::StateDirectorySync)?;
-    sync_directory(dir)?;
-    let parent = dir
+
+    let parent = nearest_existing_parent(dir)?;
+    let parent_directory = open_directory_no_follow(&parent)?;
+    let parent_profile = qualify_directory(&parent_directory, profile)?;
+    fs::DirBuilder::new()
+        .mode(0o700)
+        .create(dir)
+        .map_err(|error| unavailable(format!("cannot create state directory: {error}")))?;
+    fs::set_permissions(dir, fs::Permissions::from_mode(0o700))
+        .map_err(|error| unavailable(format!("cannot normalize state directory: {error}")))?;
+    let state_directory = open_existing_private_dir(dir)?;
+    let state_profile = qualify_directory(&state_directory, profile)?;
+    require_same_profile(&state_directory, &parent_profile, profile)?;
+    durability
+        .barrier_directory_untracked(&state_directory)
+        .map_err(|error| unavailable(format!("cannot synchronize state directory: {error}")))?;
+    durability
+        .barrier_directory_untracked(&parent_directory)
+        .map_err(|error| unavailable(format!("cannot synchronize parent directory: {error}")))?;
+    Ok(state_profile)
+}
+
+#[cfg(not(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+)))]
+fn ensure_state_directory(
+    _dir: &Path,
+    _durability: &mut dyn DurabilityOps,
+    _profile: &mut dyn ProfileOps,
+) -> Result<QualifiedProfile, JournalError> {
+    Err(unsupported_platform())
+}
+
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
+fn nearest_existing_parent(path: &Path) -> Result<PathBuf, JournalError> {
+    let mut candidate = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    hook(DurabilityStep::ParentDirectorySync)?;
-    sync_directory(parent)
-}
-
-#[cfg(not(all(
-    target_os = "linux",
-    target_arch = "x86_64",
-    target_env = "gnu",
-    target_pointer_width = "64"
-)))]
-fn ensure_durable_state_dir<H>(_dir: &Path, _hook: &mut H) -> Result<(), JournalError>
-where
-    H: FnMut(DurabilityStep) -> Result<(), JournalError>,
-{
-    Err(unsupported_platform())
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
+    loop {
+        match fs::symlink_metadata(&candidate) {
+            Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {
+                return Ok(candidate);
+            }
+            Ok(_) => return Err(unavailable("nearest state parent is not a real directory")),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                candidate = candidate
+                    .parent()
+                    .ok_or_else(|| unavailable("state path has no existing parent"))?
+                    .to_path_buf();
+            }
+            Err(error) => {
+                return Err(unavailable(format!(
+                    "cannot inspect nearest state parent: {error}"
+                )));
+            }
+        }
+    }
 }
 
 #[cfg(all(
@@ -751,73 +1107,6 @@ where
     target_env = "gnu",
     target_pointer_width = "64"
 ))]
-fn ensure_existing_private_dir(dir: &Path) -> Result<(), JournalError> {
-    use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
-
-    let metadata = fs::symlink_metadata(dir)
-        .map_err(|error| unavailable(format!("cannot stat state directory: {error}")))?;
-    if metadata.file_type().is_symlink() {
-        return Err(unavailable("state directory must not be a symbolic link"));
-    }
-    if !metadata.is_dir() {
-        return Err(unavailable("state path is not a directory"));
-    }
-    if metadata.permissions().mode() & 0o7777 != 0o700 {
-        return Err(unavailable("state directory must have exact mode 0700"));
-    }
-    let opened = open_directory_no_follow(dir)?;
-    let opened_metadata = opened
-        .metadata()
-        .map_err(|error| unavailable(format!("cannot stat opened state directory: {error}")))?;
-    if opened_metadata.dev() != metadata.dev() || opened_metadata.ino() != metadata.ino() {
-        return Err(unavailable("state directory changed while it was opened"));
-    }
-    Ok(())
-}
-
-#[cfg(not(all(
-    target_os = "linux",
-    target_arch = "x86_64",
-    target_env = "gnu",
-    target_pointer_width = "64"
-)))]
-fn ensure_existing_private_dir(_dir: &Path) -> Result<(), JournalError> {
-    Err(unsupported_platform())
-}
-
-#[cfg(all(
-    target_os = "linux",
-    target_arch = "x86_64",
-    target_env = "gnu",
-    target_pointer_width = "64"
-))]
-fn sync_directory(dir: &Path) -> Result<(), JournalError> {
-    open_directory_no_follow(dir)?.sync_all().map_err(|error| {
-        unavailable(format!(
-            "cannot synchronize directory {}: {error}",
-            dir.display()
-        ))
-    })
-}
-
-#[cfg(not(all(
-    target_os = "linux",
-    target_arch = "x86_64",
-    target_env = "gnu",
-    target_pointer_width = "64"
-)))]
-fn sync_directory(_dir: &Path) -> Result<(), JournalError> {
-    Err(unsupported_platform())
-}
-
-#[cfg(all(
-    target_os = "linux",
-    target_arch = "x86_64",
-    target_env = "gnu",
-    target_pointer_width = "64"
-))]
-// x86_64 GNU/Linux UAPI values. The support gate and every use of these
-// constants must remain restricted to this verified target.
 const O_CLOEXEC: i32 = 0o2_000_000;
 #[cfg(all(
     target_os = "linux",
@@ -833,6 +1122,25 @@ const O_DIRECTORY: i32 = 0o200_000;
     target_pointer_width = "64"
 ))]
 const O_NOFOLLOW: i32 = 0o400_000;
+
+#[cfg(all(
+    test,
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bare_relative_state_path_uses_the_current_directory_as_its_parent() {
+        assert_eq!(
+            nearest_existing_parent(Path::new("state")).unwrap(),
+            PathBuf::from(".")
+        );
+    }
+}
 #[cfg(all(
     target_os = "linux",
     target_arch = "x86_64",
@@ -841,13 +1149,7 @@ const O_NOFOLLOW: i32 = 0o400_000;
 ))]
 const O_NONBLOCK: i32 = 0o4_000;
 
-#[cfg(all(
-    target_os = "linux",
-    target_arch = "x86_64",
-    target_env = "gnu",
-    target_pointer_width = "64"
-))]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct FileIdentity {
     device: u64,
     inode: u64,
@@ -863,10 +1165,7 @@ fn path_entry_exists(path: &Path) -> Result<bool, JournalError> {
     match fs::symlink_metadata(path) {
         Ok(_) => Ok(true),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(error) => Err(unavailable(format!(
-            "cannot inspect {}: {error}",
-            path.display()
-        ))),
+        Err(error) => Err(unavailable(format!("cannot inspect path: {error}"))),
     }
 }
 
@@ -877,6 +1176,44 @@ fn path_entry_exists(path: &Path) -> Result<bool, JournalError> {
     target_pointer_width = "64"
 )))]
 fn path_entry_exists(_path: &Path) -> Result<bool, JournalError> {
+    Err(unsupported_platform())
+}
+
+fn require_existing_path(path: &Path, label: &str) -> Result<(), JournalError> {
+    if path_entry_exists(path)? {
+        Ok(())
+    } else {
+        Err(unavailable(format!("store is missing its {label}")))
+    }
+}
+
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
+fn open_existing_private_dir(dir: &Path) -> Result<File, JournalError> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let metadata = fs::symlink_metadata(dir)
+        .map_err(|error| unavailable(format!("cannot stat state directory: {error}")))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(unavailable("state path must be a real directory"));
+    }
+    if metadata.permissions().mode() & 0o7777 != 0o700 {
+        return Err(unavailable("state directory must have exact mode 0700"));
+    }
+    open_directory_no_follow(dir)
+}
+
+#[cfg(not(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+)))]
+fn open_existing_private_dir(_dir: &Path) -> Result<File, JournalError> {
     Err(unsupported_platform())
 }
 
@@ -892,8 +1229,9 @@ fn private_parent_owner(path: &Path) -> Result<u32, JournalError> {
     let parent = path
         .parent()
         .ok_or_else(|| unavailable("artifact has no state directory"))?;
-    ensure_existing_private_dir(parent)?;
-    fs::symlink_metadata(parent)
+    let directory = open_existing_private_dir(parent)?;
+    directory
+        .metadata()
         .map(|metadata| metadata.uid())
         .map_err(|error| unavailable(format!("cannot stat state directory: {error}")))
 }
@@ -908,20 +1246,11 @@ fn inspect_private_file(path: &Path, owner: u32) -> Result<FileIdentity, Journal
     use std::os::unix::fs::MetadataExt as _;
 
     let metadata = fs::symlink_metadata(path)
-        .map_err(|error| unavailable(format!("cannot inspect {}: {error}", name_of(path))))?;
-    if metadata.file_type().is_symlink() {
-        return Err(unavailable(format!(
-            "{} must not be a symbolic link",
-            name_of(path)
-        )));
+        .map_err(|error| unavailable(format!("cannot inspect artifact: {error}")))?;
+    if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
+        return Err(unavailable("reserved artifact must be a regular file"));
     }
-    if !metadata.file_type().is_file() {
-        return Err(unavailable(format!(
-            "{} must be a regular file",
-            name_of(path)
-        )));
-    }
-    check_private_metadata(path, &metadata, owner)?;
+    check_private_metadata(&metadata, owner)?;
     Ok(FileIdentity {
         device: metadata.dev(),
         inode: metadata.ino(),
@@ -934,62 +1263,19 @@ fn inspect_private_file(path: &Path, owner: u32) -> Result<FileIdentity, Journal
     target_env = "gnu",
     target_pointer_width = "64"
 ))]
-fn require_snapshot_artifacts(
-    lock_path: &Path,
-    journal_path: &Path,
-    commit_path: &Path,
-) -> Result<(), JournalError> {
-    let owner = private_parent_owner(lock_path)?;
-    inspect_private_file(lock_path, owner)?;
-    inspect_private_file(journal_path, owner)?;
-    inspect_private_file(commit_path, owner)?;
-    Ok(())
-}
-
-#[cfg(not(all(
-    target_os = "linux",
-    target_arch = "x86_64",
-    target_env = "gnu",
-    target_pointer_width = "64"
-)))]
-fn require_snapshot_artifacts(
-    _lock_path: &Path,
-    _journal_path: &Path,
-    _commit_path: &Path,
-) -> Result<(), JournalError> {
-    Err(unsupported_platform())
-}
-
-#[cfg(all(
-    target_os = "linux",
-    target_arch = "x86_64",
-    target_env = "gnu",
-    target_pointer_width = "64"
-))]
-fn check_private_metadata(
-    path: &Path,
-    metadata: &fs::Metadata,
-    owner: u32,
-) -> Result<(), JournalError> {
+fn check_private_metadata(metadata: &fs::Metadata, owner: u32) -> Result<(), JournalError> {
     use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 
     if metadata.uid() != owner {
-        return Err(unavailable(format!(
-            "{} owner must match the state directory owner",
-            name_of(path)
-        )));
+        return Err(unavailable(
+            "artifact owner must match the state directory owner",
+        ));
     }
     if metadata.nlink() != 1 {
-        return Err(unavailable(format!(
-            "{} must have exactly one hard link",
-            name_of(path)
-        )));
+        return Err(unavailable("artifact must have exactly one hard link"));
     }
     if metadata.permissions().mode() & 0o7777 != 0o600 {
-        return Err(unavailable(format!(
-            "{} must have exact mode 0600",
-            name_of(path)
-        )));
+        return Err(unavailable("artifact must have exact mode 0600"));
     }
     Ok(())
 }
@@ -1015,7 +1301,6 @@ fn configure_secure_file(options: &mut OpenOptions) {
     target_pointer_width = "64"
 ))]
 fn check_opened_private_file(
-    path: &Path,
     file: &File,
     owner: u32,
     expected: Option<FileIdentity>,
@@ -1024,23 +1309,45 @@ fn check_opened_private_file(
 
     let metadata = file
         .metadata()
-        .map_err(|error| unavailable(format!("cannot stat {}: {error}", name_of(path))))?;
+        .map_err(|error| unavailable(format!("cannot stat artifact: {error}")))?;
     if !metadata.file_type().is_file() {
-        return Err(unavailable(format!(
-            "{} must be a regular file",
-            name_of(path)
-        )));
+        return Err(unavailable("reserved artifact must be a regular file"));
     }
-    check_private_metadata(path, &metadata, owner)?;
+    check_private_metadata(&metadata, owner)?;
     if let Some(expected) = expected
         && (metadata.dev() != expected.device || metadata.ino() != expected.inode)
     {
-        return Err(unavailable(format!(
-            "{} changed while it was opened",
-            name_of(path)
-        )));
+        return Err(unavailable("artifact changed while it was opened"));
     }
     Ok(())
+}
+
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
+fn opened_identity(file: &File) -> Result<FileIdentity, JournalError> {
+    use std::os::unix::fs::MetadataExt as _;
+
+    let metadata = file
+        .metadata()
+        .map_err(|error| unavailable(format!("cannot stat artifact: {error}")))?;
+    Ok(FileIdentity {
+        device: metadata.dev(),
+        inode: metadata.ino(),
+    })
+}
+
+#[cfg(not(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+)))]
+fn opened_identity(_file: &File) -> Result<FileIdentity, JournalError> {
+    Err(unsupported_platform())
 }
 
 #[cfg(all(
@@ -1057,8 +1364,8 @@ fn open_private_read_file(path: &Path) -> Result<File, JournalError> {
     configure_secure_file(&mut options);
     let file = options
         .open(path)
-        .map_err(|error| unavailable(format!("cannot open {}: {error}", name_of(path))))?;
-    check_opened_private_file(path, &file, owner, Some(expected))?;
+        .map_err(|error| unavailable(format!("cannot open artifact: {error}")))?;
+    check_opened_private_file(&file, owner, Some(expected))?;
     Ok(file)
 }
 
@@ -1126,10 +1433,7 @@ fn open_private_writable_file(
     let owner = private_parent_owner(path)?;
     let expected = if create_new {
         if path_entry_exists(path)? {
-            return Err(unavailable(format!(
-                "{} appeared while the store was opening",
-                name_of(path)
-            )));
+            return Err(unavailable("reserved artifact appeared while opening"));
         }
         None
     } else {
@@ -1144,11 +1448,11 @@ fn open_private_writable_file(
     configure_secure_file(&mut options);
     let file = options
         .open(path)
-        .map_err(|error| unavailable(format!("cannot open {}: {error}", name_of(path))))?;
+        .map_err(|error| unavailable(format!("cannot open artifact: {error}")))?;
     if create_new {
-        normalize_private_file(path, &file)?;
+        normalize_private_file(&file)?;
     }
-    check_opened_private_file(path, &file, owner, expected)?;
+    check_opened_private_file(&file, owner, expected)?;
     Ok(file)
 }
 
@@ -1167,39 +1471,20 @@ fn open_private_replace_file(path: &Path) -> Result<File, JournalError> {
         configure_secure_file(&mut options);
         let stale = options
             .open(path)
-            .map_err(|error| unavailable(format!("cannot open {}: {error}", name_of(path))))?;
-        check_opened_private_file(path, &stale, owner, Some(expected))?;
-        fs::remove_file(path).map_err(|error| {
-            unavailable(format!("cannot remove stale {}: {error}", name_of(path)))
-        })?;
+            .map_err(|error| unavailable(format!("cannot open stale temporary file: {error}")))?;
+        check_opened_private_file(&stale, owner, Some(expected))?;
+        fs::remove_file(path)
+            .map_err(|error| unavailable(format!("cannot remove stale temporary file: {error}")))?;
     }
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
     configure_secure_file(&mut options);
     let file = options
         .open(path)
-        .map_err(|error| unavailable(format!("cannot create {}: {error}", name_of(path))))?;
-    normalize_private_file(path, &file)?;
-    check_opened_private_file(path, &file, owner, None)?;
+        .map_err(|error| unavailable(format!("cannot create temporary file: {error}")))?;
+    normalize_private_file(&file)?;
+    check_opened_private_file(&file, owner, None)?;
     Ok(file)
-}
-
-#[cfg(all(
-    target_os = "linux",
-    target_arch = "x86_64",
-    target_env = "gnu",
-    target_pointer_width = "64"
-))]
-fn normalize_private_file(path: &Path, file: &File) -> Result<(), JournalError> {
-    use std::os::unix::fs::PermissionsExt as _;
-
-    file.set_permissions(fs::Permissions::from_mode(0o600))
-        .map_err(|error| {
-            unavailable(format!(
-                "cannot normalize {} to mode 0600: {error}",
-                name_of(path)
-            ))
-        })
 }
 
 #[cfg(not(all(
@@ -1218,336 +1503,62 @@ fn open_private_replace_file(_path: &Path) -> Result<File, JournalError> {
     target_env = "gnu",
     target_pointer_width = "64"
 ))]
+fn normalize_private_file(file: &File) -> Result<(), JournalError> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    file.set_permissions(fs::Permissions::from_mode(0o600))
+        .map_err(|error| unavailable(format!("cannot normalize artifact mode: {error}")))
+}
+
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu",
+    target_pointer_width = "64"
+))]
 fn open_directory_no_follow(path: &Path) -> Result<File, JournalError> {
     use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _};
 
-    let expected = fs::symlink_metadata(path).map_err(|error| {
-        unavailable(format!(
-            "cannot inspect directory {}: {error}",
-            path.display()
-        ))
-    })?;
+    let expected = fs::symlink_metadata(path)
+        .map_err(|error| unavailable(format!("cannot inspect directory: {error}")))?;
     if expected.file_type().is_symlink() || !expected.file_type().is_dir() {
-        return Err(unavailable(format!(
-            "{} must be a real directory",
-            path.display()
-        )));
+        return Err(unavailable("directory path must be a real directory"));
     }
     let mut options = OpenOptions::new();
     options
         .read(true)
         .custom_flags(O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-    let directory = options.open(path).map_err(|error| {
-        unavailable(format!("cannot open directory {}: {error}", path.display()))
-    })?;
-    let actual = directory.metadata().map_err(|error| {
-        unavailable(format!("cannot stat directory {}: {error}", path.display()))
-    })?;
+    let directory = options
+        .open(path)
+        .map_err(|error| unavailable(format!("cannot open directory: {error}")))?;
+    let actual = directory
+        .metadata()
+        .map_err(|error| unavailable(format!("cannot stat opened directory: {error}")))?;
     if !actual.file_type().is_dir()
         || actual.dev() != expected.dev()
         || actual.ino() != expected.ino()
     {
-        return Err(unavailable(format!(
-            "directory {} changed while it was opened",
-            path.display()
-        )));
+        return Err(unavailable("directory changed while it was opened"));
     }
     Ok(directory)
 }
 
-#[cfg(all(
+#[cfg(not(all(
     target_os = "linux",
     target_arch = "x86_64",
     target_env = "gnu",
     target_pointer_width = "64"
-))]
-fn name_of(path: &Path) -> String {
-    path.file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_default()
+)))]
+fn open_directory_no_follow(_path: &Path) -> Result<File, JournalError> {
+    Err(unsupported_platform())
 }
 
-#[cfg(all(
-    test,
-    target_os = "linux",
-    target_arch = "x86_64",
-    target_env = "gnu",
-    target_pointer_width = "64"
-))]
-mod tests {
-    use std::io;
-    use std::path::Path;
+fn file_len(file: &File) -> Result<u64, JournalError> {
+    file.metadata()
+        .map(|metadata| metadata.len())
+        .map_err(|error| unavailable(format!("cannot stat journal: {error}")))
+}
 
-    use aizign_engine::{JournalError, JournalReader};
-    use aizign_testkit::{TempDir, signals};
-
-    use super::{
-        DurabilityStep, JournalLock, JsonlJournal, JsonlJournalReader, LOCK_FILE_NAME,
-        open_private_read_file, open_private_update_file, publish_commit_with_hook,
-    };
-    use crate::commit::CommitPoint;
-
-    fn artifact_bytes(state: &Path) -> Vec<(String, Vec<u8>)> {
-        if !state.exists() {
-            return Vec::new();
-        }
-        let mut artifacts: Vec<_> = std::fs::read_dir(state)
-            .expect("read state")
-            .map(|entry| {
-                let path = entry.expect("artifact").path();
-                (
-                    path.file_name()
-                        .expect("artifact name")
-                        .to_string_lossy()
-                        .into_owned(),
-                    std::fs::read(path).expect("read artifact"),
-                )
-            })
-            .collect();
-        artifacts.sort_by(|left, right| left.0.cmp(&right.0));
-        artifacts
-    }
-
-    #[test]
-    fn pre_owner_errors_unlock_before_duplicated_descriptors_close() {
-        let dir = TempDir::new();
-        let state = dir.state();
-        drop(JsonlJournal::open(&state).expect("initialize journal"));
-        let lock_path = state.join(LOCK_FILE_NAME);
-
-        let writer_lock = JournalLock::acquire_exclusive(
-            open_private_update_file(&lock_path, false).expect("open writer lock"),
-        )
-        .expect("acquire writer lock");
-        let inherited_writer_lock = writer_lock.try_clone().expect("duplicate writer lock");
-        // Model a `?` or early return after acquisition but before the owner is
-        // constructed. The duplicate descriptor remains open across the guard drop.
-        let writer_error: Result<(), JournalError> = {
-            let _lock = writer_lock;
-            Err(JournalError::Unavailable {
-                detail: "injected post-lock writer open failure".to_owned(),
-            })
-        };
-        assert!(matches!(
-            writer_error,
-            Err(JournalError::Unavailable { .. })
-        ));
-
-        let reader_lock = JournalLock::acquire_shared(
-            open_private_read_file(&lock_path).expect("open reader lock"),
-        )
-        .expect("writer guard failure must unlock while its duplicate remains open");
-        let inherited_reader_lock = reader_lock.try_clone().expect("duplicate reader lock");
-        let reader_error: Result<(), JournalError> = {
-            let _lock = reader_lock;
-            Err(JournalError::Unavailable {
-                detail: "injected post-lock reader open failure".to_owned(),
-            })
-        };
-        assert!(matches!(
-            reader_error,
-            Err(JournalError::Unavailable { .. })
-        ));
-
-        drop(
-            JsonlJournal::open(&state)
-                .expect("reader guard failure must unlock while its duplicate remains open"),
-        );
-        drop(inherited_reader_lock);
-        drop(inherited_writer_lock);
-    }
-
-    #[test]
-    #[allow(clippy::used_underscore_binding)]
-    fn dropping_owners_unlocks_before_duplicated_descriptors_close() {
-        let dir = TempDir::new();
-        let state = dir.state();
-
-        let writer = JsonlJournal::open(&state).expect("open writer");
-        // This models the descriptor inherited by a forked child until exec
-        // closes the `O_CLOEXEC` descriptor.
-        let inherited_writer_lock = writer._lock.try_clone().expect("duplicate writer lock");
-        drop(writer);
-
-        let reader = JsonlJournalReader::open(&state)
-            .expect("writer drop must unlock while its duplicate remains open");
-        let inherited_reader_lock = reader._lock.try_clone().expect("duplicate reader lock");
-        drop(reader);
-
-        drop(
-            JsonlJournal::open(&state)
-                .expect("reader drop must unlock while its duplicate remains open"),
-        );
-        drop(inherited_reader_lock);
-        drop(inherited_writer_lock);
-    }
-
-    #[test]
-    fn every_initialization_creation_and_barrier_failure_is_recoverable() {
-        let steps = [
-            DurabilityStep::StateDirectoryCreate,
-            DurabilityStep::StateDirectorySync,
-            DurabilityStep::ParentDirectorySync,
-            DurabilityStep::LockFileCreate,
-            DurabilityStep::LockFileSync,
-            DurabilityStep::JournalFileCreate,
-            DurabilityStep::JournalFileSync,
-            DurabilityStep::ArtifactDirectorySync,
-            DurabilityStep::CommitTempCreate,
-            DurabilityStep::CommitTempSync,
-            DurabilityStep::CommitRename,
-            DurabilityStep::CommitDirectorySync,
-        ];
-        for failed_step in steps {
-            let dir = TempDir::new();
-            let state = dir.state();
-            let error = JsonlJournal::open_with_initialization_hook(&state, &mut |step| {
-                if step == failed_step {
-                    Err(JournalError::Unavailable {
-                        detail: format!("injected {step:?} failure"),
-                    })
-                } else {
-                    Ok(())
-                }
-            })
-            .expect_err("initialization must report the injected failure");
-            assert!(matches!(error, JournalError::Unavailable { .. }));
-
-            let before = artifact_bytes(&state);
-            let observed =
-                JsonlJournalReader::open(&state).and_then(|mut reader| reader.load_committed());
-            if failed_step == DurabilityStep::CommitDirectorySync {
-                assert_eq!(observed.expect("visible safe commit point"), Vec::new());
-            } else {
-                assert!(
-                    matches!(observed, Err(JournalError::Unavailable { .. })),
-                    "{failed_step:?}: {observed:?}"
-                );
-            }
-            assert_eq!(
-                artifact_bytes(&state),
-                before,
-                "reader changed artifacts after {failed_step:?}"
-            );
-
-            drop(JsonlJournal::open(&state).expect("writer completes initialization"));
-            let mut reader = JsonlJournalReader::open(&state).expect("open recovered reader");
-            assert!(
-                reader
-                    .load_committed()
-                    .expect("recovered snapshot")
-                    .is_empty()
-            );
-        }
-    }
-
-    #[test]
-    fn barrier_failure_after_complete_write_leaves_an_unpublished_tail() {
-        let dir = TempDir::new();
-        let state = dir.state();
-        let mut journal = JsonlJournal::open(&state).expect("open writer");
-        let before_commit = std::fs::read(&journal.commit_path).expect("read commit");
-        let error = journal
-            .append_with(
-                &aizign_core::workflow::WorkflowEvent::SignalAccepted {
-                    signal: signals::implementation_ready("evt-unknown"),
-                },
-                signals::at(0),
-                |_| Err(io::Error::other("injected journal barrier failure")),
-                |_, _, _: &CommitPoint| panic!("commit must not be published"),
-                None,
-            )
-            .expect_err("barrier failure");
-        assert!(matches!(error, JournalError::OutcomeUnknown { .. }));
-        assert_eq!(
-            std::fs::read(&journal.commit_path).expect("read commit"),
-            before_commit,
-            "the failed append must not move the commit point"
-        );
-        drop(journal);
-
-        let mut reader = JsonlJournalReader::open(&state).expect("open reader");
-        assert!(matches!(
-            reader.load_committed(),
-            Err(JournalError::OutcomeUnknown { .. })
-        ));
-    }
-
-    #[test]
-    fn publication_failure_after_journal_barrier_does_not_promote_the_tail() {
-        let dir = TempDir::new();
-        let state = dir.state();
-        let mut journal = JsonlJournal::open(&state).expect("open writer");
-        let before_commit = std::fs::read(&journal.commit_path).expect("read commit");
-        let error = journal
-            .append_with(
-                &aizign_core::workflow::WorkflowEvent::SignalAccepted {
-                    signal: signals::implementation_ready("evt-publish-unknown"),
-                },
-                signals::at(0),
-                std::fs::File::sync_all,
-                |_, _, _: &CommitPoint| {
-                    Err(JournalError::Unavailable {
-                        detail: "injected commit publication failure".to_owned(),
-                    })
-                },
-                None,
-            )
-            .expect_err("publication failure");
-        assert!(matches!(error, JournalError::OutcomeUnknown { .. }));
-        assert_eq!(
-            std::fs::read(&journal.commit_path).expect("read commit"),
-            before_commit,
-            "the failed publication must not move the commit point"
-        );
-        drop(journal);
-
-        let mut reader = JsonlJournalReader::open(&state).expect("open reader");
-        assert!(matches!(
-            reader.load_committed(),
-            Err(JournalError::OutcomeUnknown { .. })
-        ));
-    }
-
-    #[test]
-    fn directory_barrier_failure_after_commit_rename_leaves_a_safe_new_point() {
-        let dir = TempDir::new();
-        let state = dir.state();
-        let mut journal = JsonlJournal::open(&state).expect("open writer");
-        let error = journal
-            .append_with(
-                &aizign_core::workflow::WorkflowEvent::SignalAccepted {
-                    signal: signals::implementation_ready("evt-visible-commit"),
-                },
-                signals::at(0),
-                std::fs::File::sync_all,
-                |state_dir, commit_path, point| {
-                    publish_commit_with_hook(state_dir, commit_path, point, &mut |step| {
-                        if step == DurabilityStep::CommitDirectorySync {
-                            Err(JournalError::Unavailable {
-                                detail: "injected commit directory barrier failure".to_owned(),
-                            })
-                        } else {
-                            Ok(())
-                        }
-                    })
-                },
-                None,
-            )
-            .expect_err("directory barrier failure");
-        assert!(matches!(error, JournalError::OutcomeUnknown { .. }));
-        drop(journal);
-
-        let mut reader = JsonlJournalReader::open(&state).expect("open reader");
-        let entries = reader
-            .load_committed()
-            .expect("a visible new commit references an already synchronized prefix");
-        assert_eq!(entries.len(), 1);
-        assert_eq!(
-            entries[0].event,
-            aizign_core::workflow::WorkflowEvent::SignalAccepted {
-                signal: signals::implementation_ready("evt-visible-commit")
-            }
-        );
-    }
+fn file_len_path(path: &Path) -> Result<u64, JournalError> {
+    open_private_read_file(path).and_then(|file| file_len(&file))
 }

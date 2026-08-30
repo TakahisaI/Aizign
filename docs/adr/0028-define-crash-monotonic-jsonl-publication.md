@@ -168,9 +168,10 @@ substitution is authorized. Any dependency version, feature, source, license,
 minimum-Rust-version, resolution, backend cfg, or supported-target reachable
 graph drift is a stop condition and requires a renewed decision.
 
-S1 records this accepted future dependency but does not change manifests,
-`Cargo.lock`, the current dependency table, or its machine-readable audit.
-Those changes are atomic S2 work.
+S1 recorded this dependency decision without changing manifests. The Issue
+#81 S2 candidate of 2026-08-29 implements the exact dependency declaration,
+lock resolution, machine audit, v2 state machine, and supported-profile gate
+as one atomic change; this note does not alter the Accepted decision above.
 
 ### Compatibility and ownership
 

@@ -78,15 +78,15 @@ Rust の `aizign-protocol::CURRENT_FIXED_ERROR_CODES` と TypeScript の
 
 ## Journal
 
-`aizign-engine` の `JournalError::code()`。record formatの意味は [spec/journal/v1](../../spec/journal/v1/README.md)、current/target publication authorityは [spec/store/v2](../../spec/store/v2/README.md)。historical v1 runtime semanticsはS2 migrationまで実装上残るが、code集合は増やさない。
+`aizign-engine` の `JournalError::code()`。record formatの意味は [spec/journal/v1](../../spec/journal/v1/README.md)、current publication authorityは [spec/store/v2](../../spec/store/v2/README.md)。store v1はunsupportedなhistorical formatであり、code集合は増やさない。
 
 | Code | 意味 | Status |
 |---|---|---|
-| `JOURNAL_UNAVAILABLE` | 必要artifactを開けない、initializationが未完了、またはstorage profile / identity / permissionを満たさない。reconciliationではmissingや`W=(1,0)`を`absent`へ縮約しない | implemented code；v2 image/profile semanticsはS2 target |
-| `JOURNAL_CORRUPT` | journalまたはstore metadataをclosed contractで読めない、generation/orderが不可能、またはclean prefixのlength / count / digestと実fileが一致しない | implemented code；v2 matrixはS2 target |
+| `JOURNAL_UNAVAILABLE` | 必要artifactを開けない、initializationが未完了、またはstorage profile / identity / permissionを満たさない。reconciliationではmissingや`W=(1,0)`を`absent`へ縮約しない | implemented store-v2 matrix |
+| `JOURNAL_CORRUPT` | journalまたはstore metadataをclosed contractで読めない、generation/orderが不可能、またはclean prefixのlength / count / digestと実fileが一致しない | implemented store-v2 matrix |
 | `JOURNAL_SCHEMA_UNSUPPORTED` | journal record schema versionまたはstore metadata versionをこのbinaryが扱えない | implemented（同上） |
 | `JOURNAL_LOCKED` | incompatibleなwriter / reader lockが既に取得されている | implemented（同上） |
-| `JOURNAL_OUTCOME_UNKNOWN` | append PREPARED開始後のbarrier/publicationが確定しない、PREPARED image、またはclean boundaryを越えるtailがある。自動再送・reader側のrelease / promote / repairをしない | implemented code；v2 stagesはS2 target |
+| `JOURNAL_OUTCOME_UNKNOWN` | append PREPARED開始後のbarrier/publicationが確定しない、PREPARED image、またはclean boundaryを越えるtailがある。自動再送・reader側のrelease / promote / repairをしない | implemented store-v2 matrix |
 | `JOURNAL_BOUND_EXCEEDED` | cold readのboundを超えた、またはcleanな最大10,000-record storeへのappend要求。appendでは全artifactを変更しない | implemented（同上） |
 
 ## Harness-facing（adapterが投げる）

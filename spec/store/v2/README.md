@@ -1,6 +1,6 @@
 # JSONL store metadata v2
 
-This directory is the sole current/target authority for Aizign's JSONL store
+This directory is the sole current authority for Aizign's JSONL store
 layout and crash-monotonic publication contract. The README, the two closed
 schemas, the examples, and the closed language-neutral case corpus form one
 versioned authority package. Implementations may project this authority into
@@ -11,9 +11,11 @@ v1, process profile v1, and package versions. The journal remains the single
 append-only `workflow.jsonl` stream defined by
 [`../../journal/v1/`](../../journal/v1/README.md).
 
-S1 publishes this target contract. Until the ordered S2 migration is merged,
-the production store still implements the historical v1 layout and is not
-profile-qualified under this document.
+The production `aizign-store-jsonl` state machine implements this authority.
+Its crate-internal executor applies all 38 case IDs exactly once to that
+implementation and its single private durability/profile seam. Real
+child-process crash and partial-write campaigns remain separately owned by
+Issue #82 and are not implied by this implementation status.
 
 ## Artifact set and physical rules
 
@@ -257,13 +259,22 @@ implements the operation; it does not attest to a particular `--state` path.
 Path qualification failure is `JOURNAL_UNAVAILABLE`, never
 `CAPABILITY_UNSUPPORTED`, known `absent`, or retry authorization.
 
-## Dependency decision for S2
+## Current dependency implementation
 
 [ADR-0028](../../../docs/adr/0028-define-crash-monotonic-jsonl-publication.md)
-solely owns the accepted future dependency decision. S1 records that decision
-but does not change a manifest, lockfile, current dependency allowlist, or
-machine audit; the dependency is not current runtime state, and those changes
-are atomic S2 work.
+solely owns the exact `rustix` dependency decision. S1 recorded that decision
+without changing runtime dependencies. The current S2 implementation applies
+it atomically across the workspace declaration, lock resolution, dependency
+documentation, and machine audit:
+
+```toml
+rustix = { version = "=1.1.4", default-features = false, features = ["std", "fs"] }
+```
+
+`aizign-store-jsonl` is the sole direct runtime owner; no other workspace
+crate may depend on `rustix` directly. Any version, feature, source, license,
+minimum-Rust-version, resolution, backend cfg, or supported-target reachable
+graph drift remains a stop condition requiring a renewed decision.
 
 ## Compatibility and non-goals
 

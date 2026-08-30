@@ -1,1 +1,4 @@
-{"code":"JOURNAL_BOUND_EXCEEDED","schema":false}
+{
+  "code": "JOURNAL_BOUND_EXCEEDED",
+  "schema": false
+}

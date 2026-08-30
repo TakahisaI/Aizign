@@ -231,16 +231,24 @@ export function seedFixture(stateDir, entries, fixtureTarget = 'absent', fixture
   const journalPath = join(stateDir, 'workflow.jsonl');
   const lockPath = join(stateDir, 'workflow.lock');
   const commitPath = join(stateDir, 'workflow.commit.json');
+  const publishPath = join(stateDir, 'workflow.publish.json');
   writeFileSync(lockPath, '', { mode: 0o600, flag: 'wx' });
   writeFileSync(journalPath, journal, { mode: 0o600, flag: 'wx' });
   const commit = {
-    storeVersion: 1,
+    storeVersion: 2,
+    generation: entries + 1,
     committedBytes: Buffer.byteLength(journal),
     committedEntries: entries,
     sha256: createHash('sha256').update(journal).digest('hex'),
   };
+  const publish = {
+    storeVersion: 2,
+    startedGeneration: entries + 1,
+    publishedGeneration: entries + 1,
+  };
   writeFileSync(commitPath, JSON.stringify(commit), { mode: 0o600, flag: 'wx' });
-  for (const path of [lockPath, journalPath, commitPath]) chmodSync(path, 0o600);
+  writeFileSync(publishPath, JSON.stringify(publish), { mode: 0o600, flag: 'wx' });
+  for (const path of [lockPath, journalPath, commitPath, publishPath]) chmodSync(path, 0o600);
 }
 
 export function classifyResponse(response, operationKind, isTimingErrorCode) {

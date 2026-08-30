@@ -11,6 +11,7 @@
 | decoder fixture / full-codec round trip | `spec/conformance/valid/`、`spec/conformance/invalid/` |
 | directional encoder conformance | `spec/conformance/encoder-scenarios.md` + `spec/protocol/v1/examples/` |
 | process-profile fixture projection | `spec/process/v1/fixtures/cases.json`（authorityは隣接README） |
+| store-v2 semantic/cut-point projection | `spec/store/v2/fixtures/cases.json`をcrate-internal `aizign-store-jsonl/src/store_v2_cases.rs`がexact 38 IDとして実行 |
 | shared TypeScript core-client runner | `packages/adapter-testkit/` の `runCoreClientConformance` |
 | adapter-specific core-client invocation | `adapters/<harness>/test/conformance/core-client.*` |
 | harness-native behavior | adapterの `test/unit/` または責務が明示されたnative-conformance test |
@@ -54,6 +55,7 @@ Aizignのtestは「成功件数」だけでなく **守る境界を一度壊し�
 - unknown: 結果不明の操作が成功や失敗へ縮約されない
 - data boundary: harness IDや本文がprotocol requestやjournalへ漏れない
 - dependency boundary: `public-audit` が違反を検出する（違反を仕込んだfixtureで検査）
+- durable store boundary: production state machineのPREPARED/CLEAN順序、barrier失敗、毎回の再検証、profile fail-closedをprivate seamで決定的に検査する。real SIGKILL/partial-write/two-process evidenceはIssue #82が所有する
 
 ## Fixture
 

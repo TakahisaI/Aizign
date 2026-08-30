@@ -25,7 +25,7 @@ use aizign_store_jsonl::JOURNAL_FILE_NAME;
     target_env = "gnu",
     target_pointer_width = "64"
 ))]
-use aizign_store_jsonl::{COMMIT_FILE_NAME, JsonlJournal, LOCK_FILE_NAME};
+use aizign_store_jsonl::{COMMIT_FILE_NAME, JsonlJournal, LOCK_FILE_NAME, PUBLISH_FILE_NAME};
 use aizign_testkit::{TempDir, signals};
 
 struct ProcessProfileRegistry {
@@ -452,6 +452,7 @@ fn reconciliation_is_read_only_and_classifies_the_committed_snapshot() {
     drop(JsonlJournal::open(&initialized_state).expect("durably initialize empty store"));
     let before_journal = std::fs::read(initialized_state.join(JOURNAL_FILE_NAME)).unwrap();
     let before_commit = std::fs::read(initialized_state.join(COMMIT_FILE_NAME)).unwrap();
+    let before_publish = std::fs::read(initialized_state.join(PUBLISH_FILE_NAME)).unwrap();
     let ResponseBody::WorkflowSignalReconciliation(result) = one_frame(&run_handle(
         &initialized_state,
         &reconcile_frame(
@@ -471,6 +472,10 @@ fn reconciliation_is_read_only_and_classifies_the_committed_snapshot() {
     assert_eq!(
         std::fs::read(initialized_state.join(COMMIT_FILE_NAME)).unwrap(),
         before_commit
+    );
+    assert_eq!(
+        std::fs::read(initialized_state.join(PUBLISH_FILE_NAME)).unwrap(),
+        before_publish
     );
 
     let dir = TempDir::new();
@@ -577,7 +582,12 @@ fn restrictive_umask_is_normalized_before_acceptance() {
                 & 0o7777,
             0o700
         );
-        for name in [LOCK_FILE_NAME, JOURNAL_FILE_NAME, COMMIT_FILE_NAME] {
+        for name in [
+            LOCK_FILE_NAME,
+            JOURNAL_FILE_NAME,
+            COMMIT_FILE_NAME,
+            PUBLISH_FILE_NAME,
+        ] {
             assert_eq!(
                 std::fs::symlink_metadata(state.join(name))
                     .unwrap()

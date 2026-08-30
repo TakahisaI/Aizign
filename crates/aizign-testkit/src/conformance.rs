@@ -16,7 +16,7 @@ pub enum Direction {
     Response,
     /// Lines of the durable control journal (`spec/journal/v1`).
     Journal,
-    /// Writer-published committed-prefix metadata (`spec/store/v1`).
+    /// Writer-published store-v2 commit metadata (`spec/store/v2`).
     Store,
 }
 
