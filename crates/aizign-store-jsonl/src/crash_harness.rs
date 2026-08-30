@@ -21,6 +21,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead as _, BufReader, Read as _, Write as _};
+use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command as ProcessCommand, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
@@ -505,7 +506,8 @@ pub(crate) const SCENARIOS: &[Scenario] = &[
         Some(DurabilityPoint::DurableAppendComplete),
         "response-child",
         "A3",
-    ),
+    )
+    .with_termination("sigkill-before-ack"),
     Scenario::new(
         "response-after-write",
         "response",
@@ -515,7 +517,8 @@ pub(crate) const SCENARIOS: &[Scenario] = &[
         None,
         "response-child",
         "A3",
-    ),
+    )
+    .with_termination("sigkill-before-ack-flush"),
     Scenario::new(
         "response-after-flush",
         "response",
@@ -525,7 +528,8 @@ pub(crate) const SCENARIOS: &[Scenario] = &[
         None,
         "response-child",
         "A3",
-    ),
+    )
+    .with_termination("sigkill-after-ack-flush"),
     Scenario::normal_response("response-normal-exit"),
     Scenario::new(
         "concurrency-reader-at-prepared",
@@ -536,7 +540,8 @@ pub(crate) const SCENARIOS: &[Scenario] = &[
         Some(DurabilityPoint::PreparedBarrierComplete),
         "holder",
         "C1",
-    ),
+    )
+    .with_termination("sigkill-after-contender"),
     Scenario::new(
         "concurrency-reader-at-journal",
         "append",
@@ -546,7 +551,8 @@ pub(crate) const SCENARIOS: &[Scenario] = &[
         Some(DurabilityPoint::JournalBarrierComplete),
         "holder",
         "C1",
-    ),
+    )
+    .with_termination("sigkill-after-contender"),
     Scenario::new(
         "concurrency-reader-at-commit-namespace",
         "append",
@@ -556,7 +562,8 @@ pub(crate) const SCENARIOS: &[Scenario] = &[
         Some(DurabilityPoint::CommitDirectoryBarrierComplete),
         "holder",
         "C2",
-    ),
+    )
+    .with_termination("sigkill-after-contender"),
     Scenario::new(
         "concurrency-reader-at-clean",
         "append",
@@ -566,7 +573,8 @@ pub(crate) const SCENARIOS: &[Scenario] = &[
         Some(DurabilityPoint::CleanBarrierComplete),
         "holder",
         "C3",
-    ),
+    )
+    .with_termination("sigkill-after-contender"),
     Scenario::new(
         "concurrency-same-event-submit",
         "append",
@@ -576,7 +584,8 @@ pub(crate) const SCENARIOS: &[Scenario] = &[
         None,
         "holder",
         "C4",
-    ),
+    )
+    .with_termination("release-complete-after-contender"),
     Scenario::new(
         "concurrency-different-event-submit",
         "append",
@@ -586,7 +595,8 @@ pub(crate) const SCENARIOS: &[Scenario] = &[
         None,
         "holder",
         "C5",
-    ),
+    )
+    .with_termination("release-complete-after-contender"),
     Scenario::new(
         "concurrency-reconcile-under-writer",
         "append",
@@ -596,7 +606,8 @@ pub(crate) const SCENARIOS: &[Scenario] = &[
         None,
         "holder",
         "C6",
-    ),
+    )
+    .with_termination("release-no-append-after-contender"),
     Scenario::new(
         "concurrency-submit-under-reader",
         "reopen-read",
@@ -606,7 +617,8 @@ pub(crate) const SCENARIOS: &[Scenario] = &[
         None,
         "holder",
         "C7",
-    ),
+    )
+    .with_termination("release-reader-then-fresh-submit"),
     Scenario::partial_custom("concurrency-writer-after-partial-tail"),
 ];
 
@@ -634,6 +646,7 @@ pub(crate) struct Scenario {
     pub(crate) durability_point: Option<DurabilityPoint>,
     pub(crate) actor: &'static str,
     pub(crate) result: &'static str,
+    pub(crate) termination: &'static str,
     pub(crate) partial_kind: Option<u8>,
     pub(crate) normal_exit: bool,
 }
@@ -659,6 +672,7 @@ impl Scenario {
             durability_point,
             actor,
             result,
+            termination: "sigkill",
             partial_kind: None,
             normal_exit: false,
         }
@@ -674,6 +688,7 @@ impl Scenario {
             durability_point: None,
             actor: "holder",
             result: "A1",
+            termination: "sigkill",
             partial_kind: Some(kind),
             normal_exit: false,
         }
@@ -689,6 +704,7 @@ impl Scenario {
             durability_point: None,
             actor: "holder",
             result: "C8",
+            termination: "sigkill-then-fresh-writer",
             partial_kind: Some(2),
             normal_exit: false,
         }
@@ -702,8 +718,9 @@ impl Scenario {
             artifact: "response",
             occurrence: 1,
             durability_point: None,
-            actor: "parent-observed-exit",
+            actor: "holder",
             result,
+            termination: "normal-exit",
             partial_kind: None,
             normal_exit: true,
         }
@@ -717,11 +734,17 @@ impl Scenario {
             artifact: "response",
             occurrence: 1,
             durability_point: None,
-            actor: "parent-observed-exit",
+            actor: "response-child",
             result: "A3",
+            termination: "normal-exit",
             partial_kind: None,
             normal_exit: true,
         }
+    }
+
+    const fn with_termination(mut self, termination: &'static str) -> Self {
+        self.termination = termination;
+        self
     }
 
     fn is_concurrency(self) -> bool {
@@ -1104,6 +1127,7 @@ struct Controller {
     config: Option<HelperConfig>,
     counts: BTreeMap<(&'static str, &'static str), u8>,
     selected: bool,
+    deferred_ready: Option<(&'static Scenario, u8, PrimitiveEvent)>,
     enabled: bool,
 }
 
@@ -1115,6 +1139,7 @@ fn controller() -> &'static Mutex<Controller> {
             config: None,
             counts: BTreeMap::new(),
             selected: false,
+            deferred_ready: None,
             enabled: true,
         })
     })
@@ -1143,6 +1168,7 @@ fn reset_phase() -> io::Result<()> {
     let mut state = lock_controller()?;
     state.counts.clear();
     state.selected = false;
+    state.deferred_ready = None;
     Ok(())
 }
 
@@ -1263,12 +1289,40 @@ pub(crate) fn primitive_completed(event: PrimitiveEvent) -> io::Result<()> {
             ));
         }
         state.selected = true;
+        if scenario.id == "append-durable-before-response-write" {
+            state.deferred_ready = Some((scenario, occurrence, event));
+            return Ok(());
+        }
         (scenario, occurrence, event)
     };
 
     let (scenario, occurrence, event) = selected;
     write_ready(
         scenario,
+        event.operation,
+        event.artifact,
+        occurrence,
+        event.durability_point,
+        event.byte_count,
+    )?;
+    wait_for_release()
+}
+
+fn emit_deferred_ready(scenario: &'static Scenario) -> io::Result<()> {
+    let (recorded_scenario, occurrence, event) = {
+        let mut state = lock_controller()?;
+        state
+            .deferred_ready
+            .take()
+            .ok_or_else(|| io::Error::other("durable append completion was not recorded"))?
+    };
+    if recorded_scenario.id != scenario.id {
+        return Err(io::Error::other(
+            "deferred durable append completion belongs to another scenario",
+        ));
+    }
+    write_ready(
+        recorded_scenario,
         event.operation,
         event.artifact,
         occurrence,
@@ -1412,7 +1466,6 @@ fn run_primary(config: &HelperConfig) -> Result<(), JournalError> {
             detail: error.to_string(),
         })?;
         let mut reader = JsonlJournalReader::open(&config.state)?;
-        let _ = reader.load_committed()?;
         write_ready(scenario, "lock-acquired", "lock", 1, None, None).map_err(|error| {
             JournalError::Unavailable {
                 detail: error.to_string(),
@@ -1421,6 +1474,7 @@ fn run_primary(config: &HelperConfig) -> Result<(), JournalError> {
         wait_for_release().map_err(|error| JournalError::Unavailable {
             detail: error.to_string(),
         })?;
+        let _ = reader.load_committed()?;
         return Ok(());
     }
     if scenario.phase == "append" || scenario.id == "append-durable-before-response-write" {
@@ -1463,11 +1517,13 @@ fn run_primary(config: &HelperConfig) -> Result<(), JournalError> {
     }
 }
 
-fn response_boundary(scenario: &Scenario, _journal: &mut JsonlJournal) -> Result<(), JournalError> {
+fn response_boundary(
+    scenario: &'static Scenario,
+    _journal: &mut JsonlJournal,
+) -> Result<(), JournalError> {
     if scenario.id == "append-durable-before-response-write" {
-        // The selected DurableAppendComplete callback blocks before this line.
-        return Err(JournalError::OutcomeUnknown {
-            detail: "durable response boundary unexpectedly released".to_owned(),
+        return emit_deferred_ready(scenario).map_err(|error| JournalError::Unavailable {
+            detail: format!("durable response boundary failed: {error}"),
         });
     }
     let mut stderr = io::stderr().lock();
@@ -1813,6 +1869,9 @@ fn assert_engine_locked_reconcile() {
 }
 
 fn run_contender(config: &HelperConfig) -> Result<(), JournalError> {
+    wait_for_release().map_err(|error| JournalError::Unavailable {
+        detail: format!("contender start gate failed: {error}"),
+    })?;
     let before = artifact_snapshot(&config.state).map_err(|error| JournalError::Unavailable {
         detail: error.to_string(),
     })?;
@@ -1861,6 +1920,7 @@ fn run_contender(config: &HelperConfig) -> Result<(), JournalError> {
 struct ArtifactState {
     file_type: u8,
     mode: u32,
+    owner: u32,
     device: u64,
     inode: u64,
     links: u64,
@@ -1898,16 +1958,24 @@ fn artifact_snapshot(state: &Path) -> io::Result<ArtifactSnapshot> {
     #[cfg(not(unix))]
     let directory_mode = 0;
     #[cfg(unix)]
-    let (directory_device, directory_inode, directory_links) = (
+    let (directory_owner, directory_device, directory_inode, directory_links) = (
+        directory_metadata.uid(),
         directory_metadata.dev(),
         directory_metadata.ino(),
         directory_metadata.nlink(),
     );
     #[cfg(not(unix))]
-    let (directory_device, directory_inode, directory_links) = (0, 0, 0);
+    let (directory_owner, directory_device, directory_inode, directory_links) = (0, 0, 0, 0);
+    if directory_mode & 0o7777 != 0o700 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "state directory mode is not exactly 0700",
+        ));
+    }
     let directory = ArtifactState {
         file_type: 2,
         mode: directory_mode,
+        owner: directory_owner,
         device: directory_device,
         inode: directory_inode,
         links: directory_links,
@@ -1966,9 +2034,38 @@ fn artifact_snapshot(state: &Path) -> io::Result<ArtifactSnapshot> {
         #[cfg(not(unix))]
         let mode = 0;
         #[cfg(unix)]
-        let (device, inode, links) = (metadata.dev(), metadata.ino(), metadata.nlink());
+        let (owner, device, inode, links) = (
+            metadata.uid(),
+            metadata.dev(),
+            metadata.ino(),
+            metadata.nlink(),
+        );
         #[cfg(not(unix))]
-        let (device, inode, links) = (0, 0, 0);
+        let (owner, device, inode, links) = (0, 0, 0, 0);
+        if mode & 0o7777 != 0o600 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("reserved artifact mode is not exactly 0600: {name}"),
+            ));
+        }
+        if owner != directory_owner {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("reserved artifact owner differs from state directory: {name}"),
+            ));
+        }
+        if links != 1 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("reserved artifact link count is not exactly one: {name}"),
+            ));
+        }
+        if device != directory_device {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("reserved artifact is on a different device: {name}"),
+            ));
+        }
         let file_type = if metadata.file_type().is_file() {
             1
         } else if metadata.file_type().is_dir() {
@@ -1983,6 +2080,7 @@ fn artifact_snapshot(state: &Path) -> io::Result<ArtifactSnapshot> {
             Some(ArtifactState {
                 file_type,
                 mode,
+                owner,
                 device,
                 inode,
                 links,
@@ -2144,8 +2242,37 @@ fn validate_ready_measurement(
     Ok(())
 }
 
-fn start_helper(config: &HelperConfig) -> io::Result<Child> {
-    child_command(config)?.spawn()
+struct ReapedChild {
+    child: Child,
+}
+
+impl Deref for ReapedChild {
+    type Target = Child;
+
+    fn deref(&self) -> &Self::Target {
+        &self.child
+    }
+}
+
+impl DerefMut for ReapedChild {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.child
+    }
+}
+
+impl Drop for ReapedChild {
+    fn drop(&mut self) {
+        if !matches!(self.child.try_wait(), Ok(Some(_))) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+}
+
+fn start_helper(config: &HelperConfig) -> io::Result<ReapedChild> {
+    child_command(config)?
+        .spawn()
+        .map(|child| ReapedChild { child })
 }
 
 /// A line-oriented stdout collector.  `ChildStdout::read_line` is intentionally
@@ -2346,21 +2473,20 @@ fn collect_stderr(output: &ChildOutput, timeout: Duration) -> io::Result<Vec<u8>
     }
 }
 
-fn expected_stderr(scenario: &Scenario) -> Option<&'static [u8]> {
+fn expected_stderr(scenario: &Scenario) -> &'static [u8] {
     if scenario.id == "append-durable-before-response-write" {
-        Some(&[])
+        &[]
     } else if scenario.phase == "response" {
-        Some(ACK)
+        ACK
     } else {
-        None
+        &[]
     }
 }
 
 fn assert_stderr(output: &ChildOutput, scenario: &Scenario, timeout: Duration) -> io::Result<()> {
     let bytes = collect_stderr(output, timeout)?;
-    if let Some(expected) = expected_stderr(scenario)
-        && bytes.as_slice() != expected
-    {
+    let expected = expected_stderr(scenario);
+    if bytes.as_slice() != expected {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!(
@@ -2442,6 +2568,7 @@ fn assert_normal_exit(status: std::process::ExitStatus, context: &str) -> io::Re
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 fn execute_scenario(scenario: &'static Scenario) -> io::Result<()> {
     let temporary = TempDir::new();
     let state = temporary.state();
@@ -2466,6 +2593,18 @@ fn execute_scenario(scenario: &'static Scenario) -> io::Result<()> {
 
     let mut holder = start_helper(&config)?;
     let holder_output = start_output_reader(&mut holder)?;
+    let mut contender = if scenario.is_concurrency() {
+        let contender_config = HelperConfig {
+            scenario,
+            role: Role::Contender,
+            state: config.state.clone(),
+        };
+        let mut child = start_helper(&contender_config)?;
+        let output = start_output_reader(&mut child)?;
+        Some((child, output))
+    } else {
+        None
+    };
     let ready = match read_until_ready(&mut holder, &holder_output, scenario) {
         Ok(record) => record,
         Err(error) => {
@@ -2486,55 +2625,53 @@ fn execute_scenario(scenario: &'static Scenario) -> io::Result<()> {
     if scenario.partial_kind.is_some() && ready.byte_count.unwrap_or(0) == 0 {
         return Err(io::Error::other("partial case omitted bounded byte count"));
     }
-    if scenario.is_concurrency() && scenario.id != "concurrency-writer-after-partial-tail" {
-        let contender_config = HelperConfig {
-            scenario,
-            role: Role::Contender,
-            state: config.state.clone(),
-        };
-        let mut contender = start_helper(&contender_config)?;
-        let contender_output = start_output_reader(&mut contender)?;
-        let status = wait_child(&mut contender, CHILD_TIMEOUT)?;
-        assert_output_closed(&contender_output, CHILD_TIMEOUT)?;
-        assert_stderr(&contender_output, scenario, CHILD_TIMEOUT)?;
-        if let Err(error) = assert_normal_exit(status, "contender while holder was blocked") {
-            let _ = kill_and_reap(&mut holder);
-            return Err(error);
-        }
-        if scenario.id == "concurrency-reader-at-clean"
-            || scenario.id == "concurrency-same-event-submit"
-            || scenario.id == "concurrency-different-event-submit"
-            || scenario.id == "concurrency-reconcile-under-writer"
-            || scenario.id == "concurrency-submit-under-reader"
-        {
-            release_child(&mut holder)?;
-            let status = wait_child(&mut holder, CHILD_TIMEOUT)?;
-            assert_normal_exit(status, "released concurrency holder")?;
-        } else {
+    if scenario.is_concurrency() {
+        let (contender, contender_output) = contender
+            .as_mut()
+            .expect("concurrency scenario has a pre-started contender");
+        if scenario.termination == "sigkill-then-fresh-writer" {
             let status = kill_and_reap(&mut holder)?;
-            assert_sigkill(status, "crash-matrix holder")?;
+            assert_sigkill(status, "partial-tail holder")?;
+        }
+        release_child(contender)?;
+        let status = wait_child(contender, CHILD_TIMEOUT)?;
+        assert_output_closed(contender_output, CHILD_TIMEOUT)?;
+        assert_stderr(contender_output, scenario, CHILD_TIMEOUT)?;
+        assert_normal_exit(status, "contender while holder was blocked")?;
+
+        match scenario.termination {
+            "sigkill-after-contender" => {
+                let status = kill_and_reap(&mut holder)?;
+                assert_sigkill(status, "crash-matrix holder")?;
+            }
+            "release-complete-after-contender"
+            | "release-no-append-after-contender"
+            | "release-reader-then-fresh-submit" => {
+                release_child(&mut holder)?;
+                let status = wait_child(&mut holder, CHILD_TIMEOUT)?;
+                assert_normal_exit(status, "released concurrency holder")?;
+            }
+            "sigkill-then-fresh-writer" => {}
+            other => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("unsupported concurrency termination: {other}"),
+                ));
+            }
         }
         assert_output_closed(&holder_output, CHILD_TIMEOUT)?;
         assert_stderr(&holder_output, scenario, CHILD_TIMEOUT)?;
         return run_inspection_after_exit(scenario, &config.state);
     }
-    if scenario.id == "concurrency-writer-after-partial-tail" {
-        let status = kill_and_reap(&mut holder)?;
-        assert_sigkill(status, "partial-tail holder")?;
-        let contender_config = HelperConfig {
-            scenario,
-            role: Role::Contender,
-            state: config.state.clone(),
-        };
-        let mut contender = start_helper(&contender_config)?;
-        let contender_output = start_output_reader(&mut contender)?;
-        let status = wait_child(&mut contender, CHILD_TIMEOUT)?;
-        assert_output_closed(&contender_output, CHILD_TIMEOUT)?;
-        assert_stderr(&contender_output, scenario, CHILD_TIMEOUT)?;
-        assert_normal_exit(status, "post-kill partial-tail writer")?;
-        assert_output_closed(&holder_output, CHILD_TIMEOUT)?;
-        assert_stderr(&holder_output, scenario, CHILD_TIMEOUT)?;
-        return run_inspection_after_exit(scenario, &config.state);
+    if scenario.termination != "sigkill"
+        && scenario.termination != "sigkill-before-ack"
+        && scenario.termination != "sigkill-before-ack-flush"
+        && scenario.termination != "sigkill-after-ack-flush"
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("unsupported blocked termination: {}", scenario.termination),
+        ));
     }
     let status = kill_and_reap(&mut holder)?;
     assert_sigkill(status, "crash-matrix holder")?;
@@ -2696,6 +2833,7 @@ fn validate_authorities() -> io::Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 fn assert_manifest() {
     assert_eq!(SCENARIOS.len(), 61, "closed store-crash scenario manifest");
     let ids = SCENARIOS
@@ -2743,9 +2881,19 @@ fn assert_manifest() {
     }
     for scenario in SCENARIOS {
         assert!(!scenario.id.is_empty());
+        assert!(matches!(scenario.actor, "holder" | "response-child"));
         assert!(matches!(
-            scenario.actor,
-            "holder" | "response-child" | "parent-observed-exit"
+            scenario.termination,
+            "sigkill"
+                | "normal-exit"
+                | "sigkill-before-ack"
+                | "sigkill-before-ack-flush"
+                | "sigkill-after-ack-flush"
+                | "sigkill-after-contender"
+                | "release-complete-after-contender"
+                | "release-no-append-after-contender"
+                | "release-reader-then-fresh-submit"
+                | "sigkill-then-fresh-writer"
         ));
         assert!(matches!(
             scenario.result,
@@ -2768,7 +2916,17 @@ fn assert_manifest() {
                 | "C8"
         ));
         if scenario.normal_exit {
-            assert_eq!(scenario.actor, "parent-observed-exit");
+            assert_eq!(scenario.termination, "normal-exit");
+            assert_eq!(
+                scenario.actor,
+                if scenario.phase == "response" {
+                    "response-child"
+                } else {
+                    "holder"
+                }
+            );
+        } else {
+            assert_ne!(scenario.termination, "normal-exit");
         }
         assert!(
             RESULT_EXPECTATIONS
@@ -3277,7 +3435,6 @@ fn run_sentinel(name: &str) {
     );
     assert_manifest();
     validate_authorities().expect("named store/classification authorities remain present");
-    assert_sentinel_source(name);
     if name == "mutation-append-revalidation-bypass" {
         run_append_revalidation_fixture();
         return;
@@ -3286,25 +3443,39 @@ fn run_sentinel(name: &str) {
         run_tail_rejection_fixture();
         return;
     }
-    let relevant_id = match name {
-        "mutation-prepared-barrier-noop" | "mutation-reader-accepts-incomplete-generation" => {
-            "init-prepared-barrier"
-        }
+    let relevant_ids: &[&str] = match name {
+        "mutation-prepared-barrier-noop" | "mutation-reader-accepts-incomplete-generation" => &[
+            "init-prepared-barrier",
+            "resume-prepared-rebarrier",
+            "append-prepared-barrier",
+        ],
         "mutation-journal-barrier-noop" | "mutation-commit-before-journal-barrier" => {
-            "append-journal-barrier"
+            &["append-journal-barrier"]
         }
-        "mutation-commit-temporary-barrier-noop" => "append-commit-temporary-barrier",
-        "mutation-commit-directory-barrier-noop" => "append-commit-directory-barrier",
-        "mutation-clean-barrier-noop" => "append-clean-barrier",
+        "mutation-commit-temporary-barrier-noop" => &[
+            "init-commit-temporary-barrier",
+            "append-commit-temporary-barrier",
+        ],
+        "mutation-commit-directory-barrier-noop" => &[
+            "init-commit-directory-barrier",
+            "append-commit-directory-barrier",
+        ],
+        "mutation-clean-barrier-noop" => &[
+            "init-clean-barrier",
+            "resume-clean-barrier",
+            "append-clean-barrier",
+        ],
         _ => unreachable!(),
     };
-    let relevant = SCENARIOS
-        .iter()
-        .find(|scenario| scenario.id == relevant_id)
-        .unwrap_or_else(|| panic!("sentinel scenario is missing: {relevant_id}"));
-    execute_scenario(relevant).unwrap_or_else(|error| {
-        panic!("sentinel {name} did not execute its production scenario: {error}")
-    });
+    for relevant_id in relevant_ids {
+        let relevant = SCENARIOS
+            .iter()
+            .find(|scenario| scenario.id == *relevant_id)
+            .unwrap_or_else(|| panic!("sentinel scenario is missing: {relevant_id}"));
+        execute_scenario(relevant).unwrap_or_else(|error| {
+            panic!("sentinel {name} did not execute production scenario {relevant_id}: {error}")
+        });
+    }
 }
 
 fn assert_sentinel(name: &str) {
@@ -3344,6 +3515,41 @@ mod tests {
     #[test]
     fn manifest_has_exact_closed_shape() {
         assert_manifest();
+    }
+
+    #[test]
+    fn production_source_audits_have_exact_closed_shape() {
+        for sentinel in MUTATION_SENTINELS {
+            assert_sentinel_source(sentinel);
+        }
+    }
+
+    #[test]
+    fn child_guard_reaps_a_blocked_helper_on_early_return() {
+        if !crate::journal::STORE_PLATFORM_SUPPORTED {
+            return;
+        }
+        let temporary = TempDir::new();
+        let scenario = SCENARIOS
+            .iter()
+            .find(|scenario| scenario.id == "init-state-directory-create")
+            .expect("guard fixture scenario");
+        let config = HelperConfig {
+            scenario,
+            role: Role::Holder,
+            state: temporary.state(),
+        };
+        let mut child = start_helper(&config).expect("guard fixture child");
+        let pid = child.id();
+        let output = start_output_reader(&mut child).expect("guard fixture output");
+        read_until_ready(&mut child, &output, scenario).expect("guard fixture ready");
+        drop(child);
+        assert_output_closed(&output, CHILD_TIMEOUT).expect("guard fixture stdout close");
+        assert_stderr(&output, scenario, CHILD_TIMEOUT).expect("guard fixture stderr close");
+        assert!(
+            !Path::new(&format!("/proc/{pid}")).exists(),
+            "dropped helper guard must kill and reap its child"
+        );
     }
 
     #[test]
