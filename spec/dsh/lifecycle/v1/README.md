@@ -92,12 +92,20 @@ temporary for a different locator is accepted.
 | `schemaVersion` | root-marker schema version, exactly `1` |
 | `profile` | exactly `dsh-lifecycle-linux-x86_64-gnu-ext4-local-v1` |
 | `lifecycleRootId` | stable operator-controlled scope identifier |
-| `rootPathDigest` | SHA-256 of `"aizign:dsh:lifecycle-root-path:v1\n" + normalizedAbsoluteRoot` |
+| `rootPathDigest` | lowercase SHA-256 of the exact UTF-8 bytes `"aizign:dsh:lifecycle-root-path:v1\n" + normalizedAbsoluteLifecycleRoot` |
 | `eventRecordSchemaVersion` | accepted event-record version, exactly `1` |
 
 The normalized path itself is not persisted or disclosed. The marker does not
 authenticate the operator or root; it detects unsupported drift within the
 trusted control-plane boundary.
+
+The digest input has no trailing LF after the normalized path. The required
+vector is:
+
+```text
+normalizedAbsoluteLifecycleRoot = /var/lib/aizign/lifecycle
+rootPathDigest = b4ef74d96600260c573f7e56820762c866e5677ede2b797ccc90b8858f5173f6
+```
 
 ## Event record
 
@@ -153,10 +161,28 @@ replacement.
 }
 ```
 
+Here `canonical JSON` is the ADR-0025 canonical JSON value: object member
+names are ordered by their UTF-8 bytes recursively, arrays retain order,
+strings use JSON escaping, numbers use canonical spelling, and there is no
+trailing LF. The required vector is:
+
+```text
+canonical JSON = {"eventId":"evt-1","expected":{"artifactRevision":"rev-a","assignmentId":"as-impl","attemptId":"attempt-1","candidateDigest":{"algorithm":"sha256","hex":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"role":"implementation","workflowId":"wf-1"},"trustedSignalValues":{"artifactRef":"artifact:implementation","blockedShortErrorCode":"BLOCKED_BY_CONTROL_PLANE"}}
+configIdentity = 7b689903004bd0f652ba058372a2c8fbeb5497d8cb1cabb7d4e809490016e813
+```
+
 `coreStatePathKey` is lowercase SHA-256 of:
 
 ```text
 "aizign:dsh:lifecycle-core-state-path:v1\n" + normalizedAbsoluteStateDir
+```
+
+The bytes are exact UTF-8 and have no trailing LF after the path. The required
+vector is:
+
+```text
+normalizedAbsoluteStateDir = /var/lib/aizign/core
+coreStatePathKey = 1f6ed774fdf931c7c8e83170243a395210ac2ed31a3e53f610931efc74482b76
 ```
 
 The per-attempt `trustedValueMappingKey` is consumed unchanged from the sole
@@ -176,8 +202,19 @@ It is distinct from the core store-v2 profile. Passing either qualifier does
 not imply passing the other. The lifecycle implementation uses Node 24
 standard-library facilities and no new runtime dependency.
 
-Before initialization, every startup, and every lifecycle mutation, the
-implementation must, in this order:
+Both configured paths must first be Unicode scalar-value strings. A lone
+surrogate is rejected before filesystem access, normalization, or digest
+calculation. Normalization produces an absolute POSIX path with one leading
+slash, no empty, `.` or `..` component, no trailing slash except `/`, and no
+NUL. `lifecycleRoot` may not be `/`, equal `stateDir`, an ancestor of
+`stateDir`, or a descendant of `stateDir`.
+
+The first-root initializer qualifies the already existing, exactly empty root
+before it creates the marker, `events/`, and first record. It then qualifies
+the initialized root and `events/`. A later-event initializer qualifies the
+root and `events/` directly. Every startup and lifecycle mutation repeats the
+applicable initialized-root qualification. In each case the implementation
+must, in this order:
 
 1. require Linux x86_64 and the repository-pinned Node/glibc boundary;
 2. require normalized absolute `lifecycleRoot` and core `stateDir`; when the
@@ -188,9 +225,10 @@ implementation must, in this order:
    regular files with exact mode `0600` and link count one; then require the
    closed artifact set;
 5. require ext-family `statfs` magic as corroboration;
-6. parse the exact component-aligned `/proc/self/mountinfo` record for each
-   descriptor path using the grammar below;
-7. reject a missing or ambiguous record, malformed escape, bind/subtree root
+6. parse the component-aligned `/proc/self/mountinfo` records for each
+   descriptor path using the grammar below and select the unique deepest
+   decoded mount point;
+7. reject a missing record, a tie at the deepest depth, malformed escape, bind/subtree root
    (`root != /`), read-only mount or superblock, non-`ext4` filesystem type,
    or descriptor/path/device disagreement;
 8. require lifecycle root and core-state parent to have the same mount ID and
@@ -222,8 +260,10 @@ Decimal IDs use canonical unsigned integer spelling. `major:minor` contains
 two canonical unsigned integers. Path fields decode only the kernel octal
 escapes `\040`, `\011`, `\012`, and `\134`; unknown, incomplete, or
 noncanonical escapes fail. Matching uses decoded component boundaries and
-selects exactly one record for the opened descriptor path. The record must have
-decoded `root` equal to `/`, `filesystem-type` equal to `ext4`, and neither
+selects the unique matching record whose decoded mount point has the greatest
+component depth. Multiple shallower matches are permitted; no match or a tie
+at the deepest depth fails. The selected record must have decoded `root` equal
+to `/`, `filesystem-type` equal to `ext4`, and neither
 mount nor super options may contain `ro`.
 
 There is no realpath/statfs-only, lexical, subprocess, external-utility,
@@ -335,11 +375,18 @@ Each replacement has exactly these ordered cut points:
 4. atomically rename `.tmp` over the canonical `.json`; and
 5. synchronize `events/`.
 
-Failure before rename leaves the old canonical record plus `.tmp`; startup
-fails closed because two candidate images exist. Failure after rename but
-before the directory barrier returns the operation-specific conservative
-unknown/unavailable result and closes the controller. On a later process
-startup, the filesystem exposes either one old or one new canonical record:
+Before step 4 is attempted, only the prior canonical image is authoritative;
+the original call returns its fixed failure and a restart may accept that one
+fully validated prior image, or the authorized absence for first
+initialization.
+Any surviving temporary or invalid/ambiguous image fails closed.
+
+Acknowledgement uncertainty begins when step 4 is attempted, including when
+the rename call returns an error, and continues through successful completion
+of step 5. The original caller receives its operation-specific conservative
+unknown/unavailable result and the controller becomes permanently unavailable.
+On a later process startup, the filesystem may expose either one complete
+prior or one complete target canonical record:
 the implementation validates that single image from bytes, never infers which
 rename persisted, and applies the ordinary state rule. A surviving
 `in_flight` is durably replaced by `needs_reconciliation` before preflight;
@@ -391,7 +438,10 @@ state never begins at persisted `in_flight`.
 If a known submit result cannot be published, the model sees
 `AIZIGN_OUTCOME_UNKNOWN`. If a known reconcile result cannot be published, the
 control caller sees `AIZIGN_LIFECYCLE_UNAVAILABLE`. The controller remains
-gated and restart observes the conservative prior state or fails closed.
+gated. Before rename attempt, restart accepts only the fully validated prior
+state. From rename attempt through directory synchronization, restart accepts
+exactly one fully validated prior or target state. Any temporary, missing,
+malformed, mismatched, noncanonical, or ambiguous image fails closed.
 
 Tool registration/disposal is visibility only. Every execution rechecks the
 controller. `reconciled_absent` never republishes submit and authorizes no
@@ -462,11 +512,17 @@ type SubmissionLifecycleErrorCode =
   | 'AIZIGN_RECONCILIATION_NOT_REQUIRED';
 ```
 
-`SubmissionLifecycleError` has one exact code and fixed safe message. It has no
+`SubmissionLifecycleError` is an ordinary error that is non-subclassable by
+contract. It has one exact code and fixed safe message. It has no
 caller-owned cause and discloses none of the forbidden record/control values.
 Reconcile from a state other than `needs_reconciliation` or `still_unknown`
 throws not-required without I/O. A concurrent call throws busy. Inactive,
 failed, or closed service access throws unavailable.
+
+Captured or stale model calls after a terminal known or reconciled state,
+access through an unavailable controller, and every permanently closed
+reference produce exactly `AIZIGN_LIFECYCLE_UNAVAILABLE`; they never produce
+reconciliation-required.
 
 The exact planned `./experimental/lifecycle` runtime exports are:
 
@@ -518,11 +574,16 @@ fixed codes or new classification rows.
 
 ## Failure evidence and compatibility
 
-The exact 112 language-neutral evidence IDs are in
+The exact 134 language-neutral evidence IDs are in
 [`fixtures/cases.json`](fixtures/cases.json) and validated by
 [`cases.schema.json`](schemas/cases.schema.json). S2 must map each ID to exactly
 one executable evidence registration and mark it executed only after its
-ID-specific assertions pass.
+ID-specific assertions pass. Every row also carries a required closed
+`restartExpectation` and a required `parameterizedVariants` array. The schema
+owns their shape; the corpus owns the exact prior/target/absence sets and
+variant names. CI compares all 134 runtime categories to an explicit,
+non-derived mirror, mutates each category to every other valid member, and
+checks the exact restart and publication-stage mappings.
 
 S1 records only the accepted target. Until S2 is merged:
 

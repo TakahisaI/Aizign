@@ -9,7 +9,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "submit_available",
-    "evidenceClass": "initialization"
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "init-first-root-nonempty",
@@ -21,7 +36,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "initialization"
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "init-first-root-partial-discard-only",
@@ -33,7 +63,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "initialization"
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "init-first-marker-file-sync-failure",
@@ -45,7 +90,24 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "initialization"
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "deterministic",
+      "prior": {
+        "permitted": true,
+        "lifecycleStates": [],
+        "absenceKinds": [
+          "uninitialized_root"
+        ]
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "init-first-root-dir-sync-failure",
@@ -57,7 +119,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "initialization"
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "invalid_image",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "init-first-events-dir-sync-failure",
@@ -69,7 +146,24 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "initialization"
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "acknowledgement_uncertain",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": true,
+        "lifecycleStates": [
+          "ready"
+        ],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "init-event-file-sync-failure",
@@ -81,7 +175,64 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "initialization"
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "deterministic",
+      "prior": {
+        "permitted": true,
+        "lifecycleStates": [],
+        "absenceKinds": [
+          "uninitialized_root",
+          "target_event_absent"
+        ]
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": [
+      {
+        "name": "first-root",
+        "restartExpectation": {
+          "kind": "deterministic",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [],
+            "absenceKinds": [
+              "uninitialized_root"
+            ]
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "later-event",
+        "restartExpectation": {
+          "kind": "deterministic",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [],
+            "absenceKinds": [
+              "target_event_absent"
+            ]
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      }
+    ]
   },
   {
     "id": "init-event-rename-failure",
@@ -93,7 +244,26 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "initialization"
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "acknowledgement_uncertain",
+      "prior": {
+        "permitted": true,
+        "lifecycleStates": [],
+        "absenceKinds": [
+          "target_event_absent"
+        ]
+      },
+      "target": {
+        "permitted": true,
+        "lifecycleStates": [
+          "ready"
+        ],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "init-event-events-dir-sync-failure",
@@ -105,7 +275,26 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "initialization"
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "acknowledgement_uncertain",
+      "prior": {
+        "permitted": true,
+        "lifecycleStates": [],
+        "absenceKinds": [
+          "target_event_absent"
+        ]
+      },
+      "target": {
+        "permitted": true,
+        "lifecycleStates": [
+          "ready"
+        ],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "init-later-event-ready",
@@ -117,7 +306,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "submit_available",
-    "evidenceClass": "initialization"
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "init-later-event-preserves-existing",
@@ -129,7 +333,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "submit_available",
-    "evidenceClass": "initialization"
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "init-existing-event-rejected",
@@ -141,7 +360,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "initialization"
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "init-root-marker-mismatch",
@@ -153,7 +387,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "initialization"
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "init-unexpected-artifact",
@@ -165,7 +414,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "initialization"
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "init-missing-state-before-preflight",
@@ -177,7 +441,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "initialization"
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "init-malformed-state-before-preflight",
@@ -189,7 +468,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "initialization"
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "init-binding-mismatch-before-preflight",
@@ -201,7 +495,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "initialization"
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "init-trusted-bundle-mismatch-before-preflight",
@@ -213,7 +522,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "initialization"
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "init-core-state-path-key-mismatch-before-preflight",
@@ -225,7 +549,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "initialization"
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "init-core-state-valid-replacement-trusted-limitation",
@@ -237,7 +576,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "initialization"
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "profile-supported",
@@ -249,7 +603,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "submit_available",
-    "evidenceClass": "profile"
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "profile-realpath-statfs-only-rejected",
@@ -261,7 +630,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "profile"
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "profile-root-core-mount-mismatch",
@@ -273,7 +657,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "profile"
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "profile-symlink-component-rejected",
@@ -285,7 +684,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "profile"
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "profile-bind-subtree-rejected",
@@ -297,7 +711,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "profile"
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "profile-root-replacement-rejected",
@@ -309,7 +738,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "profile"
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "profile-lexical-alias-rejected",
@@ -321,7 +765,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "profile"
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "profile-different-root-restart-reset-rejected",
@@ -333,7 +792,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "profile"
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "profile-mountinfo-missing-rejected",
@@ -345,7 +819,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "profile"
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "profile-mountinfo-ambiguous-rejected",
@@ -357,7 +846,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "profile"
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "profile-mountinfo-malformed-escape-rejected",
@@ -369,7 +873,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "profile"
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "profile-readonly-rejected",
@@ -381,7 +900,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "profile"
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "profile-non-ext4-rejected",
@@ -393,7 +927,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "profile"
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "profile-device-disagreement-rejected",
@@ -405,7 +954,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "profile"
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "profile-descriptor-identity-revalidation",
@@ -417,7 +981,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "profile"
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "profile-unsupported-platform",
@@ -429,7 +1008,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "profile"
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "lease-duplicate-context-rejected",
@@ -441,7 +1035,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "submit_available",
-    "evidenceClass": "ownership"
+    "evidenceClass": "ownership",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "lease-duplicate-opened-identity-rejected",
@@ -453,7 +1062,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "submit_available",
-    "evidenceClass": "ownership"
+    "evidenceClass": "ownership",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "lease-dispose-reapply-stale-handles",
@@ -465,7 +1089,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "controller_unavailable",
-    "evidenceClass": "ownership"
+    "evidenceClass": "ownership",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "lease-tool-disposer-failure-stale-tool",
@@ -477,7 +1116,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "controller_unavailable",
-    "evidenceClass": "ownership"
+    "evidenceClass": "ownership",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-ready-accepted",
@@ -489,7 +1143,22 @@
     "expectedSubmitChildren": 1,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "terminal_unavailable",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-ready-duplicate",
@@ -501,7 +1170,22 @@
     "expectedSubmitChildren": 1,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "terminal_unavailable",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-ready-known-rejected",
@@ -513,7 +1197,22 @@
     "expectedSubmitChildren": 1,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "submit_available",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-known-rejected-next-sequence",
@@ -525,7 +1224,22 @@
     "expectedSubmitChildren": 1,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "submit_available",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-max-sequence-rejected",
@@ -537,7 +1251,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "submit_available",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-retained-pair-byte-identical",
@@ -549,7 +1278,22 @@
     "expectedSubmitChildren": 1,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "terminal_unavailable",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-fence-before-spawn",
@@ -561,7 +1305,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "no_publication",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-concurrent-n-single-child",
@@ -573,7 +1332,22 @@
     "expectedSubmitChildren": 1,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "terminal_unavailable",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-reconcile-race-single-child",
@@ -585,7 +1359,22 @@
     "expectedSubmitChildren": 1,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-fence-file-create-failure",
@@ -597,7 +1386,64 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "deterministic",
+      "prior": {
+        "permitted": true,
+        "lifecycleStates": [
+          "ready",
+          "known_rejected"
+        ],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": [
+      {
+        "name": "ready",
+        "restartExpectation": {
+          "kind": "deterministic",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "ready"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "known-rejected",
+        "restartExpectation": {
+          "kind": "deterministic",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "known_rejected"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      }
+    ]
   },
   {
     "id": "submit-fence-file-write-failure",
@@ -609,7 +1455,64 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "deterministic",
+      "prior": {
+        "permitted": true,
+        "lifecycleStates": [
+          "ready",
+          "known_rejected"
+        ],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": [
+      {
+        "name": "ready",
+        "restartExpectation": {
+          "kind": "deterministic",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "ready"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "known-rejected",
+        "restartExpectation": {
+          "kind": "deterministic",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "known_rejected"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      }
+    ]
   },
   {
     "id": "submit-fence-file-sync-failure",
@@ -621,7 +1524,64 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "deterministic",
+      "prior": {
+        "permitted": true,
+        "lifecycleStates": [
+          "ready",
+          "known_rejected"
+        ],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": [
+      {
+        "name": "ready",
+        "restartExpectation": {
+          "kind": "deterministic",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "ready"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "known-rejected",
+        "restartExpectation": {
+          "kind": "deterministic",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "known_rejected"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      }
+    ]
   },
   {
     "id": "submit-fence-rename-failure",
@@ -633,7 +1593,27 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "acknowledgement_uncertain",
+      "prior": {
+        "permitted": true,
+        "lifecycleStates": [
+          "ready",
+          "known_rejected"
+        ],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": true,
+        "lifecycleStates": [
+          "in_flight"
+        ],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-fence-events-dir-sync-failure",
@@ -645,7 +1625,27 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "acknowledgement_uncertain",
+      "prior": {
+        "permitted": true,
+        "lifecycleStates": [
+          "ready",
+          "known_rejected"
+        ],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": true,
+        "lifecycleStates": [
+          "in_flight"
+        ],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-crash-after-fence-before-spawn",
@@ -657,7 +1657,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-crash-during-child",
@@ -669,7 +1684,22 @@
     "expectedSubmitChildren": 1,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-crash-after-core-append",
@@ -681,7 +1711,22 @@
     "expectedSubmitChildren": 1,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-crash-after-response-before-lifecycle",
@@ -693,7 +1738,22 @@
     "expectedSubmitChildren": 1,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-no-response-needs-reconciliation",
@@ -705,7 +1765,22 @@
     "expectedSubmitChildren": 1,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-undecodable-response-needs-reconciliation",
@@ -717,7 +1792,22 @@
     "expectedSubmitChildren": 1,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-oversized-response-needs-reconciliation",
@@ -729,7 +1819,22 @@
     "expectedSubmitChildren": 1,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-correlation-mismatch-needs-reconciliation",
@@ -741,7 +1846,22 @@
     "expectedSubmitChildren": 1,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-timeout-needs-reconciliation",
@@ -753,7 +1873,22 @@
     "expectedSubmitChildren": 1,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-spawn-failed-needs-reconciliation",
@@ -765,7 +1900,22 @@
     "expectedSubmitChildren": 1,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-reported-unknown-needs-reconciliation",
@@ -777,7 +1927,22 @@
     "expectedSubmitChildren": 1,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-aborted-needs-reconciliation",
@@ -789,19 +1954,353 @@
     "expectedSubmitChildren": 1,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-known-result-publication-failure",
     "stage": "submit",
     "trigger": "submit known result publication failure",
-    "expectedPersistedState": "in_flight",
+    "expectedPersistedState": null,
     "expectedRuntimeCategory": "outcome_unknown",
     "mutationAllowed": false,
     "expectedSubmitChildren": 1,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "no_publication",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "acknowledgement_uncertain",
+      "prior": {
+        "permitted": true,
+        "lifecycleStates": [
+          "in_flight"
+        ],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": true,
+        "lifecycleStates": [
+          "known_accepted",
+          "known_duplicate",
+          "known_rejected"
+        ],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": [
+      {
+        "name": "create-accepted",
+        "restartExpectation": {
+          "kind": "deterministic",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "in_flight"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "create-duplicate",
+        "restartExpectation": {
+          "kind": "deterministic",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "in_flight"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "create-rejected",
+        "restartExpectation": {
+          "kind": "deterministic",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "in_flight"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "write-accepted",
+        "restartExpectation": {
+          "kind": "deterministic",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "in_flight"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "write-duplicate",
+        "restartExpectation": {
+          "kind": "deterministic",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "in_flight"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "write-rejected",
+        "restartExpectation": {
+          "kind": "deterministic",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "in_flight"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "temp-sync-accepted",
+        "restartExpectation": {
+          "kind": "deterministic",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "in_flight"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "temp-sync-duplicate",
+        "restartExpectation": {
+          "kind": "deterministic",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "in_flight"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "temp-sync-rejected",
+        "restartExpectation": {
+          "kind": "deterministic",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "in_flight"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "rename-attempt-accepted",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "in_flight"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": true,
+            "lifecycleStates": [
+              "known_accepted"
+            ],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "rename-attempt-duplicate",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "in_flight"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": true,
+            "lifecycleStates": [
+              "known_duplicate"
+            ],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "rename-attempt-rejected",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "in_flight"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": true,
+            "lifecycleStates": [
+              "known_rejected"
+            ],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "directory-sync-accepted",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "in_flight"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": true,
+            "lifecycleStates": [
+              "known_accepted"
+            ],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "directory-sync-duplicate",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "in_flight"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": true,
+            "lifecycleStates": [
+              "known_duplicate"
+            ],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "directory-sync-rejected",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "in_flight"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": true,
+            "lifecycleStates": [
+              "known_rejected"
+            ],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      }
+    ]
   },
   {
     "id": "submit-same-arguments-after-unknown-zero-child",
@@ -813,7 +2312,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-changed-arguments-after-unknown-zero-child",
@@ -825,7 +2339,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-lost-ack-real-binary-reconciled",
@@ -837,7 +2366,22 @@
     "expectedSubmitChildren": 1,
     "expectedReconcileChildren": 1,
     "expectedProjectionCategory": "terminal_unavailable",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-retained-payload-recompute-mutant",
@@ -849,7 +2393,22 @@
     "expectedSubmitChildren": 1,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "terminal_unavailable",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "submit-lifecycle-loss-no-inmemory-ready-mutant",
@@ -861,7 +2420,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "submit"
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "restart-ready",
@@ -873,7 +2447,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "submit_available",
-    "evidenceClass": "restart"
+    "evidenceClass": "restart",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "restart-in-flight-to-needs-reconciliation",
@@ -885,7 +2474,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "restart"
+    "evidenceClass": "restart",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "restart-known-accepted",
@@ -897,7 +2501,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "terminal_unavailable",
-    "evidenceClass": "restart"
+    "evidenceClass": "restart",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "restart-known-duplicate",
@@ -909,7 +2528,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "terminal_unavailable",
-    "evidenceClass": "restart"
+    "evidenceClass": "restart",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "restart-known-rejected",
@@ -921,7 +2555,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "submit_available",
-    "evidenceClass": "restart"
+    "evidenceClass": "restart",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "restart-needs-reconciliation",
@@ -933,7 +2582,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "restart"
+    "evidenceClass": "restart",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "restart-reconciled-accepted",
@@ -945,7 +2609,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "terminal_unavailable",
-    "evidenceClass": "restart"
+    "evidenceClass": "restart",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "restart-reconciled-conflict",
@@ -957,7 +2636,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "terminal_unavailable",
-    "evidenceClass": "restart"
+    "evidenceClass": "restart",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "restart-reconciled-absent",
@@ -969,7 +2663,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "terminal_unavailable",
-    "evidenceClass": "restart"
+    "evidenceClass": "restart",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "restart-still-unknown",
@@ -981,7 +2690,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "restart"
+    "evidenceClass": "restart",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "restart-missing-malformed-unsafe-fail-closed",
@@ -993,7 +2717,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "restart"
+    "evidenceClass": "restart",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "reconcile-accepted",
@@ -1005,7 +2744,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 1,
     "expectedProjectionCategory": "terminal_unavailable",
-    "evidenceClass": "reconciliation"
+    "evidenceClass": "reconciliation",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "reconcile-conflict",
@@ -1017,7 +2771,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 1,
     "expectedProjectionCategory": "terminal_unavailable",
-    "evidenceClass": "reconciliation"
+    "evidenceClass": "reconciliation",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "reconcile-absent-no-submit",
@@ -1029,7 +2798,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 1,
     "expectedProjectionCategory": "terminal_unavailable",
-    "evidenceClass": "reconciliation"
+    "evidenceClass": "reconciliation",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "reconcile-unknown-still-unknown",
@@ -1041,7 +2825,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 1,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "reconciliation"
+    "evidenceClass": "reconciliation",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "reconcile-concurrent-n-single-child",
@@ -1053,55 +2852,230 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 1,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "reconciliation"
+    "evidenceClass": "reconciliation",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "reconcile-publication-file-write-failure",
     "stage": "reconciliation",
     "trigger": "reconcile publication file write failure",
-    "expectedPersistedState": "needs_reconciliation",
+    "expectedPersistedState": null,
     "expectedRuntimeCategory": "unavailable",
     "mutationAllowed": false,
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 1,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "reconciliation"
+    "evidenceClass": "reconciliation",
+    "restartExpectation": {
+      "kind": "deterministic",
+      "prior": {
+        "permitted": true,
+        "lifecycleStates": [
+          "needs_reconciliation",
+          "still_unknown"
+        ],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": [
+      {
+        "name": "needs-reconciliation",
+        "restartExpectation": {
+          "kind": "deterministic",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "needs_reconciliation"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "still-unknown",
+        "restartExpectation": {
+          "kind": "deterministic",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "still_unknown"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      }
+    ]
   },
   {
     "id": "reconcile-publication-file-sync-failure",
     "stage": "reconciliation",
     "trigger": "reconcile publication file sync failure",
-    "expectedPersistedState": "needs_reconciliation",
+    "expectedPersistedState": null,
     "expectedRuntimeCategory": "unavailable",
     "mutationAllowed": false,
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 1,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "reconciliation"
+    "evidenceClass": "reconciliation",
+    "restartExpectation": {
+      "kind": "deterministic",
+      "prior": {
+        "permitted": true,
+        "lifecycleStates": [
+          "needs_reconciliation",
+          "still_unknown"
+        ],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": [
+      {
+        "name": "needs-reconciliation",
+        "restartExpectation": {
+          "kind": "deterministic",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "needs_reconciliation"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "still-unknown",
+        "restartExpectation": {
+          "kind": "deterministic",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "still_unknown"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      }
+    ]
   },
   {
     "id": "reconcile-publication-rename-failure",
     "stage": "reconciliation",
     "trigger": "reconcile publication rename failure",
-    "expectedPersistedState": "needs_reconciliation",
+    "expectedPersistedState": null,
     "expectedRuntimeCategory": "unavailable",
     "mutationAllowed": false,
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 1,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "reconciliation"
+    "evidenceClass": "reconciliation",
+    "restartExpectation": {
+      "kind": "acknowledgement_uncertain",
+      "prior": {
+        "permitted": true,
+        "lifecycleStates": [
+          "needs_reconciliation",
+          "still_unknown"
+        ],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": true,
+        "lifecycleStates": [
+          "reconciled_accepted",
+          "reconciled_conflict",
+          "reconciled_absent",
+          "still_unknown"
+        ],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "reconcile-publication-events-dir-sync-failure",
     "stage": "reconciliation",
     "trigger": "reconcile publication events dir sync failure",
-    "expectedPersistedState": "needs_reconciliation",
+    "expectedPersistedState": null,
     "expectedRuntimeCategory": "unavailable",
     "mutationAllowed": true,
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 1,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "reconciliation"
+    "evidenceClass": "reconciliation",
+    "restartExpectation": {
+      "kind": "acknowledgement_uncertain",
+      "prior": {
+        "permitted": true,
+        "lifecycleStates": [
+          "needs_reconciliation",
+          "still_unknown"
+        ],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": true,
+        "lifecycleStates": [
+          "reconciled_accepted",
+          "reconciled_conflict",
+          "reconciled_absent",
+          "still_unknown"
+        ],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "reconcile-journal-byte-identical",
@@ -1113,7 +3087,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 1,
     "expectedProjectionCategory": "terminal_unavailable",
-    "evidenceClass": "reconciliation"
+    "evidenceClass": "reconciliation",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "reconcile-never-calls-submit-mutant",
@@ -1125,7 +3114,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 1,
     "expectedProjectionCategory": "terminal_unavailable",
-    "evidenceClass": "reconciliation"
+    "evidenceClass": "reconciliation",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "reconcile-absent-never-republishes-tool-mutant",
@@ -1137,7 +3141,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 1,
     "expectedProjectionCategory": "terminal_unavailable",
-    "evidenceClass": "reconciliation"
+    "evidenceClass": "reconciliation",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "projection-ready-idle",
@@ -1149,7 +3168,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "submit_available",
-    "evidenceClass": "projection"
+    "evidenceClass": "projection",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "projection-known-rejected-idle",
@@ -1161,7 +3195,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "submit_available",
-    "evidenceClass": "projection"
+    "evidenceClass": "projection",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "projection-submit-admissible-busy",
@@ -1173,7 +3222,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "submit_busy",
-    "evidenceClass": "projection"
+    "evidenceClass": "projection",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "projection-runtime-in-flight-busy",
@@ -1185,7 +3249,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "submit_busy",
-    "evidenceClass": "projection"
+    "evidenceClass": "projection",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "projection-terminal-known",
@@ -1197,7 +3276,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "terminal_unavailable",
-    "evidenceClass": "projection"
+    "evidenceClass": "projection",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "projection-reconciliation-required-idle",
@@ -1209,7 +3303,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "reconciliation_required",
-    "evidenceClass": "projection"
+    "evidenceClass": "projection",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "projection-reconciliation-required-busy",
@@ -1221,7 +3330,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "reconciliation_busy",
-    "evidenceClass": "projection"
+    "evidenceClass": "projection",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "projection-reconciled-terminal",
@@ -1233,7 +3357,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "terminal_unavailable",
-    "evidenceClass": "projection"
+    "evidenceClass": "projection",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "projection-controller-closed-unavailable",
@@ -1245,7 +3384,22 @@
     "expectedSubmitChildren": 0,
     "expectedReconcileChildren": 0,
     "expectedProjectionCategory": "controller_unavailable",
-    "evidenceClass": "projection"
+    "evidenceClass": "projection",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "export-lifecycle-runtime-type-allowlist",
@@ -1257,7 +3411,22 @@
     "expectedSubmitChildren": null,
     "expectedReconcileChildren": null,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "exports"
+    "evidenceClass": "exports",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "export-lifecycle-negative-root",
@@ -1269,7 +3438,22 @@
     "expectedSubmitChildren": null,
     "expectedReconcileChildren": null,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "exports"
+    "evidenceClass": "exports",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "export-lifecycle-negative-deep",
@@ -1281,7 +3465,22 @@
     "expectedSubmitChildren": null,
     "expectedReconcileChildren": null,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "exports"
+    "evidenceClass": "exports",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "export-lifecycle-negative-undeclared",
@@ -1293,7 +3492,22 @@
     "expectedSubmitChildren": null,
     "expectedReconcileChildren": null,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "exports"
+    "evidenceClass": "exports",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "disclosure-status-error-closed-canaries",
@@ -1305,7 +3519,22 @@
     "expectedSubmitChildren": null,
     "expectedReconcileChildren": null,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "disclosure"
+    "evidenceClass": "disclosure",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "disclosure-retained-record-prohibited-fields",
@@ -1317,7 +3546,22 @@
     "expectedSubmitChildren": null,
     "expectedReconcileChildren": null,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "disclosure"
+    "evidenceClass": "disclosure",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "preflight-transport-api-preserved",
@@ -1329,7 +3573,22 @@
     "expectedSubmitChildren": null,
     "expectedReconcileChildren": null,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "preflight"
+    "evidenceClass": "preflight",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
   },
   {
     "id": "preflight-lifecycle-requires-submit-reconcile",
@@ -1341,6 +3600,1165 @@
     "expectedSubmitChildren": null,
     "expectedReconcileChildren": null,
     "expectedProjectionCategory": "not_applicable",
-    "evidenceClass": "preflight"
+    "evidenceClass": "preflight",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
+  },
+  {
+    "id": "profile-lifecycle-root-equals-core-state-dir-rejected",
+    "stage": "profile",
+    "trigger": "profile lifecycle root equals core state dir rejected",
+    "expectedPersistedState": null,
+    "expectedRuntimeCategory": "fail_closed",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 0,
+    "expectedReconcileChildren": 0,
+    "expectedProjectionCategory": "not_applicable",
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
+  },
+  {
+    "id": "profile-lifecycle-root-ancestor-of-core-state-dir-rejected",
+    "stage": "profile",
+    "trigger": "profile lifecycle root ancestor of core state dir rejected",
+    "expectedPersistedState": null,
+    "expectedRuntimeCategory": "fail_closed",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 0,
+    "expectedReconcileChildren": 0,
+    "expectedProjectionCategory": "not_applicable",
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
+  },
+  {
+    "id": "profile-core-state-dir-ancestor-of-lifecycle-root-rejected",
+    "stage": "profile",
+    "trigger": "profile core state dir ancestor of lifecycle root rejected",
+    "expectedPersistedState": null,
+    "expectedRuntimeCategory": "fail_closed",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 0,
+    "expectedReconcileChildren": 0,
+    "expectedProjectionCategory": "not_applicable",
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
+  },
+  {
+    "id": "profile-mountinfo-unique-deepest-selected",
+    "stage": "profile",
+    "trigger": "profile mountinfo unique deepest selected",
+    "expectedPersistedState": "ready",
+    "expectedRuntimeCategory": "success",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 0,
+    "expectedReconcileChildren": 0,
+    "expectedProjectionCategory": "submit_available",
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
+  },
+  {
+    "id": "profile-lifecycle-root-lone-surrogate-rejected",
+    "stage": "profile",
+    "trigger": "profile lifecycle root lone surrogate rejected",
+    "expectedPersistedState": null,
+    "expectedRuntimeCategory": "fail_closed",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 0,
+    "expectedReconcileChildren": 0,
+    "expectedProjectionCategory": "not_applicable",
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
+  },
+  {
+    "id": "profile-core-state-dir-lone-surrogate-rejected",
+    "stage": "profile",
+    "trigger": "profile core state dir lone surrogate rejected",
+    "expectedPersistedState": null,
+    "expectedRuntimeCategory": "fail_closed",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 0,
+    "expectedReconcileChildren": 0,
+    "expectedProjectionCategory": "not_applicable",
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
+  },
+  {
+    "id": "identity-config-canonical-vector",
+    "stage": "profile",
+    "trigger": "identity config canonical vector",
+    "expectedPersistedState": null,
+    "expectedRuntimeCategory": "contract_only",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 0,
+    "expectedReconcileChildren": 0,
+    "expectedProjectionCategory": "not_applicable",
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
+  },
+  {
+    "id": "identity-core-state-path-key-vector",
+    "stage": "profile",
+    "trigger": "identity core state path key vector",
+    "expectedPersistedState": null,
+    "expectedRuntimeCategory": "contract_only",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 0,
+    "expectedReconcileChildren": 0,
+    "expectedProjectionCategory": "not_applicable",
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
+  },
+  {
+    "id": "identity-root-path-digest-vector",
+    "stage": "profile",
+    "trigger": "identity root path digest vector",
+    "expectedPersistedState": null,
+    "expectedRuntimeCategory": "contract_only",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 0,
+    "expectedReconcileChildren": 0,
+    "expectedProjectionCategory": "not_applicable",
+    "evidenceClass": "profile",
+    "restartExpectation": {
+      "kind": "not_applicable",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "not_applicable"
+    },
+    "parameterizedVariants": []
+  },
+  {
+    "id": "init-rename-error-prior-or-absent",
+    "stage": "initialization",
+    "trigger": "init rename error prior or absent",
+    "expectedPersistedState": null,
+    "expectedRuntimeCategory": "fail_closed",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 0,
+    "expectedReconcileChildren": 0,
+    "expectedProjectionCategory": "not_applicable",
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "acknowledgement_uncertain",
+      "prior": {
+        "permitted": true,
+        "lifecycleStates": [],
+        "absenceKinds": [
+          "uninitialized_root",
+          "target_event_absent"
+        ]
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": [
+      {
+        "name": "first-root",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [],
+            "absenceKinds": [
+              "uninitialized_root"
+            ]
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "later-event",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [],
+            "absenceKinds": [
+              "target_event_absent"
+            ]
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      }
+    ]
+  },
+  {
+    "id": "init-rename-error-complete-target",
+    "stage": "initialization",
+    "trigger": "init rename error complete target",
+    "expectedPersistedState": null,
+    "expectedRuntimeCategory": "fail_closed",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 0,
+    "expectedReconcileChildren": 0,
+    "expectedProjectionCategory": "not_applicable",
+    "evidenceClass": "initialization",
+    "restartExpectation": {
+      "kind": "acknowledgement_uncertain",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": true,
+        "lifecycleStates": [
+          "ready"
+        ],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": []
+  },
+  {
+    "id": "submit-fence-rename-error-prior-submit-admissible",
+    "stage": "submit",
+    "trigger": "submit fence rename error prior submit admissible",
+    "expectedPersistedState": null,
+    "expectedRuntimeCategory": "unavailable",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 0,
+    "expectedReconcileChildren": 0,
+    "expectedProjectionCategory": "not_applicable",
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "acknowledgement_uncertain",
+      "prior": {
+        "permitted": true,
+        "lifecycleStates": [
+          "ready",
+          "known_rejected"
+        ],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": [
+      {
+        "name": "ready",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "ready"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "known-rejected",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "known_rejected"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      }
+    ]
+  },
+  {
+    "id": "submit-fence-rename-error-target-in-flight",
+    "stage": "submit",
+    "trigger": "submit fence rename error target in flight",
+    "expectedPersistedState": null,
+    "expectedRuntimeCategory": "unavailable",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 0,
+    "expectedReconcileChildren": 0,
+    "expectedProjectionCategory": "not_applicable",
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "acknowledgement_uncertain",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": true,
+        "lifecycleStates": [
+          "in_flight"
+        ],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": []
+  },
+  {
+    "id": "submit-known-result-rename-error-prior-in-flight",
+    "stage": "submit",
+    "trigger": "submit known result rename error prior in flight",
+    "expectedPersistedState": null,
+    "expectedRuntimeCategory": "outcome_unknown",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 1,
+    "expectedReconcileChildren": 0,
+    "expectedProjectionCategory": "no_publication",
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "acknowledgement_uncertain",
+      "prior": {
+        "permitted": true,
+        "lifecycleStates": [
+          "in_flight"
+        ],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": []
+  },
+  {
+    "id": "submit-known-result-rename-error-target-known",
+    "stage": "submit",
+    "trigger": "submit known result rename error target known",
+    "expectedPersistedState": null,
+    "expectedRuntimeCategory": "outcome_unknown",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 1,
+    "expectedReconcileChildren": 0,
+    "expectedProjectionCategory": "no_publication",
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "acknowledgement_uncertain",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": true,
+        "lifecycleStates": [
+          "known_accepted",
+          "known_duplicate",
+          "known_rejected"
+        ],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": [
+      {
+        "name": "accepted",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": true,
+            "lifecycleStates": [
+              "known_accepted"
+            ],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "duplicate",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": true,
+            "lifecycleStates": [
+              "known_duplicate"
+            ],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "rejected",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": true,
+            "lifecycleStates": [
+              "known_rejected"
+            ],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      }
+    ]
+  },
+  {
+    "id": "reconcile-rename-error-prior-reconciliation-required",
+    "stage": "reconciliation",
+    "trigger": "reconcile rename error prior reconciliation required",
+    "expectedPersistedState": null,
+    "expectedRuntimeCategory": "unavailable",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 0,
+    "expectedReconcileChildren": 1,
+    "expectedProjectionCategory": "reconciliation_required",
+    "evidenceClass": "reconciliation",
+    "restartExpectation": {
+      "kind": "acknowledgement_uncertain",
+      "prior": {
+        "permitted": true,
+        "lifecycleStates": [
+          "needs_reconciliation",
+          "still_unknown"
+        ],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": [
+      {
+        "name": "needs-reconciliation",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "needs_reconciliation"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "still-unknown",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "still_unknown"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      }
+    ]
+  },
+  {
+    "id": "reconcile-rename-error-target-reconciled",
+    "stage": "reconciliation",
+    "trigger": "reconcile rename error target reconciled",
+    "expectedPersistedState": null,
+    "expectedRuntimeCategory": "unavailable",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 0,
+    "expectedReconcileChildren": 1,
+    "expectedProjectionCategory": "reconciliation_required",
+    "evidenceClass": "reconciliation",
+    "restartExpectation": {
+      "kind": "acknowledgement_uncertain",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": true,
+        "lifecycleStates": [
+          "reconciled_accepted",
+          "reconciled_conflict",
+          "reconciled_absent",
+          "still_unknown"
+        ],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": [
+      {
+        "name": "accepted",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": true,
+            "lifecycleStates": [
+              "reconciled_accepted"
+            ],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "conflict",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": true,
+            "lifecycleStates": [
+              "reconciled_conflict"
+            ],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "absent",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": true,
+            "lifecycleStates": [
+              "reconciled_absent"
+            ],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "still-unknown",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": true,
+            "lifecycleStates": [
+              "still_unknown"
+            ],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      }
+    ]
+  },
+  {
+    "id": "publication-rename-error-ambiguous-image-fail-closed",
+    "stage": "restart",
+    "trigger": "publication rename error ambiguous image fail closed",
+    "expectedPersistedState": null,
+    "expectedRuntimeCategory": "fail_closed",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 0,
+    "expectedReconcileChildren": 0,
+    "expectedProjectionCategory": "not_applicable",
+    "evidenceClass": "restart",
+    "restartExpectation": {
+      "kind": "invalid_image",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": [
+      {
+        "name": "initialization",
+        "restartExpectation": {
+          "kind": "invalid_image",
+          "prior": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "submit-fence",
+        "restartExpectation": {
+          "kind": "invalid_image",
+          "prior": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "submit-known-result",
+        "restartExpectation": {
+          "kind": "invalid_image",
+          "prior": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "startup-recovery",
+        "restartExpectation": {
+          "kind": "invalid_image",
+          "prior": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "reconciliation",
+        "restartExpectation": {
+          "kind": "invalid_image",
+          "prior": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      }
+    ]
+  },
+  {
+    "id": "submit-known-result-dir-sync-prior-visible",
+    "stage": "submit",
+    "trigger": "submit known result dir sync prior visible",
+    "expectedPersistedState": null,
+    "expectedRuntimeCategory": "outcome_unknown",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 1,
+    "expectedReconcileChildren": 0,
+    "expectedProjectionCategory": "no_publication",
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "acknowledgement_uncertain",
+      "prior": {
+        "permitted": true,
+        "lifecycleStates": [
+          "in_flight"
+        ],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": []
+  },
+  {
+    "id": "submit-known-result-dir-sync-target-visible",
+    "stage": "submit",
+    "trigger": "submit known result dir sync target visible",
+    "expectedPersistedState": null,
+    "expectedRuntimeCategory": "outcome_unknown",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 1,
+    "expectedReconcileChildren": 0,
+    "expectedProjectionCategory": "no_publication",
+    "evidenceClass": "submit",
+    "restartExpectation": {
+      "kind": "acknowledgement_uncertain",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": true,
+        "lifecycleStates": [
+          "known_accepted",
+          "known_duplicate",
+          "known_rejected"
+        ],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": [
+      {
+        "name": "accepted",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": true,
+            "lifecycleStates": [
+              "known_accepted"
+            ],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "duplicate",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": true,
+            "lifecycleStates": [
+              "known_duplicate"
+            ],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "rejected",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": true,
+            "lifecycleStates": [
+              "known_rejected"
+            ],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      }
+    ]
+  },
+  {
+    "id": "reconcile-dir-sync-prior-visible",
+    "stage": "reconciliation",
+    "trigger": "reconcile dir sync prior visible",
+    "expectedPersistedState": null,
+    "expectedRuntimeCategory": "unavailable",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 0,
+    "expectedReconcileChildren": 1,
+    "expectedProjectionCategory": "reconciliation_required",
+    "evidenceClass": "reconciliation",
+    "restartExpectation": {
+      "kind": "acknowledgement_uncertain",
+      "prior": {
+        "permitted": true,
+        "lifecycleStates": [
+          "needs_reconciliation",
+          "still_unknown"
+        ],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": [
+      {
+        "name": "needs-reconciliation",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "needs_reconciliation"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "still-unknown",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": true,
+            "lifecycleStates": [
+              "still_unknown"
+            ],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      }
+    ]
+  },
+  {
+    "id": "reconcile-dir-sync-target-visible",
+    "stage": "reconciliation",
+    "trigger": "reconcile dir sync target visible",
+    "expectedPersistedState": null,
+    "expectedRuntimeCategory": "unavailable",
+    "mutationAllowed": false,
+    "expectedSubmitChildren": 0,
+    "expectedReconcileChildren": 1,
+    "expectedProjectionCategory": "reconciliation_required",
+    "evidenceClass": "reconciliation",
+    "restartExpectation": {
+      "kind": "acknowledgement_uncertain",
+      "prior": {
+        "permitted": false,
+        "lifecycleStates": [],
+        "absenceKinds": []
+      },
+      "target": {
+        "permitted": true,
+        "lifecycleStates": [
+          "reconciled_accepted",
+          "reconciled_conflict",
+          "reconciled_absent",
+          "still_unknown"
+        ],
+        "absenceKinds": []
+      },
+      "invalidOrAmbiguousImage": "fail_closed"
+    },
+    "parameterizedVariants": [
+      {
+        "name": "accepted",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": true,
+            "lifecycleStates": [
+              "reconciled_accepted"
+            ],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "conflict",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": true,
+            "lifecycleStates": [
+              "reconciled_conflict"
+            ],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "absent",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": true,
+            "lifecycleStates": [
+              "reconciled_absent"
+            ],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      },
+      {
+        "name": "still-unknown",
+        "restartExpectation": {
+          "kind": "acknowledgement_uncertain",
+          "prior": {
+            "permitted": false,
+            "lifecycleStates": [],
+            "absenceKinds": []
+          },
+          "target": {
+            "permitted": true,
+            "lifecycleStates": [
+              "still_unknown"
+            ],
+            "absenceKinds": []
+          },
+          "invalidOrAmbiguousImage": "fail_closed"
+        }
+      }
+    ]
   }
 ]

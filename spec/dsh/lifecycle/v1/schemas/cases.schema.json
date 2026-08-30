@@ -3,8 +3,8 @@
   "$id": "https://aizign.dev/spec/dsh/lifecycle/v1/cases.schema.json",
   "title": "DSH lifecycle v1 executable evidence inventory",
   "type": "array",
-  "minItems": 112,
-  "maxItems": 112,
+  "minItems": 134,
+  "maxItems": 134,
   "items": {
     "type": "object",
     "additionalProperties": false,
@@ -18,7 +18,9 @@
       "expectedSubmitChildren",
       "expectedReconcileChildren",
       "expectedProjectionCategory",
-      "evidenceClass"
+      "evidenceClass",
+      "restartExpectation",
+      "parameterizedVariants"
     ],
     "properties": {
       "id": {
@@ -134,7 +136,29 @@
           "disclosure-status-error-closed-canaries",
           "disclosure-retained-record-prohibited-fields",
           "preflight-transport-api-preserved",
-          "preflight-lifecycle-requires-submit-reconcile"
+          "preflight-lifecycle-requires-submit-reconcile",
+          "profile-lifecycle-root-equals-core-state-dir-rejected",
+          "profile-lifecycle-root-ancestor-of-core-state-dir-rejected",
+          "profile-core-state-dir-ancestor-of-lifecycle-root-rejected",
+          "profile-mountinfo-unique-deepest-selected",
+          "profile-lifecycle-root-lone-surrogate-rejected",
+          "profile-core-state-dir-lone-surrogate-rejected",
+          "identity-config-canonical-vector",
+          "identity-core-state-path-key-vector",
+          "identity-root-path-digest-vector",
+          "init-rename-error-prior-or-absent",
+          "init-rename-error-complete-target",
+          "submit-fence-rename-error-prior-submit-admissible",
+          "submit-fence-rename-error-target-in-flight",
+          "submit-known-result-rename-error-prior-in-flight",
+          "submit-known-result-rename-error-target-known",
+          "reconcile-rename-error-prior-reconciliation-required",
+          "reconcile-rename-error-target-reconciled",
+          "publication-rename-error-ambiguous-image-fail-closed",
+          "submit-known-result-dir-sync-prior-visible",
+          "submit-known-result-dir-sync-target-visible",
+          "reconcile-dir-sync-prior-visible",
+          "reconcile-dir-sync-target-visible"
         ]
       },
       "stage": {
@@ -248,6 +272,877 @@
           "disclosure",
           "preflight"
         ]
+      },
+      "restartExpectation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "prior",
+          "target",
+          "invalidOrAmbiguousImage"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "not_applicable",
+              "deterministic",
+              "acknowledgement_uncertain",
+              "invalid_image"
+            ]
+          },
+          "prior": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "permitted",
+              "lifecycleStates",
+              "absenceKinds"
+            ],
+            "properties": {
+              "permitted": {
+                "type": "boolean"
+              },
+              "lifecycleStates": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "ready",
+                    "in_flight",
+                    "known_accepted",
+                    "known_duplicate",
+                    "known_rejected",
+                    "needs_reconciliation",
+                    "reconciled_accepted",
+                    "reconciled_conflict",
+                    "reconciled_absent",
+                    "still_unknown"
+                  ]
+                }
+              },
+              "absenceKinds": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "uninitialized_root",
+                    "target_event_absent"
+                  ]
+                }
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "permitted": {
+                      "const": false
+                    }
+                  },
+                  "required": [
+                    "permitted"
+                  ],
+                  "type": "object"
+                },
+                "then": {
+                  "properties": {
+                    "lifecycleStates": {
+                      "maxItems": 0,
+                      "type": "array"
+                    },
+                    "absenceKinds": {
+                      "maxItems": 0,
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "permitted": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "permitted"
+                  ],
+                  "type": "object"
+                },
+                "then": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "lifecycleStates": {
+                          "minItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "properties": {
+                        "absenceKinds": {
+                          "minItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "target": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "permitted",
+              "lifecycleStates",
+              "absenceKinds"
+            ],
+            "properties": {
+              "permitted": {
+                "type": "boolean"
+              },
+              "lifecycleStates": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "ready",
+                    "in_flight",
+                    "known_accepted",
+                    "known_duplicate",
+                    "known_rejected",
+                    "needs_reconciliation",
+                    "reconciled_accepted",
+                    "reconciled_conflict",
+                    "reconciled_absent",
+                    "still_unknown"
+                  ]
+                }
+              },
+              "absenceKinds": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "uninitialized_root",
+                    "target_event_absent"
+                  ]
+                }
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "permitted": {
+                      "const": false
+                    }
+                  },
+                  "required": [
+                    "permitted"
+                  ],
+                  "type": "object"
+                },
+                "then": {
+                  "properties": {
+                    "lifecycleStates": {
+                      "maxItems": 0,
+                      "type": "array"
+                    },
+                    "absenceKinds": {
+                      "maxItems": 0,
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "permitted": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "permitted"
+                  ],
+                  "type": "object"
+                },
+                "then": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "lifecycleStates": {
+                          "minItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "properties": {
+                        "absenceKinds": {
+                          "minItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "invalidOrAmbiguousImage": {
+            "enum": [
+              "not_applicable",
+              "fail_closed"
+            ]
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "not_applicable"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            "then": {
+              "properties": {
+                "prior": {
+                  "properties": {
+                    "permitted": {
+                      "const": false
+                    }
+                  },
+                  "type": "object"
+                },
+                "target": {
+                  "properties": {
+                    "permitted": {
+                      "const": false
+                    }
+                  },
+                  "type": "object"
+                },
+                "invalidOrAmbiguousImage": {
+                  "const": "not_applicable"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "invalid_image"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            "then": {
+              "properties": {
+                "prior": {
+                  "properties": {
+                    "permitted": {
+                      "const": false
+                    }
+                  },
+                  "type": "object"
+                },
+                "target": {
+                  "properties": {
+                    "permitted": {
+                      "const": false
+                    }
+                  },
+                  "type": "object"
+                },
+                "invalidOrAmbiguousImage": {
+                  "const": "fail_closed"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "deterministic"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            "then": {
+              "oneOf": [
+                {
+                  "properties": {
+                    "prior": {
+                      "properties": {
+                        "permitted": {
+                          "const": true
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "target": {
+                      "properties": {
+                        "permitted": {
+                          "const": false
+                        }
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "prior": {
+                      "properties": {
+                        "permitted": {
+                          "const": false
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "target": {
+                      "properties": {
+                        "permitted": {
+                          "const": true
+                        }
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              ],
+              "properties": {
+                "invalidOrAmbiguousImage": {
+                  "const": "fail_closed"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "acknowledgement_uncertain"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            "then": {
+              "anyOf": [
+                {
+                  "properties": {
+                    "prior": {
+                      "properties": {
+                        "permitted": {
+                          "const": true
+                        }
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "target": {
+                      "properties": {
+                        "permitted": {
+                          "const": true
+                        }
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              ],
+              "properties": {
+                "invalidOrAmbiguousImage": {
+                  "const": "fail_closed"
+                }
+              },
+              "type": "object"
+            }
+          }
+        ]
+      },
+      "parameterizedVariants": {
+        "type": "array",
+        "uniqueItems": true,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "restartExpectation"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "restartExpectation": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "prior",
+                "target",
+                "invalidOrAmbiguousImage"
+              ],
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "not_applicable",
+                    "deterministic",
+                    "acknowledgement_uncertain",
+                    "invalid_image"
+                  ]
+                },
+                "prior": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "permitted",
+                    "lifecycleStates",
+                    "absenceKinds"
+                  ],
+                  "properties": {
+                    "permitted": {
+                      "type": "boolean"
+                    },
+                    "lifecycleStates": {
+                      "type": "array",
+                      "uniqueItems": true,
+                      "items": {
+                        "enum": [
+                          "ready",
+                          "in_flight",
+                          "known_accepted",
+                          "known_duplicate",
+                          "known_rejected",
+                          "needs_reconciliation",
+                          "reconciled_accepted",
+                          "reconciled_conflict",
+                          "reconciled_absent",
+                          "still_unknown"
+                        ]
+                      }
+                    },
+                    "absenceKinds": {
+                      "type": "array",
+                      "uniqueItems": true,
+                      "items": {
+                        "enum": [
+                          "uninitialized_root",
+                          "target_event_absent"
+                        ]
+                      }
+                    }
+                  },
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "permitted": {
+                            "const": false
+                          }
+                        },
+                        "required": [
+                          "permitted"
+                        ],
+                        "type": "object"
+                      },
+                      "then": {
+                        "properties": {
+                          "lifecycleStates": {
+                            "maxItems": 0,
+                            "type": "array"
+                          },
+                          "absenceKinds": {
+                            "maxItems": 0,
+                            "type": "array"
+                          }
+                        },
+                        "type": "object"
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "permitted": {
+                            "const": true
+                          }
+                        },
+                        "required": [
+                          "permitted"
+                        ],
+                        "type": "object"
+                      },
+                      "then": {
+                        "anyOf": [
+                          {
+                            "properties": {
+                              "lifecycleStates": {
+                                "minItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "type": "object"
+                          },
+                          {
+                            "properties": {
+                              "absenceKinds": {
+                                "minItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "type": "object"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "target": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "permitted",
+                    "lifecycleStates",
+                    "absenceKinds"
+                  ],
+                  "properties": {
+                    "permitted": {
+                      "type": "boolean"
+                    },
+                    "lifecycleStates": {
+                      "type": "array",
+                      "uniqueItems": true,
+                      "items": {
+                        "enum": [
+                          "ready",
+                          "in_flight",
+                          "known_accepted",
+                          "known_duplicate",
+                          "known_rejected",
+                          "needs_reconciliation",
+                          "reconciled_accepted",
+                          "reconciled_conflict",
+                          "reconciled_absent",
+                          "still_unknown"
+                        ]
+                      }
+                    },
+                    "absenceKinds": {
+                      "type": "array",
+                      "uniqueItems": true,
+                      "items": {
+                        "enum": [
+                          "uninitialized_root",
+                          "target_event_absent"
+                        ]
+                      }
+                    }
+                  },
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "permitted": {
+                            "const": false
+                          }
+                        },
+                        "required": [
+                          "permitted"
+                        ],
+                        "type": "object"
+                      },
+                      "then": {
+                        "properties": {
+                          "lifecycleStates": {
+                            "maxItems": 0,
+                            "type": "array"
+                          },
+                          "absenceKinds": {
+                            "maxItems": 0,
+                            "type": "array"
+                          }
+                        },
+                        "type": "object"
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "permitted": {
+                            "const": true
+                          }
+                        },
+                        "required": [
+                          "permitted"
+                        ],
+                        "type": "object"
+                      },
+                      "then": {
+                        "anyOf": [
+                          {
+                            "properties": {
+                              "lifecycleStates": {
+                                "minItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "type": "object"
+                          },
+                          {
+                            "properties": {
+                              "absenceKinds": {
+                                "minItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "type": "object"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "invalidOrAmbiguousImage": {
+                  "enum": [
+                    "not_applicable",
+                    "fail_closed"
+                  ]
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "kind": {
+                        "const": "not_applicable"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  "then": {
+                    "properties": {
+                      "prior": {
+                        "properties": {
+                          "permitted": {
+                            "const": false
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "target": {
+                        "properties": {
+                          "permitted": {
+                            "const": false
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "invalidOrAmbiguousImage": {
+                        "const": "not_applicable"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "kind": {
+                        "const": "invalid_image"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  "then": {
+                    "properties": {
+                      "prior": {
+                        "properties": {
+                          "permitted": {
+                            "const": false
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "target": {
+                        "properties": {
+                          "permitted": {
+                            "const": false
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "invalidOrAmbiguousImage": {
+                        "const": "fail_closed"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "kind": {
+                        "const": "deterministic"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  "then": {
+                    "oneOf": [
+                      {
+                        "properties": {
+                          "prior": {
+                            "properties": {
+                              "permitted": {
+                                "const": true
+                              }
+                            },
+                            "type": "object"
+                          },
+                          "target": {
+                            "properties": {
+                              "permitted": {
+                                "const": false
+                              }
+                            },
+                            "type": "object"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      {
+                        "properties": {
+                          "prior": {
+                            "properties": {
+                              "permitted": {
+                                "const": false
+                              }
+                            },
+                            "type": "object"
+                          },
+                          "target": {
+                            "properties": {
+                              "permitted": {
+                                "const": true
+                              }
+                            },
+                            "type": "object"
+                          }
+                        },
+                        "type": "object"
+                      }
+                    ],
+                    "properties": {
+                      "invalidOrAmbiguousImage": {
+                        "const": "fail_closed"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "kind": {
+                        "const": "acknowledgement_uncertain"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  "then": {
+                    "anyOf": [
+                      {
+                        "properties": {
+                          "prior": {
+                            "properties": {
+                              "permitted": {
+                                "const": true
+                              }
+                            },
+                            "type": "object"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      {
+                        "properties": {
+                          "target": {
+                            "properties": {
+                              "permitted": {
+                                "const": true
+                              }
+                            },
+                            "type": "object"
+                          }
+                        },
+                        "type": "object"
+                      }
+                    ],
+                    "properties": {
+                      "invalidOrAmbiguousImage": {
+                        "const": "fail_closed"
+                      }
+                    },
+                    "type": "object"
+                  }
+                }
+              ]
+            }
+          }
+        }
       }
     }
   },
@@ -1926,6 +2821,336 @@
         "properties": {
           "id": {
             "const": "preflight-lifecycle-requires-submit-reconcile"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-lifecycle-root-equals-core-state-dir-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-lifecycle-root-ancestor-of-core-state-dir-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-core-state-dir-ancestor-of-lifecycle-root-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-mountinfo-unique-deepest-selected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-lifecycle-root-lone-surrogate-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "profile-core-state-dir-lone-surrogate-rejected"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "identity-config-canonical-vector"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "identity-core-state-path-key-vector"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "identity-root-path-digest-vector"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-rename-error-prior-or-absent"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "init-rename-error-complete-target"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-fence-rename-error-prior-submit-admissible"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-fence-rename-error-target-in-flight"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-known-result-rename-error-prior-in-flight"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-known-result-rename-error-target-known"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "reconcile-rename-error-prior-reconciliation-required"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "reconcile-rename-error-target-reconciled"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "publication-rename-error-ambiguous-image-fail-closed"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-known-result-dir-sync-prior-visible"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "submit-known-result-dir-sync-target-visible"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "reconcile-dir-sync-prior-visible"
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    {
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "reconcile-dir-sync-target-visible"
           }
         }
       },
