@@ -2368,6 +2368,19 @@ fn assert_stderr(output: &ChildOutput, scenario: &Scenario, timeout: Duration) -
     Ok(())
 }
 
+fn bounded_stderr(bytes: &[u8]) -> String {
+    const MAX_CHARS: usize = 4_096;
+    let rendered = String::from_utf8_lossy(bytes);
+    if rendered.chars().count() <= MAX_CHARS {
+        rendered.into_owned()
+    } else {
+        format!(
+            "{}...[truncated]",
+            rendered.chars().take(MAX_CHARS).collect::<String>()
+        )
+    }
+}
+
 fn release_child(child: &mut Child) -> io::Result<()> {
     let stdin = child
         .stdin
@@ -2527,8 +2540,22 @@ fn run_inspection_after_exit(scenario: &'static Scenario, state: &Path) -> io::R
     let output = start_output_reader(&mut inspector)?;
     let status = wait_child(&mut inspector, CHILD_TIMEOUT)?;
     assert_output_closed(&output, CHILD_TIMEOUT)?;
-    assert_stderr(&output, scenario, CHILD_TIMEOUT)?;
-    assert_normal_exit(status, "fresh inspector")?;
+    let stderr = collect_stderr(&output, CHILD_TIMEOUT)?;
+    if let Err(error) = assert_normal_exit(status, "fresh inspector") {
+        return Err(io::Error::other(format!(
+            "{error}; stderr: {}",
+            bounded_stderr(&stderr)
+        )));
+    }
+    if !stderr.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "fresh inspector emitted unexpected stderr: {}",
+                bounded_stderr(&stderr)
+            ),
+        ));
+    }
     Ok(())
 }
 
