@@ -1577,7 +1577,10 @@ fn validate_mutation_projection(
         MutationProjection::WitnessInitialization => scenario.result == "I2",
         MutationProjection::PreparedResume => scenario.result == "I4",
         MutationProjection::OrdinaryAppend => {
-            matches!(scenario.result, "A0" | "A3" | "C3" | "C4" | "C5" | "C7")
+            matches!(
+                scenario.result,
+                "I5" | "A0" | "A3" | "C3" | "C4" | "C5" | "C7"
+            )
         }
         MutationProjection::None => {
             matches!(
