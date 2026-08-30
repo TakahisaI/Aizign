@@ -510,8 +510,8 @@ fn apply_mutation(source: &str, mutation: MutationSpec) -> Result<String, String
         MutationKind::AppendRevalidationBypass => mutate_function_once(
             source,
             "read_snapshot_observed",
-            "    if digest != point.digest {\n        return Err(corrupt(\n            \"journal prefix does not match the published SHA-256 digest\",\n        ));\n    }\n",
-            "",
+            "if digest != point.digest {",
+            "if digest != point.digest && digest == point.digest {",
             mutation.id,
         ),
     }
