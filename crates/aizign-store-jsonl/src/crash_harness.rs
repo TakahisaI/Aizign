@@ -2468,8 +2468,15 @@ fn execute_scenario(scenario: &'static Scenario) -> io::Result<()> {
         Err(error) => {
             let _ = kill_and_reap(&mut holder);
             let _ = assert_output_closed(&holder_output, CHILD_TIMEOUT);
-            let _ = assert_stderr(&holder_output, scenario, CHILD_TIMEOUT);
-            return Err(error);
+            let stderr = collect_stderr(&holder_output, CHILD_TIMEOUT).unwrap_or_default();
+            return Err(io::Error::new(
+                error.kind(),
+                format!(
+                    "{} failed before ready: {error}; stderr: {}",
+                    scenario.id,
+                    bounded_stderr(&stderr)
+                ),
+            ));
         }
     };
     validate_ready_measurement(&ready, scenario, &config.state)?;
