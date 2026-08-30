@@ -51,6 +51,7 @@ const MODE: &str = "helper-v1";
 /// writer.  They are a separate stderr stream from the stdout control line.
 pub(crate) const ACK: &[u8; 26] = b"AIZIGN_STORE_CRASH_ACK_V1\n";
 const CHILD_TIMEOUT: Duration = Duration::from_secs(10);
+const OUTPUT_DRAIN_TIMEOUT: Duration = Duration::from_secs(1);
 const MATRIX_TIMEOUT: Duration = Duration::from_mins(4);
 const MAX_ARTIFACT_BYTES: u64 = 1024 * 1024;
 const STORE_AUTHORITY: &str = include_str!("../../../spec/store/v2/README.md");
@@ -750,6 +751,10 @@ impl Scenario {
 
     fn is_concurrency(self) -> bool {
         self.id.starts_with("concurrency-")
+    }
+
+    fn prestarts_contender(self) -> bool {
+        self.is_concurrency() && self.termination != "sigkill-then-fresh-writer"
     }
 
     fn is_response(self) -> bool {
@@ -2093,19 +2098,18 @@ fn artifact_snapshot(state: &Path) -> io::Result<ArtifactSnapshot> {
     Ok(ArtifactSnapshot { directory, files })
 }
 
-fn wait_child(child: &mut Child, timeout: Duration) -> io::Result<std::process::ExitStatus> {
-    let deadline = Instant::now() + timeout;
+fn wait_child(child: &mut ReapedChild) -> io::Result<std::process::ExitStatus> {
     loop {
-        if let Some(status) = child.try_wait()? {
-            return Ok(status);
-        }
-        if Instant::now() >= deadline {
+        if Instant::now() >= child.deadline {
             let _ = child.kill();
             let _ = child.wait();
             return Err(io::Error::new(
                 io::ErrorKind::TimedOut,
                 "crash helper timed out",
             ));
+        }
+        if let Some(status) = child.try_wait()? {
+            return Ok(status);
         }
         std::thread::sleep(Duration::from_millis(10));
     }
@@ -2245,6 +2249,7 @@ fn validate_ready_measurement(
 
 struct ReapedChild {
     child: Child,
+    deadline: Instant,
 }
 
 impl Deref for ReapedChild {
@@ -2271,9 +2276,14 @@ impl Drop for ReapedChild {
 }
 
 fn start_helper(config: &HelperConfig) -> io::Result<ReapedChild> {
+    start_helper_with_timeout(config, CHILD_TIMEOUT)
+}
+
+fn start_helper_with_timeout(config: &HelperConfig, timeout: Duration) -> io::Result<ReapedChild> {
+    let deadline = Instant::now() + timeout;
     child_command(config)?
         .spawn()
-        .map(|child| ReapedChild { child })
+        .map(|child| ReapedChild { child, deadline })
 }
 
 /// A line-oriented stdout collector.  `ChildStdout::read_line` is intentionally
@@ -2353,13 +2363,12 @@ fn start_output_reader(child: &mut Child) -> io::Result<ChildOutput> {
 }
 
 fn read_until_ready(
-    child: &mut Child,
+    child: &mut ReapedChild,
     output: &ChildOutput,
     scenario: &Scenario,
 ) -> io::Result<ParsedReadyRecord> {
-    let deadline = Instant::now() + CHILD_TIMEOUT;
     loop {
-        let remaining = deadline.saturating_duration_since(Instant::now());
+        let remaining = child.deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
             let _ = child.kill();
             let _ = child.wait();
@@ -2585,16 +2594,16 @@ fn execute_scenario(scenario: &'static Scenario) -> io::Result<()> {
     if scenario.normal_exit {
         let mut child = start_helper(&config)?;
         let output = start_output_reader(&mut child)?;
-        let status = wait_child(&mut child, CHILD_TIMEOUT)?;
-        assert_output_closed(&output, CHILD_TIMEOUT)?;
-        assert_stderr(&output, scenario, CHILD_TIMEOUT)?;
+        let status = wait_child(&mut child)?;
+        assert_output_closed(&output, OUTPUT_DRAIN_TIMEOUT)?;
+        assert_stderr(&output, scenario, OUTPUT_DRAIN_TIMEOUT)?;
         assert_normal_exit(status, "normal-exit helper")?;
         return run_inspection_after_exit(scenario, &config.state);
     }
 
     let mut holder = start_helper(&config)?;
     let holder_output = start_output_reader(&mut holder)?;
-    let mut contender = if scenario.is_concurrency() {
+    let mut contender = if scenario.prestarts_contender() {
         let contender_config = HelperConfig {
             scenario,
             role: Role::Contender,
@@ -2610,8 +2619,8 @@ fn execute_scenario(scenario: &'static Scenario) -> io::Result<()> {
         Ok(record) => record,
         Err(error) => {
             let _ = kill_and_reap(&mut holder);
-            let _ = assert_output_closed(&holder_output, CHILD_TIMEOUT);
-            let stderr = collect_stderr(&holder_output, CHILD_TIMEOUT).unwrap_or_default();
+            let _ = assert_output_closed(&holder_output, OUTPUT_DRAIN_TIMEOUT);
+            let stderr = collect_stderr(&holder_output, OUTPUT_DRAIN_TIMEOUT).unwrap_or_default();
             return Err(io::Error::new(
                 error.kind(),
                 format!(
@@ -2627,17 +2636,43 @@ fn execute_scenario(scenario: &'static Scenario) -> io::Result<()> {
         return Err(io::Error::other("partial case omitted bounded byte count"));
     }
     if scenario.is_concurrency() {
+        if scenario.termination == "sigkill-then-fresh-writer" {
+            let blocked_snapshot = artifact_snapshot(&config.state)?;
+            let status = kill_and_reap(&mut holder)?;
+            assert_sigkill(status, "partial-tail holder")?;
+
+            let contender_config = HelperConfig {
+                scenario,
+                role: Role::Contender,
+                state: config.state.clone(),
+            };
+            let mut fresh_contender = start_helper(&contender_config)?;
+            let contender_output = start_output_reader(&mut fresh_contender)?;
+            release_child(&mut fresh_contender)?;
+            let status = wait_child(&mut fresh_contender)?;
+            assert_output_closed(&contender_output, OUTPUT_DRAIN_TIMEOUT)?;
+            assert_stderr(&contender_output, scenario, OUTPUT_DRAIN_TIMEOUT)?;
+            assert_normal_exit(status, "fresh writer after partial-tail holder reap")?;
+
+            let after_contender = artifact_snapshot(&config.state)?;
+            if blocked_snapshot != after_contender {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "fresh writer changed the partial-tail image observed before holder reap",
+                ));
+            }
+            assert_output_closed(&holder_output, OUTPUT_DRAIN_TIMEOUT)?;
+            assert_stderr(&holder_output, scenario, OUTPUT_DRAIN_TIMEOUT)?;
+            return run_inspection_after_exit(scenario, &config.state);
+        }
+
         let (contender, contender_output) = contender
             .as_mut()
             .expect("concurrency scenario has a pre-started contender");
-        if scenario.termination == "sigkill-then-fresh-writer" {
-            let status = kill_and_reap(&mut holder)?;
-            assert_sigkill(status, "partial-tail holder")?;
-        }
         release_child(contender)?;
-        let status = wait_child(contender, CHILD_TIMEOUT)?;
-        assert_output_closed(contender_output, CHILD_TIMEOUT)?;
-        assert_stderr(contender_output, scenario, CHILD_TIMEOUT)?;
+        let status = wait_child(contender)?;
+        assert_output_closed(contender_output, OUTPUT_DRAIN_TIMEOUT)?;
+        assert_stderr(contender_output, scenario, OUTPUT_DRAIN_TIMEOUT)?;
         assert_normal_exit(status, "contender while holder was blocked")?;
 
         match scenario.termination {
@@ -2649,10 +2684,9 @@ fn execute_scenario(scenario: &'static Scenario) -> io::Result<()> {
             | "release-no-append-after-contender"
             | "release-reader-then-fresh-submit" => {
                 release_child(&mut holder)?;
-                let status = wait_child(&mut holder, CHILD_TIMEOUT)?;
+                let status = wait_child(&mut holder)?;
                 assert_normal_exit(status, "released concurrency holder")?;
             }
-            "sigkill-then-fresh-writer" => {}
             other => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
@@ -2660,8 +2694,8 @@ fn execute_scenario(scenario: &'static Scenario) -> io::Result<()> {
                 ));
             }
         }
-        assert_output_closed(&holder_output, CHILD_TIMEOUT)?;
-        assert_stderr(&holder_output, scenario, CHILD_TIMEOUT)?;
+        assert_output_closed(&holder_output, OUTPUT_DRAIN_TIMEOUT)?;
+        assert_stderr(&holder_output, scenario, OUTPUT_DRAIN_TIMEOUT)?;
         return run_inspection_after_exit(scenario, &config.state);
     }
     if scenario.termination != "sigkill"
@@ -2676,8 +2710,8 @@ fn execute_scenario(scenario: &'static Scenario) -> io::Result<()> {
     }
     let status = kill_and_reap(&mut holder)?;
     assert_sigkill(status, "crash-matrix holder")?;
-    assert_output_closed(&holder_output, CHILD_TIMEOUT)?;
-    assert_stderr(&holder_output, scenario, CHILD_TIMEOUT)?;
+    assert_output_closed(&holder_output, OUTPUT_DRAIN_TIMEOUT)?;
+    assert_stderr(&holder_output, scenario, OUTPUT_DRAIN_TIMEOUT)?;
     run_inspection_after_exit(scenario, &config.state)
 }
 
@@ -2689,9 +2723,9 @@ fn run_inspection_after_exit(scenario: &'static Scenario, state: &Path) -> io::R
     };
     let mut inspector = start_helper(&inspector_config)?;
     let output = start_output_reader(&mut inspector)?;
-    let status = wait_child(&mut inspector, CHILD_TIMEOUT)?;
-    assert_output_closed(&output, CHILD_TIMEOUT)?;
-    let stderr = collect_stderr(&output, CHILD_TIMEOUT)?;
+    let status = wait_child(&mut inspector)?;
+    assert_output_closed(&output, OUTPUT_DRAIN_TIMEOUT)?;
+    let stderr = collect_stderr(&output, OUTPUT_DRAIN_TIMEOUT)?;
     if let Err(error) = assert_normal_exit(status, "fresh inspector") {
         return Err(io::Error::other(format!(
             "{error}; stderr: {}",
@@ -3524,6 +3558,19 @@ fn run_sentinel(name: &str) {
             panic!("sentinel {name} did not execute production scenario {relevant_id}: {error}")
         });
     }
+    if matches!(
+        name,
+        "mutation-prepared-barrier-noop"
+            | "mutation-commit-temporary-barrier-noop"
+            | "mutation-commit-directory-barrier-noop"
+            | "mutation-clean-barrier-noop"
+    ) {
+        // The checkpoint-exact point-filtered mutants still report the
+        // completion event after skipping only `sync_all`. Run every legal
+        // occurrence first, then reject that source shape so the focused
+        // sentinel proves both runtime reachability and the missing barrier.
+        assert_sentinel_source(name);
+    }
 }
 
 fn assert_sentinel(name: &str) {
@@ -3592,12 +3639,45 @@ mod tests {
         let output = start_output_reader(&mut child).expect("guard fixture output");
         read_until_ready(&mut child, &output, scenario).expect("guard fixture ready");
         drop(child);
-        assert_output_closed(&output, CHILD_TIMEOUT).expect("guard fixture stdout close");
-        assert_stderr(&output, scenario, CHILD_TIMEOUT).expect("guard fixture stderr close");
+        assert_output_closed(&output, OUTPUT_DRAIN_TIMEOUT).expect("guard fixture stdout close");
+        assert_stderr(&output, scenario, OUTPUT_DRAIN_TIMEOUT).expect("guard fixture stderr close");
         assert!(
             !Path::new(&format!("/proc/{pid}")).exists(),
             "dropped helper guard must kill and reap its child"
         );
+    }
+
+    #[test]
+    fn child_deadline_is_bound_to_spawn_and_not_reset_after_ready() {
+        if !crate::journal::STORE_PLATFORM_SUPPORTED {
+            return;
+        }
+        let temporary = TempDir::new();
+        let scenario = SCENARIOS
+            .iter()
+            .find(|scenario| scenario.id == "init-state-directory-create")
+            .expect("deadline fixture scenario");
+        let config = HelperConfig {
+            scenario,
+            role: Role::Holder,
+            state: temporary.state(),
+        };
+        let mut child = start_helper_with_timeout(&config, Duration::from_secs(1))
+            .expect("deadline fixture child");
+        let output = start_output_reader(&mut child).expect("deadline fixture output");
+        read_until_ready(&mut child, &output, scenario).expect("deadline fixture ready");
+        std::thread::sleep(
+            child
+                .deadline
+                .saturating_duration_since(Instant::now())
+                .saturating_add(Duration::from_millis(25)),
+        );
+        release_child(&mut child).expect("deadline fixture release");
+        let error = wait_child(&mut child).expect_err("expired child budget must not be reset");
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+        assert_output_closed(&output, OUTPUT_DRAIN_TIMEOUT).expect("deadline fixture stdout close");
+        assert_stderr(&output, scenario, OUTPUT_DRAIN_TIMEOUT)
+            .expect("deadline fixture stderr close");
     }
 
     #[test]

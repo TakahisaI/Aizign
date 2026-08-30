@@ -480,7 +480,7 @@ fn apply_mutation(source: &str, mutation: MutationSpec) -> Result<String, String
             "barrier_file",
             "file.sync_all()?;",
             &format!(
-                "if point == DurabilityPoint::{point} {{\n            return Ok(());\n        }}\n        file.sync_all()?;"
+                "if point != DurabilityPoint::{point} {{\n            file.sync_all()?;\n        }}"
             ),
             mutation.id,
         ),
@@ -495,7 +495,7 @@ fn apply_mutation(source: &str, mutation: MutationSpec) -> Result<String, String
             source,
             "barrier_directory",
             "directory.sync_all()?;",
-            "if point == DurabilityPoint::CommitDirectoryBarrierComplete {\n            return Ok(());\n        }\n        directory.sync_all()?;",
+            "if point != DurabilityPoint::CommitDirectoryBarrierComplete {\n            directory.sync_all()?;\n        }",
             mutation.id,
         ),
         MutationKind::CommitBeforeJournalBarrier => mutate_commit_order(source, mutation.id),
