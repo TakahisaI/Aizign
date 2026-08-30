@@ -71,7 +71,7 @@ async function verifyPinnedErrorGraph({ caseId, configPath, canaries, profileDir
   const appBootPackage = appBootRequire("@deepseek-ai/dsh-app-boot/package.json");
   const loaderPackage = appBootRequire("@deepseek-ai/cordis-plugin-loader/package.json");
   assert(appBootPackage.version === "0.1.1-rc.2", "unexpected dsh-app-boot version");
-  assert(loaderPackage.version === "1.0.2", "unexpected cordis-plugin-loader version");
+  assert(loaderPackage.version === "1.0.3", "unexpected cordis-plugin-loader version");
   const { boot } = await import(
     pathToFileURL(appBootRequire.resolve("@deepseek-ai/dsh-app-boot")).href
   );
