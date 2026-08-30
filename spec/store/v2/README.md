@@ -14,8 +14,9 @@ append-only `workflow.jsonl` stream defined by
 The production `aizign-store-jsonl` state machine implements this authority.
 Its crate-internal executor applies all 38 case IDs exactly once to that
 implementation and its single private durability/profile seam. Real
-child-process crash and partial-write campaigns remain separately owned by
-Issue #82 and are not implied by this implementation status.
+child-process crash and partial-write evidence is exercised separately by the
+private production crash-stage harness described below; it does not create a
+second lifecycle or result authority.
 
 ## Artifact set and physical rules
 
@@ -258,6 +259,29 @@ Framed `hello` remains state-independent. A capability says the binary
 implements the operation; it does not attest to a particular `--state` path.
 Path qualification failure is `JOURNAL_UNAVAILABLE`, never
 `CAPABILITY_UNSUPPORTED`, known `absent`, or retry authorization.
+
+## Production crash-stage evidence
+
+The required supported-profile campaign projects this authority into 61
+stable process scenarios and nine mutation sentinels. It invokes the public
+writer and reader paths, with one crate-private test controller attached to
+the same production durability adapter. Selected primitive completion is
+reported only after the real primitive succeeds; unselected operations remain
+the production implementation. Fresh processes inspect every interrupted
+image, and timeout handling kills and reaps every child.
+
+`cargo xtask store-crash-check` is the sole launcher. It validates execution
+completeness and exactly one closed final evidence record containing only the
+qualified profile facts, toolchain facts, harness version, and verified
+scenario/sentinel counts. State paths, mount sources, device names, journal
+contents, payloads, and environment contents are excluded, and no state
+artifact is uploaded.
+
+These scenario and evidence records are executable projections, not a second
+store state machine, classification table, repair rule, or retry authority.
+They establish process-crash behavior observed on
+`linux-x86_64-gnu-ext4-local-v1`; they do not establish power-loss survival or
+replace the operator-trusted assumptions under [Supported storage profile](#supported-storage-profile).
 
 ## Current dependency implementation
 

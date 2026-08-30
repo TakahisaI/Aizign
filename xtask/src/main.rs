@@ -13,6 +13,7 @@ mod quick;
 mod report;
 mod rust_check;
 mod shell;
+mod store_crash;
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -33,6 +34,8 @@ commands:
                  build release binary + TypeScript clients, then run manual/scheduled sweeps
   performance-smoke
                  run the small Linux PR matrix against generous informational budgets
+  store-crash-check
+                 run and audit the bounded Linux store crash-stage evidence matrix
   whitespace     git diff --check over the whole tree (trailing whitespace, missing final newline)
   help           print this message
 
@@ -57,6 +60,7 @@ fn main() -> ExitCode {
         Some("public-audit") => audit::run(&root),
         Some("performance-baseline") => performance::run(&root, &args[1..]),
         Some("performance-smoke") => performance::run_smoke(&root, &args[1..]),
+        Some("store-crash-check") => store_crash::run(&root),
         Some("whitespace") => whitespace(&root),
         Some("help" | "--help" | "-h") | None => {
             print!("{USAGE}");

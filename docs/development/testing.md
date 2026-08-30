@@ -33,6 +33,7 @@ cargo test -p aizign-core        # crate単位
 npm run check                  # TypeScriptだけ
 npm test -w @aizign/protocol     # package単位
 cargo xtask performance-baseline # x86_64 GNU/Linux上のmanual performance observation
+cargo xtask store-crash-check  # supported Linux store-v2 process-crash evidence
 ```
 
 The `quick` profiles use the existing Cargo cache and `node_modules` without installing from the network.
@@ -56,6 +57,7 @@ Aizignのtestは「成功件数」だけでなく **守る境界を一度壊し�
 - data boundary: harness IDや本文がprotocol requestやjournalへ漏れない
 - dependency boundary: `public-audit` が違反を検出する（違反を仕込んだfixtureで検査）
 - durable store boundary: production state machineのPREPARED/CLEAN順序、barrier失敗、毎回の再検証、profile fail-closedをprivate seamで決定的に検査する。real SIGKILL/partial-write/two-process evidenceはIssue #82が所有する
+- store crash-stage boundary: supported Linuxのrequired Rust CIは`cargo xtask store-crash-check`で、production adapterを通るexact 61 scenarioと9 mutation sentinel、child reap、bounded artifact、single closed evidence record、CLI acknowledgement orderを検査する。これはprocess-crash evidenceでありpower-loss proofではなく、state artifactを保存・uploadしない
 
 ## Fixture
 

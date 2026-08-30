@@ -10,6 +10,8 @@
 #![forbid(unsafe_code)]
 
 mod commit;
+#[cfg(test)]
+mod crash_harness;
 mod durability;
 mod journal;
 mod json_member;
