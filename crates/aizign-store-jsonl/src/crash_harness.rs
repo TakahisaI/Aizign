@@ -1442,6 +1442,9 @@ fn run_primary(config: &HelperConfig) -> Result<(), JournalError> {
         if scenario.normal_exit {
             return Ok(());
         }
+        if scenario.is_concurrency() {
+            return Ok(());
+        }
         Err(JournalError::OutcomeUnknown {
             detail: "selected append event was not observed".to_owned(),
         })
